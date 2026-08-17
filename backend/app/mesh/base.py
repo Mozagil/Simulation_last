@@ -42,6 +42,48 @@ class TessellationResult:
     part_count: int
 
 
+@dataclass
+class SurfaceInfo:
+    """Bir Gmsh yüzeyinin (face) özet bilgisi.
+
+    ROADMAP.md "1b. Geometri işleme operasyonları" — dış yüzey (skin)
+    listeleme adımı için: id + alan + normal. `part_id`, montaj dosyalarında
+    yüzeyin hangi parçaya ait olduğunu gösterir (bkz. TessellationResult).
+    """
+
+    id: int
+    area: float
+    normal: tuple[float, float, float]
+    part_id: int
+
+
+@dataclass
+class EdgeInfo:
+    """Bir Gmsh kenarının (curve) özet bilgisi.
+
+    Frontend'de seçim modu (Part/Surface/Edge/Point) için — kullanıcı bir
+    kenara tıkladığında hangi Gmsh curve tag'ine ait olduğunu bulabilmek.
+    `start_point`/`end_point`, kenarın uç noktalarının (vertex) tag'leridir —
+    frontend'in kenarı çizebilmesi için gereken koordinatlar `list_points`'ten
+    alınır.
+    """
+
+    id: int
+    length: float
+    part_id: int
+    start_point: int
+    end_point: int
+
+
+@dataclass
+class PointInfo:
+    """Bir Gmsh köşe noktasının (vertex) özet bilgisi."""
+
+    id: int
+    coordinate: tuple[float, float, float]
+    part_id: int
+
+
 class MesherAdapter(ABC):
     @abstractmethod
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
@@ -52,6 +94,18 @@ class MesherAdapter(ABC):
         self, geom: GeometryHandle, output_path: Path
     ) -> TessellationResult:
         """Hızlı tessellation (STL) + üçgen→yüzey eşlemesi üretir - web önizleme için."""
+
+    @abstractmethod
+    def list_surfaces(self, geom: GeometryHandle) -> list[SurfaceInfo]:
+        """Modeldeki tüm yüzeylerin (id, alan, normal, parça) listesini döner."""
+
+    @abstractmethod
+    def list_edges(self, geom: GeometryHandle) -> list[EdgeInfo]:
+        """Modeldeki tüm kenarların (id, uzunluk, parça, uç noktaları) listesini döner."""
+
+    @abstractmethod
+    def list_points(self, geom: GeometryHandle) -> list[PointInfo]:
+        """Modeldeki tüm köşe noktalarının (id, koordinat, parça) listesini döner."""
 
     @abstractmethod
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:

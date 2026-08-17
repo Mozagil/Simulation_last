@@ -107,3 +107,135 @@ async def upload_geometry(file: UploadFile) -> dict[str, Any]:
         "triangle_to_part": result.triangle_to_part,
         "triangle_to_part_url": f"/files/tessellations/{file_id}.parts.json",
     }
+
+
+@router.get("/{stored_filename}/surfaces")
+def list_surfaces(stored_filename: str) -> dict[str, Any]:
+    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm yüzeylerini
+    (id, alan, normal, parça) listeler.
+
+    `stored_filename`, `/geometry/upload` yanıtındaki `stored_filename`
+    alanıdır (örn. `3f9a...b2.step`).
+    """
+    file_path = UPLOAD_DIR / stored_filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
+        )
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        surfaces = adapter.list_surfaces(geom)
+    except GmshImportError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geometri okunamadı: {exc}",
+        ) from exc
+
+    logger.info(
+        "Yüzey listesi üretildi: dosya=%s, yüzey_sayısı=%d",
+        stored_filename,
+        len(surfaces),
+    )
+
+    return {
+        "stored_filename": stored_filename,
+        "surface_count": len(surfaces),
+        "surfaces": [
+            {
+                "id": s.id,
+                "area": s.area,
+                "normal": list(s.normal),
+                "part_id": s.part_id,
+            }
+            for s in surfaces
+        ],
+    }
+
+
+@router.get("/{stored_filename}/edges")
+def list_edges(stored_filename: str) -> dict[str, Any]:
+    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm kenarlarını
+    (id, uzunluk, parça, uç noktaları) listeler.
+    """
+    file_path = UPLOAD_DIR / stored_filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
+        )
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        edges = adapter.list_edges(geom)
+    except GmshImportError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geometri okunamadı: {exc}",
+        ) from exc
+
+    logger.info(
+        "Kenar listesi üretildi: dosya=%s, kenar_sayısı=%d",
+        stored_filename,
+        len(edges),
+    )
+
+    return {
+        "stored_filename": stored_filename,
+        "edge_count": len(edges),
+        "edges": [
+            {
+                "id": e.id,
+                "length": e.length,
+                "part_id": e.part_id,
+                "start_point": e.start_point,
+                "end_point": e.end_point,
+            }
+            for e in edges
+        ],
+    }
+
+
+@router.get("/{stored_filename}/points")
+def list_points(stored_filename: str) -> dict[str, Any]:
+    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm köşe noktalarını
+    (id, koordinat, parça) listeler.
+    """
+    file_path = UPLOAD_DIR / stored_filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
+        )
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        points = adapter.list_points(geom)
+    except GmshImportError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geometri okunamadı: {exc}",
+        ) from exc
+
+    logger.info(
+        "Nokta listesi üretildi: dosya=%s, nokta_sayısı=%d",
+        stored_filename,
+        len(points),
+    )
+
+    return {
+        "stored_filename": stored_filename,
+        "point_count": len(points),
+        "points": [
+            {
+                "id": p.id,
+                "coordinate": list(p.coordinate),
+                "part_id": p.part_id,
+            }
+            for p in points
+        ],
+    }

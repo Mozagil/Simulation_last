@@ -18,7 +18,14 @@ from typing import Any
 
 import gmsh
 
-from app.mesh.base import GeometryHandle, MesherAdapter, TessellationResult
+from app.mesh.base import (
+    EdgeInfo,
+    GeometryHandle,
+    MesherAdapter,
+    PointInfo,
+    SurfaceInfo,
+    TessellationResult,
+)
 
 # Gmsh eleman tipi kodu: 3 düğümlü üçgen (bkz. Gmsh dokümantasyonu, "elementType").
 _TRIANGLE_ELEMENT_TYPE = 2
@@ -40,6 +47,50 @@ def _face_normal(
     if length == 0:
         return (0.0, 0.0, 0.0)
     return (nx / length, ny / length, nz / length)
+
+
+def _compute_face_to_part() -> tuple[dict[int, int], int]:
+    """Açık Gmsh oturumundaki her yüzeyin (face) hangi katıya (volume/parça)
+    ait olduğunu hesaplar. Montaj dosyalarında birden fazla ayrı katı olabilir;
+    hiç volume yoksa (örn. tek açık yüzey/kabuk) her şey part 0 sayılır.
+    """
+    face_to_part: dict[int, int] = {}
+    volumes = gmsh.model.getEntities(dim=3)
+    for part_id, (_dim, volume_tag) in enumerate(volumes):
+        boundary = gmsh.model.getBoundary([(3, volume_tag)], oriented=False)
+        for b_dim, b_tag in boundary:
+            if b_dim == 2:
+                face_to_part[b_tag] = part_id
+    part_count = max(len(volumes), 1)
+    return face_to_part, part_count
+
+
+def _compute_edge_to_part(face_to_part: dict[int, int]) -> dict[int, int]:
+    """Her kenarın (curve) parçasını, komşu olduğu ilk yüzeyin parçasından belirler."""
+    edge_to_part: dict[int, int] = {}
+    for _dim, edge_tag in gmsh.model.getEntities(dim=1):
+        upward, _downward = gmsh.model.getAdjacencies(1, edge_tag)
+        for face_tag in upward:
+            if int(face_tag) in face_to_part:
+                edge_to_part[edge_tag] = face_to_part[int(face_tag)]
+                break
+        else:
+            edge_to_part[edge_tag] = 0
+    return edge_to_part
+
+
+def _compute_point_to_part(edge_to_part: dict[int, int]) -> dict[int, int]:
+    """Her noktanın (vertex) parçasını, komşu olduğu ilk kenarın parçasından belirler."""
+    point_to_part: dict[int, int] = {}
+    for _dim, point_tag in gmsh.model.getEntities(dim=0):
+        upward, _downward = gmsh.model.getAdjacencies(0, point_tag)
+        for edge_tag in upward:
+            if int(edge_tag) in edge_to_part:
+                point_to_part[point_tag] = edge_to_part[int(edge_tag)]
+                break
+        else:
+            point_to_part[point_tag] = 0
+    return point_to_part
 
 
 class GmshMesherAdapter(MesherAdapter):
@@ -85,16 +136,8 @@ class GmshMesherAdapter(MesherAdapter):
 
             # Montaj (assembly) dosyalarında birden fazla ayrı katı (volume)
             # olabilir. Her katının sınır yüzeylerinden face_tag -> part_id
-            # (part_id = sıradaki parça indeksi, 0'dan başlar) eşlemesi kur.
-            # Hiç volume yoksa (örn. tek açık yüzey/kabuk) her şey part 0.
-            face_to_part: dict[int, int] = {}
-            volumes = gmsh.model.getEntities(dim=3)
-            for part_id, (_dim, volume_tag) in enumerate(volumes):
-                boundary = gmsh.model.getBoundary([(3, volume_tag)], oriented=False)
-                for b_dim, b_tag in boundary:
-                    if b_dim == 2:
-                        face_to_part[b_tag] = part_id
-            part_count = max(len(volumes), 1)
+            # eşlemesi kur (part_id = sıradaki parça indeksi, 0'dan başlar).
+            face_to_part, part_count = _compute_face_to_part()
 
             node_tags_all, coords_all, _ = gmsh.model.mesh.getNodes()
             node_coords: dict[int, tuple[float, float, float]] = {
@@ -144,6 +187,111 @@ class GmshMesherAdapter(MesherAdapter):
             triangle_to_part=triangle_to_part,
             part_count=part_count,
         )
+
+    def list_surfaces(self, geom: GeometryHandle) -> list[SurfaceInfo]:
+        """Modeldeki her yüzeyin id, alan, normal ve parça bilgisini döner.
+
+        Alan `gmsh.model.occ.getMass` ile (mesh'e değil, tam OCC geometrisine
+        dayalı, yani mesh çözünürlüğünden bağımsız kesin değer) hesaplanır.
+        Normal, yüzeyin parametrik alanının orta noktasında `getNormal` ile
+        alınır — eğri (kavisli) yüzeylerde bu tek bir temsili yön olur, tüm
+        yüzeyin ortalama normali değil.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            face_to_part, _part_count = _compute_face_to_part()
+
+            surfaces: list[SurfaceInfo] = []
+            for _dim, face_tag in gmsh.model.getEntities(dim=2):
+                area = gmsh.model.occ.getMass(2, face_tag)
+
+                (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(
+                    2, face_tag
+                )
+                umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+                normal_raw = gmsh.model.getNormal(face_tag, [umid, vmid])
+                normal = (float(normal_raw[0]), float(normal_raw[1]), float(normal_raw[2]))
+
+                surfaces.append(
+                    SurfaceInfo(
+                        id=int(face_tag),
+                        area=float(area),
+                        normal=normal,
+                        part_id=face_to_part.get(face_tag, 0),
+                    )
+                )
+        finally:
+            gmsh.finalize()
+
+        return surfaces
+
+    def list_edges(self, geom: GeometryHandle) -> list[EdgeInfo]:
+        """Modeldeki her kenarın id, uzunluk, parça ve uç nokta bilgisini döner.
+
+        Uzunluk `gmsh.model.occ.getMass(1, tag)` ile (mesh'e değil, tam OCC
+        eğrisine dayalı kesin değer) hesaplanır. Parça, kenarın komşu olduğu
+        ilk yüzeyin parçasından belirlenir.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            face_to_part, _part_count = _compute_face_to_part()
+            edge_to_part = _compute_edge_to_part(face_to_part)
+
+            edges: list[EdgeInfo] = []
+            for _dim, edge_tag in gmsh.model.getEntities(dim=1):
+                length = gmsh.model.occ.getMass(1, edge_tag)
+                _upward, downward = gmsh.model.getAdjacencies(1, edge_tag)
+                # Bir kenarın normalde 2 uç noktası olur; kapalı eğrilerde
+                # (örn. tam çember) tek nokta olabilir — bu durumda ikisini de
+                # aynı noktaya eşitliyoruz.
+                start_point = int(downward[0]) if len(downward) > 0 else 0
+                end_point = int(downward[1]) if len(downward) > 1 else start_point
+
+                edges.append(
+                    EdgeInfo(
+                        id=int(edge_tag),
+                        length=float(length),
+                        part_id=edge_to_part.get(edge_tag, 0),
+                        start_point=start_point,
+                        end_point=end_point,
+                    )
+                )
+        finally:
+            gmsh.finalize()
+
+        return edges
+
+    def list_points(self, geom: GeometryHandle) -> list[PointInfo]:
+        """Modeldeki her köşe noktasının id, koordinat ve parça bilgisini döner.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            face_to_part, _part_count = _compute_face_to_part()
+            edge_to_part = _compute_edge_to_part(face_to_part)
+            point_to_part = _compute_point_to_part(edge_to_part)
+
+            points: list[PointInfo] = []
+            for _dim, point_tag in gmsh.model.getEntities(dim=0):
+                coord_raw = gmsh.model.getValue(0, point_tag, [])
+                coordinate = (float(coord_raw[0]), float(coord_raw[1]), float(coord_raw[2]))
+
+                points.append(
+                    PointInfo(
+                        id=int(point_tag),
+                        coordinate=coordinate,
+                        part_id=point_to_part.get(point_tag, 0),
+                    )
+                )
+        finally:
+            gmsh.finalize()
+
+        return points
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(
