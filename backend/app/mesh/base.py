@@ -29,10 +29,17 @@ class TessellationResult:
     (face) tag'ini verir — ROADMAP.md "1b. Geometri işleme operasyonları"
     adımında, frontend'de yüzey picking (tıklanan üçgenden yüzeyi bulma) için
     gereken temel eşleme.
+
+    `triangle_to_part[i]`, aynı üçgenin ait olduğu Gmsh katısını (volume/parça)
+    verir — montaj (assembly) STEP dosyalarında birden fazla ayrı parça olduğunda,
+    bir yüzeyin hangi parçaya ait olduğunu ayırt etmek için. Modelde hiç volume
+    yoksa (örn. tek bir açık yüzey/kabuk), tüm üçgenler part 0'a atanır.
     """
 
     stl_path: Path
     triangle_to_face: list[int]
+    triangle_to_part: list[int]
+    part_count: int
 
 
 class MesherAdapter(ABC):

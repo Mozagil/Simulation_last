@@ -75,17 +75,21 @@ async def upload_geometry(file: UploadFile) -> dict[str, Any]:
             detail=f"Geometri okunamadı: {exc}",
         ) from exc
 
-    # Üçgen→yüzey eşlemesini ayrı bir JSON olarak da kaydet (kalıcı, indirilebilir).
+    # Üçgen→yüzey ve üçgen→parça eşlemelerini ayrı bir JSON olarak da kaydet
+    # (kalıcı, indirilebilir).
     face_map_path = TESSELLATION_DIR / f"{file_id}.faces.json"
     face_map_path.write_text(json.dumps(result.triangle_to_face))
+    part_map_path = TESSELLATION_DIR / f"{file_id}.parts.json"
+    part_map_path.write_text(json.dumps(result.triangle_to_part))
 
     face_count = len(set(result.triangle_to_face))
     triangle_count = len(result.triangle_to_face)
     logger.info(
-        "Tessellation üretildi: dosya=%s, üçgen_sayısı=%d, yüzey_sayısı=%d",
+        "Tessellation üretildi: dosya=%s, üçgen_sayısı=%d, yüzey_sayısı=%d, parça_sayısı=%d",
         file.filename,
         triangle_count,
         face_count,
+        result.part_count,
     )
 
     return {
@@ -99,4 +103,7 @@ async def upload_geometry(file: UploadFile) -> dict[str, Any]:
         "face_count": face_count,
         "triangle_to_face": result.triangle_to_face,
         "triangle_to_face_url": f"/files/tessellations/{file_id}.faces.json",
+        "part_count": result.part_count,
+        "triangle_to_part": result.triangle_to_part,
+        "triangle_to_part_url": f"/files/tessellations/{file_id}.parts.json",
     }

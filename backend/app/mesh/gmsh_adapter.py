@@ -72,7 +72,7 @@ class GmshMesherAdapter(MesherAdapter):
     def preview_tessellation(
         self, geom: GeometryHandle, output_path: Path
     ) -> TessellationResult:
-        """Açık olan Gmsh modelinden STL + üçgen→yüzey eşlemesi üretir.
+        """Açık olan Gmsh modelinden STL + üçgen→yüzey + üçgen→parça eşlemesi üretir.
 
         `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
         çağrılmalı (Gmsh o an tek bir aktif model tutar).
@@ -83,6 +83,19 @@ class GmshMesherAdapter(MesherAdapter):
             # yüzey mesh algoritmasını çalıştırıyoruz).
             gmsh.model.mesh.generate(2)
 
+            # Montaj (assembly) dosyalarında birden fazla ayrı katı (volume)
+            # olabilir. Her katının sınır yüzeylerinden face_tag -> part_id
+            # (part_id = sıradaki parça indeksi, 0'dan başlar) eşlemesi kur.
+            # Hiç volume yoksa (örn. tek açık yüzey/kabuk) her şey part 0.
+            face_to_part: dict[int, int] = {}
+            volumes = gmsh.model.getEntities(dim=3)
+            for part_id, (_dim, volume_tag) in enumerate(volumes):
+                boundary = gmsh.model.getBoundary([(3, volume_tag)], oriented=False)
+                for b_dim, b_tag in boundary:
+                    if b_dim == 2:
+                        face_to_part[b_tag] = part_id
+            part_count = max(len(volumes), 1)
+
             node_tags_all, coords_all, _ = gmsh.model.mesh.getNodes()
             node_coords: dict[int, tuple[float, float, float]] = {
                 int(tag): (coords_all[3 * i], coords_all[3 * i + 1], coords_all[3 * i + 2])
@@ -90,6 +103,7 @@ class GmshMesherAdapter(MesherAdapter):
             }
 
             triangle_to_face: list[int] = []
+            triangle_to_part: list[int] = []
             triangle_vertices: list[
                 tuple[
                     tuple[float, float, float],
@@ -102,6 +116,7 @@ class GmshMesherAdapter(MesherAdapter):
                 elem_types, elem_tags_per_type, node_tags_per_type = (
                     gmsh.model.mesh.getElements(dim=2, tag=face_tag)
                 )
+                part_id = face_to_part.get(face_tag, 0)
                 for etype, elem_tags, elem_node_tags in zip(
                     elem_types, elem_tags_per_type, node_tags_per_type
                 ):
@@ -116,13 +131,19 @@ class GmshMesherAdapter(MesherAdapter):
                             (node_coords[int(n0)], node_coords[int(n1)], node_coords[int(n2)])
                         )
                         triangle_to_face.append(int(face_tag))
+                        triangle_to_part.append(part_id)
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _write_ascii_stl(output_path, geom.model_name, triangle_vertices)
         finally:
             gmsh.finalize()
 
-        return TessellationResult(stl_path=output_path, triangle_to_face=triangle_to_face)
+        return TessellationResult(
+            stl_path=output_path,
+            triangle_to_face=triangle_to_face,
+            triangle_to_part=triangle_to_part,
+            part_count=part_count,
+        )
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(
