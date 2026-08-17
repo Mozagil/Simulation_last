@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env
+.env
+
+# Node / frontend (ileride eklenecek)
+node_modules/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# CAE / mesh / solver çıktıları (ileride eklenecek)
+uploads/
+*.frd
+*.dat
+*.rad
+*.glb
+*.stl
