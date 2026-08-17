@@ -5,24 +5,25 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 interface GeometryViewerProps {
   stlUrl: string;
+  /** STL'deki i. üçgenin ait olduğu Gmsh yüzey (face) tag'i. */
+  triangleToFace: number[];
+  /** Kullanıcı bir yüzeye tıkladığında çağrılır (face tag + o yüzeydeki üçgen sayısı). */
+  onFaceSelect?: (faceTag: number | null, triangleCount: number) => void;
 }
+
+const BASE_COLOR = new THREE.Color("#5a8f73");
+const HIGHLIGHT_COLOR = new THREE.Color("#d97757");
+const CLICK_DRAG_THRESHOLD_PX = 6;
 
 /**
  * Verilen STL URL'ini yükleyip döndürülebilir bir 3B görüntüleyicide gösterir.
- * Faz 0 / Geometri: sadece web önizleme (tessellation) — FEA mesh değil.
+ * `triangleToFace` eşlemesi verildiyse, kullanıcı bir yüzeye tıkladığında
+ * (raycasting ile) o yüzeye ait tüm üçgenleri vurgular.
  *
- * Dikkat edilen noktalar:
- * - `DoubleSide` malzeme: STEP/IGES'ten gelen açık/ince kabuk yüzeyler (örn.
- *   sac parça, kavisli bracket) tek yönlü normal ile arkadan bakınca
- *   "delik/kurdele" gibi görünüyordu — çift taraflı render bunu çözer.
- * - Kenar (edge) çizgileri: düz gölgelendirmeyle birlikte yüzey sınırları
- *   net görünsün diye `EdgesGeometry` ile üstüne çizgi katmanı ekleniyor —
- *   gerçek CAD görüntüleyicilerindeki gibi.
- * - Kamera/kontrol parametreleri modelin boyutuna göre (bounding box'tan)
- *   dinamik ayarlanıyor; sabit değerler küçük/büyük modellerde fare
- *   hassasiyetini bozuyordu.
+ * Diğer görsel kalite notları (DoubleSide, edges, kalibre kamera) için bkz.
+ * önceki commit — açık/ince kabuk yüzeylerde "yırtık" görünümü önlüyor.
  */
-function GeometryViewer({ stlUrl }: GeometryViewerProps) {
+function GeometryViewer({ stlUrl, triangleToFace, onFaceSelect }: GeometryViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +70,84 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
     scene.add(modelGroup);
 
     let gridHelper: THREE.GridHelper | null = null;
+    let pickMesh: THREE.Mesh | null = null;
+    let colorAttribute: THREE.BufferAttribute | null = null;
+    // face tag -> o yüzeye ait üçgen indeksleri (vertex boyama için).
+    let faceToTriangleIndices: Map<number, number[]> = new Map();
+    let highlightedFaceTag: number | null = null;
+
+    function paintFace(faceTag: number | null) {
+      if (!colorAttribute) return;
+      const colors = colorAttribute.array as Float32Array;
+
+      // Önce her şeyi taban renge döndür.
+      for (let i = 0; i < colors.length; i += 3) {
+        colors[i] = BASE_COLOR.r;
+        colors[i + 1] = BASE_COLOR.g;
+        colors[i + 2] = BASE_COLOR.b;
+      }
+
+      if (faceTag !== null) {
+        const triangleIndices = faceToTriangleIndices.get(faceTag) ?? [];
+        for (const triIndex of triangleIndices) {
+          // Her üçgen 3 vertex'ten oluşur, her vertex 3 float (r,g,b).
+          const base = triIndex * 3;
+          for (let v = 0; v < 3; v++) {
+            const offset = (base + v) * 3;
+            colors[offset] = HIGHLIGHT_COLOR.r;
+            colors[offset + 1] = HIGHLIGHT_COLOR.g;
+            colors[offset + 2] = HIGHLIGHT_COLOR.b;
+          }
+        }
+      }
+
+      colorAttribute.needsUpdate = true;
+      highlightedFaceTag = faceTag;
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let pointerDownPos: { x: number; y: number } | null = null;
+
+    function handlePointerDown(event: PointerEvent) {
+      pointerDownPos = { x: event.clientX, y: event.clientY };
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      if (!pointerDownPos || !pickMesh) return;
+      const dx = event.clientX - pointerDownPos.x;
+      const dy = event.clientY - pointerDownPos.y;
+      const movedDistance = Math.sqrt(dx * dx + dy * dy);
+      pointerDownPos = null;
+
+      // Kamera döndürme/pan sürüklemesini tıklama sanmamak için eşik kontrolü.
+      if (movedDistance > CLICK_DRAG_THRESHOLD_PX) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const intersections = raycaster.intersectObject(pickMesh, false);
+
+      if (intersections.length === 0 || intersections[0].faceIndex === undefined) {
+        paintFace(null);
+        onFaceSelect?.(null, 0);
+        return;
+      }
+
+      const triangleIndex = intersections[0].faceIndex as number;
+      const faceTag = triangleToFace[triangleIndex];
+      if (faceTag === undefined) return;
+
+      const nextFaceTag = highlightedFaceTag === faceTag ? null : faceTag;
+      paintFace(nextFaceTag);
+      const count = nextFaceTag === null ? 0 : (faceToTriangleIndices.get(faceTag)?.length ?? 0);
+      onFaceSelect?.(nextFaceTag, count);
+    }
+
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    renderer.domElement.addEventListener("pointerup", handlePointerUp);
 
     const loader = new STLLoader();
 
@@ -80,11 +159,28 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
         geometry.computeBoundingBox();
         geometry.computeVertexNormals();
 
-        // Yüzey: hafif metalik olmayan, mat mühendislik-modeli görünümü.
-        // DoubleSide: açık/tek katmanlı yüzeylerin arkadan bakınca
-        // kaybolmaması için zorunlu.
+        const vertexCount = geometry.attributes.position.count;
+        const colors = new Float32Array(vertexCount * 3);
+        for (let i = 0; i < colors.length; i += 3) {
+          colors[i] = BASE_COLOR.r;
+          colors[i + 1] = BASE_COLOR.g;
+          colors[i + 2] = BASE_COLOR.b;
+        }
+        colorAttribute = new THREE.BufferAttribute(colors, 3);
+        geometry.setAttribute("color", colorAttribute);
+
+        faceToTriangleIndices = new Map();
+        triangleToFace.forEach((faceTag, triIndex) => {
+          const list = faceToTriangleIndices.get(faceTag);
+          if (list) {
+            list.push(triIndex);
+          } else {
+            faceToTriangleIndices.set(faceTag, [triIndex]);
+          }
+        });
+
         const material = new THREE.MeshStandardMaterial({
-          color: "#5a8f73",
+          vertexColors: true,
           metalness: 0.05,
           roughness: 0.65,
           flatShading: true,
@@ -92,9 +188,8 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
         });
         const mesh = new THREE.Mesh(geometry, material);
         modelGroup.add(mesh);
+        pickMesh = mesh;
 
-        // Kenar çizgileri: yüzeyler arasındaki gerçek geometrik kenarları
-        // (threshold açısı üstündeki normal farklarını) çiz.
         const edgesGeometry = new THREE.EdgesGeometry(geometry, 20);
         const edgesMaterial = new THREE.LineBasicMaterial({
           color: "#1b1f1c",
@@ -115,9 +210,6 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
         boundingBox.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
 
-        // Kamera near/far ve kontrol mesafelerini modelin gerçek boyutuna
-        // göre ayarla — sabit değerler küçük parçalarda "hassasiyet çok
-        // kötü" hissi veriyordu (çok büyük adımlarla zoom/pan).
         camera.near = maxDim / 1000;
         camera.far = maxDim * 100;
         camera.updateProjectionMatrix();
@@ -129,7 +221,6 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
         controls.maxDistance = maxDim * 8;
         controls.update();
 
-        // Zemin ızgarası: ölçek/yön referansı için, modelin altına.
         gridHelper = new THREE.GridHelper(maxDim * 3, 20, "#c7ccc3", "#dde1d8");
         gridHelper.position.y = boundingBox.min.y - center.y;
         scene.add(gridHelper);
@@ -159,6 +250,8 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
       disposed = true;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       controls.dispose();
       renderer.dispose();
       modelGroup.traverse((obj) => {
@@ -180,7 +273,7 @@ function GeometryViewer({ stlUrl }: GeometryViewerProps) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [stlUrl]);
+  }, [stlUrl, triangleToFace, onFaceSelect]);
 
   return <div ref={containerRef} className="viewer-canvas" />;
 }

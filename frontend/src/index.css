@@ -114,6 +114,37 @@ p {
   word-break: break-all;
 }
 
+.face-info {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbf9;
+}
+
+.face-info-total {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.face-info-selected {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.face-info-selected strong {
+  color: #d97757;
+}
+
+.face-info-selected.muted {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .error-message {
   margin-top: 14px;
   font-size: 13px;

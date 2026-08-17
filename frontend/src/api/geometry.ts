@@ -8,6 +8,10 @@ export interface GeometryUploadResponse {
   size_bytes: string;
   tessellation_path: string;
   tessellation_url: string;
+  triangle_count: number;
+  face_count: number;
+  triangle_to_face: number[];
+  triangle_to_face_url: string;
 }
 
 export class GeometryUploadError extends Error {}
