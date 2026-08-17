@@ -9,6 +9,9 @@ from app.main import app
 
 client = TestClient(app)
 
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+VALID_STEP_FILE = FIXTURES_DIR / "box.step"
+
 
 @pytest.fixture(autouse=True)
 def _clean_upload_dir():
@@ -18,29 +21,26 @@ def _clean_upload_dir():
         shutil.rmtree(UPLOAD_DIR)
 
 
-def test_upload_step_file_saves_to_disk():
-    fake_step_content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;\n"
+def test_upload_step_file_saves_and_tessellates():
+    content = VALID_STEP_FILE.read_bytes()
     response = client.post(
         "/geometry/upload",
-        files={"file": ("part.step", fake_step_content, "application/octet-stream")},
+        files={"file": ("box.step", content, "application/octet-stream")},
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["original_filename"] == "part.step"
-    assert body["size_bytes"] == str(len(fake_step_content))
+    assert body["original_filename"] == "box.step"
+    assert body["size_bytes"] == str(len(content))
 
     saved_path = Path(body["path"])
     assert saved_path.exists()
-    assert saved_path.read_bytes() == fake_step_content
+    assert saved_path.read_bytes() == content
 
-
-def test_upload_iges_file_is_accepted():
-    response = client.post(
-        "/geometry/upload",
-        files={"file": ("part.iges", b"dummy content", "application/octet-stream")},
-    )
-    assert response.status_code == 200
+    tessellation_path = Path(body["tessellation_path"])
+    assert tessellation_path.exists()
+    assert tessellation_path.suffix == ".stl"
+    assert tessellation_path.stat().st_size > 0
 
 
 def test_upload_rejects_unsupported_extension():
@@ -50,3 +50,13 @@ def test_upload_rejects_unsupported_extension():
     )
     assert response.status_code == 400
     assert "Desteklenmeyen dosya uzantısı" in response.json()["detail"]
+
+
+def test_upload_rejects_corrupt_step_file():
+    corrupt_content = b"bu gecerli bir STEP dosyasi degil"
+    response = client.post(
+        "/geometry/upload",
+        files={"file": ("bozuk.step", corrupt_content, "application/octet-stream")},
+    )
+    assert response.status_code == 422
+    assert "Geometri okunamadı" in response.json()["detail"]
