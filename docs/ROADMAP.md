@@ -15,27 +15,47 @@ Aşağıdaki liste bir kontrol listesi değil, sıralı mikro-adım planıdır; 
 yanındaki "→" o adımın yerel doğrulamasıdır.
 
 ### 0. Altyapı iskeleti
-- [ ] Boş FastAPI projesi, tek `/health` endpoint'i → `curl localhost:8000/health`
-- [ ] Boş React projesi, tek "merhaba" sayfası → `localhost:5173`'te sayfa açılır
-- [ ] PostgreSQL bağlantısı + boş bir tablo (Alembic ile) → `alembic upgrade head` çalışır,
+- [x] Boş FastAPI projesi, tek `/health` endpoint'i → `curl localhost:8000/health`
+- [x] Boş React projesi, tek "merhaba" sayfası → `localhost:5173`'te sayfa açılır
+- [x] PostgreSQL bağlantısı + boş bir tablo (Alembic ile) → `alembic upgrade head` çalışır,
       `psql`'de tablo görülür
 
 ### 1. Geometri import + önizleme
-- [ ] STEP/IGES upload endpoint'i (henüz işlemeden diske kaydeder) → dosya gönderilir,
+- [x] STEP/IGES upload endpoint'i (henüz işlemeden diske kaydeder) → dosya gönderilir,
       `/uploads` klasöründe görülür
-- [ ] Gmsh ile o dosyadan tessellation (glTF/STL) üretimi → aynı endpoint dosyayı işleyip
+- [x] Gmsh ile o dosyadan tessellation (glTF/STL) üretimi → aynı endpoint dosyayı işleyip
       `.glb`/`.stl` döndürür, yerel bir 3B görüntüleyicide açılıp geometri görülür
-- [ ] Frontend'de upload formu + three.js viewer → tarayıcıdan dosya seçilir, 3B model
+- [x] Frontend'de upload formu + three.js viewer → tarayıcıdan dosya seçilir, 3B model
       ekranda döner, tasarım o anki en sade halinde bile hizalı/temiz olmalı
 
 ### 1b. Geometri işleme operasyonları (import sonrası, mesh öncesi)
 Her biri ayrı onay noktası — sırayla, birbirinin üstüne inşa edilir.
-- [ ] Üçgen→yüzey eşlemesi: tessellation çıktısına `triangle_to_face` bilgisi eklenir →
+- [x] Üçgen→yüzey eşlemesi: tessellation çıktısına `triangle_to_face` bilgisi eklenir →
       backend loglarında/response'ta her üçgenin hangi Gmsh face tag'ine ait olduğu görülür
-- [ ] Frontend'de yüzey picking (tıklanan üçgenden face'i bulup vurgulama) → tarayıcıda bir
+- [x] Frontend'de yüzey picking (tıklanan üçgenden face'i bulup vurgulama) → tarayıcıda bir
       yüzeye tıklanınca o yüzey renkli/vurgulu görünür
-- [ ] Dış yüzey (skin) listeleme endpoint'i → bir katı için tüm dış yüzeylerin
+- [x] **(Roadmap dışı ek özellik)** Montaj/parça ayrımı: `triangle_to_part` eşlemesi +
+      `part_count` — birden fazla ayrı katıdan (volume) oluşan STEP dosyalarında hangi
+      üçgenin hangi parçaya ait olduğu ayırt edilir. Frontend panelinde parça sayısı
+      gösterilir ("N yüzey, M parça bulundu"). Gerçekleşme sebebi: kullanıcı montaj
+      desteğini sorguladı, altyapı zaten `getBoundary` ile kolayca çıkarılabildiği için
+      aynı oturumda eklendi.
+- [x] Dış yüzey (skin) listeleme endpoint'i → bir katı için tüm dış yüzeylerin
       listesi (id + alan + normal) JSON olarak döner
+      (`GET /geometry/{stored_filename}/surfaces`, alan `occ.getMass`, normal
+      `getNormal` ile — mesh çözünürlüğünden bağımsız kesin OCC değerleri)
+- [ ] **(Roadmap dışı ek özellik — sırada)** Kenar (edge/curve) listeleme endpoint'i →
+      her kenarın id + uzunluk + parça bilgisi JSON olarak döner (`occ.getMass(1, tag)`
+      ile uzunluk, `getAdjacencies` ile hangi yüzey(ler)e komşu olduğundan parça çıkarımı)
+- [ ] **(Roadmap dışı ek özellik — sırada)** Nokta (vertex) listeleme endpoint'i →
+      her köşe noktasının id + koordinat + parça bilgisi JSON olarak döner
+- [ ] **(Roadmap dışı ek özellik — sırada)** Frontend'de seçim modu navbar'ı: Part /
+      Surface / Edge / Point butonları → aktif moda göre tıklama farklı seviyede seçim
+      yapar (Part: tüm parça vurgulanır, Surface: mevcut davranış, Edge: tek bir kenar
+      çizgisi vurgulanır, Point: en yakın köşe noktası işaretlenir). Bu, Adım 3'teki
+      "Seçim mekanizması" ihtiyacının (nokta/kenar/yüzey seviyesinde seçim) bir kısmını
+      öne çekiyor — orijinal planda BC/yük tanımlama aşamasında gerekiyordu, şimdiden
+      genel bir geometri inceleme aracı olarak ekleniyor.
 - [ ] Yüzey kopyalama (`occ.copy`) → seçilen bir yüzey ayrı bir entity olarak
       çoğaltılır, terminalde yeni tag görülür
 - [ ] Seçilen yüzeye isim/grup atama (Physical Group) → frontend'de yüzey seçilip
