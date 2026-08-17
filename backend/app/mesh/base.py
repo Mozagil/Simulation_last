@@ -21,14 +21,30 @@ class GeometryHandle:
     source_file: Path
 
 
+@dataclass
+class TessellationResult:
+    """Web önizleme tessellation çıktısı.
+
+    `triangle_to_face[i]`, STL dosyasındaki i. üçgenin ait olduğu Gmsh yüzey
+    (face) tag'ini verir — ROADMAP.md "1b. Geometri işleme operasyonları"
+    adımında, frontend'de yüzey picking (tıklanan üçgenden yüzeyi bulma) için
+    gereken temel eşleme.
+    """
+
+    stl_path: Path
+    triangle_to_face: list[int]
+
+
 class MesherAdapter(ABC):
     @abstractmethod
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
         """STEP/IGES dosyasını içe aktarır."""
 
     @abstractmethod
-    def preview_tessellation(self, geom: GeometryHandle, output_path: Path) -> Path:
-        """Hızlı, düşük çözünürlüklü tessellation (STL) üretir - web önizleme için."""
+    def preview_tessellation(
+        self, geom: GeometryHandle, output_path: Path
+    ) -> TessellationResult:
+        """Hızlı tessellation (STL) + üçgen→yüzey eşlemesi üretir - web önizleme için."""
 
     @abstractmethod
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:

@@ -44,6 +44,15 @@ def test_upload_step_file_saves_and_tessellates():
 
     assert body["tessellation_url"] == f"/files/tessellations/{tessellation_path.stem}.stl"
 
+    # Kutu 6 yüzeyden oluşur — her üçgen bu 6 yüzeyden birine ait olmalı.
+    assert body["face_count"] == 6
+    assert body["triangle_count"] > 0
+    assert len(body["triangle_to_face"]) == body["triangle_count"]
+    assert len(set(body["triangle_to_face"])) == 6
+
+    disk_path = Path("uploads/tessellations") / Path(body["triangle_to_face_url"]).name
+    assert disk_path.exists()
+
 
 def test_upload_rejects_unsupported_extension():
     response = client.post(

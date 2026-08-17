@@ -1,5 +1,6 @@
 """FastAPI uygulama giriş noktası."""
 
+import logging
 import os
 from pathlib import Path
 
@@ -10,6 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api.geometry import TESSELLATION_DIR
 from app.api.geometry import router as geometry_router
 from app.api.health import router as health_router
+
+# Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
+# modüllerimizin (app.*) logger.info çağrıları root logger WARNING
+# seviyesinde olduğu için varsayılan olarak görünmez. INFO seviyesini açıyoruz.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 app = FastAPI(
     title="CAE Analiz Otomasyon Platformu",
