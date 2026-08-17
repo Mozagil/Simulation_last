@@ -12,6 +12,9 @@ export interface GeometryUploadResponse {
   face_count: number;
   triangle_to_face: number[];
   triangle_to_face_url: string;
+  part_count: number;
+  triangle_to_part: number[];
+  triangle_to_part_url: string;
 }
 
 export class GeometryUploadError extends Error {}

@@ -13,6 +13,7 @@ function App() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [triangleToFace, setTriangleToFace] = useState<number[]>([]);
   const [faceCount, setFaceCount] = useState<number | null>(null);
+  const [partCount, setPartCount] = useState<number | null>(null);
   const [selectedFace, setSelectedFace] = useState<{ faceTag: number; triangleCount: number } | null>(
     null,
   );
@@ -29,6 +30,7 @@ function App() {
       setStlUrl(resolveTessellationUrl(result.tessellation_url));
       setTriangleToFace(result.triangle_to_face);
       setFaceCount(result.face_count);
+      setPartCount(result.part_count);
       setStatus("success");
     } catch (err) {
       const message =
@@ -52,6 +54,7 @@ function App() {
     setStlUrl(null);
     setTriangleToFace([]);
     setFaceCount(null);
+    setPartCount(null);
     setSelectedFace(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -99,7 +102,9 @@ function App() {
 
         {status === "success" && faceCount !== null && (
           <div className="face-info">
-            <p className="face-info-total">{faceCount} yüzey bulundu.</p>
+            <p className="face-info-total">
+              {faceCount} yüzey, {partCount} parça bulundu.
+            </p>
             {selectedFace ? (
               <p className="face-info-selected">
                 Seçili yüzey: <strong>#{selectedFace.faceTag}</strong> ({selectedFace.triangleCount}{" "}
