@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { GeometryUploadError, resolveTessellationUrl, uploadGeometry } from "./api/geometry";
 import GeometryViewer from "./components/GeometryViewer";
 
@@ -11,16 +11,24 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
+  const [triangleToFace, setTriangleToFace] = useState<number[]>([]);
+  const [faceCount, setFaceCount] = useState<number | null>(null);
+  const [selectedFace, setSelectedFace] = useState<{ faceTag: number; triangleCount: number } | null>(
+    null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelected(file: File) {
     setStatus("uploading");
     setErrorMessage(null);
     setFileName(file.name);
+    setSelectedFace(null);
 
     try {
       const result = await uploadGeometry(file);
       setStlUrl(resolveTessellationUrl(result.tessellation_url));
+      setTriangleToFace(result.triangle_to_face);
+      setFaceCount(result.face_count);
       setStatus("success");
     } catch (err) {
       const message =
@@ -42,10 +50,17 @@ function App() {
     setErrorMessage(null);
     setFileName(null);
     setStlUrl(null);
+    setTriangleToFace([]);
+    setFaceCount(null);
+    setSelectedFace(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }
+
+  const handleFaceSelect = useCallback((faceTag: number | null, triangleCount: number) => {
+    setSelectedFace(faceTag === null ? null : { faceTag, triangleCount });
+  }, []);
 
   return (
     <main className="page">
@@ -54,7 +69,8 @@ function App() {
         <h1>Geometri yükle</h1>
         <p className="lead">
           STEP ya da IGES dosyanızı seçin, sunucu Gmsh ile tessellation üretsin —
-          sonucu aşağıda döndürerek inceleyebilirsiniz.
+          sonucu aşağıda döndürerek inceleyebilir, bir yüzeye tıklayarak
+          seçebilirsiniz.
         </p>
 
         <label className="upload-control">
@@ -81,6 +97,20 @@ function App() {
           </p>
         )}
 
+        {status === "success" && faceCount !== null && (
+          <div className="face-info">
+            <p className="face-info-total">{faceCount} yüzey bulundu.</p>
+            {selectedFace ? (
+              <p className="face-info-selected">
+                Seçili yüzey: <strong>#{selectedFace.faceTag}</strong> ({selectedFace.triangleCount}{" "}
+                üçgen)
+              </p>
+            ) : (
+              <p className="face-info-selected muted">Bir yüzeye tıklayarak seçin.</p>
+            )}
+          </div>
+        )}
+
         {status !== "idle" && (
           <button type="button" className="reset-button" onClick={handleReset}>
             Yeni dosya seç
@@ -90,7 +120,7 @@ function App() {
 
       <div className="viewer-panel">
         {stlUrl ? (
-          <GeometryViewer stlUrl={stlUrl} />
+          <GeometryViewer stlUrl={stlUrl} triangleToFace={triangleToFace} onFaceSelect={handleFaceSelect} />
         ) : (
           <div className="viewer-placeholder">
             <p>Bir geometri yüklendiğinde 3B önizleme burada görünecek.</p>
