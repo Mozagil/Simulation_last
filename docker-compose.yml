@@ -1,0 +1,22 @@
+# Yerel/Codespaces geliştirme ortamı için PostgreSQL servisi.
+# Kullanım: docker compose up -d
+#
+# Not: Bu bir mimari varsayımdır (CLAUDE.md kural 6) — proje henüz bir
+# container/orkestrasyon aracı belirlemiyordu, yerel Postgres'i ayağa
+# kaldırmanın en basit yolu olarak eklendi. Onaylanmazsa kolayca kaldırılabilir,
+# hiçbir uygulama kodu buna bağımlı değil (DATABASE_URL ile konuşuyor).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cae_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
