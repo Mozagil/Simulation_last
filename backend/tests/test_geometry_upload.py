@@ -53,6 +53,40 @@ def test_upload_step_file_saves_and_tessellates():
     disk_path = Path("uploads/tessellations") / Path(body["triangle_to_face_url"]).name
     assert disk_path.exists()
 
+    # Tek parçalı bir dosya için part_count=1, tüm üçgenler part 0'a ait olmalı.
+    assert body["part_count"] == 1
+    assert len(body["triangle_to_part"]) == body["triangle_count"]
+    assert set(body["triangle_to_part"]) == {0}
+
+    part_disk_path = Path("uploads/tessellations") / Path(body["triangle_to_part_url"]).name
+    assert part_disk_path.exists()
+
+
+def test_upload_assembly_distinguishes_parts():
+    """İki ayrı katıdan oluşan bir montaj dosyasında, üçgenler doğru parçaya
+    atanmalı (ROADMAP dışı ek özellik — montaj/parça ayrımı desteği).
+    """
+    assembly_file = FIXTURES_DIR / "assembly_two_boxes.step"
+    content = assembly_file.read_bytes()
+    response = client.post(
+        "/geometry/upload",
+        files={"file": ("assembly_two_boxes.step", content, "application/octet-stream")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["part_count"] == 2
+    assert set(body["triangle_to_part"]) == {0, 1}
+    # İki kutu simetrik olduğu için üçgen sayıları eşit olmalı.
+    part_0_count = body["triangle_to_part"].count(0)
+    part_1_count = body["triangle_to_part"].count(1)
+    assert part_0_count == part_1_count
+    assert part_0_count + part_1_count == body["triangle_count"]
+
+    # 2 parça x 6 yüzey = 12 benzersiz face tag.
+    assert body["face_count"] == 12
+
 
 def test_upload_rejects_unsupported_extension():
     response = client.post(
