@@ -42,6 +42,8 @@ def test_upload_step_file_saves_and_tessellates():
     assert tessellation_path.suffix == ".stl"
     assert tessellation_path.stat().st_size > 0
 
+    assert body["tessellation_url"] == f"/files/tessellations/{tessellation_path.stem}.stl"
+
 
 def test_upload_rejects_unsupported_extension():
     response = client.post(

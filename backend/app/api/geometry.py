@@ -74,4 +74,5 @@ async def upload_geometry(file: UploadFile) -> dict[str, str]:
         "path": str(destination),
         "size_bytes": str(len(contents)),
         "tessellation_path": str(tessellation_path),
+        "tessellation_url": f"/files/tessellations/{file_id}.stl",
     }
