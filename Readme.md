@@ -1,1 +1,0 @@
-# Simülasyon Projesi
