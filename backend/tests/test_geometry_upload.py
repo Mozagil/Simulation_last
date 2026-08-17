@@ -105,3 +105,85 @@ def test_upload_rejects_corrupt_step_file():
     )
     assert response.status_code == 422
     assert "Geometri okunamadı" in response.json()["detail"]
+
+
+def test_list_surfaces_after_upload():
+    content = VALID_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("box.step", content, "application/octet-stream")},
+    )
+    stored_filename = upload_response.json()["stored_filename"]
+
+    response = client.get(f"/geometry/{stored_filename}/surfaces")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["surface_count"] == 6
+    assert len(body["surfaces"]) == 6
+
+    surface = body["surfaces"][0]
+    assert set(surface.keys()) == {"id", "area", "normal", "part_id"}
+    assert surface["area"] == pytest.approx(100.0)
+    assert len(surface["normal"]) == 3
+
+    total_area = sum(s["area"] for s in body["surfaces"])
+    assert total_area == pytest.approx(600.0)
+
+
+def test_list_surfaces_returns_404_for_unknown_file():
+    response = client.get("/geometry/nonexistent-file.step/surfaces")
+    assert response.status_code == 404
+
+
+def test_list_edges_after_upload():
+    content = VALID_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("box.step", content, "application/octet-stream")},
+    )
+    stored_filename = upload_response.json()["stored_filename"]
+
+    response = client.get(f"/geometry/{stored_filename}/edges")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["edge_count"] == 12
+    assert len(body["edges"]) == 12
+
+    edge = body["edges"][0]
+    assert set(edge.keys()) == {"id", "length", "part_id", "start_point", "end_point"}
+    assert edge["length"] == pytest.approx(10.0)
+
+    total_length = sum(e["length"] for e in body["edges"])
+    assert total_length == pytest.approx(120.0)
+
+
+def test_list_edges_returns_404_for_unknown_file():
+    response = client.get("/geometry/nonexistent-file.step/edges")
+    assert response.status_code == 404
+
+
+def test_list_points_after_upload():
+    content = VALID_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("box.step", content, "application/octet-stream")},
+    )
+    stored_filename = upload_response.json()["stored_filename"]
+
+    response = client.get(f"/geometry/{stored_filename}/points")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["point_count"] == 8
+    assert len(body["points"]) == 8
+
+    point = body["points"][0]
+    assert set(point.keys()) == {"id", "coordinate", "part_id"}
+    assert len(point["coordinate"]) == 3
+
+
+def test_list_points_returns_404_for_unknown_file():
+    response = client.get("/geometry/nonexistent-file.step/points")
+    assert response.status_code == 404
