@@ -219,8 +219,37 @@ def test_copy_surface_creates_new_tag_with_same_area(tmp_path):
     assert original_area == pytest.approx(100.0)
     assert copied_area == pytest.approx(original_area)
 
+    # KRİTİK: kopyalanan yüzey orijinal solid'den AYRI bir parça olmalı —
+    # aksi halde "Solid gizle" kopyalanan yüzeyi de yanlışlıkla gizler.
+    # Kopyalanan yüzeyin kenarları orijinalden tamamen farklı (yeni) tag'ler
+    # olduğu için (gerçek bir testte doğrulandı), kenar-bağlantı analizi bunu
+    # otomatik olarak ayrı bir parça sayar.
+    original_part_id = next(s.part_id for s in surfaces if s.id == 1)
+    copied_part_id = next(s.part_id for s in surfaces if s.id == new_face_id)
+    assert copied_part_id != original_part_id
+
     # Paylaşılan fixture dosyasının GERÇEKTEN değişmediğini doğrula.
     assert VALID_STEP_FILE.read_bytes() != test_file.read_bytes()
+
+
+def test_disconnected_shell_faces_form_a_single_part():
+    """Birden fazla yüzeyden oluşan ama kenarlarla birbirine bağlı, tek bir
+    açık kabuk (örn. eğri sac parça) doğru şekilde TEK parça sayılmalı —
+    her yüzey ayrı bir parçaya bölünmemeli. Bu, copy_surface'ın ayrı parça
+    üretmesini sağlayan bağlı-bileşen algoritmasının, gerçek çok-yüzeyli tek
+    parçaları yanlışlıkla bölmediğini kanıtlar.
+    """
+    shell_file = FIXTURES_DIR / "curved_shell.step"
+    if not shell_file.exists():
+        pytest.skip("curved_shell.step fixture'ı yok")
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(shell_file)
+    surfaces = adapter.list_surfaces(geom)
+
+    assert len(surfaces) > 1  # birden fazla yüzeyden oluşuyor
+    part_ids = {s.part_id for s in surfaces}
+    assert len(part_ids) == 1  # ama hepsi TEK parça
 
 
 def test_copy_surface_raises_for_unknown_face_id():
