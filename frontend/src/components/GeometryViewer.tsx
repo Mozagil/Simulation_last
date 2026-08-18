@@ -401,7 +401,7 @@ function GeometryViewer({
         // Nokta işaretçileri (Point modunda görünür).
         const pointsGroup = new THREE.Group();
         const pointMeshById = new Map<number, THREE.Mesh>();
-        const pointRadius = Math.max(maxDim * 0.02, 0.08);
+        const pointRadius = Math.max(maxDim * 0.008, 0.04);
         const sphereGeometry = new THREE.SphereGeometry(pointRadius, 12, 12);
         for (const point of points) {
           const pointMaterial = new THREE.MeshBasicMaterial({ color: POINT_BASE_COLOR });
