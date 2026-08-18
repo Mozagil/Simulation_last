@@ -111,12 +111,24 @@ class MesherAdapter(ABC):
     def copy_surface(self, geom: GeometryHandle, face_id: int) -> int:
         """Verilen yüzeyi (face) ayrı bir entity olarak çoğaltır, yeni tag'i döner.
 
-        Bu adımın kapsamı `occ.copy` çağrısının çalıştığını kanıtlamak (yeni tag
-        görülür) — kopyalanan geometri şu an kalıcı olarak saklanmıyor, her istek
-        kendi geçici Gmsh oturumunda çalışıyor (bkz. diğer list_* metodları ile
-        aynı mimari desen). Kalıcı/aşamalı geometri düzenleme (birden fazla işlemi
-        aynı oturumda biriktirme) ayrı bir mimari karar — ROADMAP'teki sonraki
-        adımlarda (Physical Group, healing, defeature) netleştirilecek.
+        Kalıcılık: kopyalama sonrası güncellenmiş model `geom.source_file`'a
+        geri yazılır (`gmsh.write`, overwrite) — bir sonraki istek bu dosyayı
+        tekrar içe aktardığında kopyalanan yüzey de görünür. Bu, gerçek bir
+        testte doğrulandı (ayrı bir Python sürecinde dosya tekrar açıldığında
+        yeni yüzey hâlâ mevcuttu).
+        """
+
+    @abstractmethod
+    def create_physical_group(
+        self, geom: GeometryHandle, face_ids: list[int], name: str
+    ) -> int:
+        """Verilen yüzeyleri isimli bir Gmsh Physical Group'a atar, tag'i döner.
+
+        NOT: Physical Group'lar STEP dosyasının bir parçası değil (bu saf bir
+        Gmsh/mesh modelleme kavramı) — bu yüzden `copy_surface`'ın aksine
+        burada dosyaya geri yazma YOK. Kalıcılık tamamen veritabanı katmanında
+        (bkz. `app.models.geometry.PhysicalGroup`) sağlanıyor; bu metod sadece
+        Gmsh'in kendi doğrulama/API'siyle atamanın geçerli olduğunu kanıtlıyor.
         """
 
     @abstractmethod

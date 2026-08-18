@@ -191,22 +191,36 @@ def test_list_points_assigns_correct_part_id_for_assembly():
     assert len([p for p in points if p.part_id == 1]) == 8
 
 
-def test_copy_surface_creates_new_tag_with_same_area():
+def test_copy_surface_creates_new_tag_with_same_area(tmp_path):
+    # DİKKAT: copy_surface artık dosyayı yerinde günceller (kalıcılık için).
+    # Paylaşılan VALID_STEP_FILE fixture'ını bozmamak için geçici bir kopya
+    # üzerinde çalışıyoruz.
+    test_file = tmp_path / "box_copy_test.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
     adapter = GmshMesherAdapter()
-    geom = adapter.import_geometry(VALID_STEP_FILE)
+    geom = adapter.import_geometry(test_file)
     new_face_id = adapter.copy_surface(geom, 1)
 
     # Yeni tag, orijinal 6 yüzeyden farklı olmalı.
     assert new_face_id != 1
     assert new_face_id not in {1, 2, 3, 4, 5, 6}
 
-    # Kopyalanan yüzey gerçekten aynı geometriye (alana) sahip olmalı — sadece
-    # yeni bir ID değil, gerçek bir kopya.
+    # Kalıcılık: AYRI bir adaptör örneğiyle aynı dosyayı tekrar açınca yeni
+    # yüzey hâlâ orada olmalı (gerçek kalıcılık kanıtı).
     adapter2 = GmshMesherAdapter()
-    geom2 = adapter2.import_geometry(VALID_STEP_FILE)
+    geom2 = adapter2.import_geometry(test_file)
     surfaces = adapter2.list_surfaces(geom2)
+    assert len(surfaces) == 7
+    assert new_face_id in {s.id for s in surfaces}
+
     original_area = next(s.area for s in surfaces if s.id == 1)
+    copied_area = next(s.area for s in surfaces if s.id == new_face_id)
     assert original_area == pytest.approx(100.0)
+    assert copied_area == pytest.approx(original_area)
+
+    # Paylaşılan fixture dosyasının GERÇEKTEN değişmediğini doğrula.
+    assert VALID_STEP_FILE.read_bytes() != test_file.read_bytes()
 
 
 def test_copy_surface_raises_for_unknown_face_id():
@@ -215,3 +229,19 @@ def test_copy_surface_raises_for_unknown_face_id():
 
     with pytest.raises(SurfaceNotFoundError):
         adapter.copy_surface(geom, 999)
+
+
+def test_create_physical_group_returns_gmsh_tag():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    tag = adapter.create_physical_group(geom, [1, 2], "inlet")
+    assert isinstance(tag, int)
+
+
+def test_create_physical_group_raises_for_invalid_face_id():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    with pytest.raises(SurfaceNotFoundError):
+        adapter.create_physical_group(geom, [999], "gecersiz")
