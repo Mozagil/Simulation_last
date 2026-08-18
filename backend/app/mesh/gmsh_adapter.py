@@ -53,6 +53,10 @@ class GmshImportError(RuntimeError):
     """Gmsh geometriyi okuyamadığında (bozuk/desteklenmeyen dosya) fırlatılır."""
 
 
+class SurfaceNotFoundError(RuntimeError):
+    """İstenen yüzey (face) modelde bulunamadığında fırlatılır."""
+
+
 def _face_normal(
     v0: tuple[float, float, float],
     v1: tuple[float, float, float],
@@ -316,6 +320,33 @@ class GmshMesherAdapter(MesherAdapter):
             _gmsh_lock.release()
 
         return points
+
+    def copy_surface(self, geom: GeometryHandle, face_id: int) -> int:
+        """Verilen yüzeyi `occ.copy` ile çoğaltır, yeni yüzeyin tag'ini döner.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            existing_faces = {tag for _dim, tag in gmsh.model.getEntities(dim=2)}
+            if face_id not in existing_faces:
+                raise SurfaceNotFoundError(
+                    f"Yüzey bulunamadı: id={face_id}. Mevcut yüzeyler: {sorted(existing_faces)}"
+                )
+
+            copied = gmsh.model.occ.copy([(2, face_id)])
+            gmsh.model.occ.synchronize()
+
+            if not copied or copied[0][0] != 2:
+                raise SurfaceNotFoundError(
+                    f"Yüzey kopyalanamadı: id={face_id} (beklenmeyen Gmsh yanıtı: {copied})"
+                )
+            new_face_id = copied[0][1]
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return new_face_id
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(

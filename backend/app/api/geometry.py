@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from app.mesh.gmsh_adapter import GmshImportError, GmshMesherAdapter
+from app.mesh.gmsh_adapter import GmshImportError, GmshMesherAdapter, SurfaceNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -238,4 +238,50 @@ def list_points(stored_filename: str) -> dict[str, Any]:
             }
             for p in points
         ],
+    }
+
+
+@router.post("/{stored_filename}/surfaces/{face_id}/copy")
+def copy_surface(stored_filename: str, face_id: int) -> dict[str, Any]:
+    """Verilen yüzeyi (face) ayrı bir Gmsh entity'si olarak çoğaltır.
+
+    NOT (mimari sınır): kopyalama, her istekte yeniden içe aktarılan geçici bir
+    Gmsh oturumunda gerçekleşir — diğer list_* endpoint'leriyle aynı desen.
+    Yani bu adım `occ.copy`'nin çalıştığını ve yeni bir tag ürettiğini
+    kanıtlıyor; kopyalanan geometri şu an diske/veritabanına kalıcı olarak
+    yazılmıyor. Birden fazla işlemi (kopyala, isimlendir, sil vb.) aynı
+    oturumda biriktirip kalıcı hale getirmek ayrı bir mimari karar —
+    ROADMAP'teki sonraki adımlarda (Physical Group, healing, defeature)
+    netleştirilecek.
+    """
+    file_path = UPLOAD_DIR / stored_filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
+        )
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        new_face_id = adapter.copy_surface(geom, face_id)
+    except GmshImportError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geometri okunamadı: {exc}",
+        ) from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    logger.info(
+        "Yüzey kopyalandı: dosya=%s, orijinal_id=%d, yeni_id=%d",
+        stored_filename,
+        face_id,
+        new_face_id,
+    )
+
+    return {
+        "stored_filename": stored_filename,
+        "original_face_id": face_id,
+        "new_face_id": new_face_id,
     }
