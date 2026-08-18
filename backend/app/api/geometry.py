@@ -1,26 +1,43 @@
-"""Geometri (STEP/IGES) dosyası yükleme + web önizleme için tessellation.
+"""Geometri (STEP/IGES) dosyası yükleme + web önizleme + düzenleme işlemleri.
+
+MİMARİ (kalıcılık): her yüklenen dosya için PostgreSQL'de kalıcı bir `Geometry`
+kaydı oluşturulur — kanonik kimlik artık geçici bir `stored_filename` değil,
+veritabanındaki `geometry_id` (int). `Geometry.current_filename`, geometrinin
+o anki güncel halini gösterir; `copy_surface` gibi mutasyon işlemleri bu
+dosyayı yerinde günceller (overwrite) — böylece bir sonraki istek de
+mutasyonu görür (gerçek bir testte doğrulandı: ayrı bir süreçte dosya tekrar
+açıldığında değişiklik hâlâ oradaydı).
+
+Physical Group'lar (isimli yüzey grupları) STEP dosyasının bir parçası
+olmadığı için (bu Gmsh'e özgü bir modelleme kavramı) ayrı bir `PhysicalGroup`
+tablosunda saklanıyor.
 
 Akış:
-1. Dosya doğrulanır, diske kaydedilir (uploads/).
-2. Gmsh ile içe aktarılır (GmshMesherAdapter.import_geometry).
-3. STL tessellation + her üçgenin ait olduğu Gmsh yüzeyini (face) veren
-   `triangle_to_face` eşlemesi üretilir (uploads/tessellations/) — web
-   önizleme + ileride yüzey picking için temel. Bu FEA mesh'i DEĞİL, sadece
-   görsel önizleme.
+1. Dosya doğrulanır, `Geometry` DB kaydı oluşturulur, dosya `{geometry_id}{uzantı}`
+   olarak diske kaydedilir.
+2. Gmsh ile içe aktarılır, STL tessellation + üçgen->yüzey/parça eşlemeleri
+   üretilir (uploads/tessellations/{geometry_id}.*).
+3. Mutasyon işlemlerinden (yüzey kopyalama) sonra tessellation yeniden üretilir
+   - viewer her zaman güncel geometriyi görsün diye.
 
-Gerçek FEA mesh üretimi (eleman tipi, boyut vb.) ayrı bir sonraki adımda
-(ROADMAP.md "2. Mesh üretimi") eklenecek.
+Gerçek FEA mesh üretimi ayrı bir sonraki adımda (ROADMAP.md "2. Mesh üretimi")
+eklenecek.
 """
 
 import json
 import logging
-import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.db.session import get_db
+from app.mesh.base import TessellationResult
 from app.mesh.gmsh_adapter import GmshImportError, GmshMesherAdapter, SurfaceNotFoundError
+from app.models.geometry import Geometry, PhysicalGroup
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +53,53 @@ def _ensure_dirs() -> None:
     TESSELLATION_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _get_geometry_or_404(db: Session, geometry_id: int) -> Geometry:
+    geo = db.get(Geometry, geometry_id)
+    if geo is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Geometri bulunamadı: id={geometry_id}. Önce /geometry/upload ile yükleyin.",
+        )
+    return geo
+
+
+def _regenerate_tessellation(geometry_id: int, file_path: Path) -> TessellationResult:
+    """Tessellation + üçgen eşlemelerini (yeniden) üretir ve diske yazar.
+
+    Upload sırasında ve her mutasyon (örn. copy_surface) sonrasında çağrılır
+    - viewer'ın her zaman geometrinin güncel halini görmesi için.
+    """
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(file_path)
+    result = adapter.preview_tessellation(geom, TESSELLATION_DIR / f"{geometry_id}.stl")
+
+    face_map_path = TESSELLATION_DIR / f"{geometry_id}.faces.json"
+    face_map_path.write_text(json.dumps(result.triangle_to_face))
+    part_map_path = TESSELLATION_DIR / f"{geometry_id}.parts.json"
+    part_map_path.write_text(json.dumps(result.triangle_to_part))
+
+    return result
+
+
+def _tessellation_response_fields(geometry_id: int, result: TessellationResult) -> dict[str, Any]:
+    face_count = len(set(result.triangle_to_face))
+    triangle_count = len(result.triangle_to_face)
+    return {
+        "tessellation_url": f"/files/tessellations/{geometry_id}.stl",
+        "triangle_count": triangle_count,
+        "face_count": face_count,
+        "triangle_to_face": result.triangle_to_face,
+        "triangle_to_face_url": f"/files/tessellations/{geometry_id}.faces.json",
+        "part_count": result.part_count,
+        "triangle_to_part": result.triangle_to_part,
+        "triangle_to_part_url": f"/files/tessellations/{geometry_id}.parts.json",
+    }
+
+
 @router.post("/upload")
-async def upload_geometry(file: UploadFile) -> dict[str, Any]:
-    """STEP/IGES dosyasını alır, diske kaydeder, Gmsh ile web önizleme
-    tessellation'ı (STL) + üçgen→yüzey eşlemesi üretir.
+async def upload_geometry(file: UploadFile, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """STEP/IGES dosyasını alır, kalıcı bir Geometry kaydı oluşturur, Gmsh ile
+    web önizleme tessellation'ı + üçgen eşlemelerini üretir.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Dosya adı boş olamaz.")
@@ -55,136 +115,94 @@ async def upload_geometry(file: UploadFile) -> dict[str, Any]:
         )
 
     _ensure_dirs()
-
-    # Çakışmayı önlemek için benzersiz bir dosya adı üret, orijinal adı koru.
-    file_id = uuid.uuid4().hex
-    stored_name = f"{file_id}{suffix}"
-    destination = UPLOAD_DIR / stored_name
-
     contents = await file.read()
-    destination.write_bytes(contents)
 
-    tessellation_path = TESSELLATION_DIR / f"{file_id}.stl"
-    adapter = GmshMesherAdapter()
+    # Önce DB kaydını oluştur (autoincrement id'yi al), sonra dosyayı bu id ile adlandır.
+    db_geometry = Geometry(original_filename=file.filename, current_filename="")
+    db.add(db_geometry)
+    db.commit()
+    db.refresh(db_geometry)
+
+    stored_name = f"{db_geometry.id}{suffix}"
+    destination = UPLOAD_DIR / stored_name
+    destination.write_bytes(contents)
+    db_geometry.current_filename = stored_name
+    db.commit()
+
     try:
-        geom = adapter.import_geometry(destination)
-        result = adapter.preview_tessellation(geom, tessellation_path)
+        result = _regenerate_tessellation(db_geometry.id, destination)
     except GmshImportError as exc:
+        destination.unlink(missing_ok=True)
+        db.delete(db_geometry)
+        db.commit()
         raise HTTPException(
             status_code=422,
             detail=f"Geometri okunamadı: {exc}",
         ) from exc
 
-    # Üçgen→yüzey ve üçgen→parça eşlemelerini ayrı bir JSON olarak da kaydet
-    # (kalıcı, indirilebilir).
-    face_map_path = TESSELLATION_DIR / f"{file_id}.faces.json"
-    face_map_path.write_text(json.dumps(result.triangle_to_face))
-    part_map_path = TESSELLATION_DIR / f"{file_id}.parts.json"
-    part_map_path.write_text(json.dumps(result.triangle_to_part))
-
-    face_count = len(set(result.triangle_to_face))
-    triangle_count = len(result.triangle_to_face)
     logger.info(
-        "Tessellation üretildi: dosya=%s, üçgen_sayısı=%d, yüzey_sayısı=%d, parça_sayısı=%d",
+        "Geometri yuklendi: geometry_id=%d, dosya=%s, ucgen_sayisi=%d, yuzey_sayisi=%d, parca_sayisi=%d",
+        db_geometry.id,
         file.filename,
-        triangle_count,
-        face_count,
+        len(result.triangle_to_face),
+        len(set(result.triangle_to_face)),
         result.part_count,
     )
 
     return {
-        "original_filename": file.filename,
-        "stored_filename": stored_name,
-        "path": str(destination),
+        "geometry_id": db_geometry.id,
+        "original_filename": db_geometry.original_filename,
+        "current_filename": db_geometry.current_filename,
         "size_bytes": str(len(contents)),
-        "tessellation_path": str(tessellation_path),
-        "tessellation_url": f"/files/tessellations/{file_id}.stl",
-        "triangle_count": triangle_count,
-        "face_count": face_count,
-        "triangle_to_face": result.triangle_to_face,
-        "triangle_to_face_url": f"/files/tessellations/{file_id}.faces.json",
-        "part_count": result.part_count,
-        "triangle_to_part": result.triangle_to_part,
-        "triangle_to_part_url": f"/files/tessellations/{file_id}.parts.json",
+        "tessellation_path": str(TESSELLATION_DIR / f"{db_geometry.id}.stl"),
+        **_tessellation_response_fields(db_geometry.id, result),
     }
 
 
-@router.get("/{stored_filename}/surfaces")
-def list_surfaces(stored_filename: str) -> dict[str, Any]:
-    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm yüzeylerini
-    (id, alan, normal, parça) listeler.
-
-    `stored_filename`, `/geometry/upload` yanıtındaki `stored_filename`
-    alanıdır (örn. `3f9a...b2.step`).
-    """
-    file_path = UPLOAD_DIR / stored_filename
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
-        )
+@router.get("/{geometry_id}/surfaces")
+def list_surfaces(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Kalıcı bir geometrinin tüm yüzeylerini (id, alan, normal, parça) listeler."""
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
 
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
         surfaces = adapter.list_surfaces(geom)
     except GmshImportError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Geometri okunamadı: {exc}",
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
 
     logger.info(
-        "Yüzey listesi üretildi: dosya=%s, yüzey_sayısı=%d",
-        stored_filename,
-        len(surfaces),
+        "Yuzey listesi uretildi: geometry_id=%d, yuzey_sayisi=%d", geometry_id, len(surfaces)
     )
 
     return {
-        "stored_filename": stored_filename,
+        "geometry_id": geometry_id,
         "surface_count": len(surfaces),
         "surfaces": [
-            {
-                "id": s.id,
-                "area": s.area,
-                "normal": list(s.normal),
-                "part_id": s.part_id,
-            }
+            {"id": s.id, "area": s.area, "normal": list(s.normal), "part_id": s.part_id}
             for s in surfaces
         ],
     }
 
 
-@router.get("/{stored_filename}/edges")
-def list_edges(stored_filename: str) -> dict[str, Any]:
-    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm kenarlarını
-    (id, uzunluk, parça, uç noktaları) listeler.
-    """
-    file_path = UPLOAD_DIR / stored_filename
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
-        )
+@router.get("/{geometry_id}/edges")
+def list_edges(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Kalıcı bir geometrinin tüm kenarlarını (id, uzunluk, parça, uç noktaları) listeler."""
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
 
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
         edges = adapter.list_edges(geom)
     except GmshImportError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Geometri okunamadı: {exc}",
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
 
-    logger.info(
-        "Kenar listesi üretildi: dosya=%s, kenar_sayısı=%d",
-        stored_filename,
-        len(edges),
-    )
+    logger.info("Kenar listesi uretildi: geometry_id=%d, kenar_sayisi=%d", geometry_id, len(edges))
 
     return {
-        "stored_filename": stored_filename,
+        "geometry_id": geometry_id,
         "edge_count": len(edges),
         "edges": [
             {
@@ -199,89 +217,140 @@ def list_edges(stored_filename: str) -> dict[str, Any]:
     }
 
 
-@router.get("/{stored_filename}/points")
-def list_points(stored_filename: str) -> dict[str, Any]:
-    """Daha önce yüklenmiş bir STEP/IGES dosyasının tüm köşe noktalarını
-    (id, koordinat, parça) listeler.
-    """
-    file_path = UPLOAD_DIR / stored_filename
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
-        )
+@router.get("/{geometry_id}/points")
+def list_points(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Kalıcı bir geometrinin tüm köşe noktalarını (id, koordinat, parça) listeler."""
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
 
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
         points = adapter.list_points(geom)
     except GmshImportError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Geometri okunamadı: {exc}",
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
 
-    logger.info(
-        "Nokta listesi üretildi: dosya=%s, nokta_sayısı=%d",
-        stored_filename,
-        len(points),
-    )
+    logger.info("Nokta listesi uretildi: geometry_id=%d, nokta_sayisi=%d", geometry_id, len(points))
 
     return {
-        "stored_filename": stored_filename,
+        "geometry_id": geometry_id,
         "point_count": len(points),
         "points": [
-            {
-                "id": p.id,
-                "coordinate": list(p.coordinate),
-                "part_id": p.part_id,
-            }
-            for p in points
+            {"id": p.id, "coordinate": list(p.coordinate), "part_id": p.part_id} for p in points
         ],
     }
 
 
-@router.post("/{stored_filename}/surfaces/{face_id}/copy")
-def copy_surface(stored_filename: str, face_id: int) -> dict[str, Any]:
-    """Verilen yüzeyi (face) ayrı bir Gmsh entity'si olarak çoğaltır.
-
-    NOT (mimari sınır): kopyalama, her istekte yeniden içe aktarılan geçici bir
-    Gmsh oturumunda gerçekleşir — diğer list_* endpoint'leriyle aynı desen.
-    Yani bu adım `occ.copy`'nin çalıştığını ve yeni bir tag ürettiğini
-    kanıtlıyor; kopyalanan geometri şu an diske/veritabanına kalıcı olarak
-    yazılmıyor. Birden fazla işlemi (kopyala, isimlendir, sil vb.) aynı
-    oturumda biriktirip kalıcı hale getirmek ayrı bir mimari karar —
-    ROADMAP'teki sonraki adımlarda (Physical Group, healing, defeature)
-    netleştirilecek.
+@router.post("/{geometry_id}/surfaces/{face_id}/copy")
+def copy_surface(geometry_id: int, face_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Verilen yüzeyi çoğaltır. Kalıcı: sonuç `current_filename`'e geri yazılır
+    ve tessellation yeniden üretilir - viewer güncel geometriyi görür.
     """
-    file_path = UPLOAD_DIR / stored_filename
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dosya bulunamadı: {stored_filename}. Önce /geometry/upload ile yükleyin.",
-        )
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
 
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
         new_face_id = adapter.copy_surface(geom, face_id)
     except GmshImportError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Geometri okunamadı: {exc}",
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
     except SurfaceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    # Mutasyon sonrası tessellation'ı tazele (yeni yüzey de görünsün).
+    result = _regenerate_tessellation(geometry_id, file_path)
+
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
     logger.info(
-        "Yüzey kopyalandı: dosya=%s, orijinal_id=%d, yeni_id=%d",
-        stored_filename,
+        "Yuzey kopyalandi: geometry_id=%d, orijinal_id=%d, yeni_id=%d",
+        geometry_id,
         face_id,
         new_face_id,
     )
 
     return {
-        "stored_filename": stored_filename,
+        "geometry_id": geometry_id,
         "original_face_id": face_id,
         "new_face_id": new_face_id,
+        **_tessellation_response_fields(geometry_id, result),
+    }
+
+
+class CreatePhysicalGroupRequest(BaseModel):
+    name: str = Field(min_length=1)
+    face_ids: list[int] = Field(min_length=1)
+
+
+@router.post("/{geometry_id}/physical-groups")
+def create_physical_group(
+    geometry_id: int, body: CreatePhysicalGroupRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Verilen yüzeyleri isimli bir Physical Group'a atar (örn. "inlet").
+
+    Kalıcılık DB'de (STEP dosyası değişmez, sadece bu tabloya bir satır eklenir).
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        adapter.create_physical_group(geom, body.face_ids, body.name)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db_group = PhysicalGroup(
+        geometry_id=geometry_id, name=body.name, dim=2, entity_tags=body.face_ids
+    )
+    db.add(db_group)
+    db.commit()
+    db.refresh(db_group)
+
+    logger.info(
+        "Physical Group olusturuldu: geometry_id=%d, isim=%s, yuzeyler=%s",
+        geometry_id,
+        body.name,
+        body.face_ids,
+    )
+
+    return {
+        "id": db_group.id,
+        "geometry_id": geometry_id,
+        "name": db_group.name,
+        "dim": db_group.dim,
+        "entity_tags": db_group.entity_tags,
+        "face_count": len(db_group.entity_tags),
+    }
+
+
+@router.get("/{geometry_id}/physical-groups")
+def list_physical_groups(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Bir geometriye atanmış tüm Physical Group'ları listeler (DB'den)."""
+    _get_geometry_or_404(db, geometry_id)
+
+    groups = (
+        db.query(PhysicalGroup)
+        .filter(PhysicalGroup.geometry_id == geometry_id)
+        .order_by(PhysicalGroup.id)
+        .all()
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "group_count": len(groups),
+        "groups": [
+            {
+                "id": g.id,
+                "name": g.name,
+                "dim": g.dim,
+                "entity_tags": g.entity_tags,
+                "face_count": len(g.entity_tags),
+            }
+            for g in groups
+        ],
     }

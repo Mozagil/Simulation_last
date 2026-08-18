@@ -324,6 +324,10 @@ class GmshMesherAdapter(MesherAdapter):
     def copy_surface(self, geom: GeometryHandle, face_id: int) -> int:
         """Verilen yüzeyi `occ.copy` ile çoğaltır, yeni yüzeyin tag'ini döner.
 
+        Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır
+        (overwrite) — bir sonraki istek bu dosyayı tekrar içe aktardığında
+        kopyalanan yüzey de görünür.
+
         `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
         çağrılmalı.
         """
@@ -342,11 +346,47 @@ class GmshMesherAdapter(MesherAdapter):
                     f"Yüzey kopyalanamadı: id={face_id} (beklenmeyen Gmsh yanıtı: {copied})"
                 )
             new_face_id = copied[0][1]
+
+            # Kalıcılık: mutasyonu diske geri yaz.
+            gmsh.write(str(geom.source_file))
         finally:
             gmsh.finalize()
             _gmsh_lock.release()
 
         return new_face_id
+
+    def create_physical_group(
+        self, geom: GeometryHandle, face_ids: list[int], name: str
+    ) -> int:
+        """Verilen yüzeyleri isimli bir Gmsh Physical Group'a atar, tag'i döner.
+
+        Gmsh'in kendi `addPhysicalGroup` API'si geçersiz entity tag'lerini
+        sessizce kabul edip hatayı ancak sonradan sorgulamada veriyor (gerçek
+        bir testte doğrulandı) — bu yüzden face_id'leri KENDİMİZ önceden
+        doğruluyoruz.
+
+        Kalıcılık DB katmanında (bkz. app.models.geometry.PhysicalGroup) —
+        burada dosyaya geri yazma yok, Physical Group STEP formatının bir
+        parçası değil.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            existing_faces = {tag for _dim, tag in gmsh.model.getEntities(dim=2)}
+            invalid_ids = [fid for fid in face_ids if fid not in existing_faces]
+            if invalid_ids:
+                raise SurfaceNotFoundError(
+                    f"Geçersiz yüzey id'leri: {invalid_ids}. "
+                    f"Mevcut yüzeyler: {sorted(existing_faces)}"
+                )
+
+            group_tag = gmsh.model.addPhysicalGroup(2, face_ids, name=name)
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return group_tag
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(
