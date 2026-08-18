@@ -379,9 +379,15 @@ function GeometryViewer({
           const endCoord = pointById.get(edge.end_point);
           if (!startCoord || !endCoord) continue;
 
+          // NOT: burada .sub(center) uygulanmıyor — bu grup zaten modelGroup'un
+          // çocuğu ve modelGroup.position (yukarıda) tüm alt öğeleri birlikte
+          // kaydırıyor. Burada da .sub(center) yapılırsa çift kaydırma olur
+          // (özellikle merkezi orijinden uzak, büyük/gerçek parçalarda kenar/
+          // nokta'lar ekrandan binlerce birim uzağa kayar — gerçek bir bug'du,
+          // bir kullanıcı testinde yakalandı).
           const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(...startCoord).sub(center),
-            new THREE.Vector3(...endCoord).sub(center),
+            new THREE.Vector3(...startCoord),
+            new THREE.Vector3(...endCoord),
           ]);
           const lineMaterial = new THREE.LineBasicMaterial({ color: "#1b1f1c" });
           const line = new THREE.Line(lineGeometry, lineMaterial);
@@ -400,7 +406,8 @@ function GeometryViewer({
         for (const point of points) {
           const pointMaterial = new THREE.MeshBasicMaterial({ color: POINT_BASE_COLOR });
           const sphere = new THREE.Mesh(sphereGeometry, pointMaterial);
-          sphere.position.set(...point.coordinate).sub(center);
+          // Yukarıdaki NOT ile aynı sebep: .sub(center) burada uygulanmıyor.
+          sphere.position.set(...point.coordinate);
           sphere.userData.pointId = point.id;
           pointsGroup.add(sphere);
           pointMeshById.set(point.id, sphere);
