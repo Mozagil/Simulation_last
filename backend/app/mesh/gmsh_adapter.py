@@ -72,18 +72,64 @@ def _face_normal(
 
 
 def _compute_face_to_part() -> tuple[dict[int, int], int]:
-    """Açık Gmsh oturumundaki her yüzeyin (face) hangi katıya (volume/parça)
-    ait olduğunu hesaplar. Montaj dosyalarında birden fazla ayrı katı olabilir;
-    hiç volume yoksa (örn. tek açık yüzey/kabuk) her şey part 0 sayılır.
+    """Açık Gmsh oturumundaki her yüzeyin (face) hangi parçaya ait olduğunu
+    hesaplar.
+
+    İki aşama:
+    1. Bir katıya (volume) ait yüzeyler — her volume kendi part_id'sini alır
+       (montaj dosyalarında birden fazla ayrı katı olabilir).
+    2. Hiçbir volume'e ait olmayan yüzeyler ("orphan") — bunlar kenar
+       paylaşımına göre bağlı bileşenlere (connected components) ayrılır,
+       her bağlı bileşen kendi part_id'sini alır. Bu, örneğin `occ.copy` ile
+       bir solid'den bağımsız hale getirilmiş bir yüzeyin, orijinal solid'le
+       aynı parçaya (part 0'a varsayılan düşme) yanlışlıkla karışmasını
+       önler — kopyalanan yüzeyin kenarları orijinalden tamamen farklı
+       (yeni) tag'lerdir (gerçek bir testte doğrulandı), yani kenar
+       paylaşımına bakan bu algoritma onu otomatik olarak ayrı bir parça
+       sayar. Tek parçalı, birden fazla yüzeyden oluşan açık bir kabuk
+       (örn. eğri bir sac parça) da bu sayede doğru şekilde TEK parça
+       olarak kalır (yüzeyleri birbirine kenarlarla bağlı olduğu için).
     """
     face_to_part: dict[int, int] = {}
+    next_part_id = 0
+
     volumes = gmsh.model.getEntities(dim=3)
-    for part_id, (_dim, volume_tag) in enumerate(volumes):
+    for _dim, volume_tag in volumes:
         boundary = gmsh.model.getBoundary([(3, volume_tag)], oriented=False)
         for b_dim, b_tag in boundary:
             if b_dim == 2:
-                face_to_part[b_tag] = part_id
-    part_count = max(len(volumes), 1)
+                face_to_part[b_tag] = next_part_id
+        next_part_id += 1
+
+    all_faces = [tag for _dim, tag in gmsh.model.getEntities(dim=2)]
+    orphan_faces = [f for f in all_faces if f not in face_to_part]
+
+    face_edges: dict[int, set[int]] = {}
+    for f in orphan_faces:
+        boundary = gmsh.model.getBoundary([(2, f)], oriented=False)
+        face_edges[f] = {b_tag for b_dim, b_tag in boundary if b_dim == 1}
+
+    visited: set[int] = set()
+    for f in orphan_faces:
+        if f in visited:
+            continue
+        component = [f]
+        visited.add(f)
+        queue = [f]
+        while queue:
+            current = queue.pop()
+            for other in orphan_faces:
+                if other in visited:
+                    continue
+                if face_edges[current] & face_edges[other]:
+                    visited.add(other)
+                    component.append(other)
+                    queue.append(other)
+        for face_id in component:
+            face_to_part[face_id] = next_part_id
+        next_part_id += 1
+
+    part_count = max(next_part_id, 1)
     return face_to_part, part_count
 
 
