@@ -145,6 +145,47 @@ p {
   font-style: italic;
 }
 
+.group-create-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+}
+
+.group-name-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.group-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.group-create-button {
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.group-create-button:disabled {
+  background: transparent;
+  border-color: var(--border);
+  color: #b7bdb5;
+  cursor: not-allowed;
+}
+
 .error-message {
   margin-top: 14px;
   font-size: 13px;
@@ -179,37 +220,74 @@ p {
   flex-direction: column;
 }
 
-.selection-mode-bar {
+.button-group-stack {
   display: flex;
-  gap: 4px;
-  padding: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   background: #ffffff;
 }
 
-.selection-mode-button {
-  flex: 1;
-  padding: 8px 12px;
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.button-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 2px;
+}
+
+.button-group-row {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbf9;
+}
+
+.button-group-button {
+  padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
 }
 
-.selection-mode-button:hover {
+.button-group-button:hover:not(:disabled) {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.selection-mode-button.active {
+.button-group-button.active {
   background: var(--accent);
   color: #ffffff;
+}
+
+.button-group-button:disabled {
+  color: #b7bdb5;
+  cursor: not-allowed;
+}
+
+.button-group-empty {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #b7bdb5;
+  font-style: italic;
 }
 
 .viewer-canvas {
