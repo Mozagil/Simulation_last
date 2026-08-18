@@ -16,6 +16,9 @@ interface GeometryViewerProps {
 }
 
 const BASE_COLOR = new THREE.Color("#5a8f73");
+// Nokta işaretçileri modelin kendi rengiyle (yeşil) karışmasın diye ayrı,
+// koyu/nötr bir renk kullanıyoruz — dekoratif kenarlarla tutarlı.
+const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
 const HIGHLIGHT_COLOR = new THREE.Color("#d97757");
 const CLICK_DRAG_THRESHOLD_PX = 6;
 
@@ -160,7 +163,7 @@ function GeometryViewer({
 
       if (refs.highlightedPointId !== null) {
         const mesh = refs.pointMeshById.get(refs.highlightedPointId);
-        if (mesh) (mesh.material as THREE.MeshBasicMaterial).color.set(BASE_COLOR);
+        if (mesh) (mesh.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
       }
       refs.highlightedPointId = null;
     }
@@ -317,6 +320,13 @@ function GeometryViewer({
           roughness: 0.65,
           flatShading: true,
           side: THREE.DoubleSide,
+          // Kenar çizgileri ve nokta işaretçileri tam olarak yüzeyin üzerinde
+          // duruyor (aynı koordinatlar) — polygonOffset olmadan z-fighting
+          // yüzünden bu öğeler (özellikle vurgulandıklarında) görünmez oluyordu.
+          // Bu, dolu yüzeyi derinlik tamponunda hafifçe geriye iter.
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
         });
         const mesh = new THREE.Mesh(geometry, material);
         modelGroup.add(mesh);
@@ -385,10 +395,10 @@ function GeometryViewer({
         // Nokta işaretçileri (Point modunda görünür).
         const pointsGroup = new THREE.Group();
         const pointMeshById = new Map<number, THREE.Mesh>();
-        const pointRadius = Math.max(maxDim * 0.015, 0.05);
+        const pointRadius = Math.max(maxDim * 0.02, 0.08);
         const sphereGeometry = new THREE.SphereGeometry(pointRadius, 12, 12);
         for (const point of points) {
-          const pointMaterial = new THREE.MeshBasicMaterial({ color: BASE_COLOR });
+          const pointMaterial = new THREE.MeshBasicMaterial({ color: POINT_BASE_COLOR });
           const sphere = new THREE.Mesh(sphereGeometry, pointMaterial);
           sphere.position.set(...point.coordinate).sub(center);
           sphere.userData.pointId = point.id;
@@ -491,7 +501,7 @@ function GeometryViewer({
 
     if (refs.highlightedPointId !== null) {
       const meshObj = refs.pointMeshById.get(refs.highlightedPointId);
-      if (meshObj) (meshObj.material as THREE.MeshBasicMaterial).color.set(BASE_COLOR);
+      if (meshObj) (meshObj.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
     }
     refs.highlightedPointId = null;
 
