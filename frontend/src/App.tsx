@@ -1,16 +1,20 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EdgeInfo,
   GeometryUploadError,
+  PhysicalGroup,
   PointInfo,
+  copySurface,
+  createPhysicalGroup,
   fetchEdges,
+  fetchPhysicalGroups,
   fetchPoints,
   resolveTessellationUrl,
   uploadGeometry,
 } from "./api/geometry";
+import ButtonGroup from "./components/ButtonGroup";
 import GeometryViewer from "./components/GeometryViewer";
-import SelectionModeBar from "./components/SelectionModeBar";
-import { SelectionInfo, SelectionMode } from "./types";
+import { SELECTION_MODES, SelectionInfo, SelectionMode } from "./types";
 
 type Status = "idle" | "uploading" | "error" | "success";
 
@@ -35,6 +39,7 @@ function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [geometryId, setGeometryId] = useState<number | null>(null);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [triangleToFace, setTriangleToFace] = useState<number[]>([]);
   const [triangleToPart, setTriangleToPart] = useState<number[]>([]);
@@ -44,7 +49,17 @@ function App() {
   const [points, setPoints] = useState<PointInfo[]>([]);
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
+  const [physicalGroups, setPhysicalGroups] = useState<PhysicalGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Mod değişince aktif grup vurgusu ve seçim anlamsızlaşır, temizle.
+  useEffect(() => {
+    setActiveGroupId(null);
+  }, [mode]);
 
   async function handleFileSelected(file: File) {
     setStatus("uploading");
@@ -52,23 +67,27 @@ function App() {
     setFileName(file.name);
     setSelection(null);
     setMode("surface");
+    setHiddenParts(new Set());
+    setActiveGroupId(null);
+    setNewGroupName("");
 
     try {
       const result = await uploadGeometry(file);
+      setGeometryId(result.geometry_id);
       setStlUrl(resolveTessellationUrl(result.tessellation_url));
       setTriangleToFace(result.triangle_to_face);
       setTriangleToPart(result.triangle_to_part);
       setFaceCount(result.face_count);
       setPartCount(result.part_count);
 
-      // Kenar/nokta listeleri ayrı endpoint'lerden — upload ile paralel değil,
-      // ardından (stored_filename gerektiği için) çekiliyor.
-      const [edgeList, pointList] = await Promise.all([
-        fetchEdges(result.stored_filename),
-        fetchPoints(result.stored_filename),
+      const [edgeList, pointList, groupList] = await Promise.all([
+        fetchEdges(result.geometry_id),
+        fetchPoints(result.geometry_id),
+        fetchPhysicalGroups(result.geometry_id),
       ]);
       setEdges(edgeList);
       setPoints(pointList);
+      setPhysicalGroups(groupList);
 
       setStatus("success");
     } catch (err) {
@@ -90,6 +109,7 @@ function App() {
     setStatus("idle");
     setErrorMessage(null);
     setFileName(null);
+    setGeometryId(null);
     setStlUrl(null);
     setTriangleToFace([]);
     setTriangleToPart([]);
@@ -99,6 +119,10 @@ function App() {
     setPoints([]);
     setSelection(null);
     setMode("surface");
+    setHiddenParts(new Set());
+    setPhysicalGroups([]);
+    setActiveGroupId(null);
+    setNewGroupName("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -107,6 +131,78 @@ function App() {
   const handleSelectionChange = useCallback((info: SelectionInfo | null) => {
     setSelection(info);
   }, []);
+
+  async function handleCopySurface() {
+    if (!geometryId || mode !== "surface" || !selection || selection.mode !== "surface") return;
+
+    setBusyAction("copy");
+    setErrorMessage(null);
+    try {
+      const result = await copySurface(geometryId, selection.id);
+      setTriangleToFace(result.triangle_to_face);
+      setTriangleToPart(result.triangle_to_part);
+      setFaceCount(result.face_count);
+      setPartCount(result.part_count);
+      // Cache-bust: aynı dosya adı üzerine yazıldığı için tarayıcı eski STL'i
+      // önbellekten kullanmasın diye zaman damgası ekleniyor.
+      setStlUrl(resolveTessellationUrl(result.tessellation_url, Date.now()));
+      setSelection(null);
+
+      const [edgeList, pointList] = await Promise.all([
+        fetchEdges(geometryId),
+        fetchPoints(geometryId),
+      ]);
+      setEdges(edgeList);
+      setPoints(pointList);
+    } catch (err) {
+      const message = err instanceof GeometryUploadError ? err.message : "Yüzey kopyalanamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handleToggleHidePart() {
+    if (mode !== "part" || !selection || selection.mode !== "part") return;
+    setHiddenParts((prev) => {
+      const next = new Set(prev);
+      if (next.has(selection.id)) next.delete(selection.id);
+      else next.add(selection.id);
+      return next;
+    });
+  }
+
+  async function handleCreatePhysicalGroup() {
+    const trimmedName = newGroupName.trim();
+    if (!geometryId || mode !== "surface" || !selection || selection.mode !== "surface") return;
+    if (!trimmedName) return;
+
+    setBusyAction("create-group");
+    setErrorMessage(null);
+    try {
+      await createPhysicalGroup(geometryId, trimmedName, [selection.id]);
+      setNewGroupName("");
+      const groups = await fetchPhysicalGroups(geometryId);
+      setPhysicalGroups(groups);
+    } catch (err) {
+      const message = err instanceof GeometryUploadError ? err.message : "Grup oluşturulamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handleGroupButtonClick(groupId: number) {
+    setActiveGroupId((prev) => (prev === groupId ? null : groupId));
+  }
+
+  const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
+  const externalHighlight = activeGroup ? { faceIds: activeGroup.entity_tags } : null;
+
+  const canCopySurface = mode === "surface" && selection?.mode === "surface";
+  const canToggleHidePart = mode === "part" && selection?.mode === "part";
+  const showGroupForm = mode === "surface" && selection?.mode === "surface";
+  const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
 
   return (
     <main className="page">
@@ -156,6 +252,27 @@ function App() {
                 Yukarıdaki moda göre bir öğeye tıklayarak seçin.
               </p>
             )}
+
+            {showGroupForm && (
+              <div className="group-create-form">
+                <input
+                  type="text"
+                  className="group-name-input"
+                  placeholder="Grup adı (örn. inlet)"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  disabled={busyAction === "create-group"}
+                />
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleCreatePhysicalGroup()}
+                  disabled={!canCreateGroup || busyAction === "create-group"}
+                >
+                  {busyAction === "create-group" ? "Oluşturuluyor…" : "Grup oluştur"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -167,9 +284,51 @@ function App() {
       </div>
 
       <div className="viewer-panel">
-        {stlUrl ? (
+        {stlUrl && geometryId !== null ? (
           <>
-            <SelectionModeBar activeMode={mode} onChange={setMode} />
+            <div className="button-group-stack">
+              <ButtonGroup
+                title="Seçim modu"
+                items={SELECTION_MODES.map(({ mode: m, label }) => ({
+                  key: m,
+                  label,
+                  active: mode === m,
+                  onClick: () => setMode(m),
+                }))}
+              />
+              <ButtonGroup
+                title="İşlemler"
+                items={[
+                  {
+                    key: "copy-surface",
+                    label: busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala",
+                    disabled: !canCopySurface || busyAction !== null,
+                    onClick: () => void handleCopySurface(),
+                  },
+                  {
+                    key: "toggle-hide-part",
+                    label:
+                      canToggleHidePart && selection?.mode === "part" && hiddenParts.has(selection.id)
+                        ? "Solid göster"
+                        : "Solid gizle",
+                    disabled: !canToggleHidePart,
+                    onClick: handleToggleHidePart,
+                  },
+                  { key: "placeholder-1", label: "Yakında", disabled: true },
+                  { key: "placeholder-2", label: "Yakında", disabled: true },
+                ]}
+              />
+              <ButtonGroup
+                title="Physical Group'lar"
+                items={physicalGroups.map((g) => ({
+                  key: String(g.id),
+                  label: g.name,
+                  active: activeGroupId === g.id,
+                  onClick: () => handleGroupButtonClick(g.id),
+                }))}
+                emptyLabel="Henüz grup yok"
+              />
+            </div>
             <GeometryViewer
               stlUrl={stlUrl}
               triangleToFace={triangleToFace}
@@ -177,6 +336,8 @@ function App() {
               edges={edges}
               points={points}
               mode={mode}
+              hiddenParts={hiddenParts}
+              externalHighlight={externalHighlight}
               onSelectionChange={handleSelectionChange}
             />
           </>
