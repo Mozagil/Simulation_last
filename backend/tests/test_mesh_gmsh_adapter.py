@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.mesh.gmsh_adapter import GmshMesherAdapter
+from app.mesh.gmsh_adapter import GmshMesherAdapter, SurfaceNotFoundError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 VALID_STEP_FILE = FIXTURES_DIR / "box.step"
@@ -189,3 +189,29 @@ def test_list_points_assigns_correct_part_id_for_assembly():
     assert part_ids == {0, 1}
     assert len([p for p in points if p.part_id == 0]) == 8
     assert len([p for p in points if p.part_id == 1]) == 8
+
+
+def test_copy_surface_creates_new_tag_with_same_area():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+    new_face_id = adapter.copy_surface(geom, 1)
+
+    # Yeni tag, orijinal 6 yüzeyden farklı olmalı.
+    assert new_face_id != 1
+    assert new_face_id not in {1, 2, 3, 4, 5, 6}
+
+    # Kopyalanan yüzey gerçekten aynı geometriye (alana) sahip olmalı — sadece
+    # yeni bir ID değil, gerçek bir kopya.
+    adapter2 = GmshMesherAdapter()
+    geom2 = adapter2.import_geometry(VALID_STEP_FILE)
+    surfaces = adapter2.list_surfaces(geom2)
+    original_area = next(s.area for s in surfaces if s.id == 1)
+    assert original_area == pytest.approx(100.0)
+
+
+def test_copy_surface_raises_for_unknown_face_id():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    with pytest.raises(SurfaceNotFoundError):
+        adapter.copy_surface(geom, 999)

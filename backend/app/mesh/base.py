@@ -108,5 +108,17 @@ class MesherAdapter(ABC):
         """Modeldeki tüm köşe noktalarının (id, koordinat, parça) listesini döner."""
 
     @abstractmethod
+    def copy_surface(self, geom: GeometryHandle, face_id: int) -> int:
+        """Verilen yüzeyi (face) ayrı bir entity olarak çoğaltır, yeni tag'i döner.
+
+        Bu adımın kapsamı `occ.copy` çağrısının çalıştığını kanıtlamak (yeni tag
+        görülür) — kopyalanan geometri şu an kalıcı olarak saklanmıyor, her istek
+        kendi geçici Gmsh oturumunda çalışıyor (bkz. diğer list_* metodları ile
+        aynı mimari desen). Kalıcı/aşamalı geometri düzenleme (birden fazla işlemi
+        aynı oturumda biriktirme) ayrı bir mimari karar — ROADMAP'teki sonraki
+        adımlarda (Physical Group, healing, defeature) netleştirilecek.
+        """
+
+    @abstractmethod
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         """Gerçek FEA mesh'i üretir (tet/tri, shell/solid). Henüz implemente edilmedi."""

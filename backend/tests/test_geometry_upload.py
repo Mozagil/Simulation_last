@@ -187,3 +187,37 @@ def test_list_points_after_upload():
 def test_list_points_returns_404_for_unknown_file():
     response = client.get("/geometry/nonexistent-file.step/points")
     assert response.status_code == 404
+
+
+def test_copy_surface_after_upload():
+    content = VALID_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("box.step", content, "application/octet-stream")},
+    )
+    stored_filename = upload_response.json()["stored_filename"]
+
+    response = client.post(f"/geometry/{stored_filename}/surfaces/1/copy")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["original_face_id"] == 1
+    assert body["new_face_id"] != 1
+    assert body["new_face_id"] not in {1, 2, 3, 4, 5, 6}
+
+
+def test_copy_surface_returns_404_for_unknown_file():
+    response = client.post("/geometry/nonexistent-file.step/surfaces/1/copy")
+    assert response.status_code == 404
+
+
+def test_copy_surface_returns_404_for_unknown_face_id():
+    content = VALID_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("box.step", content, "application/octet-stream")},
+    )
+    stored_filename = upload_response.json()["stored_filename"]
+
+    response = client.post(f"/geometry/{stored_filename}/surfaces/999/copy")
+    assert response.status_code == 404
