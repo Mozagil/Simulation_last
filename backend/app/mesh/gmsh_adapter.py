@@ -13,6 +13,7 @@ adımında eklenecek.
 """
 
 import math
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,23 @@ from app.mesh.base import (
 
 # Gmsh eleman tipi kodu: 3 düğümlü üçgen (bkz. Gmsh dokümantasyonu, "elementType").
 _TRIANGLE_ELEMENT_TYPE = 2
+
+# Gmsh'in Python API'si süreç genelinde TEK bir global C++ durumu paylaşır
+# (gmsh.initialize/open/finalize hepsi aynı global context'i değiştirir).
+# FastAPI'nin sync endpoint'leri (bu adaptörü kullananlar) uvicorn tarafından
+# bir thread pool'da çalıştırılıyor — iki istek gerçekten aynı anda farklı
+# thread'lerde Gmsh'e dokunursa (örn. frontend'in Promise.all ile edges+points'i
+# paralel çekmesi), Gmsh'in global durumu bozuluyor ve segfault/tutarsız hata
+# oluşabiliyor (bu, gerçek bir testte doğrulandı). Bu kilit, herhangi bir anda
+# sadece TEK bir Gmsh oturumunun (import_geometry -> ... -> finalize) aktif
+# olmasını garanti eder.
+#
+# ÖNEMLİ: import_geometry() kilidi alır; onu izleyen tam olarak bir sonraki
+# çağrı (preview_tessellation/list_surfaces/list_edges/list_points) kilidi
+# serbest bırakır (finally bloğunda gmsh.finalize() ile birlikte). Bu adaptörü
+# kullanan her kod, import_geometry()'den sonra MUTLAKA bu metodlardan birini
+# çağırmalı — aksi halde kilit serbest kalmaz (deadlock).
+_gmsh_lock = threading.Lock()
 
 
 class GmshImportError(RuntimeError):
@@ -97,6 +115,7 @@ class GmshMesherAdapter(MesherAdapter):
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
         model_name = cad_file.stem
 
+        _gmsh_lock.acquire()
         gmsh.initialize(interruptible=False)
         try:
             gmsh.model.add(model_name)
@@ -112,6 +131,7 @@ class GmshMesherAdapter(MesherAdapter):
                 )
         except Exception as exc:
             gmsh.finalize()
+            _gmsh_lock.release()
             if isinstance(exc, GmshImportError):
                 raise
             raise GmshImportError(
@@ -180,6 +200,7 @@ class GmshMesherAdapter(MesherAdapter):
             _write_ascii_stl(output_path, geom.model_name, triangle_vertices)
         finally:
             gmsh.finalize()
+            _gmsh_lock.release()
 
         return TessellationResult(
             stl_path=output_path,
@@ -224,6 +245,7 @@ class GmshMesherAdapter(MesherAdapter):
                 )
         finally:
             gmsh.finalize()
+            _gmsh_lock.release()
 
         return surfaces
 
@@ -262,6 +284,7 @@ class GmshMesherAdapter(MesherAdapter):
                 )
         finally:
             gmsh.finalize()
+            _gmsh_lock.release()
 
         return edges
 
@@ -290,6 +313,7 @@ class GmshMesherAdapter(MesherAdapter):
                 )
         finally:
             gmsh.finalize()
+            _gmsh_lock.release()
 
         return points
 
