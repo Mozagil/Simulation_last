@@ -419,17 +419,15 @@ function GeometryViewer({
           }
         }
 
-        // Dekoratif kenar çizgileri (geometrik olarak otomatik tespit edilen,
-        // Gmsh ID'siyle ilişkisi yok) — her zaman görünür, sadece görsel.
-        const decorativeEdgesGeometry = new THREE.EdgesGeometry(geometry, 20);
-        const decorativeEdgesMaterial = new THREE.LineBasicMaterial({
-          color: "#1b1f1c",
-          transparent: true,
-          opacity: 0.35,
-        });
-        const decorativeEdges = new THREE.LineSegments(decorativeEdgesGeometry, decorativeEdgesMaterial);
-        decorativeEdges.position.sub(center);
-        modelGroup.add(decorativeEdges);
+        // NOT: Önceden burada tüm modelden tek seferde üretilen "dekoratif"
+        // kenar çizgileri vardı (sadece görsel, Gmsh ID'siyle ilişkisi yoktu).
+        // Kaldırıldı çünkü: (1) parça bazlı değildi, bir parça gizlense bile
+        // o parçanın kenar çizgileri global bir objede kaldığı için "hayalet"
+        // olarak görünmeye devam ediyordu; (2) mesh'in iç üçgen sınırlarını
+        // da gösterdiği için solid'i "ağ gibi" gösteriyordu — gerçek CAD
+        // görüntüleyicilerindeki gibi temiz bir dolu yüzey görünümü yerine.
+        // Gerçek geometrik kenarlara ihtiyaç olduğunda Kenar modu zaten var
+        // (Gmsh curve ID'leriyle doğru, parça/görünürlükten bağımsız).
 
         camera.near = maxDim / 1000;
         camera.far = maxDim * 100;
