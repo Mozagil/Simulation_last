@@ -14,6 +14,8 @@ interface GeometryViewerProps {
   mode: SelectionMode;
   /** Gizlenmiş parçaların (part_id) kümesi — "Solid göster/gizle" butonu için. */
   hiddenParts: Set<number>;
+  /** Kenar çizgilerini göster/gizle (İşlemler grubundaki toggle butonu). */
+  showEdges: boolean;
   /** Tıklama dışında (örn. bir Physical Group butonuna basınca) belirli
    * yüzeyleri vurgulamak için. null verilince vurgu temizlenir. */
   externalHighlight: { faceIds: number[] } | null;
@@ -45,6 +47,10 @@ interface PartMeshEntry {
   localTriangleToFace: number[];
   /** Bu alt-mesh içindeki face_id -> yerel üçgen indeksleri. */
   faceToLocalIndices: Map<number, number[]>;
+  /** Bu parçanın kendi (geometrik, otomatik tespit edilen) kenar çizgileri —
+   * parça gizlenince/gösterilince veya showEdges toggle'ında birlikte
+   * güncellenir. */
+  decorativeEdges: THREE.LineSegments;
 }
 
 /**
@@ -69,11 +75,13 @@ function GeometryViewer({
   points,
   mode,
   hiddenParts,
+  showEdges,
   externalHighlight,
   onSelectionChange,
 }: GeometryViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<SelectionMode>(mode);
+  const showEdgesRef = useRef<boolean>(showEdges);
 
   const sceneRefs = useRef<{
     partMeshes: PartMeshEntry[];
@@ -404,6 +412,20 @@ function GeometryViewer({
           mesh.position.sub(center);
           modelGroup.add(mesh);
 
+          // Bu parçaya özel kenar çizgileri — parça gizlenince/gösterilince
+          // ya da showEdges kapatılınca bu parçanın kendi çizgisi de
+          // birlikte güncellenir (önceki global/tek-obje yaklaşımının
+          // "hayalet kenar" sorununu önler).
+          const edgesGeometry = new THREE.EdgesGeometry(subGeometry, 30);
+          const edgesMaterial = new THREE.LineBasicMaterial({
+            color: "#1b1f1c",
+            transparent: true,
+            opacity: 0.35,
+          });
+          const decorativeEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+          decorativeEdges.visible = showEdgesRef.current;
+          mesh.add(decorativeEdges);
+
           const faceToLocalIndices = buildGroupIndex(localTriangleToFace);
           const entry: PartMeshEntry = {
             partId,
@@ -411,6 +433,7 @@ function GeometryViewer({
             colorAttribute,
             localTriangleToFace,
             faceToLocalIndices,
+            decorativeEdges,
           };
           partMeshes.push(entry);
           partMeshByPartId.set(partId, entry);
@@ -419,15 +442,11 @@ function GeometryViewer({
           }
         }
 
-        // NOT: Önceden burada tüm modelden tek seferde üretilen "dekoratif"
-        // kenar çizgileri vardı (sadece görsel, Gmsh ID'siyle ilişkisi yoktu).
-        // Kaldırıldı çünkü: (1) parça bazlı değildi, bir parça gizlense bile
-        // o parçanın kenar çizgileri global bir objede kaldığı için "hayalet"
-        // olarak görünmeye devam ediyordu; (2) mesh'in iç üçgen sınırlarını
-        // da gösterdiği için solid'i "ağ gibi" gösteriyordu — gerçek CAD
-        // görüntüleyicilerindeki gibi temiz bir dolu yüzey görünümü yerine.
-        // Gerçek geometrik kenarlara ihtiyaç olduğunda Kenar modu zaten var
-        // (Gmsh curve ID'leriyle doğru, parça/görünürlükten bağımsız).
+        // NOT (geçmiş): Kenar çizgileri önce tüm modelden TEK bir global
+        // obje olarak üretiliyordu — bu, bir parça gizlenince onun kenar
+        // çizgilerinin "hayalet" gibi kalmasına sebep oluyordu. Şimdi her
+        // parçanın kendi mesh'ine ÇOCUK olarak ekleniyor (yukarıda), böylece
+        // parçayla birlikte otomatik gizlenip gösteriliyor.
 
         camera.near = maxDim / 1000;
         camera.far = maxDim * 100;
@@ -600,12 +619,25 @@ function GeometryViewer({
   }, [mode]);
 
   // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
+  // NOT: decorativeEdges her parçanın mesh'ine ÇOCUK olarak eklendiği için
+  // (yukarıda), mesh.visible=false olunca kenar çizgileri de otomatik
+  // gizleniyor — ayrı bir işlem gerekmiyor.
   useEffect(() => {
     const refs = sceneRefs.current;
     for (const entry of refs.partMeshes) {
       entry.mesh.visible = !hiddenParts.has(entry.partId);
     }
   }, [hiddenParts]);
+
+  // showEdges değişimi: her parçanın kendi kenar çizgisinin görünürlüğünü
+  // toplu güncelle (sahneyi yeniden kurmadan).
+  useEffect(() => {
+    showEdgesRef.current = showEdges;
+    const refs = sceneRefs.current;
+    for (const entry of refs.partMeshes) {
+      entry.decorativeEdges.visible = showEdges;
+    }
+  }, [showEdges]);
 
   // externalHighlight değişimi: Physical Group butonu gibi tıklama-dışı vurgular.
   useEffect(() => {

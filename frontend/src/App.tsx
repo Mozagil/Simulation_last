@@ -50,6 +50,7 @@ function App() {
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
+  const [showEdges, setShowEdges] = useState(true);
   const [physicalGroups, setPhysicalGroups] = useState<PhysicalGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
@@ -120,6 +121,7 @@ function App() {
     setSelection(null);
     setMode("surface");
     setHiddenParts(new Set());
+    setShowEdges(true);
     setPhysicalGroups([]);
     setActiveGroupId(null);
     setNewGroupName("");
@@ -314,7 +316,12 @@ function App() {
                     disabled: !canToggleHidePart,
                     onClick: handleToggleHidePart,
                   },
-                  { key: "placeholder-1", label: "Yakında", disabled: true },
+                  {
+                    key: "toggle-edges",
+                    label: showEdges ? "Kenar çizgileri (açık)" : "Kenar çizgileri (kapalı)",
+                    active: showEdges,
+                    onClick: () => setShowEdges((prev) => !prev),
+                  },
                   { key: "placeholder-2", label: "Yakında", disabled: true },
                 ]}
               />
@@ -337,6 +344,7 @@ function App() {
               points={points}
               mode={mode}
               hiddenParts={hiddenParts}
+              showEdges={showEdges}
               externalHighlight={externalHighlight}
               onSelectionChange={handleSelectionChange}
             />
