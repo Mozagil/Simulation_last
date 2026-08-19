@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  DefeatureCandidate,
   EdgeInfo,
   GeometryUploadError,
   PhysicalGroup,
   PointInfo,
   copySurface,
+  createMidsurface,
   createPhysicalGroup,
   fetchEdges,
   fetchPhysicalGroups,
   fetchPoints,
+  findDefeatureCandidates,
+  healGeometry,
   resolveTessellationUrl,
   uploadGeometry,
 } from "./api/geometry";
@@ -38,6 +42,7 @@ function describeSelection(selection: SelectionInfo): string {
 function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [geometryId, setGeometryId] = useState<number | null>(null);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -55,22 +60,39 @@ function App() {
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  // Midsurface: iki aşamalı seçim (önce A, sonra B yüzeyi).
+  const [midsurfaceFirstFaceId, setMidsurfaceFirstFaceId] = useState<number | null>(null);
+
+  // Defeature: eşik girişi + sonuç listesi paneli.
+  const [showDefeaturePanel, setShowDefeaturePanel] = useState(false);
+  const [defeatureThreshold, setDefeatureThreshold] = useState("5");
+  const [defeatureCandidates, setDefeatureCandidates] = useState<DefeatureCandidate[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mod değişince aktif grup vurgusu ve seçim anlamsızlaşır, temizle.
+  // Mod değişince aktif grup vurgusu, midsurface ilk seçimi ve defeature
+  // sonuçları anlamsızlaşır, temizle.
   useEffect(() => {
     setActiveGroupId(null);
+    setMidsurfaceFirstFaceId(null);
+    setDefeatureCandidates([]);
+    setShowDefeaturePanel(false);
   }, [mode]);
 
   async function handleFileSelected(file: File) {
     setStatus("uploading");
     setErrorMessage(null);
+    setInfoMessage(null);
     setFileName(file.name);
     setSelection(null);
     setMode("surface");
     setHiddenParts(new Set());
     setActiveGroupId(null);
     setNewGroupName("");
+    setMidsurfaceFirstFaceId(null);
+    setDefeatureCandidates([]);
+    setShowDefeaturePanel(false);
 
     try {
       const result = await uploadGeometry(file);
@@ -109,6 +131,7 @@ function App() {
   function handleReset() {
     setStatus("idle");
     setErrorMessage(null);
+    setInfoMessage(null);
     setFileName(null);
     setGeometryId(null);
     setStlUrl(null);
@@ -125,6 +148,9 @@ function App() {
     setPhysicalGroups([]);
     setActiveGroupId(null);
     setNewGroupName("");
+    setMidsurfaceFirstFaceId(null);
+    setDefeatureCandidates([]);
+    setShowDefeaturePanel(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -134,28 +160,43 @@ function App() {
     setSelection(info);
   }, []);
 
+  /** Bir mutasyon işleminden (copy/heal/midsurface) sonra ortak yenileme:
+   * tessellation + üçgen eşlemeleri + edges/points (yeni geometri yeni kenar/
+   * nokta üretmiş olabilir) hepsi tazelenir.
+   */
+  async function refreshAfterMutation(
+    geoId: number,
+    tessellation: {
+      triangle_to_face: number[];
+      triangle_to_part: number[];
+      face_count: number;
+      part_count: number;
+      tessellation_url: string;
+    },
+  ) {
+    setTriangleToFace(tessellation.triangle_to_face);
+    setTriangleToPart(tessellation.triangle_to_part);
+    setFaceCount(tessellation.face_count);
+    setPartCount(tessellation.part_count);
+    // Cache-bust: aynı dosya adı üzerine yazıldığı için tarayıcı eski STL'i
+    // önbellekten kullanmasın diye zaman damgası ekleniyor.
+    setStlUrl(resolveTessellationUrl(tessellation.tessellation_url, Date.now()));
+    setSelection(null);
+
+    const [edgeList, pointList] = await Promise.all([fetchEdges(geoId), fetchPoints(geoId)]);
+    setEdges(edgeList);
+    setPoints(pointList);
+  }
+
   async function handleCopySurface() {
     if (!geometryId || mode !== "surface" || !selection || selection.mode !== "surface") return;
 
     setBusyAction("copy");
     setErrorMessage(null);
+    setInfoMessage(null);
     try {
       const result = await copySurface(geometryId, selection.id);
-      setTriangleToFace(result.triangle_to_face);
-      setTriangleToPart(result.triangle_to_part);
-      setFaceCount(result.face_count);
-      setPartCount(result.part_count);
-      // Cache-bust: aynı dosya adı üzerine yazıldığı için tarayıcı eski STL'i
-      // önbellekten kullanmasın diye zaman damgası ekleniyor.
-      setStlUrl(resolveTessellationUrl(result.tessellation_url, Date.now()));
-      setSelection(null);
-
-      const [edgeList, pointList] = await Promise.all([
-        fetchEdges(geometryId),
-        fetchPoints(geometryId),
-      ]);
-      setEdges(edgeList);
-      setPoints(pointList);
+      await refreshAfterMutation(geometryId, result);
     } catch (err) {
       const message = err instanceof GeometryUploadError ? err.message : "Yüzey kopyalanamadı.";
       setErrorMessage(message);
@@ -198,13 +239,137 @@ function App() {
     setActiveGroupId((prev) => (prev === groupId ? null : groupId));
   }
 
+  /** Heal: geometriyi düzeltir. Yüzey ID'leri yeniden numaralanabildiği için
+   * (backend'de doğrulandı) kullanıcıya bunu belirten bir uyarı gösterilir.
+   */
+  async function handleHeal() {
+    if (!geometryId) return;
+    if (
+      !window.confirm(
+        "Geometry healing geometriyi değiştirebilir ve yüzey/kenar numaralarını " +
+          "yeniden düzenleyebilir — mevcut Physical Group atamalarınız yanlış " +
+          "yüzeyleri işaret eder hale gelebilir. Devam etmek istiyor musunuz?",
+      )
+    ) {
+      return;
+    }
+
+    setBusyAction("heal");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const result = await healGeometry(geometryId);
+      await refreshAfterMutation(geometryId, result);
+      setInfoMessage(
+        `Healing tamamlandı: parça ${result.volumes_before}→${result.volumes_after}, ` +
+          `yüzey ${result.surfaces_before}→${result.surfaces_after}. ` +
+          `Yüzey numaraları değişmiş olabilir — mevcut Physical Group atamalarınızı kontrol edin.`,
+      );
+      // Physical Group'lar hâlâ DB'de duruyor ama artık yanlış yüzeyi işaret
+      // ediyor olabilir; listeyi yine de tazeleyelim (sayı değişmez, ama
+      // tutarlılık için).
+      const groups = await fetchPhysicalGroups(geometryId);
+      setPhysicalGroups(groups);
+    } catch (err) {
+      const message = err instanceof GeometryUploadError ? err.message : "Healing başarısız oldu.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /** Defeature: sadece TESPİT — hiçbir şey kaldırılmıyor/değiştirilmiyor. */
+  async function handleFindDefeatureCandidates() {
+    if (!geometryId) return;
+    const threshold = parseFloat(defeatureThreshold);
+    if (!Number.isFinite(threshold) || threshold <= 0) {
+      setErrorMessage("Geçerli bir pozitif eşik değeri girin.");
+      return;
+    }
+
+    setBusyAction("defeature");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const candidates = await findDefeatureCandidates(geometryId, threshold);
+      setDefeatureCandidates(candidates);
+      if (candidates.length > 0) {
+        // Adayları görebilmek için Kenar moduna geç (kenar çizgileri sadece
+        // bu modda görünür/etkileşimli).
+        setMode("edge");
+        setInfoMessage(
+          `${candidates.length} aday kenar bulundu ve Kenar modunda vurgulandı. ` +
+            `NOT: bu sadece tespit — kaldırma henüz desteklenmiyor.`,
+        );
+      } else {
+        setInfoMessage("Bu eşiğin altında aday kenar bulunamadı.");
+      }
+    } catch (err) {
+      const message =
+        err instanceof GeometryUploadError ? err.message : "Defeature adayları alınamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /** Midsurface: iki aşamalı — önce bir yüzey seçilip buton basılır (A olarak
+   * kaydedilir), sonra ikinci yüzey seçilip buton tekrar basılır (gönderilir).
+   */
+  async function handleMidsurfaceClick() {
+    if (!geometryId || mode !== "surface" || !selection || selection.mode !== "surface") return;
+
+    if (midsurfaceFirstFaceId === null) {
+      setMidsurfaceFirstFaceId(selection.id);
+      setInfoMessage(`Yüzey #${selection.id} seçildi. Şimdi ikinci (paralel) yüzeyi seçin.`);
+      return;
+    }
+
+    if (selection.id === midsurfaceFirstFaceId) {
+      // Aynı yüzey tekrar seçildi/tıklandı — iptal say.
+      setMidsurfaceFirstFaceId(null);
+      setInfoMessage(null);
+      return;
+    }
+
+    const faceIdA = midsurfaceFirstFaceId;
+    const faceIdB = selection.id;
+    setMidsurfaceFirstFaceId(null);
+    setBusyAction("midsurface");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const result = await createMidsurface(geometryId, faceIdA, faceIdB);
+      await refreshAfterMutation(geometryId, result);
+      setInfoMessage(`Midsurface oluşturuldu: yeni yüzey #${result.new_face_id}.`);
+    } catch (err) {
+      const message =
+        err instanceof GeometryUploadError ? err.message : "Midsurface oluşturulamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
-  const externalHighlight = activeGroup ? { faceIds: activeGroup.entity_tags } : null;
+  const externalHighlight = activeGroup
+    ? { faceIds: activeGroup.entity_tags }
+    : defeatureCandidates.length > 0
+      ? { edgeIds: defeatureCandidates.map((c) => c.edge_id) }
+      : null;
 
   const canCopySurface = mode === "surface" && selection?.mode === "surface";
   const canToggleHidePart = mode === "part" && selection?.mode === "part";
   const showGroupForm = mode === "surface" && selection?.mode === "surface";
   const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
+  const canUseMidsurface = mode === "surface" && selection?.mode === "surface";
+
+  const midsurfaceLabel =
+    busyAction === "midsurface"
+      ? "Oluşturuluyor…"
+      : midsurfaceFirstFaceId === null
+        ? "Midsurface (1. yüzey)"
+        : `Midsurface (2. yüzey, A=#${midsurfaceFirstFaceId})`;
 
   return (
     <main className="page">
@@ -235,11 +400,13 @@ function App() {
           </p>
         )}
 
-        {status === "error" && errorMessage && (
+        {errorMessage && (
           <p className="error-message" role="alert">
             {errorMessage}
           </p>
         )}
+
+        {status === "success" && infoMessage && <p className="info-message">{infoMessage}</p>}
 
         {status === "success" && faceCount !== null && (
           <div className="face-info">
@@ -273,6 +440,42 @@ function App() {
                 >
                   {busyAction === "create-group" ? "Oluşturuluyor…" : "Grup oluştur"}
                 </button>
+              </div>
+            )}
+
+            {showDefeaturePanel && (
+              <div className="group-create-form">
+                <input
+                  type="number"
+                  className="group-name-input"
+                  placeholder="Eşik (örn. 5)"
+                  value={defeatureThreshold}
+                  onChange={(e) => setDefeatureThreshold(e.target.value)}
+                  disabled={busyAction === "defeature"}
+                  min="0"
+                  step="0.1"
+                />
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleFindDefeatureCandidates()}
+                  disabled={busyAction === "defeature"}
+                >
+                  {busyAction === "defeature" ? "Aranıyor…" : "Adayları bul"}
+                </button>
+              </div>
+            )}
+
+            {defeatureCandidates.length > 0 && (
+              <div className="defeature-results">
+                <p className="face-info-total">{defeatureCandidates.length} aday kenar:</p>
+                <ul className="defeature-list">
+                  {defeatureCandidates.map((c) => (
+                    <li key={c.edge_id}>
+                      #{c.edge_id} — çap ≈ {c.approx_diameter.toFixed(2)} (parça {c.part_id})
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -323,6 +526,32 @@ function App() {
                     onClick: () => setShowEdges((prev) => !prev),
                   },
                   { key: "placeholder-2", label: "Yakında", disabled: true },
+                ]}
+              />
+              <ButtonGroup
+                title="Geometri"
+                items={[
+                  {
+                    key: "heal",
+                    label: busyAction === "heal" ? "Düzeltiliyor…" : "Heal",
+                    disabled: busyAction !== null,
+                    onClick: () => void handleHeal(),
+                  },
+                  {
+                    key: "defeature",
+                    label: "Defeature",
+                    active: showDefeaturePanel,
+                    disabled: busyAction !== null,
+                    onClick: () => setShowDefeaturePanel((prev) => !prev),
+                  },
+                  {
+                    key: "midsurface",
+                    label: midsurfaceLabel,
+                    active: midsurfaceFirstFaceId !== null,
+                    disabled: !canUseMidsurface || busyAction !== null,
+                    onClick: () => void handleMidsurfaceClick(),
+                  },
+                  { key: "placeholder-geometry", label: "Yakında", disabled: true },
                 ]}
               />
               <ButtonGroup

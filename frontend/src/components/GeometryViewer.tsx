@@ -16,9 +16,10 @@ interface GeometryViewerProps {
   hiddenParts: Set<number>;
   /** Kenar çizgilerini göster/gizle (İşlemler grubundaki toggle butonu). */
   showEdges: boolean;
-  /** Tıklama dışında (örn. bir Physical Group butonuna basınca) belirli
-   * yüzeyleri vurgulamak için. null verilince vurgu temizlenir. */
-  externalHighlight: { faceIds: number[] } | null;
+  /** Tıklama dışında (örn. Physical Group ya da defeature aday listesi
+   * butonlarına basınca) belirli yüzeyleri/kenarları vurgulamak için. null
+   * verilince vurgu temizlenir. */
+  externalHighlight: { faceIds: number[] } | { edgeIds: number[] } | null;
   onSelectionChange?: (info: SelectionInfo | null) => void;
 }
 
@@ -643,7 +644,9 @@ function GeometryViewer({
     }
   }, [showEdges]);
 
-  // externalHighlight değişimi: Physical Group butonu gibi tıklama-dışı vurgular.
+  // externalHighlight değişimi: Physical Group / defeature adayı gibi
+  // tıklama-dışı vurgular. Ya yüzeyleri (faceIds) ya kenarları (edgeIds)
+  // vurgular.
   useEffect(() => {
     const refs = sceneRefs.current;
 
@@ -660,7 +663,12 @@ function GeometryViewer({
     refs.highlightedPartId = null;
     refs.highlightedFaceId = null;
 
-    if (externalHighlight) {
+    // Önce tüm kenarların rengini de sıfırla.
+    for (const line of refs.edgeLineById.values()) {
+      (line.material as THREE.LineBasicMaterial).color.set("#1b1f1c");
+    }
+
+    if (externalHighlight && "faceIds" in externalHighlight) {
       for (const faceId of externalHighlight.faceIds) {
         const entry = refs.faceIdToPart.get(faceId);
         if (!entry) continue;
@@ -678,6 +686,12 @@ function GeometryViewer({
         entry.colorAttribute.needsUpdate = true;
       }
       refs.externalHighlightedFaceIds = externalHighlight.faceIds;
+    } else if (externalHighlight && "edgeIds" in externalHighlight) {
+      for (const edgeId of externalHighlight.edgeIds) {
+        const line = refs.edgeLineById.get(edgeId);
+        if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
+      }
+      refs.externalHighlightedFaceIds = [];
     } else {
       refs.externalHighlightedFaceIds = [];
     }
