@@ -67,6 +67,34 @@ interface PhysicalGroupsResponse {
   groups: PhysicalGroup[];
 }
 
+export interface HealResponse extends TessellationFields {
+  geometry_id: number;
+  volumes_before: number;
+  surfaces_before: number;
+  volumes_after: number;
+  surfaces_after: number;
+}
+
+export interface DefeatureCandidate {
+  edge_id: number;
+  approx_diameter: number;
+  part_id: number;
+}
+
+export interface MidsurfaceResponse extends TessellationFields {
+  geometry_id: number;
+  face_id_a: number;
+  face_id_b: number;
+  new_face_id: number;
+}
+
+interface DefeatureCandidatesResponse {
+  geometry_id: number;
+  max_diameter: number;
+  candidate_count: number;
+  candidates: DefeatureCandidate[];
+}
+
 export class GeometryUploadError extends Error {}
 
 async function parseErrorDetail(response: Response, fallback: string): Promise<string> {
@@ -176,4 +204,56 @@ export async function fetchPhysicalGroups(geometryId: number): Promise<PhysicalG
   }
   const body = (await response.json()) as PhysicalGroupsResponse;
   return body.groups;
+}
+
+/** Küçük boşluk/tolerans hatalarını düzeltir (`occ.healShapes`). Kalıcıdır.
+ * DİKKAT: yüzey ID'lerini yeniden numaralandırabilir (backend'de doğrulandı).
+ */
+export async function healGeometry(geometryId: number): Promise<HealResponse> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/heal`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Geometry healing başarısız (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as HealResponse;
+}
+
+/** Verilen eşik altındaki dairesel/döngü kenarları tespit eder (sadece
+ * tespit, henüz kaldırma yok). */
+export async function findDefeatureCandidates(
+  geometryId: number,
+  maxDiameter: number,
+): Promise<DefeatureCandidate[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/defeature-candidates?max_diameter=${maxDiameter}`,
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Defeature adayları alınamadı (HTTP ${response.status}).`),
+    );
+  }
+  const body = (await response.json()) as DefeatureCandidatesResponse;
+  return body.candidates;
+}
+
+/** İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar. Kalıcıdır. */
+export async function createMidsurface(
+  geometryId: number,
+  faceIdA: number,
+  faceIdB: number,
+): Promise<MidsurfaceResponse> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/midsurface`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ face_id_a: faceIdA, face_id_b: faceIdB }),
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Midsurface oluşturulamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as MidsurfaceResponse;
 }

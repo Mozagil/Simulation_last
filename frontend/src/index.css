@@ -192,6 +192,35 @@ p {
   color: var(--danger);
 }
 
+.info-message {
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-size: 13px;
+  color: var(--accent);
+  line-height: 1.4;
+}
+
+.defeature-results {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.defeature-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.defeature-list li {
+  margin-bottom: 2px;
+}
+
 .reset-button {
   margin-top: 20px;
   padding: 8px 14px;
