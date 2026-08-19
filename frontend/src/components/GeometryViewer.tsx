@@ -416,11 +416,15 @@ function GeometryViewer({
           // ya da showEdges kapatılınca bu parçanın kendi çizgisi de
           // birlikte güncellenir (önceki global/tek-obje yaklaşımının
           // "hayalet kenar" sorununu önler).
+          // NOT: opacity bilinçli olarak yüksek (0.7) — düşük opaklıkta
+          // (0.35) flat shading'in kendi ışık/gölge kontrastı zaten güçlü
+          // kenarlar oluşturduğu için, toggle'ın açık/kapalı farkı gözle
+          // neredeyse görünmüyordu (gerçek bir kullanıcı testinde fark edildi).
           const edgesGeometry = new THREE.EdgesGeometry(subGeometry, 30);
           const edgesMaterial = new THREE.LineBasicMaterial({
-            color: "#1b1f1c",
+            color: "#0d100e",
             transparent: true,
-            opacity: 0.35,
+            opacity: 0.7,
           });
           const decorativeEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
           decorativeEdges.visible = showEdgesRef.current;
