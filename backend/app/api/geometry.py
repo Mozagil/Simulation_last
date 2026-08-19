@@ -36,7 +36,12 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.mesh.base import TessellationResult
-from app.mesh.gmsh_adapter import GmshImportError, GmshMesherAdapter, SurfaceNotFoundError
+from app.mesh.gmsh_adapter import (
+    GmshImportError,
+    GmshMesherAdapter,
+    MidsurfaceError,
+    SurfaceNotFoundError,
+)
 from app.models.geometry import Geometry, PhysicalGroup
 
 logger = logging.getLogger(__name__)
@@ -353,4 +358,134 @@ def list_physical_groups(geometry_id: int, db: Session = Depends(get_db)) -> dic
             }
             for g in groups
         ],
+    }
+
+
+@router.post("/{geometry_id}/heal")
+def heal_geometry(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Küçük boşluk/tolerans hatalarını düzeltir (`occ.healShapes`).
+
+    Kalıcı: sonuç `current_filename`'e geri yazılır, tessellation tazelenir.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        heal_result = adapter.heal_geometry(geom)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Geometry healing uygulandı: geometry_id=%d, volume_once=%d, volume_sonra=%d, "
+        "yuzey_once=%d, yuzey_sonra=%d",
+        geometry_id,
+        heal_result.volumes_before,
+        heal_result.volumes_after,
+        heal_result.surfaces_before,
+        heal_result.surfaces_after,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "volumes_before": heal_result.volumes_before,
+        "surfaces_before": heal_result.surfaces_before,
+        "volumes_after": heal_result.volumes_after,
+        "surfaces_after": heal_result.surfaces_after,
+        **_tessellation_response_fields(geometry_id, result),
+    }
+
+
+@router.get("/{geometry_id}/defeature-candidates")
+def find_defeature_candidates(
+    geometry_id: int, max_diameter: float, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Verilen eşik altındaki dairesel/döngü kenarları tespit eder.
+
+    Sadece TESPİT — hiçbir şey kaldırılmaz/değiştirilmez (dosyaya geri yazma
+    yok). ROADMAP: "o eşiğin altındaki dairesel yüzeyler işaretlenir (henüz
+    kaldırmadan)".
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+
+    if max_diameter <= 0:
+        raise HTTPException(status_code=400, detail="max_diameter pozitif olmalı.")
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        candidates = adapter.find_defeature_candidates(geom, max_diameter)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+
+    logger.info(
+        "Defeature adayları tespit edildi: geometry_id=%d, esik=%.4f, aday_sayisi=%d",
+        geometry_id,
+        max_diameter,
+        len(candidates),
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "max_diameter": max_diameter,
+        "candidate_count": len(candidates),
+        "candidates": [
+            {"edge_id": c.edge_id, "approx_diameter": c.approx_diameter, "part_id": c.part_id}
+            for c in candidates
+        ],
+    }
+
+
+class CreateMidsurfaceRequest(BaseModel):
+    face_id_a: int
+    face_id_b: int
+
+
+@router.post("/{geometry_id}/midsurface")
+def create_midsurface(
+    geometry_id: int, body: CreateMidsurfaceRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar.
+
+    Kapsam: sadece düzlemsel + paralel yüzey çiftleri (ROADMAP: "sabit
+    kalınlıklı düz plaka"). Kalıcı: sonuç `current_filename`'e geri yazılır.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        new_face_id = adapter.create_midsurface(geom, body.face_id_a, body.face_id_b)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MidsurfaceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Midsurface oluşturuldu: geometry_id=%d, yuzey_a=%d, yuzey_b=%d, yeni_id=%d",
+        geometry_id,
+        body.face_id_a,
+        body.face_id_b,
+        new_face_id,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "face_id_a": body.face_id_a,
+        "face_id_b": body.face_id_b,
+        "new_face_id": new_face_id,
+        **_tessellation_response_fields(geometry_id, result),
     }

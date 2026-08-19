@@ -323,3 +323,128 @@ def test_list_physical_groups_empty_when_none_created():
 def test_list_physical_groups_returns_404_for_unknown_geometry():
     response = client.get("/geometry/999999/physical-groups")
     assert response.status_code == 404
+
+
+@requires_db
+def test_heal_geometry_after_upload():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(f"/geometry/{geometry_id}/heal")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["volumes_before"] == body["volumes_after"] == 1
+    assert body["surfaces_before"] == body["surfaces_after"] == 6
+    # Tessellation da tazelenmiş olmalı.
+    assert body["face_count"] == 6
+
+
+@requires_db
+def test_heal_geometry_returns_404_for_unknown_geometry():
+    response = client.post("/geometry/999999/heal")
+    assert response.status_code == 404
+
+
+@requires_db
+def test_defeature_candidates_narrow_threshold_empty():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.get(
+        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 2.0}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["candidate_count"] == 0
+    assert body["candidates"] == []
+
+
+@requires_db
+def test_defeature_candidates_wide_threshold_finds_all_edges():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.get(
+        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 100.0}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["candidate_count"] == 12
+
+
+@requires_db
+def test_defeature_candidates_rejects_non_positive_threshold():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.get(
+        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 0}
+    )
+    assert response.status_code == 400
+
+
+@requires_db
+def test_defeature_candidates_returns_404_for_unknown_geometry():
+    response = client.get(
+        "/geometry/999999/defeature-candidates", params={"max_diameter": 5.0}
+    )
+    assert response.status_code == 404
+
+
+@requires_db
+def test_create_midsurface_after_upload():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/midsurface",
+        json={"face_id_a": 1, "face_id_b": 2},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["new_face_id"] not in {1, 2, 3, 4, 5, 6}
+    assert body["face_count"] == 7
+
+
+@requires_db
+def test_create_midsurface_persists_across_separate_requests():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    create_response = client.post(
+        f"/geometry/{geometry_id}/midsurface",
+        json={"face_id_a": 1, "face_id_b": 2},
+    )
+    new_face_id = create_response.json()["new_face_id"]
+
+    surfaces_response = client.get(f"/geometry/{geometry_id}/surfaces")
+    surfaces_body = surfaces_response.json()
+
+    assert surfaces_body["surface_count"] == 7
+    surface_ids = {s["id"] for s in surfaces_body["surfaces"]}
+    assert new_face_id in surface_ids
+
+
+@requires_db
+def test_create_midsurface_rejects_non_parallel_faces():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/midsurface",
+        json={"face_id_a": 1, "face_id_b": 3},
+    )
+    assert response.status_code == 422
+
+
+@requires_db
+def test_create_midsurface_returns_404_for_unknown_geometry():
+    response = client.post(
+        "/geometry/999999/midsurface",
+        json={"face_id_a": 1, "face_id_b": 2},
+    )
+    assert response.status_code == 404
