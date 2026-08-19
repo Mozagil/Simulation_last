@@ -20,8 +20,10 @@ from typing import Any
 import gmsh
 
 from app.mesh.base import (
+    DefeatureCandidate,
     EdgeInfo,
     GeometryHandle,
+    HealResult,
     MesherAdapter,
     PointInfo,
     SurfaceInfo,
@@ -55,6 +57,12 @@ class GmshImportError(RuntimeError):
 
 class SurfaceNotFoundError(RuntimeError):
     """İstenen yüzey (face) modelde bulunamadığında fırlatılır."""
+
+
+class MidsurfaceError(RuntimeError):
+    """Verilen iki yüzey midsurface için uygun değilse (paralel/düzlemsel
+    değilse) fırlatılır.
+    """
 
 
 def _face_normal(
@@ -159,6 +167,22 @@ def _compute_point_to_part(edge_to_part: dict[int, int]) -> dict[int, int]:
         else:
             point_to_part[point_tag] = 0
     return point_to_part
+
+
+def _get_face_normal(face_tag: int) -> tuple[float, float, float]:
+    """Bir yüzeyin parametrik alanının orta noktasındaki normalini döner."""
+    (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(2, face_tag)
+    umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+    normal_raw = gmsh.model.getNormal(face_tag, [umid, vmid])
+    return (float(normal_raw[0]), float(normal_raw[1]), float(normal_raw[2]))
+
+
+def _get_face_point(face_tag: int) -> tuple[float, float, float]:
+    """Bir yüzeyin parametrik alanının orta noktasındaki 3B koordinatı döner."""
+    (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(2, face_tag)
+    umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+    point_raw = gmsh.model.getValue(2, face_tag, [umid, vmid])
+    return (float(point_raw[0]), float(point_raw[1]), float(point_raw[2]))
 
 
 class GmshMesherAdapter(MesherAdapter):
@@ -433,6 +457,149 @@ class GmshMesherAdapter(MesherAdapter):
             _gmsh_lock.release()
 
         return group_tag
+
+    def heal_geometry(self, geom: GeometryHandle) -> HealResult:
+        """`occ.healShapes` ile küçük boşluk/tolerans hatalarını düzeltir.
+
+        Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            volumes_before = len(gmsh.model.getEntities(dim=3))
+            surfaces_before = len(gmsh.model.getEntities(dim=2))
+
+            gmsh.model.occ.healShapes()
+            gmsh.model.occ.synchronize()
+
+            volumes_after = len(gmsh.model.getEntities(dim=3))
+            surfaces_after = len(gmsh.model.getEntities(dim=2))
+
+            gmsh.write(str(geom.source_file))
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return HealResult(
+            volumes_before=volumes_before,
+            surfaces_before=surfaces_before,
+            volumes_after=volumes_after,
+            surfaces_after=surfaces_after,
+        )
+
+    def find_defeature_candidates(
+        self, geom: GeometryHandle, max_diameter: float
+    ) -> list[DefeatureCandidate]:
+        """Verilen eşik altındaki dairesel/döngü kenarları tespit eder.
+
+        "Boyut", kenarın bounding-box çapı (en uzun köşegen) ile ölçülür —
+        hem tam dairesel kenarlar hem küçük döngüler için basit, sağlam bir
+        temsili boyut. Sadece TESPİT — henüz hiçbir şey kaldırılmıyor/
+        değiştirilmiyor (dosyaya geri yazma yok).
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            face_to_part, _part_count = _compute_face_to_part()
+            edge_to_part = _compute_edge_to_part(face_to_part)
+
+            candidates: list[DefeatureCandidate] = []
+            for _dim, edge_tag in gmsh.model.getEntities(dim=1):
+                bbox = gmsh.model.getBoundingBox(1, edge_tag)
+                xmin, ymin, zmin, xmax, ymax, zmax = bbox
+                diameter = math.sqrt(
+                    (xmax - xmin) ** 2 + (ymax - ymin) ** 2 + (zmax - zmin) ** 2
+                )
+                if diameter <= max_diameter:
+                    candidates.append(
+                        DefeatureCandidate(
+                            edge_id=edge_tag,
+                            approx_diameter=diameter,
+                            part_id=edge_to_part.get(edge_tag, 0),
+                        )
+                    )
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return candidates
+
+    def create_midsurface(
+        self, geom: GeometryHandle, face_id_a: int, face_id_b: int
+    ) -> int:
+        """İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar.
+
+        Yöntem: yüzey A'yı `occ.copy` ile çoğalt, iki yüzey arasındaki
+        mesafenin yarısı kadar B yönüne `occ.translate` ile kaydır. Bu, A'nın
+        gerçek sınır şeklini (dikdörtgen, çokgen, vb.) birebir koruyarak genel
+        bir midsurface üretir — sadece iki yüzeyin PARALEL ve DÜZLEMSEL
+        olduğu (ROADMAP: "sabit kalınlıklı düz plaka") basit durumda geçerli;
+        genel eğri yüzeyler arası midsurface (B-spline interpolasyonu) kapsam
+        dışı.
+
+        Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            existing_faces = {tag for _dim, tag in gmsh.model.getEntities(dim=2)}
+            for fid in (face_id_a, face_id_b):
+                if fid not in existing_faces:
+                    raise SurfaceNotFoundError(
+                        f"Yüzey bulunamadı: id={fid}. Mevcut yüzeyler: {sorted(existing_faces)}"
+                    )
+
+            type_a = gmsh.model.getType(2, face_id_a)
+            type_b = gmsh.model.getType(2, face_id_b)
+            if type_a != "Plane" or type_b != "Plane":
+                raise MidsurfaceError(
+                    f"Midsurface sadece düzlemsel (Plane) yüzeyler için destekleniyor. "
+                    f"Yüzey {face_id_a}: {type_a}, Yüzey {face_id_b}: {type_b}."
+                )
+
+            normal_a = _get_face_normal(face_id_a)
+            normal_b = _get_face_normal(face_id_b)
+            dot = sum(a * b for a, b in zip(normal_a, normal_b))
+            # Paralel (dot ~ +1) ya da anti-paralel (dot ~ -1) kabul edilir —
+            # bir plakanın iki yüzü genelde anti-paraleldir (dışa bakarlar).
+            if abs(abs(dot) - 1.0) > 1e-3:
+                raise MidsurfaceError(
+                    f"Yüzeyler paralel değil (normal dot product={dot:.4f}, "
+                    f"beklenen ±1.0'a yakın)."
+                )
+
+            point_a = _get_face_point(face_id_a)
+            point_b = _get_face_point(face_id_b)
+            # A'dan B'ye olan vektörün normal_a yönündeki izdüşümü = kalınlık.
+            delta = tuple(point_b[i] - point_a[i] for i in range(3))
+            thickness = sum(delta[i] * normal_a[i] for i in range(3))
+            if abs(thickness) < 1e-9:
+                raise MidsurfaceError(
+                    "Yüzeyler arasında ölçülebilir bir mesafe yok (aynı düzlemde olabilirler)."
+                )
+
+            offset = tuple(normal_a[i] * (thickness / 2) for i in range(3))
+
+            copied = gmsh.model.occ.copy([(2, face_id_a)])
+            gmsh.model.occ.synchronize()
+            if not copied or copied[0][0] != 2:
+                raise MidsurfaceError(
+                    f"Midsurface için ara kopya oluşturulamadı (beklenmeyen Gmsh yanıtı: {copied})"
+                )
+            new_face_id = copied[0][1]
+
+            gmsh.model.occ.translate([(2, new_face_id)], *offset)
+            gmsh.model.occ.synchronize()
+
+            gmsh.write(str(geom.source_file))
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return new_face_id
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(

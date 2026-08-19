@@ -84,6 +84,35 @@ class PointInfo:
     part_id: int
 
 
+@dataclass
+class HealResult:
+    """Geometry healing öncesi/sonrası özet — ROADMAP kabul kriteri: "önce/sonra
+    yüzey-katı sayısı loglanıp karşılaştırılır".
+    """
+
+    volumes_before: int
+    surfaces_before: int
+    volumes_after: int
+    surfaces_after: int
+
+
+@dataclass
+class DefeatureCandidate:
+    """Küçük delik/fillet bastırma için aday bir kenar (dairesel/döngü).
+
+    Bu adımın kapsamı sadece TESPİT — ROADMAP: "o eşiğin altındaki dairesel
+    yüzeyler işaretlenir (henüz kaldırmadan)". Gerçek kaldırma (boolean
+    operasyon) Gmsh'in düz Python API'sinde yok (OCC'nin BRepAlgoAPI_Defeaturing
+    sınıfı gerekir, bu da pythonocc-core bağımlılığı ister — ayrı bir mimari
+    karar, ROADMAP/ARCHITECTURE'da zaten "Gmsh'in yetersiz kaldığı yerlerde"
+    pythonocc-core kullanılacağı belirtilmiş).
+    """
+
+    edge_id: int
+    approx_diameter: float
+    part_id: int
+
+
 class MesherAdapter(ABC):
     @abstractmethod
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
@@ -129,6 +158,38 @@ class MesherAdapter(ABC):
         burada dosyaya geri yazma YOK. Kalıcılık tamamen veritabanı katmanında
         (bkz. `app.models.geometry.PhysicalGroup`) sağlanıyor; bu metod sadece
         Gmsh'in kendi doğrulama/API'siyle atamanın geçerli olduğunu kanıtlıyor.
+        """
+
+    @abstractmethod
+    def heal_geometry(self, geom: GeometryHandle) -> HealResult:
+        """Küçük boşluk/tolerans hatalarını düzeltir (`occ.healShapes`).
+
+        Kalıcılık: `copy_surface` ile aynı desen — sonuç `geom.source_file`'a
+        geri yazılır.
+        """
+
+    @abstractmethod
+    def find_defeature_candidates(
+        self, geom: GeometryHandle, max_diameter: float
+    ) -> list[DefeatureCandidate]:
+        """Verilen eşik altındaki dairesel/döngü kenarları tespit eder (henüz
+        kaldırmaz — sadece işaretleme adımı).
+        """
+
+    @abstractmethod
+    def create_midsurface(
+        self, geom: GeometryHandle, face_id_a: int, face_id_b: int
+    ) -> int:
+        """İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar, yeni
+        yüzeyin tag'ini döner.
+
+        Kapsam (ROADMAP: "test parçası: sabit kalınlıklı düz plaka"): sadece
+        DÜZLEMSEL ve PARALEL yüzey çiftleri desteklenir — genel eğri yüzeyler
+        arası midsurface (B-spline interpolasyonu) kapsam dışı. Yüzeyler bu
+        koşulu sağlamıyorsa `MidsurfaceError` fırlatılır.
+
+        Kalıcılık: `copy_surface` ile aynı desen — sonuç `geom.source_file`'a
+        geri yazılır.
         """
 
     @abstractmethod

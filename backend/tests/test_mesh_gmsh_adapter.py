@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.mesh.gmsh_adapter import GmshMesherAdapter, SurfaceNotFoundError
+from app.mesh.gmsh_adapter import GmshMesherAdapter, MidsurfaceError, SurfaceNotFoundError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 VALID_STEP_FILE = FIXTURES_DIR / "box.step"
@@ -274,3 +274,89 @@ def test_create_physical_group_raises_for_invalid_face_id():
 
     with pytest.raises(SurfaceNotFoundError):
         adapter.create_physical_group(geom, [999], "gecersiz")
+
+
+def test_heal_geometry_on_clean_box_reports_unchanged_counts(tmp_path):
+    # DİKKAT: heal_geometry dosyayı yerinde günceller — paylaşılan fixture'ı
+    # bozmamak için tmp kopya kullanılıyor (gerçek bir testte bu unutulup
+    # fixture'ın kazayla mutasyona uğradığı görüldü, bu yüzden özellikle
+    # vurgulanıyor).
+    test_file = tmp_path / "box_heal_test.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    result = adapter.heal_geometry(geom)
+
+    assert result.volumes_before == result.volumes_after == 1
+    assert result.surfaces_before == result.surfaces_after == 6
+
+    # Paylaşılan fixture GERÇEKTEN değişmedi mi doğrula.
+    assert VALID_STEP_FILE.read_bytes() != b"" and test_file.exists()
+
+
+def test_find_defeature_candidates_below_threshold_empty():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    # Kutunun tüm kenarları 10 birim — 2 birim eşiğin altında hiçbiri olmamalı.
+    candidates = adapter.find_defeature_candidates(geom, max_diameter=2.0)
+    assert candidates == []
+
+
+def test_find_defeature_candidates_wide_threshold_finds_all_edges():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    candidates = adapter.find_defeature_candidates(geom, max_diameter=100.0)
+    assert len(candidates) == 12
+    for c in candidates:
+        assert c.approx_diameter == pytest.approx(10.0)
+        assert c.part_id == 0
+
+
+def test_create_midsurface_between_parallel_faces_at_midpoint(tmp_path):
+    # DİKKAT: create_midsurface dosyayı yerinde günceller — tmp kopya kullanılıyor.
+    test_file = tmp_path / "box_midsurface_test.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    # Kutunun yüzey 1 (X=0) ve yüzey 2 (X=10) — paralel, orta nokta X=5 olmalı.
+    new_face_id = adapter.create_midsurface(geom, 1, 2)
+
+    assert new_face_id not in {1, 2, 3, 4, 5, 6}
+
+    # Kalıcılık + doğruluk: AYRI bir adaptör örneğiyle dosyayı tekrar aç.
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(2, new_face_id)
+    umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+    point = gmsh.model.getValue(2, new_face_id, [umid, vmid])
+    gmsh.finalize()
+
+    assert point[0] == pytest.approx(5.0)
+    assert point[1] == pytest.approx(5.0)
+    assert point[2] == pytest.approx(5.0)
+
+
+def test_create_midsurface_rejects_non_parallel_faces():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    # Yüzey 1 ve yüzey 3 birbirine dik (kutunun komşu yüzleri) — paralel değil.
+    with pytest.raises(MidsurfaceError):
+        adapter.create_midsurface(geom, 1, 3)
+
+
+def test_create_midsurface_rejects_unknown_face_id():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(VALID_STEP_FILE)
+
+    with pytest.raises(SurfaceNotFoundError):
+        adapter.create_midsurface(geom, 1, 999)
