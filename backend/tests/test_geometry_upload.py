@@ -22,6 +22,7 @@ client = TestClient(app)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 VALID_STEP_FILE = FIXTURES_DIR / "box.step"
+THIN_PLATE_STEP_FILE = FIXTURES_DIR / "thin_plate.step"
 
 
 def _db_available() -> bool:
@@ -447,4 +448,38 @@ def test_create_midsurface_returns_404_for_unknown_geometry():
         "/geometry/999999/midsurface",
         json={"face_id_a": 1, "face_id_b": 2},
     )
+    assert response.status_code == 404
+
+
+@requires_db
+def test_create_midsurface_for_part_after_upload():
+    content = THIN_PLATE_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("thin_plate.step", content, "application/octet-stream")},
+    )
+    geometry_id = upload_response.json()["geometry_id"]
+
+    response = client.post(f"/geometry/{geometry_id}/parts/0/midsurface")
+
+    assert response.status_code == 200
+    body = response.json()
+    # Ana yüzeyler (alan=5000) otomatik seçilmeli, kenar yüzeyleri değil.
+    assert {body["chosen_face_id_a"], body["chosen_face_id_b"]} == {5, 6}
+    assert body["new_face_id"] not in {1, 2, 3, 4, 5, 6}
+    assert body["face_count"] == 7
+
+
+@requires_db
+def test_create_midsurface_for_part_returns_404_for_unknown_geometry():
+    response = client.post("/geometry/999999/parts/0/midsurface")
+    assert response.status_code == 404
+
+
+@requires_db
+def test_create_midsurface_for_part_returns_404_for_unknown_part():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(f"/geometry/{geometry_id}/parts/999/midsurface")
     assert response.status_code == 404
