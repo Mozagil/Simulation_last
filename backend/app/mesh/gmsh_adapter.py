@@ -185,6 +185,61 @@ def _get_face_point(face_tag: int) -> tuple[float, float, float]:
     return (float(point_raw[0]), float(point_raw[1]), float(point_raw[2]))
 
 
+def _validate_planar_parallel_pair(face_id_a: int, face_id_b: int) -> None:
+    """İki yüzeyin midsurface için uygun olduğunu (düzlemsel + paralel)
+    doğrular, uygun değilse MidsurfaceError fırlatır.
+    """
+    type_a = gmsh.model.getType(2, face_id_a)
+    type_b = gmsh.model.getType(2, face_id_b)
+    if type_a != "Plane" or type_b != "Plane":
+        raise MidsurfaceError(
+            f"Midsurface sadece düzlemsel (Plane) yüzeyler için destekleniyor. "
+            f"Yüzey {face_id_a}: {type_a}, Yüzey {face_id_b}: {type_b}."
+        )
+
+    normal_a = _get_face_normal(face_id_a)
+    normal_b = _get_face_normal(face_id_b)
+    dot = sum(a * b for a, b in zip(normal_a, normal_b))
+    # Paralel (dot ~ +1) ya da anti-paralel (dot ~ -1) kabul edilir — bir
+    # plakanın iki yüzü genelde anti-paraleldir (dışa bakarlar).
+    if abs(abs(dot) - 1.0) > 1e-3:
+        raise MidsurfaceError(
+            f"Yüzeyler paralel değil (normal dot product={dot:.4f}, beklenen ±1.0'a yakın)."
+        )
+
+
+def _construct_midsurface(face_id_a: int, face_id_b: int) -> int:
+    """A'yı kopyalayıp B yönünde yarı mesafe kadar kaydırarak midsurface
+    üretir. Çağrıdan önce `_validate_planar_parallel_pair` ile doğrulama
+    yapılmış olmalı — bu fonksiyon kendi başına doğrulama yapmaz.
+    """
+    normal_a = _get_face_normal(face_id_a)
+    point_a = _get_face_point(face_id_a)
+    point_b = _get_face_point(face_id_b)
+
+    delta = tuple(point_b[i] - point_a[i] for i in range(3))
+    thickness = sum(delta[i] * normal_a[i] for i in range(3))
+    if abs(thickness) < 1e-9:
+        raise MidsurfaceError(
+            "Yüzeyler arasında ölçülebilir bir mesafe yok (aynı düzlemde olabilirler)."
+        )
+
+    offset = tuple(normal_a[i] * (thickness / 2) for i in range(3))
+
+    copied = gmsh.model.occ.copy([(2, face_id_a)])
+    gmsh.model.occ.synchronize()
+    if not copied or copied[0][0] != 2:
+        raise MidsurfaceError(
+            f"Midsurface için ara kopya oluşturulamadı (beklenmeyen Gmsh yanıtı: {copied})"
+        )
+    new_face_id = copied[0][1]
+
+    gmsh.model.occ.translate([(2, new_face_id)], *offset)
+    gmsh.model.occ.synchronize()
+
+    return new_face_id
+
+
 class GmshMesherAdapter(MesherAdapter):
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
         model_name = cad_file.stem
@@ -552,54 +607,76 @@ class GmshMesherAdapter(MesherAdapter):
                         f"Yüzey bulunamadı: id={fid}. Mevcut yüzeyler: {sorted(existing_faces)}"
                     )
 
-            type_a = gmsh.model.getType(2, face_id_a)
-            type_b = gmsh.model.getType(2, face_id_b)
-            if type_a != "Plane" or type_b != "Plane":
-                raise MidsurfaceError(
-                    f"Midsurface sadece düzlemsel (Plane) yüzeyler için destekleniyor. "
-                    f"Yüzey {face_id_a}: {type_a}, Yüzey {face_id_b}: {type_b}."
-                )
-
-            normal_a = _get_face_normal(face_id_a)
-            normal_b = _get_face_normal(face_id_b)
-            dot = sum(a * b for a, b in zip(normal_a, normal_b))
-            # Paralel (dot ~ +1) ya da anti-paralel (dot ~ -1) kabul edilir —
-            # bir plakanın iki yüzü genelde anti-paraleldir (dışa bakarlar).
-            if abs(abs(dot) - 1.0) > 1e-3:
-                raise MidsurfaceError(
-                    f"Yüzeyler paralel değil (normal dot product={dot:.4f}, "
-                    f"beklenen ±1.0'a yakın)."
-                )
-
-            point_a = _get_face_point(face_id_a)
-            point_b = _get_face_point(face_id_b)
-            # A'dan B'ye olan vektörün normal_a yönündeki izdüşümü = kalınlık.
-            delta = tuple(point_b[i] - point_a[i] for i in range(3))
-            thickness = sum(delta[i] * normal_a[i] for i in range(3))
-            if abs(thickness) < 1e-9:
-                raise MidsurfaceError(
-                    "Yüzeyler arasında ölçülebilir bir mesafe yok (aynı düzlemde olabilirler)."
-                )
-
-            offset = tuple(normal_a[i] * (thickness / 2) for i in range(3))
-
-            copied = gmsh.model.occ.copy([(2, face_id_a)])
-            gmsh.model.occ.synchronize()
-            if not copied or copied[0][0] != 2:
-                raise MidsurfaceError(
-                    f"Midsurface için ara kopya oluşturulamadı (beklenmeyen Gmsh yanıtı: {copied})"
-                )
-            new_face_id = copied[0][1]
-
-            gmsh.model.occ.translate([(2, new_face_id)], *offset)
-            gmsh.model.occ.synchronize()
-
+            _validate_planar_parallel_pair(face_id_a, face_id_b)
+            new_face_id = _construct_midsurface(face_id_a, face_id_b)
             gmsh.write(str(geom.source_file))
         finally:
             gmsh.finalize()
             _gmsh_lock.release()
 
         return new_face_id
+
+    def create_midsurface_for_part(self, geom: GeometryHandle, part_id: int) -> tuple[int, int, int]:
+        """Verilen parçanın (part) en uygun paralel/düzlemsel yüzey çiftini
+        OTOMATİK tespit edip aralarında midsurface hesaplar.
+
+        Tespit: parçaya ait düzlemsel yüzeyler arasında, birbirine paralel
+        olan tüm çiftler taranır; alanları toplamı en büyük olan çift seçilir
+        (tipik bir plaka/sac parçada bu, "ana" geniş yüzeyler olur — ince
+        kenar yüzeyleri çok daha küçük alanlıdır, gerçek bir test plakasında
+        doğrulandı: 100x50 ana yüzeyler=5000, kenar yüzeyleri=250-500).
+
+        Döndürür: (yeni_yüzey_id, seçilen_yüzey_a_id, seçilen_yüzey_b_id) —
+        şeffaflık için hangi çiftin otomatik seçildiği de bildirilir.
+
+        Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır.
+
+        `import_geometry` çağrısından hemen sonra, aynı Gmsh oturumu içinde
+        çağrılmalı.
+        """
+        try:
+            face_to_part, _part_count = _compute_face_to_part()
+            part_faces = [f for f, p in face_to_part.items() if p == part_id]
+            if not part_faces:
+                raise SurfaceNotFoundError(f"Parça bulunamadı: part_id={part_id}")
+
+            planar_faces = [f for f in part_faces if gmsh.model.getType(2, f) == "Plane"]
+            if len(planar_faces) < 2:
+                raise MidsurfaceError(
+                    f"Parça {part_id} için en az 2 düzlemsel yüzey gerekli, "
+                    f"{len(planar_faces)} bulundu."
+                )
+
+            best_pair: tuple[int, int] | None = None
+            best_score = -1.0
+            for i in range(len(planar_faces)):
+                for j in range(i + 1, len(planar_faces)):
+                    fa, fb = planar_faces[i], planar_faces[j]
+                    normal_a = _get_face_normal(fa)
+                    normal_b = _get_face_normal(fb)
+                    dot = sum(a * b for a, b in zip(normal_a, normal_b))
+                    if abs(abs(dot) - 1.0) > 1e-3:
+                        continue
+                    area_a = gmsh.model.occ.getMass(2, fa)
+                    area_b = gmsh.model.occ.getMass(2, fb)
+                    score = area_a + area_b
+                    if score > best_score:
+                        best_score = score
+                        best_pair = (fa, fb)
+
+            if best_pair is None:
+                raise MidsurfaceError(
+                    f"Parça {part_id} için paralel düzlemsel yüzey çifti bulunamadı."
+                )
+
+            face_id_a, face_id_b = best_pair
+            new_face_id = _construct_midsurface(face_id_a, face_id_b)
+            gmsh.write(str(geom.source_file))
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return new_face_id, face_id_a, face_id_b
 
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         raise NotImplementedError(

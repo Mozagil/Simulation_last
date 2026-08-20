@@ -193,5 +193,18 @@ class MesherAdapter(ABC):
         """
 
     @abstractmethod
+    def create_midsurface_for_part(
+        self, geom: GeometryHandle, part_id: int
+    ) -> tuple[int, int, int]:
+        """Verilen parçanın en uygun paralel/düzlemsel yüzey çiftini OTOMATİK
+        tespit edip midsurface hesaplar. Döndürür: (yeni_yüzey_id,
+        seçilen_yüzey_a_id, seçilen_yüzey_b_id).
+
+        Tespit: alan toplamı en büyük paralel düzlemsel çift seçilir (tipik
+        bir plakanın ana yüzeyleri, kenar yüzeylerinden çok daha büyük
+        alanlıdır).
+        """
+
+    @abstractmethod
     def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
         """Gerçek FEA mesh'i üretir (tet/tri, shell/solid). Henüz implemente edilmedi."""

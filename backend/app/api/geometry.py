@@ -489,3 +489,53 @@ def create_midsurface(
         "new_face_id": new_face_id,
         **_tessellation_response_fields(geometry_id, result),
     }
+
+
+@router.post("/{geometry_id}/parts/{part_id}/midsurface")
+def create_midsurface_for_part(
+    geometry_id: int, part_id: int, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Verilen parçanın en uygun paralel/düzlemsel yüzey çiftini OTOMATİK
+    tespit edip midsurface hesaplar — kullanıcının manuel olarak iki yüzey
+    seçmesi gerekmez, sadece parçayı seçmesi yeterli.
+
+    Kalıcı: sonuç `current_filename`'e geri yazılır.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        new_face_id, chosen_face_a, chosen_face_b = adapter.create_midsurface_for_part(
+            geom, part_id
+        )
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MidsurfaceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Midsurface (otomatik) oluşturuldu: geometry_id=%d, part_id=%d, "
+        "secilen_a=%d, secilen_b=%d, yeni_id=%d",
+        geometry_id,
+        part_id,
+        chosen_face_a,
+        chosen_face_b,
+        new_face_id,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "part_id": part_id,
+        "chosen_face_id_a": chosen_face_a,
+        "chosen_face_id_b": chosen_face_b,
+        "new_face_id": new_face_id,
+        **_tessellation_response_fields(geometry_id, result),
+    }

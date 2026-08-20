@@ -7,6 +7,7 @@ from app.mesh.gmsh_adapter import GmshMesherAdapter, MidsurfaceError, SurfaceNot
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 VALID_STEP_FILE = FIXTURES_DIR / "box.step"
 ASSEMBLY_STEP_FILE = FIXTURES_DIR / "assembly_two_boxes.step"
+THIN_PLATE_STEP_FILE = FIXTURES_DIR / "thin_plate.step"
 
 
 def test_preview_tessellation_maps_each_triangle_to_a_face(tmp_path):
@@ -360,3 +361,41 @@ def test_create_midsurface_rejects_unknown_face_id():
 
     with pytest.raises(SurfaceNotFoundError):
         adapter.create_midsurface(geom, 1, 999)
+
+
+def test_create_midsurface_for_part_auto_detects_largest_parallel_pair(tmp_path):
+    # DİKKAT: dosyayı yerinde günceller — tmp kopya kullanılıyor.
+    test_file = tmp_path / "thin_plate_test.step"
+    test_file.write_bytes(THIN_PLATE_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    new_face_id, chosen_a, chosen_b = adapter.create_midsurface_for_part(geom, 0)
+
+    # Plaka 100x50x5: ana yüzeyler (alan=5000) yüzey 5 ve 6 olmalı, ince
+    # kenar yüzeyleri (alan=250/500) DEĞİL.
+    assert {chosen_a, chosen_b} == {5, 6}
+    assert new_face_id not in {1, 2, 3, 4, 5, 6}
+
+    # Kalıcılık + doğruluk: orta nokta Z=2.5 olmalı (kalınlık 5'in yarısı).
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(2, new_face_id)
+    umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+    point = gmsh.model.getValue(2, new_face_id, [umid, vmid])
+    gmsh.finalize()
+
+    assert point[2] == pytest.approx(2.5)
+
+
+def test_create_midsurface_for_part_rejects_unknown_part():
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(THIN_PLATE_STEP_FILE)
+
+    with pytest.raises(SurfaceNotFoundError):
+        adapter.create_midsurface_for_part(geom, 999)
