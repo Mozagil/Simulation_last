@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { EdgeInfo, PointInfo } from "../api/geometry";
-import type { SelectionInfo, SelectionMode } from "../types";
+import type { MultiSelectionInfo, SelectionMode } from "../types";
 
 interface GeometryViewerProps {
   stlUrl: string;
@@ -20,12 +20,15 @@ interface GeometryViewerProps {
    * butonlarına basınca) belirli yüzeyleri/kenarları vurgulamak için. null
    * verilince vurgu temizlenir. */
   externalHighlight: { faceIds: number[] } | { edgeIds: number[] } | null;
-  onSelectionChange?: (info: SelectionInfo | null) => void;
+  /** Aktif moddaki seçili öğe(ler) değiştiğinde çağrılır. Düz tıklama tek
+   * öğeye indirger; Ctrl(/Cmd)+tık mevcut seçime ekler/çıkarır. */
+  onSelectionChange?: (info: MultiSelectionInfo) => void;
 }
 
 const BASE_COLOR = new THREE.Color("#5a8f73");
 const HIGHLIGHT_COLOR = new THREE.Color("#d97757");
 const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
+const EDGE_BASE_COLOR = "#1b1f1c";
 const CLICK_DRAG_THRESHOLD_PX = 6;
 
 /** Bir üçgen grup dizisinden (triangle_to_face / triangle_to_part) id -> üçgen
@@ -38,6 +41,23 @@ function buildGroupIndex(triangleToGroup: number[]): Map<number, number[]> {
     else map.set(groupId, [triIndex]);
   });
   return map;
+}
+
+/** Ctrl+tık ile ekle/çıkar, düz tık ile tekile indirge (aynı tek öğeye
+ * tekrar düz tıklanırsa seçim temizlenir) — hem tek hem çoklu seçim için
+ * ortak, mod-bağımsız mantık.
+ */
+function toggleSelection(current: Set<number>, id: number, ctrlPressed: boolean): Set<number> {
+  if (ctrlPressed) {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }
+  if (current.size === 1 && current.has(id)) {
+    return new Set();
+  }
+  return new Set([id]);
 }
 
 interface PartMeshEntry {
@@ -57,12 +77,12 @@ interface PartMeshEntry {
 /**
  * STL'i yükleyip parça bazlı AYRI mesh'ler olarak render eder (tek bir
  * birleşik mesh değil) — böylece "Solid göster/gizle" her parçayı bağımsız
- * gizleyebilir/gösterebilir (three.js'te tek bir mesh'in bir kısmını
- * gizlemek mümkün değil, bu yüzden bu bölünme gerekli).
+ * gizleyebilir/gösterebilir.
  *
  * `mode` prop'una göre (Part/Surface/Edge/Point) tıklama farklı seviyede
- * seçim yapar. `externalHighlight`, tıklama dışında (Physical Group butonu
- * gibi) programatik vurgulama için.
+ * seçim yapar. Düz tıklama seçimi TEK öğeye indirger; Ctrl(/Cmd)+tık mevcut
+ * seçime ekler/çıkarır (çoklu seçim). `externalHighlight`, tıklama dışında
+ * (Physical Group butonu gibi) programatik vurgulama için.
  *
  * Performans notu: sahne sadece geometri (stlUrl/edges/points/triangle
  * eşlemeleri) değiştiğinde yeniden kurulur; `mode`/`hiddenParts`/
@@ -92,11 +112,10 @@ function GeometryViewer({
     pointsGroup: THREE.Group | null;
     edgeLineById: Map<number, THREE.Line>;
     pointMeshById: Map<number, THREE.Mesh>;
-    highlightedPartId: number | null;
-    highlightedFaceId: number | null;
-    highlightedEdgeId: number | null;
-    highlightedPointId: number | null;
-    externalHighlightedFaceIds: number[];
+    selectedPartIds: Set<number>;
+    selectedFaceIds: Set<number>;
+    selectedEdgeIds: Set<number>;
+    selectedPointIds: Set<number>;
     maxDim: number;
   }>({
     partMeshes: [],
@@ -106,11 +125,10 @@ function GeometryViewer({
     pointsGroup: null,
     edgeLineById: new Map(),
     pointMeshById: new Map(),
-    highlightedPartId: null,
-    highlightedFaceId: null,
-    highlightedEdgeId: null,
-    highlightedPointId: null,
-    externalHighlightedFaceIds: [],
+    selectedPartIds: new Set(),
+    selectedFaceIds: new Set(),
+    selectedEdgeIds: new Set(),
+    selectedPointIds: new Set(),
     maxDim: 1,
   });
 
@@ -184,47 +202,53 @@ function GeometryViewer({
       entry.colorAttribute.needsUpdate = true;
     }
 
-    function resetAllHighlights() {
+    function repaintFaceSelection(selectedIds: Set<number>) {
       const refs = sceneRefs.current;
       for (const entry of refs.partMeshes) resetPartColor(entry);
-      refs.highlightedPartId = null;
-      refs.highlightedFaceId = null;
-      refs.externalHighlightedFaceIds = [];
-
-      if (refs.highlightedEdgeId !== null) {
-        const line = refs.edgeLineById.get(refs.highlightedEdgeId);
-        if (line) (line.material as THREE.LineBasicMaterial).color.set("#1b1f1c");
+      for (const faceId of selectedIds) {
+        const entry = refs.faceIdToPart.get(faceId);
+        if (!entry) continue;
+        const localIndices = entry.faceToLocalIndices.get(faceId) ?? [];
+        paintLocalIndices(entry, localIndices, HIGHLIGHT_COLOR);
       }
-      refs.highlightedEdgeId = null;
-
-      if (refs.highlightedPointId !== null) {
-        const pm = refs.pointMeshById.get(refs.highlightedPointId);
-        if (pm) (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
-      }
-      refs.highlightedPointId = null;
     }
 
-    function highlightPart(partId: number) {
+    function repaintPartSelection(selectedIds: Set<number>) {
       const refs = sceneRefs.current;
-      const entry = refs.partMeshByPartId.get(partId);
-      if (!entry) return;
-      const colors = entry.colorAttribute.array as Float32Array;
-      for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = HIGHLIGHT_COLOR.r;
-        colors[i + 1] = HIGHLIGHT_COLOR.g;
-        colors[i + 2] = HIGHLIGHT_COLOR.b;
+      for (const entry of refs.partMeshes) resetPartColor(entry);
+      for (const partId of selectedIds) {
+        const entry = refs.partMeshByPartId.get(partId);
+        if (!entry) continue;
+        const colors = entry.colorAttribute.array as Float32Array;
+        for (let i = 0; i < colors.length; i += 3) {
+          colors[i] = HIGHLIGHT_COLOR.r;
+          colors[i + 1] = HIGHLIGHT_COLOR.g;
+          colors[i + 2] = HIGHLIGHT_COLOR.b;
+        }
+        entry.colorAttribute.needsUpdate = true;
       }
-      entry.colorAttribute.needsUpdate = true;
-      refs.highlightedPartId = partId;
     }
 
-    function highlightFace(faceId: number) {
+    function repaintEdgeSelection(selectedIds: Set<number>) {
       const refs = sceneRefs.current;
-      const entry = refs.faceIdToPart.get(faceId);
-      if (!entry) return;
-      const localIndices = entry.faceToLocalIndices.get(faceId) ?? [];
-      paintLocalIndices(entry, localIndices, HIGHLIGHT_COLOR);
-      refs.highlightedFaceId = faceId;
+      for (const line of refs.edgeLineById.values()) {
+        (line.material as THREE.LineBasicMaterial).color.set(EDGE_BASE_COLOR);
+      }
+      for (const edgeId of selectedIds) {
+        const line = refs.edgeLineById.get(edgeId);
+        if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
+      }
+    }
+
+    function repaintPointSelection(selectedIds: Set<number>) {
+      const refs = sceneRefs.current;
+      for (const pm of refs.pointMeshById.values()) {
+        (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
+      }
+      for (const pointId of selectedIds) {
+        const pm = refs.pointMeshById.get(pointId);
+        if (pm) (pm.material as THREE.MeshBasicMaterial).color.set(HIGHLIGHT_COLOR);
+      }
     }
 
     const raycaster = new THREE.Raycaster();
@@ -243,6 +267,8 @@ function GeometryViewer({
       pointerDownPos = null;
       if (movedDistance > CLICK_DRAG_THRESHOLD_PX) return;
 
+      const ctrlPressed = event.ctrlKey || event.metaKey;
+
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -255,8 +281,16 @@ function GeometryViewer({
         const meshes = refs.partMeshes.map((e) => e.mesh);
         const intersections = raycaster.intersectObjects(meshes, false);
         if (intersections.length === 0 || intersections[0].faceIndex === undefined) {
-          resetAllHighlights();
-          onSelectionChange?.(null);
+          if (!ctrlPressed) {
+            if (currentMode === "part") {
+              refs.selectedPartIds = new Set();
+              repaintPartSelection(refs.selectedPartIds);
+            } else {
+              refs.selectedFaceIds = new Set();
+              repaintFaceSelection(refs.selectedFaceIds);
+            }
+            onSelectionChange?.({ mode: currentMode, ids: [] });
+          }
           return;
         }
 
@@ -266,26 +300,14 @@ function GeometryViewer({
         const localTriIndex = intersections[0].faceIndex as number;
 
         if (currentMode === "part") {
-          const nextPartId = refs.highlightedPartId === hitEntry.partId ? null : hitEntry.partId;
-          resetAllHighlights();
-          if (nextPartId !== null) {
-            highlightPart(nextPartId);
-            const triangleCount = hitEntry.localTriangleToFace.length;
-            onSelectionChange?.({ mode: "part", id: nextPartId, triangleCount });
-          } else {
-            onSelectionChange?.(null);
-          }
+          refs.selectedPartIds = toggleSelection(refs.selectedPartIds, hitEntry.partId, ctrlPressed);
+          repaintPartSelection(refs.selectedPartIds);
+          onSelectionChange?.({ mode: "part", ids: [...refs.selectedPartIds] });
         } else {
           const faceId = hitEntry.localTriangleToFace[localTriIndex];
-          const nextFaceId = refs.highlightedFaceId === faceId ? null : faceId;
-          resetAllHighlights();
-          if (nextFaceId !== null) {
-            highlightFace(nextFaceId);
-            const count = hitEntry.faceToLocalIndices.get(nextFaceId)?.length ?? 0;
-            onSelectionChange?.({ mode: "surface", id: nextFaceId, triangleCount: count });
-          } else {
-            onSelectionChange?.(null);
-          }
+          refs.selectedFaceIds = toggleSelection(refs.selectedFaceIds, faceId, ctrlPressed);
+          repaintFaceSelection(refs.selectedFaceIds);
+          onSelectionChange?.({ mode: "surface", ids: [...refs.selectedFaceIds] });
         }
         return;
       }
@@ -294,48 +316,34 @@ function GeometryViewer({
         raycaster.params.Line = { threshold: refs.maxDim * 0.015 };
         const intersections = raycaster.intersectObjects(refs.interactiveEdgesGroup.children, false);
         if (intersections.length === 0) {
-          resetAllHighlights();
-          onSelectionChange?.(null);
+          if (!ctrlPressed) {
+            refs.selectedEdgeIds = new Set();
+            repaintEdgeSelection(refs.selectedEdgeIds);
+            onSelectionChange?.({ mode: "edge", ids: [] });
+          }
           return;
         }
         const edgeId = intersections[0].object.userData.edgeId as number;
-        const next = refs.highlightedEdgeId === edgeId ? null : edgeId;
-        resetAllHighlights();
-        if (next !== null) {
-          const line = refs.edgeLineById.get(next);
-          if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
-          refs.highlightedEdgeId = next;
-          const edgeInfo = edges.find((e) => e.id === next);
-          onSelectionChange?.({ mode: "edge", id: next, length: edgeInfo?.length ?? 0 });
-        } else {
-          onSelectionChange?.(null);
-        }
+        refs.selectedEdgeIds = toggleSelection(refs.selectedEdgeIds, edgeId, ctrlPressed);
+        repaintEdgeSelection(refs.selectedEdgeIds);
+        onSelectionChange?.({ mode: "edge", ids: [...refs.selectedEdgeIds] });
         return;
       }
 
       if (currentMode === "point" && refs.pointsGroup) {
         const intersections = raycaster.intersectObjects(refs.pointsGroup.children, false);
         if (intersections.length === 0) {
-          resetAllHighlights();
-          onSelectionChange?.(null);
+          if (!ctrlPressed) {
+            refs.selectedPointIds = new Set();
+            repaintPointSelection(refs.selectedPointIds);
+            onSelectionChange?.({ mode: "point", ids: [] });
+          }
           return;
         }
         const pointId = intersections[0].object.userData.pointId as number;
-        const next = refs.highlightedPointId === pointId ? null : pointId;
-        resetAllHighlights();
-        if (next !== null) {
-          const pm = refs.pointMeshById.get(next);
-          if (pm) (pm.material as THREE.MeshBasicMaterial).color.set(HIGHLIGHT_COLOR);
-          refs.highlightedPointId = next;
-          const pointInfo = points.find((p) => p.id === next);
-          onSelectionChange?.({
-            mode: "point",
-            id: next,
-            coordinate: pointInfo?.coordinate ?? [0, 0, 0],
-          });
-        } else {
-          onSelectionChange?.(null);
-        }
+        refs.selectedPointIds = toggleSelection(refs.selectedPointIds, pointId, ctrlPressed);
+        repaintPointSelection(refs.selectedPointIds);
+        onSelectionChange?.({ mode: "point", ids: [...refs.selectedPointIds] });
       }
     }
 
@@ -402,8 +410,6 @@ function GeometryViewer({
             roughness: 0.65,
             flatShading: true,
             side: THREE.DoubleSide,
-            // Kenar/nokta çizgileriyle z-fighting yaşamamak için (bkz. önceki
-            // fix): dolu yüzeyi derinlik tamponunda hafifçe geriye it.
             polygonOffset: true,
             polygonOffsetFactor: 1,
             polygonOffsetUnits: 1,
@@ -413,14 +419,6 @@ function GeometryViewer({
           mesh.position.sub(center);
           modelGroup.add(mesh);
 
-          // Bu parçaya özel kenar çizgileri — parça gizlenince/gösterilince
-          // ya da showEdges kapatılınca bu parçanın kendi çizgisi de
-          // birlikte güncellenir (önceki global/tek-obje yaklaşımının
-          // "hayalet kenar" sorununu önler).
-          // NOT: opacity bilinçli olarak yüksek (0.7) — düşük opaklıkta
-          // (0.35) flat shading'in kendi ışık/gölge kontrastı zaten güçlü
-          // kenarlar oluşturduğu için, toggle'ın açık/kapalı farkı gözle
-          // neredeyse görünmüyordu (gerçek bir kullanıcı testinde fark edildi).
           const edgesGeometry = new THREE.EdgesGeometry(subGeometry, 30);
           const edgesMaterial = new THREE.LineBasicMaterial({
             color: "#0d100e",
@@ -447,12 +445,6 @@ function GeometryViewer({
           }
         }
 
-        // NOT (geçmiş): Kenar çizgileri önce tüm modelden TEK bir global
-        // obje olarak üretiliyordu — bu, bir parça gizlenince onun kenar
-        // çizgilerinin "hayalet" gibi kalmasına sebep oluyordu. Şimdi her
-        // parçanın kendi mesh'ine ÇOCUK olarak ekleniyor (yukarıda), böylece
-        // parçayla birlikte otomatik gizlenip gösteriliyor.
-
         camera.near = maxDim / 1000;
         camera.far = maxDim * 100;
         camera.updateProjectionMatrix();
@@ -468,9 +460,6 @@ function GeometryViewer({
         gridHelper.position.y = boundingBox.min.y - center.y;
         scene.add(gridHelper);
 
-        // Etkileşimli kenar çizgileri (Gmsh curve ID'li, Edge modunda görünür).
-        // NOT: iki uç nokta arasında düz çizgi olarak çizilir — eğri kenarlarda
-        // görsel bir yaklaşıklık, ama kimlik/uzunluk verisi backend'den kesin.
         const pointById = new Map(points.map((p) => [p.id, p.coordinate] as const));
         const interactiveEdgesGroup = new THREE.Group();
         const edgeLineById = new Map<number, THREE.Line>();
@@ -483,7 +472,7 @@ function GeometryViewer({
             new THREE.Vector3(...startCoord),
             new THREE.Vector3(...endCoord),
           ]);
-          const lineMaterial = new THREE.LineBasicMaterial({ color: "#1b1f1c" });
+          const lineMaterial = new THREE.LineBasicMaterial({ color: EDGE_BASE_COLOR });
           const line = new THREE.Line(lineGeometry, lineMaterial);
           line.userData.edgeId = edge.id;
           interactiveEdgesGroup.add(line);
@@ -493,7 +482,6 @@ function GeometryViewer({
         interactiveEdgesGroup.visible = modeRef.current === "edge";
         modelGroup.add(interactiveEdgesGroup);
 
-        // Nokta işaretçileri (Point modunda görünür).
         const pointsGroup = new THREE.Group();
         const pointMeshById = new Map<number, THREE.Mesh>();
         const pointRadius = Math.max(maxDim * 0.008, 0.04);
@@ -518,7 +506,6 @@ function GeometryViewer({
         sceneRefs.current.edgeLineById = edgeLineById;
         sceneRefs.current.pointMeshById = pointMeshById;
 
-        // Bu render anına kadar prop olarak gelmiş olabilecek hiddenParts'ı uygula.
         for (const entry of partMeshes) {
           entry.mesh.visible = !hiddenParts.has(entry.partId);
         }
@@ -575,21 +562,25 @@ function GeometryViewer({
         pointsGroup: null,
         edgeLineById: new Map(),
         pointMeshById: new Map(),
-        highlightedPartId: null,
-        highlightedFaceId: null,
-        highlightedEdgeId: null,
-        highlightedPointId: null,
-        externalHighlightedFaceIds: [],
+        selectedPartIds: new Set(),
+        selectedFaceIds: new Set(),
+        selectedEdgeIds: new Set(),
+        selectedPointIds: new Set(),
         maxDim: 1,
       };
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stlUrl, edges, points, triangleToFace, triangleToPart]);
 
-  // Mod değişimi: sahneyi yeniden kurmadan sadece görünürlük + vurgu sıfırlama.
+  // Mod değişimi: sahneyi yeniden kurmadan sadece görünürlük + seçim sıfırlama.
   useEffect(() => {
     modeRef.current = mode;
     const refs = sceneRefs.current;
+
+    refs.selectedPartIds = new Set();
+    refs.selectedFaceIds = new Set();
+    refs.selectedEdgeIds = new Set();
+    refs.selectedPointIds = new Set();
 
     for (const entry of refs.partMeshes) {
       const colors = entry.colorAttribute.array as Float32Array;
@@ -600,33 +591,21 @@ function GeometryViewer({
       }
       entry.colorAttribute.needsUpdate = true;
     }
-    refs.highlightedPartId = null;
-    refs.highlightedFaceId = null;
-    refs.externalHighlightedFaceIds = [];
-
-    if (refs.highlightedEdgeId !== null) {
-      const line = refs.edgeLineById.get(refs.highlightedEdgeId);
-      if (line) (line.material as THREE.LineBasicMaterial).color.set("#1b1f1c");
+    for (const line of refs.edgeLineById.values()) {
+      (line.material as THREE.LineBasicMaterial).color.set(EDGE_BASE_COLOR);
     }
-    refs.highlightedEdgeId = null;
-
-    if (refs.highlightedPointId !== null) {
-      const pm = refs.pointMeshById.get(refs.highlightedPointId);
-      if (pm) (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
+    for (const pm of refs.pointMeshById.values()) {
+      (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
     }
-    refs.highlightedPointId = null;
 
     if (refs.interactiveEdgesGroup) refs.interactiveEdgesGroup.visible = mode === "edge";
     if (refs.pointsGroup) refs.pointsGroup.visible = mode === "point";
 
-    onSelectionChange?.(null);
+    onSelectionChange?.({ mode, ids: [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
-  // NOT: decorativeEdges her parçanın mesh'ine ÇOCUK olarak eklendiği için
-  // (yukarıda), mesh.visible=false olunca kenar çizgileri de otomatik
-  // gizleniyor — ayrı bir işlem gerekmiyor.
   useEffect(() => {
     const refs = sceneRefs.current;
     for (const entry of refs.partMeshes) {
@@ -635,7 +614,7 @@ function GeometryViewer({
   }, [hiddenParts]);
 
   // showEdges değişimi: her parçanın kendi kenar çizgisinin görünürlüğünü
-  // toplu güncelle (sahneyi yeniden kurmadan).
+  // toplu güncelle.
   useEffect(() => {
     showEdgesRef.current = showEdges;
     const refs = sceneRefs.current;
@@ -645,12 +624,15 @@ function GeometryViewer({
   }, [showEdges]);
 
   // externalHighlight değişimi: Physical Group / defeature adayı gibi
-  // tıklama-dışı vurgular. Ya yüzeyleri (faceIds) ya kenarları (edgeIds)
-  // vurgular.
+  // tıklama-dışı vurgular. Kullanıcının aktif tıklama seçimini de temizler.
   useEffect(() => {
     const refs = sceneRefs.current;
 
-    // Önce tüm parçaların rengini sıfırla.
+    refs.selectedPartIds = new Set();
+    refs.selectedFaceIds = new Set();
+    refs.selectedEdgeIds = new Set();
+    refs.selectedPointIds = new Set();
+
     for (const entry of refs.partMeshes) {
       const colors = entry.colorAttribute.array as Float32Array;
       for (let i = 0; i < colors.length; i += 3) {
@@ -660,12 +642,8 @@ function GeometryViewer({
       }
       entry.colorAttribute.needsUpdate = true;
     }
-    refs.highlightedPartId = null;
-    refs.highlightedFaceId = null;
-
-    // Önce tüm kenarların rengini de sıfırla.
     for (const line of refs.edgeLineById.values()) {
-      (line.material as THREE.LineBasicMaterial).color.set("#1b1f1c");
+      (line.material as THREE.LineBasicMaterial).color.set(EDGE_BASE_COLOR);
     }
 
     if (externalHighlight && "faceIds" in externalHighlight) {
@@ -685,15 +663,11 @@ function GeometryViewer({
         }
         entry.colorAttribute.needsUpdate = true;
       }
-      refs.externalHighlightedFaceIds = externalHighlight.faceIds;
     } else if (externalHighlight && "edgeIds" in externalHighlight) {
       for (const edgeId of externalHighlight.edgeIds) {
         const line = refs.edgeLineById.get(edgeId);
         if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
       }
-      refs.externalHighlightedFaceIds = [];
-    } else {
-      refs.externalHighlightedFaceIds = [];
     }
   }, [externalHighlight]);
 

@@ -88,6 +88,14 @@ export interface MidsurfaceResponse extends TessellationFields {
   new_face_id: number;
 }
 
+export interface MidsurfaceForPartResponse extends TessellationFields {
+  geometry_id: number;
+  part_id: number;
+  chosen_face_id_a: number;
+  chosen_face_id_b: number;
+  new_face_id: number;
+}
+
 interface DefeatureCandidatesResponse {
   geometry_id: number;
   max_diameter: number;
@@ -256,4 +264,22 @@ export async function createMidsurface(
     );
   }
   return (await response.json()) as MidsurfaceResponse;
+}
+
+/** Verilen parçanın en uygun paralel/düzlemsel yüzey çiftini OTOMATİK tespit
+ * edip midsurface hesaplar — kullanıcının manuel iki yüzey seçmesi gerekmez.
+ */
+export async function createMidsurfaceForPart(
+  geometryId: number,
+  partId: number,
+): Promise<MidsurfaceForPartResponse> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/parts/${partId}/midsurface`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Midsurface oluşturulamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as MidsurfaceForPartResponse;
 }

@@ -7,8 +7,11 @@ export const SELECTION_MODES: { mode: SelectionMode; label: string }[] = [
   { mode: "point", label: "Nokta" },
 ];
 
-export type SelectionInfo =
-  | { mode: "part"; id: number; triangleCount: number }
-  | { mode: "surface"; id: number; triangleCount: number }
-  | { mode: "edge"; id: number; length: number }
-  | { mode: "point"; id: number; coordinate: [number, number, number] };
+/** Aktif moddaki seçili öğelerin id listesi (Ctrl+tık ile çoklu seçim
+ * desteklenir — düz tıklama seçimi TEK öğeye indirger, Ctrl+tık mevcut
+ * seçime ekler/çıkarır). Boş dizi = hiçbir şey seçili değil.
+ */
+export interface MultiSelectionInfo {
+  mode: SelectionMode;
+  ids: number[];
+}
