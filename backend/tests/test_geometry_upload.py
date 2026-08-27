@@ -101,7 +101,25 @@ def test_upload_assembly_distinguishes_parts():
     part_0_count = body["triangle_to_part"].count(0)
     part_1_count = body["triangle_to_part"].count(1)
     assert part_0_count == part_1_count
-    assert body["face_count"] == 12
+    assert body["volume_part_ids"] == [0, 1]
+
+
+@requires_db
+def test_copied_surface_is_not_in_volume_part_ids():
+    """KRİTİK: kopyalanan yüzey bir part_id alır ama GERÇEK bir solid değil —
+    volume_part_ids'te görünmemeli (aksi halde "Solid gizle" yanlışlıkla
+    düz yüzeyleri de hedefler).
+    """
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+    assert upload_body["volume_part_ids"] == [0]
+
+    copy_response = client.post(f"/geometry/{geometry_id}/surfaces/1/copy")
+    body = copy_response.json()
+
+    assert body["part_count"] == 2
+    assert body["volume_part_ids"] == [0]
+    assert body["face_count"] == 7
 
 
 def test_upload_rejects_unsupported_extension():

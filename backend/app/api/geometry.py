@@ -119,6 +119,7 @@ def _tessellation_response_fields(geometry_id: int, result: TessellationResult) 
         "part_count": result.part_count,
         "triangle_to_part": result.triangle_to_part,
         "triangle_to_part_url": f"/files/tessellations/{geometry_id}.parts.json",
+        "volume_part_ids": result.volume_part_ids,
     }
 
 

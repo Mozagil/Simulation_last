@@ -79,7 +79,7 @@ def _face_normal(
     return (nx / length, ny / length, nz / length)
 
 
-def _compute_face_to_part() -> tuple[dict[int, int], int]:
+def _compute_face_to_part() -> tuple[dict[int, int], int, set[int]]:
     """Açık Gmsh oturumundaki her yüzeyin (face) hangi parçaya ait olduğunu
     hesaplar.
 
@@ -97,9 +97,17 @@ def _compute_face_to_part() -> tuple[dict[int, int], int]:
        sayar. Tek parçalı, birden fazla yüzeyden oluşan açık bir kabuk
        (örn. eğri bir sac parça) da bu sayede doğru şekilde TEK parça
        olarak kalır (yüzeyleri birbirine kenarlarla bağlı olduğu için).
+
+    Üçüncü dönüş değeri: `volume_backed_part_ids` — GERÇEK bir 3B katıya
+    (volume) karşılık gelen part_id'lerin kümesi. Aşama 2'de üretilen
+    "orphan" part_id'ler (örn. `copy_surface`/`midsurface` çıktısı düz bir
+    yüzey) bu kümede YOK — çünkü bunlar gerçek bir solid değil, sadece
+    bağımsız bir yüzey parçası. "Solid gizle/göster" gibi işlemler sadece
+    gerçek solid'leri hedeflemeli, düz yüzeyleri değil.
     """
     face_to_part: dict[int, int] = {}
     next_part_id = 0
+    volume_backed_part_ids: set[int] = set()
 
     volumes = gmsh.model.getEntities(dim=3)
     for _dim, volume_tag in volumes:
@@ -107,6 +115,7 @@ def _compute_face_to_part() -> tuple[dict[int, int], int]:
         for b_dim, b_tag in boundary:
             if b_dim == 2:
                 face_to_part[b_tag] = next_part_id
+        volume_backed_part_ids.add(next_part_id)
         next_part_id += 1
 
     all_faces = [tag for _dim, tag in gmsh.model.getEntities(dim=2)]
@@ -135,10 +144,12 @@ def _compute_face_to_part() -> tuple[dict[int, int], int]:
                     queue.append(other)
         for face_id in component:
             face_to_part[face_id] = next_part_id
+        # NOT: next_part_id volume_backed_part_ids'e EKLENMİYOR — bu bir
+        # orphan yüzey grubu, gerçek bir solid değil.
         next_part_id += 1
 
     part_count = max(next_part_id, 1)
-    return face_to_part, part_count
+    return face_to_part, part_count, volume_backed_part_ids
 
 
 def _compute_edge_to_part(face_to_part: dict[int, int]) -> dict[int, int]:
@@ -286,7 +297,7 @@ class GmshMesherAdapter(MesherAdapter):
             # Montaj (assembly) dosyalarında birden fazla ayrı katı (volume)
             # olabilir. Her katının sınır yüzeylerinden face_tag -> part_id
             # eşlemesi kur (part_id = sıradaki parça indeksi, 0'dan başlar).
-            face_to_part, part_count = _compute_face_to_part()
+            face_to_part, part_count, volume_backed_part_ids = _compute_face_to_part()
 
             node_tags_all, coords_all, _ = gmsh.model.mesh.getNodes()
             node_coords: dict[int, tuple[float, float, float]] = {
@@ -336,6 +347,7 @@ class GmshMesherAdapter(MesherAdapter):
             triangle_to_face=triangle_to_face,
             triangle_to_part=triangle_to_part,
             part_count=part_count,
+            volume_part_ids=sorted(volume_backed_part_ids),
         )
 
     def list_surfaces(self, geom: GeometryHandle) -> list[SurfaceInfo]:
@@ -351,7 +363,7 @@ class GmshMesherAdapter(MesherAdapter):
         çağrılmalı.
         """
         try:
-            face_to_part, _part_count = _compute_face_to_part()
+            face_to_part, _part_count, _volume_backed = _compute_face_to_part()
 
             surfaces: list[SurfaceInfo] = []
             for _dim, face_tag in gmsh.model.getEntities(dim=2):
@@ -389,7 +401,7 @@ class GmshMesherAdapter(MesherAdapter):
         çağrılmalı.
         """
         try:
-            face_to_part, _part_count = _compute_face_to_part()
+            face_to_part, _part_count, _volume_backed = _compute_face_to_part()
             edge_to_part = _compute_edge_to_part(face_to_part)
 
             edges: list[EdgeInfo] = []
@@ -424,7 +436,7 @@ class GmshMesherAdapter(MesherAdapter):
         çağrılmalı.
         """
         try:
-            face_to_part, _part_count = _compute_face_to_part()
+            face_to_part, _part_count, _volume_backed = _compute_face_to_part()
             edge_to_part = _compute_edge_to_part(face_to_part)
             point_to_part = _compute_point_to_part(edge_to_part)
 
@@ -557,7 +569,7 @@ class GmshMesherAdapter(MesherAdapter):
         çağrılmalı.
         """
         try:
-            face_to_part, _part_count = _compute_face_to_part()
+            face_to_part, _part_count, _volume_backed = _compute_face_to_part()
             edge_to_part = _compute_edge_to_part(face_to_part)
 
             candidates: list[DefeatureCandidate] = []
@@ -635,7 +647,7 @@ class GmshMesherAdapter(MesherAdapter):
         çağrılmalı.
         """
         try:
-            face_to_part, _part_count = _compute_face_to_part()
+            face_to_part, _part_count, _volume_backed = _compute_face_to_part()
             part_faces = [f for f, p in face_to_part.items() if p == part_id]
             if not part_faces:
                 raise SurfaceNotFoundError(f"Parça bulunamadı: part_id={part_id}")
