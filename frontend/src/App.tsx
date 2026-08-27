@@ -36,6 +36,7 @@ function App() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [triangleToFace, setTriangleToFace] = useState<number[]>([]);
   const [triangleToPart, setTriangleToPart] = useState<number[]>([]);
+  const [volumePartIds, setVolumePartIds] = useState<number[]>([]);
   const [faceCount, setFaceCount] = useState<number | null>(null);
   const [partCount, setPartCount] = useState<number | null>(null);
   const [edges, setEdges] = useState<EdgeInfo[]>([]);
@@ -84,6 +85,7 @@ function App() {
       setStlUrl(resolveTessellationUrl(result.tessellation_url));
       setTriangleToFace(result.triangle_to_face);
       setTriangleToPart(result.triangle_to_part);
+      setVolumePartIds(result.volume_part_ids);
       setFaceCount(result.face_count);
       setPartCount(result.part_count);
 
@@ -121,6 +123,7 @@ function App() {
     setStlUrl(null);
     setTriangleToFace([]);
     setTriangleToPart([]);
+    setVolumePartIds([]);
     setFaceCount(null);
     setPartCount(null);
     setEdges([]);
@@ -153,12 +156,14 @@ function App() {
       face_count: number;
       part_count: number;
       tessellation_url: string;
+      volume_part_ids: number[];
     },
   ) {
     setTriangleToFace(tessellation.triangle_to_face);
     setTriangleToPart(tessellation.triangle_to_part);
     setFaceCount(tessellation.face_count);
     setPartCount(tessellation.part_count);
+    setVolumePartIds(tessellation.volume_part_ids);
     setStlUrl(resolveTessellationUrl(tessellation.tessellation_url, Date.now()));
     setSelection((prev) => ({ mode: prev.mode, ids: [] }));
     setCanUndo(true);
@@ -226,11 +231,16 @@ function App() {
   }
 
   function handleToggleHidePart() {
-    // Hiçbir şey seçili değilse TÜM parçaları hedefle (global göster/gizle) —
-    // "Solid gizle/göster" her zaman aktif olmalı, seçim şartı aranmıyor.
-    const allPartIds = [...new Set(triangleToPart)];
+    // Hiçbir şey seçili değilse TÜM gerçek solid'leri hedefle (global
+    // göster/gizle) — "Solid gizle/göster" her zaman aktif olmalı, seçim
+    // şartı aranmıyor. Sadece GERÇEK solid'ler (volume_part_ids) hedeflenir
+    // — copy_surface/midsurface çıktısı gibi düz yüzeyler HİÇBİR ZAMAN
+    // hedeflenmez, çünkü bunlar "solid" değil.
+    const volumeSet = new Set(volumePartIds);
     const targetPartIds =
-      selection.ids.length > 0 ? resolvePartIdsForSelection(selection) : allPartIds;
+      selection.ids.length > 0
+        ? resolvePartIdsForSelection(selection).filter((id) => volumeSet.has(id))
+        : volumePartIds;
     if (targetPartIds.length === 0) return;
 
     setHiddenParts((prev) => {
@@ -422,13 +432,17 @@ function App() {
   const showGroupForm = mode === "surface" && selection.ids.length > 0;
   const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
 
-  // "Solid gizle/göster" HER ZAMAN aktif — seçim yoksa TÜM parçaları hedefler
-  // (global göster/gizle), seçim varsa (hangi modda olursa olsun) sadece o
-  // parça(lar)ı.
-  const allPartIds = [...new Set(triangleToPart)];
+  // "Solid gizle/göster" HER ZAMAN aktif (model yüklüyse) — sadece GERÇEK
+  // solid'leri hedefler (volume_part_ids), copy_surface/midsurface çıktısı
+  // gibi düz yüzeyleri asla hedeflemez. Seçim yoksa tüm gerçek solid'ler,
+  // seçim varsa (hangi modda olursa olsun) sadece o seçime karşılık gelen
+  // gerçek solid'ler.
+  const volumePartIdSet = new Set(volumePartIds);
   const resolvedPartIdsForHide =
-    selection.ids.length > 0 ? resolvePartIdsForSelection(selection) : allPartIds;
-  const canToggleHidePart = geometryId !== null && allPartIds.length > 0;
+    selection.ids.length > 0
+      ? resolvePartIdsForSelection(selection).filter((id) => volumePartIdSet.has(id))
+      : volumePartIds;
+  const canToggleHidePart = geometryId !== null && volumePartIds.length > 0;
   const allSelectedPartsHidden =
     resolvedPartIdsForHide.length > 0 &&
     resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
