@@ -229,6 +229,21 @@ export async function healGeometry(geometryId: number): Promise<HealResponse> {
   return (await response.json()) as HealResponse;
 }
 
+/** Son mutasyon işlemini (copy/heal/midsurface) geri alır. Tek seviyeli —
+ * sadece en son işlem geri alınabilir. Geri alınacak bir şey yoksa 400 döner.
+ */
+export async function undoLastMutation(geometryId: number): Promise<TessellationFields> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/undo`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Geri alma başarısız (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as TessellationFields;
+}
+
 /** Verilen eşik altındaki dairesel/döngü kenarları tespit eder (sadece
  * tespit, henüz kaldırma yok). */
 export async function findDefeatureCandidates(
