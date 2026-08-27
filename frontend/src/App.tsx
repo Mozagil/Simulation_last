@@ -6,6 +6,7 @@ import {
   PhysicalGroup,
   PointInfo,
   copySurface,
+  createMidsurface,
   createMidsurfaceForPart,
   createPhysicalGroup,
   fetchEdges,
@@ -184,13 +185,53 @@ function App() {
     }
   }
 
+  /** Aktif moddaki seçimi (hangi mod olursa olsun) ilgili parça id'lerine
+   * çözümler — "Solid gizle/göster" artık sadece Parça modunda değil, her
+   * modda (Yüzey/Kenar/Nokta) seçili öğenin ait olduğu parça(lar) üzerinde
+   * çalışabilsin diye.
+   */
+  function resolvePartIdsForSelection(sel: MultiSelectionInfo): number[] {
+    if (sel.ids.length === 0) return [];
+    switch (sel.mode) {
+      case "part":
+        return sel.ids;
+      case "surface": {
+        // triangleToFace / triangleToPart aynı üçgen indeksine göre paralel
+        // dizilerdir — bir face_id'nin part_id'sini bulmak için bu üçgen
+        // eşleşmesini kullanıyoruz.
+        const partIds = new Set<number>();
+        for (const faceId of sel.ids) {
+          const triIndex = triangleToFace.indexOf(faceId);
+          if (triIndex !== -1) partIds.add(triangleToPart[triIndex]);
+        }
+        return [...partIds];
+      }
+      case "edge": {
+        const partIds = new Set<number>();
+        for (const edgeId of sel.ids) {
+          const edge = edges.find((e) => e.id === edgeId);
+          if (edge) partIds.add(edge.part_id);
+        }
+        return [...partIds];
+      }
+      case "point": {
+        const partIds = new Set<number>();
+        for (const pointId of sel.ids) {
+          const point = points.find((p) => p.id === pointId);
+          if (point) partIds.add(point.part_id);
+        }
+        return [...partIds];
+      }
+    }
+  }
+
   function handleToggleHidePart() {
-    if (mode !== "part" || selection.ids.length === 0) return;
+    const targetPartIds = resolvePartIdsForSelection(selection);
+    if (targetPartIds.length === 0) return;
     setHiddenParts((prev) => {
       const next = new Set(prev);
-      // Seçili parçaların TÜMÜ gizliyse hepsini göster, aksi halde hepsini gizle.
-      const allHidden = selection.ids.every((id) => next.has(id));
-      for (const id of selection.ids) {
+      const allHidden = targetPartIds.every((id) => next.has(id));
+      for (const id of targetPartIds) {
         if (allHidden) next.delete(id);
         else next.add(id);
       }
@@ -313,6 +354,36 @@ function App() {
     }
   }
 
+  /** Manuel midsurface: Yüzey modunda Ctrl+tıkla seçilmiş TAM 2 yüzey
+   * arasında — otomatik tespitin yanlış çift seçtiği durumlar için yedek yol.
+   */
+  async function handleMidsurfaceManual() {
+    if (!geometryId || mode !== "surface" || selection.ids.length !== 2) return;
+    const [faceIdA, faceIdB] = selection.ids;
+
+    setBusyAction("midsurface");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const result = await createMidsurface(geometryId, faceIdA, faceIdB);
+      await refreshAfterMutation(geometryId, result);
+      setInfoMessage(
+        `Midsurface oluşturuldu: yüzey #${faceIdA} ve #${faceIdB} arasında, yeni yüzey #${result.new_face_id}.`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof GeometryUploadError ? err.message : "Midsurface oluşturulamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function handleMidsurfaceClick() {
+    if (canUseMidsurfaceAuto) void handleMidsurfaceForPart();
+    else if (canUseMidsurfaceManual) void handleMidsurfaceManual();
+  }
+
   /** Son mutasyon işlemini (copy/heal/midsurface) geri alır. Tek seviyeli —
    * sadece en son işlem geri alınabilir.
    */
@@ -343,13 +414,23 @@ function App() {
       : null;
 
   const canCopySurface = mode === "surface" && selection.ids.length === 1;
-  const canToggleHidePart = mode === "part" && selection.ids.length > 0;
   const showGroupForm = mode === "surface" && selection.ids.length > 0;
   const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
-  const canUseMidsurface = mode === "part" && selection.ids.length === 1;
 
+  // "Solid gizle/göster" artık hangi modda olursa olsun, seçili öğenin ait
+  // olduğu parça(lar) üzerinde çalışıyor.
+  const resolvedPartIdsForHide = resolvePartIdsForSelection(selection);
+  const canToggleHidePart = resolvedPartIdsForHide.length > 0;
   const allSelectedPartsHidden =
-    canToggleHidePart && selection.ids.every((id) => hiddenParts.has(id));
+    canToggleHidePart && resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
+
+  // Midsurface: Parça modunda TEK parça seçiliyse OTOMATİK tespit; Yüzey
+  // modunda TAM 2 yüzey seçiliyse MANUEL (kullanıcı kendi çifti belirler —
+  // otomatik tespit karmaşık profillerde (örn. 4 köşeli C-kanal) yanlış
+  // çifti seçebiliyor, bu yüzden manuel bir yedek yol tutuluyor).
+  const canUseMidsurfaceAuto = mode === "part" && selection.ids.length === 1;
+  const canUseMidsurfaceManual = mode === "surface" && selection.ids.length === 2;
+  const canUseMidsurface = canUseMidsurfaceAuto || canUseMidsurfaceManual;
 
   function describeSelection(sel: MultiSelectionInfo): string {
     if (sel.ids.length === 0) {
@@ -555,9 +636,14 @@ function App() {
                   },
                   {
                     key: "midsurface",
-                    label: busyAction === "midsurface" ? "Oluşturuluyor…" : "Midsurface (parça seç)",
+                    label:
+                      busyAction === "midsurface"
+                        ? "Oluşturuluyor…"
+                        : canUseMidsurfaceManual
+                          ? "Midsurface (2 yüzey)"
+                          : "Midsurface (parça seç)",
                     disabled: !canUseMidsurface || busyAction !== null,
-                    onClick: () => void handleMidsurfaceForPart(),
+                    onClick: handleMidsurfaceClick,
                   },
                   { key: "placeholder-geometry", label: "Yakında", disabled: true },
                 ]}
