@@ -226,8 +226,13 @@ function App() {
   }
 
   function handleToggleHidePart() {
-    const targetPartIds = resolvePartIdsForSelection(selection);
+    // Hiçbir şey seçili değilse TÜM parçaları hedefle (global göster/gizle) —
+    // "Solid gizle/göster" her zaman aktif olmalı, seçim şartı aranmıyor.
+    const allPartIds = [...new Set(triangleToPart)];
+    const targetPartIds =
+      selection.ids.length > 0 ? resolvePartIdsForSelection(selection) : allPartIds;
     if (targetPartIds.length === 0) return;
+
     setHiddenParts((prev) => {
       const next = new Set(prev);
       const allHidden = targetPartIds.every((id) => next.has(id));
@@ -417,12 +422,16 @@ function App() {
   const showGroupForm = mode === "surface" && selection.ids.length > 0;
   const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
 
-  // "Solid gizle/göster" artık hangi modda olursa olsun, seçili öğenin ait
-  // olduğu parça(lar) üzerinde çalışıyor.
-  const resolvedPartIdsForHide = resolvePartIdsForSelection(selection);
-  const canToggleHidePart = resolvedPartIdsForHide.length > 0;
+  // "Solid gizle/göster" HER ZAMAN aktif — seçim yoksa TÜM parçaları hedefler
+  // (global göster/gizle), seçim varsa (hangi modda olursa olsun) sadece o
+  // parça(lar)ı.
+  const allPartIds = [...new Set(triangleToPart)];
+  const resolvedPartIdsForHide =
+    selection.ids.length > 0 ? resolvePartIdsForSelection(selection) : allPartIds;
+  const canToggleHidePart = geometryId !== null && allPartIds.length > 0;
   const allSelectedPartsHidden =
-    canToggleHidePart && resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
+    resolvedPartIdsForHide.length > 0 &&
+    resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
 
   // Midsurface: Parça modunda TEK parça seçiliyse OTOMATİK tespit; Yüzey
   // modunda TAM 2 yüzey seçiliyse MANUEL (kullanıcı kendi çifti belirler —
