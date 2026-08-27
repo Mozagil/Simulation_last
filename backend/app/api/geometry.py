@@ -68,6 +68,27 @@ def _get_geometry_or_404(db: Session, geometry_id: int) -> Geometry:
     return geo
 
 
+def _backup_before_mutation(db: Session, geo: Geometry, file_path: Path) -> None:
+    """Bir mutasyon işleminden (copy/heal/midsurface) HEMEN ÖNCE, o anki
+    dosyanın bir yedeğini alır — "Geri al" için. Tek seviyeli: yeni bir
+    mutasyon önceki yedeği değiştirir (tam bir geçmiş/undo-stack tutulmuyor).
+
+    Eski bir yedek varsa (kullanılmamış), üzerine yazmadan önce diskten
+    silinir — yetim dosya birikmesin diye.
+    """
+    if geo.previous_filename:
+        old_backup = UPLOAD_DIR / geo.previous_filename
+        old_backup.unlink(missing_ok=True)
+
+    suffix = Path(geo.current_filename).suffix
+    backup_name = f"{geo.id}_backup{suffix}"
+    backup_path = UPLOAD_DIR / backup_name
+    backup_path.write_bytes((UPLOAD_DIR / geo.current_filename).read_bytes())
+
+    geo.previous_filename = backup_name
+    db.commit()
+
+
 def _regenerate_tessellation(geometry_id: int, file_path: Path) -> TessellationResult:
     """Tessellation + üçgen eşlemelerini (yeniden) üretir ve diske yazar.
 
@@ -253,6 +274,7 @@ def copy_surface(geometry_id: int, face_id: int, db: Session = Depends(get_db)) 
     """
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
 
     adapter = GmshMesherAdapter()
     try:
@@ -369,6 +391,7 @@ def heal_geometry(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, 
     """
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
 
     adapter = GmshMesherAdapter()
     try:
@@ -458,6 +481,7 @@ def create_midsurface(
     """
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
 
     adapter = GmshMesherAdapter()
     try:
@@ -503,6 +527,7 @@ def create_midsurface_for_part(
     """
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
 
     adapter = GmshMesherAdapter()
     try:
@@ -537,5 +562,44 @@ def create_midsurface_for_part(
         "chosen_face_id_a": chosen_face_a,
         "chosen_face_id_b": chosen_face_b,
         "new_face_id": new_face_id,
+        **_tessellation_response_fields(geometry_id, result),
+    }
+
+
+@router.post("/{geometry_id}/undo")
+def undo_last_mutation(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Son mutasyon işlemini (copy/heal/midsurface) geri alır — bir önceki
+    duruma döner. Tek seviyeli: sadece EN SON mutasyon geri alınabilir, daha
+    öncesine gidilemez. Geri alınacak bir işlem yoksa 400 döner.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+
+    if not geo.previous_filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Geri alınacak bir işlem yok (henüz mutasyon yapılmamış ya da zaten geri alındı).",
+        )
+
+    backup_path = UPLOAD_DIR / geo.previous_filename
+    if not backup_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail="Yedek dosya bulunamadı — geri alma yapılamıyor.",
+        )
+
+    current_path = UPLOAD_DIR / geo.current_filename
+    current_path.write_bytes(backup_path.read_bytes())
+    backup_path.unlink(missing_ok=True)
+
+    geo.previous_filename = None
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    result = _regenerate_tessellation(geometry_id, current_path)
+
+    logger.info("Geri alma uygulandı: geometry_id=%d", geometry_id)
+
+    return {
+        "geometry_id": geometry_id,
         **_tessellation_response_fields(geometry_id, result),
     }

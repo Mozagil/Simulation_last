@@ -483,3 +483,98 @@ def test_create_midsurface_for_part_returns_404_for_unknown_part():
 
     response = client.post(f"/geometry/{geometry_id}/parts/999/midsurface")
     assert response.status_code == 404
+
+
+@requires_db
+def test_undo_reverts_copy_surface():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    copy_response = client.post(f"/geometry/{geometry_id}/surfaces/1/copy")
+    assert copy_response.json()["face_count"] == 7
+
+    undo_response = client.post(f"/geometry/{geometry_id}/undo")
+    assert undo_response.status_code == 200
+    assert undo_response.json()["face_count"] == 6
+
+    # Ayrı bir istekte de gerçekten 6 yüzeye dönmüş olmalı (kalıcılık).
+    surfaces_response = client.get(f"/geometry/{geometry_id}/surfaces")
+    assert surfaces_response.json()["surface_count"] == 6
+
+
+@requires_db
+def test_undo_reverts_heal():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    heal_response = client.post(f"/geometry/{geometry_id}/heal")
+    assert heal_response.status_code == 200
+
+    undo_response = client.post(f"/geometry/{geometry_id}/undo")
+    assert undo_response.status_code == 200
+    assert undo_response.json()["face_count"] == 6
+
+
+@requires_db
+def test_undo_reverts_midsurface_for_part():
+    content = THIN_PLATE_STEP_FILE.read_bytes()
+    upload_response = client.post(
+        "/geometry/upload",
+        files={"file": ("thin_plate.step", content, "application/octet-stream")},
+    )
+    geometry_id = upload_response.json()["geometry_id"]
+
+    midsurface_response = client.post(f"/geometry/{geometry_id}/parts/0/midsurface")
+    assert midsurface_response.json()["face_count"] == 7
+
+    undo_response = client.post(f"/geometry/{geometry_id}/undo")
+    assert undo_response.status_code == 200
+    assert undo_response.json()["face_count"] == 6
+
+
+@requires_db
+def test_undo_returns_400_when_nothing_to_undo():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(f"/geometry/{geometry_id}/undo")
+    assert response.status_code == 400
+
+
+@requires_db
+def test_undo_can_only_be_used_once_per_mutation():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    client.post(f"/geometry/{geometry_id}/surfaces/1/copy")
+    first_undo = client.post(f"/geometry/{geometry_id}/undo")
+    assert first_undo.status_code == 200
+
+    # Aynı mutasyonu ikinci kez geri almaya çalışmak (redo yok) - 400 dönmeli.
+    second_undo = client.post(f"/geometry/{geometry_id}/undo")
+    assert second_undo.status_code == 400
+
+
+@requires_db
+def test_undo_returns_404_for_unknown_geometry():
+    response = client.post("/geometry/999999/undo")
+    assert response.status_code == 404
+
+
+@requires_db
+def test_second_mutation_overwrites_previous_backup_single_level_undo():
+    """Tek seviyeli geri alma: art arda iki mutasyon yapılırsa, sadece EN
+    SON mutasyon geri alınabilir — ilk mutasyondan önceki hale dönülemez.
+    """
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    # 1. mutasyon: kopyala (6 -> 7 yüzey)
+    client.post(f"/geometry/{geometry_id}/surfaces/1/copy")
+    # 2. mutasyon: tekrar kopyala (7 -> 8 yüzey)
+    second_copy = client.post(f"/geometry/{geometry_id}/surfaces/2/copy")
+    assert second_copy.json()["face_count"] == 8
+
+    # Geri al -> sadece 2. mutasyon geri alınır (8 -> 7), 1. mutasyon KALIR.
+    undo_response = client.post(f"/geometry/{geometry_id}/undo")
+    assert undo_response.json()["face_count"] == 7
