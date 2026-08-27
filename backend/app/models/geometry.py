@@ -27,6 +27,11 @@ class Geometry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     original_filename: Mapped[str] = mapped_column(String, nullable=False)
     current_filename: Mapped[str] = mapped_column(String, nullable=False)
+    # Bir mutasyon (copy/heal/midsurface) öncesindeki dosyanın yedeği — "Geri
+    # al" için. Tek seviyeli: her yeni mutasyon bir öncekinin yedeğini
+    # değiştirir, tam bir geçmiş (undo stack) tutulmuyor. Mutasyon yoksa ya da
+    # zaten geri alındıysa None.
+    previous_filename: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
