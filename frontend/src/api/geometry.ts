@@ -11,6 +11,10 @@ export interface TessellationFields {
   part_count: number;
   triangle_to_part: number[];
   triangle_to_part_url: string;
+  /** GERÇEK bir 3B katıya (volume) karşılık gelen part_id'ler — "Solid
+   * gizle/göster" sadece bunları hedeflemeli, copy_surface/midsurface
+   * çıktısı gibi düz (volume'süz) yüzey parçalarını değil. */
+  volume_part_ids: number[];
 }
 
 export interface GeometryUploadResponse extends TessellationFields {
