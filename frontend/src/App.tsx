@@ -13,6 +13,7 @@ import {
   fetchPoints,
   findDefeatureCandidates,
   healGeometry,
+  undoLastMutation,
   resolveTessellationUrl,
   uploadGeometry,
 } from "./api/geometry";
@@ -46,6 +47,7 @@ function App() {
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
 
   // Defeature: eşik girişi + sonuç listesi paneli.
   const [showDefeaturePanel, setShowDefeaturePanel] = useState(false);
@@ -73,6 +75,7 @@ function App() {
     setNewGroupName("");
     setDefeatureCandidates([]);
     setShowDefeaturePanel(false);
+    setCanUndo(false);
 
     try {
       const result = await uploadGeometry(file);
@@ -130,6 +133,7 @@ function App() {
     setNewGroupName("");
     setDefeatureCandidates([]);
     setShowDefeaturePanel(false);
+    setCanUndo(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -156,6 +160,7 @@ function App() {
     setPartCount(tessellation.part_count);
     setStlUrl(resolveTessellationUrl(tessellation.tessellation_url, Date.now()));
     setSelection((prev) => ({ mode: prev.mode, ids: [] }));
+    setCanUndo(true);
 
     const [edgeList, pointList] = await Promise.all([fetchEdges(geoId), fetchPoints(geoId)]);
     setEdges(edgeList);
@@ -302,6 +307,28 @@ function App() {
     } catch (err) {
       const message =
         err instanceof GeometryUploadError ? err.message : "Midsurface oluşturulamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /** Son mutasyon işlemini (copy/heal/midsurface) geri alır. Tek seviyeli —
+   * sadece en son işlem geri alınabilir.
+   */
+  async function handleUndo() {
+    if (!geometryId || !canUndo) return;
+
+    setBusyAction("undo");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const result = await undoLastMutation(geometryId);
+      await refreshAfterMutation(geometryId, result);
+      setCanUndo(false);
+      setInfoMessage("Son işlem geri alındı.");
+    } catch (err) {
+      const message = err instanceof GeometryUploadError ? err.message : "Geri alma başarısız oldu.";
       setErrorMessage(message);
     } finally {
       setBusyAction(null);
@@ -502,7 +529,12 @@ function App() {
                     active: showEdges,
                     onClick: () => setShowEdges((prev) => !prev),
                   },
-                  { key: "placeholder-2", label: "Yakında", disabled: true },
+                  {
+                    key: "undo",
+                    label: busyAction === "undo" ? "Geri alınıyor…" : "Geri al",
+                    disabled: !canUndo || busyAction !== null,
+                    onClick: () => void handleUndo(),
+                  },
                 ]}
               />
               <ButtonGroup
