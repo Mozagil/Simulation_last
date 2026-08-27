@@ -40,6 +40,10 @@ class TessellationResult:
     triangle_to_face: list[int]
     triangle_to_part: list[int]
     part_count: int
+    # GERÇEK bir 3B katıya (volume) karşılık gelen part_id'ler — "Solid
+    # gizle/göster" gibi işlemler sadece bunları hedeflemeli, `copy_surface`/
+    # `midsurface` çıktısı gibi düz (volume'süz) yüzey parçalarını değil.
+    volume_part_ids: list[int]
 
 
 @dataclass
