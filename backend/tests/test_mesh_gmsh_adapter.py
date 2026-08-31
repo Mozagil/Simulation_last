@@ -296,25 +296,222 @@ def test_heal_geometry_on_clean_box_reports_unchanged_counts(tmp_path):
     assert VALID_STEP_FILE.read_bytes() != b"" and test_file.exists()
 
 
-def test_find_defeature_candidates_below_threshold_empty():
+def test_heal_geometry_fills_cylindrical_hole(tmp_path):
+    """Delikli plaka: silindirik delik kapanmalı, hacim tam plaka olmalı."""
+    fixture = FIXTURES_DIR / "plate_with_hole.step"
+    test_file = tmp_path / "plate_hole_heal.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    import gmsh
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mass_before = gmsh.model.occ.getMass(3, 1)
+    result = adapter.heal_geometry(geom)
+
+    assert result.volumes_after == 1
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    mass_after = gmsh.model.occ.getMass(3, 1)
+    cyl_count = sum(
+        1 for _d, t in gmsh.model.getEntities(2) if gmsh.model.getType(2, t) == "Cylinder"
+    )
+    gmsh.finalize()
+
+    assert cyl_count == 0
+    assert mass_after == pytest.approx(100.0 * 50.0 * 5.0, rel=1e-4)
+    assert mass_after > mass_before
+
+
+def test_heal_geometry_does_not_fill_box_profile_cavity(tmp_path):
+    """Kutu profil (düzlem cidarlı boşluk) Heal ile doldurulmamalı."""
+    fixture = FIXTURES_DIR / "box_profile_40x40.step"
+    test_file = tmp_path / "box_profile_heal.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    import gmsh
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mass_before = gmsh.model.occ.getMass(3, 1)
+    adapter.heal_geometry(geom)
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    mass_after = gmsh.model.occ.getMass(3, 1)
+    gmsh.finalize()
+
+    # Dolu 40x40x100 = 160000; ince cidar ~ (40^2-36^2)*100 = 30400
+    assert mass_after == pytest.approx(mass_before, rel=1e-3)
+    assert mass_after < 50000
+
+def test_find_defeature_candidates_no_fillets_on_clean_box():
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(VALID_STEP_FILE)
 
-    # Kutunun tüm kenarları 10 birim — 2 birim eşiğin altında hiçbiri olmamalı.
-    candidates = adapter.find_defeature_candidates(geom, max_diameter=2.0)
+    candidates = adapter.find_defeature_candidates(geom, max_radius=5.0)
     assert candidates == []
 
 
-def test_find_defeature_candidates_wide_threshold_finds_all_edges():
+def test_find_defeature_candidates_finds_fillets_on_filleted_box():
     adapter = GmshMesherAdapter()
-    geom = adapter.import_geometry(VALID_STEP_FILE)
+    geom = adapter.import_geometry(FIXTURES_DIR / "box_with_fillet.step")
 
-    candidates = adapter.find_defeature_candidates(geom, max_diameter=100.0)
-    assert len(candidates) == 12
-    for c in candidates:
-        assert c.approx_diameter == pytest.approx(10.0)
-        assert c.part_id == 0
+    candidates = adapter.find_defeature_candidates(geom, max_radius=2.5)
+    assert len(candidates) > 0
+    types = {c.surface_type for c in candidates}
+    assert types <= {"Cylinder", "Sphere", "Torus"}
+    assert all(c.approx_radius <= 2.5 + 1e-6 for c in candidates)
 
+
+def test_apply_defeature_makes_sharp_box(tmp_path):
+    fixture = FIXTURES_DIR / "box_with_fillet.step"
+    test_file = tmp_path / "fillet_defeature.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    import gmsh
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    result = adapter.apply_defeature(geom, max_radius=2.5)
+
+    assert result.volumes_after == 1
+    assert result.surfaces_after == 6
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    blend = sum(
+        1
+        for _d, t in gmsh.model.getEntities(2)
+        if gmsh.model.getType(2, t) in {"Cylinder", "Sphere", "Torus"}
+    )
+    # Keskin kutu: üst yüz alanı 20*20=400
+    top_masses = [
+        gmsh.model.occ.getMass(2, t)
+        for _d, t in gmsh.model.getEntities(2)
+        if gmsh.model.getType(2, t) == "Plane"
+    ]
+    gmsh.finalize()
+
+    assert blend == 0
+    assert any(m == pytest.approx(400.0, rel=1e-3) for m in top_masses)
+
+
+def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
+    """Midsurface sonrası 2D kabuk: radyus mid'ler kalkar, 4 keskin düzlem kalır."""
+    fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
+    test_file = tmp_path / "midshell_defeature.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    import gmsh
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mid = adapter.create_midsurface_for_part(geom, 0)
+    assert len(mid) == 8
+
+    geom = adapter.import_geometry(test_file)
+    result = adapter.apply_defeature(geom, max_radius=5.0)
+
+    # Solid korunur; orphan mid: 4 plane, 0 cylinder
+    assert result.volumes_after == 1
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+
+    from app.mesh.gmsh_adapter import _compute_face_to_part, _orphan_face_ids
+
+    ftp, _, vol_backed = _compute_face_to_part()
+    orphans = _orphan_face_ids(ftp, vol_backed)
+    types = [gmsh.model.getType(2, f) for f in orphans]
+    planes = [f for f in orphans if gmsh.model.getType(2, f) == "Plane"]
+    gmsh.finalize()
+
+    assert types.count("Cylinder") == 0
+    assert types.count("Plane") == 4
+    # Köşe birleşimi: X cidar Y span = Y cidar konumları
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify2")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    ftp, _, vol_backed = _compute_face_to_part()
+    orphans = _orphan_face_ids(ftp, vol_backed)
+    x_faces, y_faces = [], []
+    for f in orphans:
+        if gmsh.model.getType(2, f) != "Plane":
+            continue
+        bb = gmsh.model.getBoundingBox(2, f)
+        if abs(bb[3] - bb[0]) <= 1e-6:
+            x_faces.append(bb)
+        elif abs(bb[4] - bb[1]) <= 1e-6:
+            y_faces.append(bb)
+    assert len(x_faces) == 2 and len(y_faces) == 2
+    y_pos = sorted(round((b[1] + b[4]) / 2, 5) for b in y_faces)
+    for xb in x_faces:
+        assert {round(xb[1], 5), round(xb[4], 5)} == set(y_pos)
+    gmsh.finalize()
+
+
+def test_apply_defeature_by_selected_face_ids(tmp_path):
+    """Seçilen radyus mid yüzeyleri face_ids ile kaldırılır."""
+    fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
+    test_file = tmp_path / "select_defeature.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    import gmsh
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mid = adapter.create_midsurface_for_part(geom, 0)
+    assert len(mid) == 8
+
+    geom = adapter.import_geometry(test_file)
+    from app.mesh.gmsh_adapter import _compute_face_to_part, _orphan_face_ids
+
+    ftp, _, vb = _compute_face_to_part()
+    cyl_ids = [
+        fid
+        for fid in _orphan_face_ids(ftp, vb)
+        if gmsh.model.getType(2, fid) == "Cylinder"
+    ]
+    assert len(cyl_ids) == 4
+
+    result = adapter.apply_defeature(geom, face_ids=cyl_ids)
+    assert result.surfaces_after < result.surfaces_before
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+    ftp, _, vb = _compute_face_to_part()
+    types = [gmsh.model.getType(2, f) for f in _orphan_face_ids(ftp, vb)]
+    gmsh.finalize()
+    assert types.count("Cylinder") == 0
+    assert types.count("Plane") == 4
+
+
+def test_find_defeature_skips_through_hole_cylinder():
+    """Delikli plakadaki silindir fillet değil — Defeature adayı olmamalı."""
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(FIXTURES_DIR / "plate_with_hole.step")
+
+    candidates = adapter.find_defeature_candidates(geom, max_radius=5.0)
+    assert candidates == []
 
 def test_create_midsurface_between_parallel_faces_at_midpoint(tmp_path):
     # DİKKAT: create_midsurface dosyayı yerinde günceller — tmp kopya kullanılıyor.
@@ -363,17 +560,18 @@ def test_create_midsurface_rejects_unknown_face_id():
         adapter.create_midsurface(geom, 1, 999)
 
 
-def test_create_midsurface_for_part_auto_detects_largest_parallel_pair(tmp_path):
+def test_create_midsurface_for_part_auto_detects_thin_wall_pair(tmp_path):
     # DİKKAT: dosyayı yerinde günceller — tmp kopya kullanılıyor.
     test_file = tmp_path / "thin_plate_test.step"
     test_file.write_bytes(THIN_PLATE_STEP_FILE.read_bytes())
 
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(test_file)
-    new_face_id, chosen_a, chosen_b = adapter.create_midsurface_for_part(geom, 0)
+    results = adapter.create_midsurface_for_part(geom, 0)
 
-    # Plaka 100x50x5: ana yüzeyler (alan=5000) yüzey 5 ve 6 olmalı, ince
-    # kenar yüzeyleri (alan=250/500) DEĞİL.
+    # Plaka 100x50x5: yalnızca ana yüzey çifti (ince cidar); kenar karşı yüzleri elenir.
+    assert len(results) == 1
+    new_face_id, chosen_a, chosen_b = results[0]
     assert {chosen_a, chosen_b} == {5, 6}
     assert new_face_id not in {1, 2, 3, 4, 5, 6}
 
@@ -393,9 +591,354 @@ def test_create_midsurface_for_part_auto_detects_largest_parallel_pair(tmp_path)
     assert point[2] == pytest.approx(2.5)
 
 
+def test_create_midsurface_for_part_box_profile_all_four_walls(tmp_path):
+    """40×40 dış, 2 mm et → 4 mid-yüzey, kapalı köşe (gap yok), enine ~38."""
+    fixture = FIXTURES_DIR / "box_profile_40x40.step"
+    test_file = tmp_path / "box_profile_test.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    results = adapter.create_midsurface_for_part(geom, 0)
+
+    assert len(results) == 4
+
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+
+    x_faces = []
+    y_faces = []
+    for new_face_id, _a, _b in results:
+        bb = gmsh.model.getBoundingBox(2, new_face_id)
+        dx, dy, dz = bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2]
+        dims = sorted([dx, dy, dz])
+        assert dims[0] == pytest.approx(0.0, abs=1e-6)
+        assert dims[1] == pytest.approx(38.0, abs=1e-5)
+        assert dims[2] == pytest.approx(100.0, abs=1e-5)
+        if dx <= 1e-6:
+            x_faces.append(bb)
+        elif dy <= 1e-6:
+            y_faces.append(bb)
+
+    # Kapalı shell: X-cidarları tam Y aralığını, Y-cidarları tam X aralığını kapsar.
+    assert len(x_faces) == 2 and len(y_faces) == 2
+    x_ys = sorted({round(x_faces[0][1], 5), round(x_faces[0][4], 5)})
+    y_xs = sorted({round(y_faces[0][0], 5), round(y_faces[0][3], 5)})
+    for xb in x_faces:
+        assert {round(xb[1], 5), round(xb[4], 5)} == set(x_ys)
+    for yb in y_faces:
+        assert {round(yb[0], 5), round(yb[3], 5)} == set(y_xs)
+    # Köşe birleşimi: X yüzlerinin Y uçları = Y yüzlerinin konumları
+    y_positions = sorted(round((yb[1] + yb[4]) / 2, 5) for yb in y_faces)
+    assert x_ys == y_positions
+
+    gmsh.finalize()
+
+
+def test_create_midsurface_for_part_c_channel_connected_corners(tmp_path):
+    """C/U kanal (3 cidar): mid-yüzeyler köşede birleşir, gap yok."""
+    fixture = FIXTURES_DIR / "c_channel.step"
+    test_file = tmp_path / "c_channel_test.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    results = adapter.create_midsurface_for_part(geom, 0)
+
+    assert len(results) == 3
+
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+
+    x_faces = []
+    y_faces = []
+    for new_face_id, _a, _b in results:
+        bb = gmsh.model.getBoundingBox(2, new_face_id)
+        dx, dy = bb[3] - bb[0], bb[4] - bb[1]
+        if dx <= 1e-6:
+            x_faces.append(bb)
+        elif dy <= 1e-6:
+            y_faces.append(bb)
+
+    assert len(x_faces) == 1 and len(y_faces) == 2
+    # Web mid Y aralığı, flanş mid Y konumlarına kadar uzar → köşe birleşir.
+    web = x_faces[0]
+    flange_ys = sorted(round((yb[1] + yb[4]) / 2, 5) for yb in y_faces)
+    assert {round(web[1], 5), round(web[4], 5)} == set(flange_ys)
+
+    gmsh.finalize()
+
+
+def test_create_midsurface_for_part_equal_r_offset_fillets(tmp_path):
+    """İç/dış fillet R aynı, merkez kayık (sac köşe): 4 düz + 4 radyus mid."""
+    fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
+    test_file = tmp_path / "equal_r.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    results = adapter.create_midsurface_for_part(geom, 0)
+
+    assert len(results) == 8
+
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+
+    types = [gmsh.model.getType(2, nid) for nid, _a, _b in results]
+    gmsh.finalize()
+
+    assert types.count("Plane") == 4
+    assert types.count("Cylinder") == 4
+
+
+def test_create_midsurface_for_part_filleted_profile_includes_cylinder_mids(tmp_path):
+    """İç+dış fillet'li kutu profil: 4 düz mid + 4 radyus mid."""
+    fixture = FIXTURES_DIR / "box_profile_filleted.step"
+    test_file = tmp_path / "filleted_profile.step"
+    test_file.write_bytes(fixture.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    results = adapter.create_midsurface_for_part(geom, 0)
+
+    assert len(results) == 8  # 4 plane + 4 cylinder
+
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify")
+    gmsh.open(str(test_file))
+    gmsh.model.occ.synchronize()
+
+    types = []
+    for new_face_id, _a, _b in results:
+        types.append(gmsh.model.getType(2, new_face_id))
+    gmsh.finalize()
+
+    assert types.count("Plane") == 4
+    assert types.count("Cylinder") == 4
+
+
+def test_preview_tessellation_uses_curvature_on_filleted_box(tmp_path):
+    """Fillet'li kutuda MeshSizeFromCurvature ile önizleme üçgen üretir."""
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(FIXTURES_DIR / "box_with_fillet.step")
+    result = adapter.preview_tessellation(geom, tmp_path / "fillet_preview.stl")
+
+    assert result.stl_path.exists()
+    assert len(result.triangle_to_face) > 200
+
+
 def test_create_midsurface_for_part_rejects_unknown_part():
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(THIN_PLATE_STEP_FILE)
 
     with pytest.raises(SurfaceNotFoundError):
         adapter.create_midsurface_for_part(geom, 999)
+
+
+def test_generate_mesh_3d_tet_on_box(tmp_path):
+    """Solid kutu: dimension=3 → tet elemanlar + .msh dosyası."""
+    from app.mesh.base import MeshParams
+
+    test_file = tmp_path / "box_mesh.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    result = adapter.generate_mesh(
+        geom, MeshParams(element_size=5.0, dimension=3)
+    )
+
+    assert result.dimension == 3
+    assert result.node_count > 0
+    assert result.element_count > 0
+    assert "Tetrahedron" in result.element_type_counts
+    assert result.mesh_path.exists()
+    assert result.mesh_path.suffix == ".msh"
+    assert result.preview_path is not None
+    assert result.preview_path.exists()
+    import json
+
+    preview = json.loads(result.preview_path.read_text(encoding="utf-8"))
+    assert len(preview["nodes"]) == result.node_count
+    assert len(preview["faces"]) >= 9
+    assert len(preview["faces"]) % 3 == 0
+    assert len(preview["lines"]) >= 6
+    assert len(preview["lines"]) % 2 == 0
+    tri_count = len(preview["faces"]) // 3
+    assert preview["triangle_to_part"] == [0] * tri_count
+
+
+def test_generate_mesh_2d_rejects_without_shell_faces(tmp_path):
+    """Yalnız solid varken dimension=2 → midsurface iste."""
+    from app.mesh.base import MeshError, MeshParams
+
+    test_file = tmp_path / "box_no_shell.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    with pytest.raises(MeshError, match="midsurface"):
+        adapter.generate_mesh(geom, MeshParams(element_size=2.0, dimension=2))
+
+
+def test_generate_mesh_2d_shell_quad_preferred(tmp_path):
+    """2D shell + quad scheme → Quad elemanları üretilir."""
+    from app.mesh.base import MeshParams
+
+    test_file = tmp_path / "plate_quad.step"
+    test_file.write_bytes(THIN_PLATE_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    adapter.create_midsurface_for_part(geom, 0)
+
+    geom = adapter.import_geometry(test_file)
+    result = adapter.generate_mesh(
+        geom,
+        MeshParams(element_size=2.0, dimension=2, element_scheme="quad"),
+    )
+
+    assert result.element_scheme == "quad"
+    assert result.element_count > 0
+    assert "Quad" in result.element_type_counts
+    assert result.element_type_counts["Quad"] > 0
+    import json
+
+    preview = json.loads(result.preview_path.read_text(encoding="utf-8"))
+    n_quad = result.element_type_counts["Quad"]
+    n_tri = result.element_type_counts.get("Triangle", 0)
+    # Gölgeleme: her quad 2 üçgen; wireframe: köşegen yok → kenar ≤ 4*quad + 3*tri
+    assert len(preview["faces"]) == (n_quad * 2 + n_tri) * 3
+    assert len(preview["lines"]) // 2 <= 4 * n_quad + 3 * n_tri
+    assert len(preview["triangle_to_part"]) == len(preview["faces"]) // 3
+    assert len(preview["triangle_to_face"]) == len(preview["faces"]) // 3
+    assert len(preview["triangle_to_element"]) == len(preview["faces"]) // 3
+    assert set(preview["triangle_to_part"]).issubset(range(8))
+    assert len(set(preview["triangle_to_element"])) == n_quad + n_tri
+
+
+def test_generate_mesh_2d_shell_on_midsurface(tmp_path):
+    """İnce plaka + midsurface: dimension=2 → yalnız shell yüzey mesh'i."""
+    from app.mesh.base import MeshParams
+
+    test_file = tmp_path / "plate_shell.step"
+    test_file.write_bytes(THIN_PLATE_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mids = adapter.create_midsurface_for_part(geom, 0)
+    assert len(mids) >= 1
+
+    geom = adapter.import_geometry(test_file)
+    result = adapter.generate_mesh(
+        geom, MeshParams(element_size=2.0, dimension=2, element_scheme="tet")
+    )
+
+    assert result.dimension == 2
+    assert result.node_count > 0
+    assert result.element_count > 0
+    assert "Triangle" in result.element_type_counts
+    assert result.mesh_path.exists()
+    assert result.preview_path is not None
+    import json
+
+    preview = json.loads(result.preview_path.read_text(encoding="utf-8"))
+    assert len(preview["nodes"]) == result.node_count
+    assert len(preview["faces"]) == result.element_count * 3
+    assert len(preview["lines"]) >= 6
+    assert len(preview["triangle_to_part"]) == result.element_count
+    assert len(preview["triangle_to_face"]) == result.element_count
+    assert len(preview["triangle_to_element"]) == result.element_count
+    assert min(preview["triangle_to_part"]) >= 0
+    assert len(set(preview["triangle_to_element"])) == result.element_count
+
+
+def test_2d_shell_attached_merges_coincident_profile_faces(tmp_path):
+    """4 cidarlı profil: Face ayrı, Attached tek PART (çakışan düğüm)."""
+    from app.mesh.base import MeshParams
+    import json
+
+    src = FIXTURES_DIR / "box_profile_40x40.step"
+    if not src.exists():
+        pytest.skip("box_profile_40x40.step yok")
+    test_file = tmp_path / "profile.step"
+    test_file.write_bytes(src.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    adapter.create_midsurface_for_part(geom, 0)
+    geom = adapter.import_geometry(test_file)
+    result = adapter.generate_mesh(
+        geom, MeshParams(element_size=4.0, dimension=2, element_scheme="quad")
+    )
+    preview = json.loads(result.preview_path.read_text(encoding="utf-8"))
+    faces = set(preview["triangle_to_face"])
+    parts = set(preview["triangle_to_part"])
+    assert len(faces) >= 2
+    assert len(parts) == 1
+
+
+def test_generate_mesh_3d_rejects_without_volume(tmp_path):
+    """Volume yoksa dimension=3 hata verir."""
+    from app.mesh.base import MeshError, MeshParams
+    from app.mesh.gmsh_adapter import _gmsh_lock
+    import gmsh
+
+    shell_file = FIXTURES_DIR / "curved_shell.step"
+    if not shell_file.exists():
+        pytest.skip("curved_shell.step yok")
+    test_file = tmp_path / "shell_only.step"
+    test_file.write_bytes(shell_file.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    has_vol = bool(gmsh.model.getEntities(3))
+    gmsh.finalize()
+    _gmsh_lock.release()
+    if has_vol:
+        pytest.skip("fixture volume içeriyor")
+
+    geom = adapter.import_geometry(test_file)
+    with pytest.raises(MeshError, match="solid"):
+        adapter.generate_mesh(geom, MeshParams(element_size=2.0, dimension=3))
+
+
+def test_compute_mesh_quality_jacobian_and_aspect_on_3d(tmp_path):
+    """3D mesh sonrası minSJ + aspect_ratio min/max/mean döner."""
+    from app.mesh.base import MeshParams
+
+    test_file = tmp_path / "box_q.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    mesh = adapter.generate_mesh(
+        geom, MeshParams(element_size=5.0, dimension=3, element_scheme="tet")
+    )
+
+    quality = adapter.compute_mesh_quality(mesh.mesh_path, dimension=3)
+    assert quality.element_count == mesh.element_count
+    assert len(quality.element_tags) == quality.element_count
+    assert quality.jacobian.min <= quality.jacobian.mean <= quality.jacobian.max
+    assert quality.aspect_ratio.min >= 1.0 - 1e-6
+    assert quality.aspect_ratio.min <= quality.aspect_ratio.mean <= quality.aspect_ratio.max
+    assert len(quality.jacobian.values) == quality.element_count
+    assert len(quality.aspect_ratio.values) == quality.element_count

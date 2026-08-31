@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import type { EdgeInfo, PointInfo } from "../api/geometry";
-import type { MultiSelectionInfo, SelectionMode } from "../types";
+import type { EdgeInfo, MeshPreviewData, PointInfo } from "../api/geometry";
+import type { MeshGrowMode, MeshPickInfo, MultiSelectionInfo, SelectionMode } from "../types";
 
 interface GeometryViewerProps {
   stlUrl: string;
@@ -16,17 +16,31 @@ interface GeometryViewerProps {
   hiddenParts: Set<number>;
   /** Kenar çizgilerini göster/gizle (İşlemler grubundaki toggle butonu). */
   showEdges: boolean;
-  /** Tıklama dışında (örn. Physical Group ya da defeature aday listesi
-   * butonlarına basınca) belirli yüzeyleri/kenarları vurgulamak için. null
-   * verilince vurgu temizlenir. */
+  /** FE mesh wireframe (CAD koordinatı); null = overlay yok. */
+  meshPreview: MeshPreviewData | null;
+  /** Mesh overlay görünür mü (göster/gizle). */
+  showMesh: boolean;
+  /** App state'teki seçim — turuncu vurgu bununla senkron (sahne rebuild sonrası da kalır). */
+  selectedIds: number[];
+  /** Mesh overlay: seçili eleman(lar) + Face/Attached büyüme. */
+  meshPicks: MeshPickInfo[];
+  meshGrow: MeshGrowMode;
+  /** Tıklama dışında (örn. Physical Group) belirli yüzeyleri/kenarları vurgulamak için. */
   externalHighlight: { faceIds: number[] } | { edgeIds: number[] } | null;
   /** Aktif moddaki seçili öğe(ler) değiştiğinde çağrılır. Düz tıklama tek
    * öğeye indirger; Ctrl(/Cmd)+tık mevcut seçime ekler/çıkarır. */
   onSelectionChange?: (info: MultiSelectionInfo) => void;
+  /** Mesh elemanına tıklanınca. Ctrl ile çoklu; düz tık tekile indirger. */
+  onMeshPicks?: (picks: MeshPickInfo[], keepGrow: boolean) => void;
 }
 
+const MESH_FACE_COLOR = "#6aa84f";
+const MESH_FACE_THREE = new THREE.Color(MESH_FACE_COLOR);
+const MESH_EDGE_COLOR = "#1a1a1a";
+
 const BASE_COLOR = new THREE.Color("#5a8f73");
-const HIGHLIGHT_COLOR = new THREE.Color("#d97757");
+/** Turuncu seçim vurgusu — yeşilden net ayrışır. */
+const HIGHLIGHT_COLOR = new THREE.Color("#e85d04");
 const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
 const EDGE_BASE_COLOR = "#1b1f1c";
 const CLICK_DRAG_THRESHOLD_PX = 6;
@@ -41,6 +55,96 @@ function buildGroupIndex(triangleToGroup: number[]): Map<number, number[]> {
     else map.set(groupId, [triIndex]);
   });
   return map;
+}
+
+/** Kenar paylaşan üçgenler aynı parça — tıklanınca tüm bağlı mesh turuncu olur. */
+function connectedTriangleParts(faces: number[]): number[] {
+  const triCount = Math.floor(faces.length / 3);
+  const partOf = new Array<number>(triCount).fill(-1);
+  if (triCount === 0) return partOf;
+
+  const edgeKey = (a: number, b: number) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+  const edgeToTris = new Map<string, number[]>();
+  for (let t = 0; t < triCount; t++) {
+    const i0 = faces[t * 3];
+    const i1 = faces[t * 3 + 1];
+    const i2 = faces[t * 3 + 2];
+    for (const [a, b] of [
+      [i0, i1],
+      [i1, i2],
+      [i2, i0],
+    ] as [number, number][]) {
+      const key = edgeKey(a, b);
+      const list = edgeToTris.get(key);
+      if (list) list.push(t);
+      else edgeToTris.set(key, [t]);
+    }
+  }
+  const adj: number[][] = Array.from({ length: triCount }, () => []);
+  for (const tris of edgeToTris.values()) {
+    for (let i = 0; i < tris.length; i++) {
+      for (let j = i + 1; j < tris.length; j++) {
+        adj[tris[i]].push(tris[j]);
+        adj[tris[j]].push(tris[i]);
+      }
+    }
+  }
+  let partId = 0;
+  for (let t = 0; t < triCount; t++) {
+    if (partOf[t] !== -1) continue;
+    const stack = [t];
+    partOf[t] = partId;
+    while (stack.length) {
+      const cur = stack.pop() as number;
+      for (const n of adj[cur]) {
+        if (partOf[n] === -1) {
+          partOf[n] = partId;
+          stack.push(n);
+        }
+      }
+    }
+    partId += 1;
+  }
+  return partOf;
+}
+
+/** Çakışan xyz düğümlerini aynı id say — ayrı Gmsh yüzleri Attached'ta birleşir. */
+function connectedPartsByWeldedNodes(nodes: number[][], faces: number[]): number[] {
+  const weldOf = new Array<number>(nodes.length);
+  const coordToWeld = new Map<string, number>();
+  let nextW = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const key = `${n[0].toFixed(5)}_${n[1].toFixed(5)}_${n[2].toFixed(5)}`;
+    let w = coordToWeld.get(key);
+    if (w === undefined) {
+      w = nextW;
+      nextW += 1;
+      coordToWeld.set(key, w);
+    }
+    weldOf[i] = w;
+  }
+  const welded = new Array<number>(faces.length);
+  for (let i = 0; i < faces.length; i++) {
+    welded[i] = weldOf[faces[i]] ?? faces[i];
+  }
+  return connectedTriangleParts(welded);
+}
+
+function toggleMeshPicks(
+  current: MeshPickInfo[],
+  info: MeshPickInfo,
+  ctrlPressed: boolean,
+): MeshPickInfo[] {
+  if (ctrlPressed) {
+    const idx = current.findIndex((p) => p.elementId === info.elementId);
+    if (idx >= 0) return current.filter((_, i) => i !== idx);
+    return [...current, info];
+  }
+  if (current.length === 1 && current[0].elementId === info.elementId) {
+    return [];
+  }
+  return [info];
 }
 
 /** Ctrl+tık ile ekle/çıkar, düz tık ile tekile indirge (aynı tek öğeye
@@ -97,14 +201,45 @@ function GeometryViewer({
   mode,
   hiddenParts,
   showEdges,
+  meshPreview,
+  showMesh,
+  selectedIds,
+  meshPicks,
+  meshGrow,
   externalHighlight,
   onSelectionChange,
+  onMeshPicks,
 }: GeometryViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<SelectionMode>(mode);
   const showEdgesRef = useRef<boolean>(showEdges);
+  const selectedIdsRef = useRef<number[]>(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  const externalHighlightRef = useRef(externalHighlight);
+  externalHighlightRef.current = externalHighlight;
+  const meshPreviewRef = useRef(meshPreview);
+  meshPreviewRef.current = meshPreview;
+  const showMeshRef = useRef(showMesh);
+  showMeshRef.current = showMesh;
+
+  const meshPicksRef = useRef(meshPicks);
+  meshPicksRef.current = meshPicks;
+  const meshGrowRef = useRef(meshGrow);
+  meshGrowRef.current = meshGrow;
 
   const sceneRefs = useRef<{
+    modelGroup: THREE.Group | null;
+    modelCenter: THREE.Vector3;
+    meshOverlay: THREE.Group | null;
+    overlayMesh: THREE.Mesh | null;
+    overlayColorAttr: THREE.BufferAttribute | null;
+    overlayTriCount: number;
+    triangleToElement: number[];
+    triangleToFace: number[];
+    triangleToPart: number[];
+    elementToTris: Map<number, number[]>;
+    faceToTris: Map<number, number[]>;
+    partToTris: Map<number, number[]>;
     partMeshes: PartMeshEntry[];
     partMeshByPartId: Map<number, PartMeshEntry>;
     faceIdToPart: Map<number, PartMeshEntry>;
@@ -118,6 +253,18 @@ function GeometryViewer({
     selectedPointIds: Set<number>;
     maxDim: number;
   }>({
+    modelGroup: null,
+    modelCenter: new THREE.Vector3(),
+    meshOverlay: null,
+    overlayMesh: null,
+    overlayColorAttr: null,
+    overlayTriCount: 0,
+    triangleToElement: [],
+    triangleToFace: [],
+    triangleToPart: [],
+    elementToTris: new Map(),
+    faceToTris: new Map(),
+    partToTris: new Map(),
     partMeshes: [],
     partMeshByPartId: new Map(),
     faceIdToPart: new Map(),
@@ -132,6 +279,177 @@ function GeometryViewer({
     maxDim: 1,
   });
 
+  function clearOverlayMaps(refs: typeof sceneRefs.current) {
+    refs.overlayMesh = null;
+    refs.overlayColorAttr = null;
+    refs.overlayTriCount = 0;
+    refs.triangleToElement = [];
+    refs.triangleToFace = [];
+    refs.triangleToPart = [];
+    refs.elementToTris = new Map();
+    refs.faceToTris = new Map();
+    refs.partToTris = new Map();
+  }
+
+  function disposeMeshOverlay() {
+    const refs = sceneRefs.current;
+    if (!refs.meshOverlay) {
+      clearOverlayMaps(refs);
+      return;
+    }
+    refs.modelGroup?.remove(refs.meshOverlay);
+    refs.meshOverlay.traverse((obj) => {
+      if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+        obj.geometry.dispose();
+        const mat = obj.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat.dispose();
+      }
+    });
+    refs.meshOverlay = null;
+    clearOverlayMaps(refs);
+  }
+
+  function trisForGrow(picks: MeshPickInfo[], grow: MeshGrowMode): number[] {
+    const refs = sceneRefs.current;
+    if (picks.length === 0) return [];
+    const tris = new Set<number>();
+    if (grow === "face") {
+      for (const faceId of new Set(picks.map((p) => p.faceId))) {
+        for (const t of refs.faceToTris.get(faceId) ?? []) tris.add(t);
+      }
+    } else if (grow === "attached") {
+      for (const partId of new Set(picks.map((p) => p.partId))) {
+        for (const t of refs.partToTris.get(partId) ?? []) tris.add(t);
+      }
+    } else {
+      for (const p of picks) {
+        for (const t of refs.elementToTris.get(p.elementId) ?? []) tris.add(t);
+      }
+    }
+    return [...tris];
+  }
+
+  function paintMeshGrow(picks: MeshPickInfo[], grow: MeshGrowMode) {
+    const attr = sceneRefs.current.overlayColorAttr;
+    if (!attr) return;
+    const arr = attr.array as Float32Array;
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i] = MESH_FACE_THREE.r;
+      arr[i + 1] = MESH_FACE_THREE.g;
+      arr[i + 2] = MESH_FACE_THREE.b;
+    }
+    for (const ti of trisForGrow(picks, grow)) {
+      for (let v = 0; v < 3; v++) {
+        const o = (ti * 3 + v) * 3;
+        arr[o] = HIGHLIGHT_COLOR.r;
+        arr[o + 1] = HIGHLIGHT_COLOR.g;
+        arr[o + 2] = HIGHLIGHT_COLOR.b;
+      }
+    }
+    attr.needsUpdate = true;
+  }
+
+  function setCadVisible(visible: boolean) {
+    const refs = sceneRefs.current;
+    for (const entry of refs.partMeshes) {
+      entry.mesh.visible = visible && !entry.mesh.userData._hiddenByUser;
+    }
+  }
+
+  function applyMeshPreview(preview: MeshPreviewData | null, visible: boolean) {
+    const refs = sceneRefs.current;
+    disposeMeshOverlay();
+    if (!preview || !visible || !refs.modelGroup || preview.nodes.length === 0) {
+      setCadVisible(true);
+      return;
+    }
+    const faces = preview.faces ?? [];
+    const linesIdx = preview.lines ?? [];
+    if (faces.length < 3 && linesIdx.length < 2) {
+      setCadVisible(true);
+      return;
+    }
+
+    const nodePos = new Float32Array(preview.nodes.length * 3);
+    for (let i = 0; i < preview.nodes.length; i++) {
+      const n = preview.nodes[i];
+      nodePos[i * 3] = n[0];
+      nodePos[i * 3 + 1] = n[1];
+      nodePos[i * 3 + 2] = n[2];
+    }
+
+    const group = new THREE.Group();
+    group.position.copy(refs.modelCenter).multiplyScalar(-1);
+
+    if (faces.length >= 3) {
+      const triCount = Math.floor(faces.length / 3);
+      const tFace =
+        preview.triangle_to_face && preview.triangle_to_face.length >= triCount
+          ? preview.triangle_to_face.slice(0, triCount)
+          : connectedTriangleParts(faces).slice(0, triCount);
+      const tElem =
+        preview.triangle_to_element && preview.triangle_to_element.length >= triCount
+          ? preview.triangle_to_element.slice(0, triCount)
+          : Array.from({ length: triCount }, (_, i) => i);
+      const tPart = connectedPartsByWeldedNodes(preview.nodes, faces).slice(0, triCount);
+
+      const positions = new Float32Array(triCount * 9);
+      const colors = new Float32Array(triCount * 9);
+      for (let t = 0; t < triCount; t++) {
+        for (let v = 0; v < 3; v++) {
+          const ni = faces[t * 3 + v];
+          const dst = (t * 3 + v) * 3;
+          positions[dst] = nodePos[ni * 3];
+          positions[dst + 1] = nodePos[ni * 3 + 1];
+          positions[dst + 2] = nodePos[ni * 3 + 2];
+          colors[dst] = MESH_FACE_THREE.r;
+          colors[dst + 1] = MESH_FACE_THREE.g;
+          colors[dst + 2] = MESH_FACE_THREE.b;
+        }
+      }
+      const faceGeom = new THREE.BufferGeometry();
+      faceGeom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const colorAttr = new THREE.BufferAttribute(colors, 3);
+      faceGeom.setAttribute("color", colorAttr);
+      faceGeom.computeVertexNormals();
+      const faceMat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        metalness: 0.05,
+        roughness: 0.55,
+        side: THREE.DoubleSide,
+        flatShading: true,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+      const mesh = new THREE.Mesh(faceGeom, faceMat);
+      group.add(mesh);
+      refs.overlayMesh = mesh;
+      refs.overlayColorAttr = colorAttr;
+      refs.overlayTriCount = triCount;
+      refs.triangleToElement = tElem;
+      refs.triangleToFace = tFace;
+      refs.triangleToPart = tPart;
+      refs.elementToTris = buildGroupIndex(tElem);
+      refs.faceToTris = buildGroupIndex(tFace);
+      refs.partToTris = buildGroupIndex(tPart);
+    }
+
+    if (linesIdx.length >= 2) {
+      const edgeGeom = new THREE.BufferGeometry();
+      edgeGeom.setAttribute("position", new THREE.BufferAttribute(nodePos.slice(), 3));
+      edgeGeom.setIndex(new THREE.BufferAttribute(new Uint32Array(linesIdx), 1));
+      const edgeMat = new THREE.LineBasicMaterial({ color: MESH_EDGE_COLOR });
+      group.add(new THREE.LineSegments(edgeGeom, edgeMat));
+    }
+
+    refs.modelGroup.add(group);
+    refs.meshOverlay = group;
+    paintMeshGrow(meshPicksRef.current, meshGrowRef.current);
+    setCadVisible(false);
+  }
+
   // Ana sahne kurulumu — sadece geometri değiştiğinde.
   useEffect(() => {
     const container = containerRef.current;
@@ -145,14 +463,13 @@ function GeometryViewer({
 
     const camera = new THREE.PerspectiveCamera(
       45,
-      container.clientWidth / container.clientHeight,
+      (container.clientWidth || 1) / (container.clientHeight || 1),
       0.1,
       10000,
     );
     camera.position.set(10, 8, 10);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
@@ -175,6 +492,9 @@ function GeometryViewer({
 
     const modelGroup = new THREE.Group();
     scene.add(modelGroup);
+    sceneRefs.current.modelGroup = modelGroup;
+    sceneRefs.current.meshOverlay = null;
+    clearOverlayMaps(sceneRefs.current);
 
     let gridHelper: THREE.GridHelper | null = null;
 
@@ -210,6 +530,52 @@ function GeometryViewer({
         if (!entry) continue;
         const localIndices = entry.faceToLocalIndices.get(faceId) ?? [];
         paintLocalIndices(entry, localIndices, HIGHLIGHT_COLOR);
+      }
+    }
+
+    function applyHighlightFromAppState() {
+      const refs = sceneRefs.current;
+      if (refs.partMeshes.length === 0) return;
+      const ext = externalHighlightRef.current;
+      const ids = selectedIdsRef.current;
+      const currentMode = modeRef.current;
+
+      for (const entry of refs.partMeshes) resetPartColor(entry);
+      for (const line of refs.edgeLineById.values()) {
+        (line.material as THREE.LineBasicMaterial).color.set(EDGE_BASE_COLOR);
+      }
+      for (const pm of refs.pointMeshById.values()) {
+        (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
+      }
+
+      if (ext && "faceIds" in ext) {
+        for (const faceId of ext.faceIds) {
+          const entry = refs.faceIdToPart.get(faceId);
+          if (!entry) continue;
+          paintLocalIndices(entry, entry.faceToLocalIndices.get(faceId) ?? [], HIGHLIGHT_COLOR);
+        }
+        return;
+      }
+      if (ext && "edgeIds" in ext) {
+        for (const edgeId of ext.edgeIds) {
+          const line = refs.edgeLineById.get(edgeId);
+          if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
+        }
+        return;
+      }
+
+      if (currentMode === "surface") {
+        refs.selectedFaceIds = new Set(ids);
+        repaintFaceSelection(refs.selectedFaceIds);
+      } else if (currentMode === "part") {
+        refs.selectedPartIds = new Set(ids);
+        repaintPartSelection(refs.selectedPartIds);
+      } else if (currentMode === "edge") {
+        refs.selectedEdgeIds = new Set(ids);
+        repaintEdgeSelection(refs.selectedEdgeIds);
+      } else if (currentMode === "point") {
+        refs.selectedPointIds = new Set(ids);
+        repaintPointSelection(refs.selectedPointIds);
       }
     }
 
@@ -276,9 +642,38 @@ function GeometryViewer({
 
       const refs = sceneRefs.current;
       const currentMode = modeRef.current;
+      const overlayVisible =
+        Boolean(showMeshRef.current && meshPreviewRef.current) &&
+        refs.overlayMesh !== null;
+
+      if (overlayVisible && refs.overlayMesh) {
+        const overlayHits = raycaster.intersectObject(refs.overlayMesh, false);
+        if (overlayHits.length > 0 && overlayHits[0].faceIndex !== undefined) {
+          const triIndex = overlayHits[0].faceIndex as number;
+          const info: MeshPickInfo = {
+            elementId: refs.triangleToElement[triIndex] ?? triIndex,
+            faceId: refs.triangleToFace[triIndex] ?? 0,
+            partId: refs.triangleToPart[triIndex] ?? 0,
+          };
+          const next = toggleMeshPicks(meshPicksRef.current, info, ctrlPressed);
+          meshPicksRef.current = next;
+          const grow = ctrlPressed ? meshGrowRef.current : "element";
+          paintMeshGrow(next, grow);
+          onMeshPicks?.(next, ctrlPressed);
+          return;
+        }
+        if (!ctrlPressed) {
+          meshPicksRef.current = [];
+          paintMeshGrow([], "element");
+          onMeshPicks?.([], false);
+        }
+        return;
+      }
 
       if (currentMode === "surface" || currentMode === "part") {
-        const meshes = refs.partMeshes.map((e) => e.mesh);
+        const meshes = refs.partMeshes
+          .filter((e) => e.mesh.visible)
+          .map((e) => e.mesh);
         const intersections = raycaster.intersectObjects(meshes, false);
         if (intersections.length === 0 || intersections[0].faceIndex === undefined) {
           if (!ctrlPressed) {
@@ -365,6 +760,7 @@ function GeometryViewer({
 
         const center = new THREE.Vector3();
         boundingBox.getCenter(center);
+        sceneRefs.current.modelCenter.copy(center);
         const size = new THREE.Vector3();
         boundingBox.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
@@ -373,7 +769,17 @@ function GeometryViewer({
         const positions = geometry.attributes.position.array as Float32Array;
         const normalsArr = geometry.attributes.normal.array as Float32Array;
 
-        const partToTriangleIndices = buildGroupIndex(triangleToPart);
+        let partToTriangleIndices = buildGroupIndex(triangleToPart);
+        // Eşleme boş/eksik gelse bile ham STL'i tek parça olarak çiz — aksi halde
+        // kamera/grid kurulur, katı hiç eklenmez, viewport boş kalır.
+        if (partToTriangleIndices.size === 0) {
+          const triCount = Math.floor(positions.length / 9);
+          if (triCount > 0) {
+            partToTriangleIndices = new Map([
+              [0, Array.from({ length: triCount }, (_, i) => i)],
+            ]);
+          }
+        }
         const partMeshes: PartMeshEntry[] = [];
         const partMeshByPartId = new Map<number, PartMeshEntry>();
         const faceIdToPart = new Map<number, PartMeshEntry>();
@@ -419,15 +825,22 @@ function GeometryViewer({
           mesh.position.sub(center);
           modelGroup.add(mesh);
 
-          const edgesGeometry = new THREE.EdgesGeometry(subGeometry, 30);
           const edgesMaterial = new THREE.LineBasicMaterial({
             color: "#0d100e",
             transparent: true,
             opacity: 0.7,
           });
-          const decorativeEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+          // EdgesGeometry 30k+ üçgende ana iş parçacığını saniyelerce kilitler;
+          // ilk karede katı görünmez kalır. Kenarları bir sonraki kareye erteliyoruz.
+          const decorativeEdges = new THREE.LineSegments(new THREE.BufferGeometry(), edgesMaterial);
           decorativeEdges.visible = showEdgesRef.current;
           mesh.add(decorativeEdges);
+          requestAnimationFrame(() => {
+            if (disposed) return;
+            const edgesGeometry = new THREE.EdgesGeometry(subGeometry, 30);
+            decorativeEdges.geometry.dispose();
+            decorativeEdges.geometry = edgesGeometry;
+          });
 
           const faceToLocalIndices = buildGroupIndex(localTriangleToFace);
           const entry: PartMeshEntry = {
@@ -507,8 +920,14 @@ function GeometryViewer({
         sceneRefs.current.pointMeshById = pointMeshById;
 
         for (const entry of partMeshes) {
-          entry.mesh.visible = !hiddenParts.has(entry.partId);
+          entry.mesh.userData._hiddenByUser = hiddenParts.has(entry.partId);
+          entry.mesh.visible =
+            !(meshPreviewRef.current && showMeshRef.current) &&
+            !entry.mesh.userData._hiddenByUser;
         }
+
+        applyHighlightFromAppState();
+        applyMeshPreview(meshPreviewRef.current, showMeshRef.current);
       },
       undefined,
       (error) => {
@@ -525,15 +944,22 @@ function GeometryViewer({
 
     const handleResize = () => {
       if (!container) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width < 2 || height < 2) return;
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setSize(width, height);
     };
+    handleResize();
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener("resize", handleResize);
 
     return () => {
       disposed = true;
       cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
@@ -555,6 +981,18 @@ function GeometryViewer({
         container.removeChild(renderer.domElement);
       }
       sceneRefs.current = {
+        modelGroup: null,
+        modelCenter: new THREE.Vector3(),
+        meshOverlay: null,
+        overlayMesh: null,
+        overlayColorAttr: null,
+        overlayTriCount: 0,
+        triangleToElement: [],
+        triangleToFace: [],
+        triangleToPart: [],
+        elementToTris: new Map(),
+        faceToTris: new Map(),
+        partToTris: new Map(),
         partMeshes: [],
         partMeshByPartId: new Map(),
         faceIdToPart: new Map(),
@@ -572,15 +1010,57 @@ function GeometryViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stlUrl, edges, points, triangleToFace, triangleToPart]);
 
-  // Mod değişimi: sahneyi yeniden kurmadan sadece görünürlük + seçim sıfırlama.
+  // Mesh wireframe overlay — sahne rebuild etmeden güncellenir.
+  useEffect(() => {
+    applyMeshPreview(meshPreview, showMesh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meshPreview, showMesh]);
+
+  // Mod değişimi: görünürlük + App seçimini yeniden boya (sahne rebuild yok).
   useEffect(() => {
     modeRef.current = mode;
     const refs = sceneRefs.current;
+    if (refs.interactiveEdgesGroup) refs.interactiveEdgesGroup.visible = mode === "edge";
+    if (refs.pointsGroup) refs.pointsGroup.visible = mode === "point";
 
-    refs.selectedPartIds = new Set();
-    refs.selectedFaceIds = new Set();
-    refs.selectedEdgeIds = new Set();
-    refs.selectedPointIds = new Set();
+    // Seçimi App temizler (mode change handler); burada sadece görünürlük.
+    for (const entry of refs.partMeshes) {
+      const colors = entry.colorAttribute.array as Float32Array;
+      for (let i = 0; i < colors.length; i += 3) {
+        colors[i] = BASE_COLOR.r;
+        colors[i + 1] = BASE_COLOR.g;
+        colors[i + 2] = BASE_COLOR.b;
+      }
+      entry.colorAttribute.needsUpdate = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
+  // Mesh overlay açıkken CAD zaten gizli kalır.
+  useEffect(() => {
+    const refs = sceneRefs.current;
+    const meshShown = refs.meshOverlay !== null;
+    for (const entry of refs.partMeshes) {
+      entry.mesh.userData._hiddenByUser = hiddenParts.has(entry.partId);
+      entry.mesh.visible = !meshShown && !entry.mesh.userData._hiddenByUser;
+    }
+  }, [hiddenParts]);
+
+  // showEdges değişimi: her parçanın kendi kenar çizgisinin görünürlüğünü
+  // toplu güncelle.
+  useEffect(() => {
+    showEdgesRef.current = showEdges;
+    const refs = sceneRefs.current;
+    for (const entry of refs.partMeshes) {
+      entry.decorativeEdges.visible = showEdges;
+    }
+  }, [showEdges]);
+
+  // App seçimi / externalHighlight → turuncu vurgu (STL yüklüyse).
+  useEffect(() => {
+    const refs = sceneRefs.current;
+    if (refs.partMeshes.length === 0) return;
 
     for (const entry of refs.partMeshes) {
       const colors = entry.colorAttribute.array as Float32Array;
@@ -596,54 +1076,6 @@ function GeometryViewer({
     }
     for (const pm of refs.pointMeshById.values()) {
       (pm.material as THREE.MeshBasicMaterial).color.set(POINT_BASE_COLOR);
-    }
-
-    if (refs.interactiveEdgesGroup) refs.interactiveEdgesGroup.visible = mode === "edge";
-    if (refs.pointsGroup) refs.pointsGroup.visible = mode === "point";
-
-    onSelectionChange?.({ mode, ids: [] });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
-
-  // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
-  useEffect(() => {
-    const refs = sceneRefs.current;
-    for (const entry of refs.partMeshes) {
-      entry.mesh.visible = !hiddenParts.has(entry.partId);
-    }
-  }, [hiddenParts]);
-
-  // showEdges değişimi: her parçanın kendi kenar çizgisinin görünürlüğünü
-  // toplu güncelle.
-  useEffect(() => {
-    showEdgesRef.current = showEdges;
-    const refs = sceneRefs.current;
-    for (const entry of refs.partMeshes) {
-      entry.decorativeEdges.visible = showEdges;
-    }
-  }, [showEdges]);
-
-  // externalHighlight değişimi: Physical Group / defeature adayı gibi
-  // tıklama-dışı vurgular. Kullanıcının aktif tıklama seçimini de temizler.
-  useEffect(() => {
-    const refs = sceneRefs.current;
-
-    refs.selectedPartIds = new Set();
-    refs.selectedFaceIds = new Set();
-    refs.selectedEdgeIds = new Set();
-    refs.selectedPointIds = new Set();
-
-    for (const entry of refs.partMeshes) {
-      const colors = entry.colorAttribute.array as Float32Array;
-      for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = BASE_COLOR.r;
-        colors[i + 1] = BASE_COLOR.g;
-        colors[i + 2] = BASE_COLOR.b;
-      }
-      entry.colorAttribute.needsUpdate = true;
-    }
-    for (const line of refs.edgeLineById.values()) {
-      (line.material as THREE.LineBasicMaterial).color.set(EDGE_BASE_COLOR);
     }
 
     if (externalHighlight && "faceIds" in externalHighlight) {
@@ -663,13 +1095,58 @@ function GeometryViewer({
         }
         entry.colorAttribute.needsUpdate = true;
       }
-    } else if (externalHighlight && "edgeIds" in externalHighlight) {
+      return;
+    }
+    if (externalHighlight && "edgeIds" in externalHighlight) {
       for (const edgeId of externalHighlight.edgeIds) {
         const line = refs.edgeLineById.get(edgeId);
         if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
       }
+      return;
     }
-  }, [externalHighlight]);
+
+    if (mode === "surface") {
+      for (const faceId of selectedIds) {
+        const entry = refs.faceIdToPart.get(faceId);
+        if (!entry) continue;
+        const localIndices = entry.faceToLocalIndices.get(faceId) ?? [];
+        const colors = entry.colorAttribute.array as Float32Array;
+        for (const triIndex of localIndices) {
+          const base = triIndex * 3;
+          for (let v = 0; v < 3; v++) {
+            const offset = (base + v) * 3;
+            colors[offset] = HIGHLIGHT_COLOR.r;
+            colors[offset + 1] = HIGHLIGHT_COLOR.g;
+            colors[offset + 2] = HIGHLIGHT_COLOR.b;
+          }
+        }
+        entry.colorAttribute.needsUpdate = true;
+      }
+    } else if (mode === "part") {
+      for (const partId of selectedIds) {
+        const entry = refs.partMeshByPartId.get(partId);
+        if (!entry) continue;
+        const colors = entry.colorAttribute.array as Float32Array;
+        for (let i = 0; i < colors.length; i += 3) {
+          colors[i] = HIGHLIGHT_COLOR.r;
+          colors[i + 1] = HIGHLIGHT_COLOR.g;
+          colors[i + 2] = HIGHLIGHT_COLOR.b;
+        }
+        entry.colorAttribute.needsUpdate = true;
+      }
+    } else if (mode === "edge") {
+      for (const edgeId of selectedIds) {
+        const line = refs.edgeLineById.get(edgeId);
+        if (line) (line.material as THREE.LineBasicMaterial).color.set(HIGHLIGHT_COLOR);
+      }
+    } else if (mode === "point") {
+      for (const pointId of selectedIds) {
+        const pm = refs.pointMeshById.get(pointId);
+        if (pm) (pm.material as THREE.MeshBasicMaterial).color.set(HIGHLIGHT_COLOR);
+      }
+    }
+    paintMeshGrow(meshPicks, meshGrow);
+  }, [selectedIds, mode, externalHighlight, meshPicks, meshGrow]);
 
   return <div ref={containerRef} className="viewer-canvas" />;
 }

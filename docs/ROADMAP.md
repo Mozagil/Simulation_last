@@ -44,45 +44,33 @@ Her biri ayrı onay noktası — sırayla, birbirinin üstüne inşa edilir.
       listesi (id + alan + normal) JSON olarak döner
       (`GET /geometry/{stored_filename}/surfaces`, alan `occ.getMass`, normal
       `getNormal` ile — mesh çözünürlüğünden bağımsız kesin OCC değerleri)
-- [ ] **(Roadmap dışı ek özellik — sırada)** Kenar (edge/curve) listeleme endpoint'i →
-      her kenarın id + uzunluk + parça bilgisi JSON olarak döner (`occ.getMass(1, tag)`
-      ile uzunluk, `getAdjacencies` ile hangi yüzey(ler)e komşu olduğundan parça çıkarımı)
-- [ ] **(Roadmap dışı ek özellik — sırada)** Nokta (vertex) listeleme endpoint'i →
+- [x] **(Roadmap dışı ek özellik)** Kenar (edge/curve) listeleme endpoint'i →
+      her kenarın id + uzunluk + parça bilgisi JSON olarak döner
+- [x] **(Roadmap dışı ek özellik)** Nokta (vertex) listeleme endpoint'i →
       her köşe noktasının id + koordinat + parça bilgisi JSON olarak döner
-- [ ] **(Roadmap dışı ek özellik — sırada)** Frontend'de seçim modu navbar'ı: Part /
-      Surface / Edge / Point butonları → aktif moda göre tıklama farklı seviyede seçim
-      yapar (Part: tüm parça vurgulanır, Surface: mevcut davranış, Edge: tek bir kenar
-      çizgisi vurgulanır, Point: en yakın köşe noktası işaretlenir). Bu, Adım 3'teki
-      "Seçim mekanizması" ihtiyacının (nokta/kenar/yüzey seviyesinde seçim) bir kısmını
-      öne çekiyor — orijinal planda BC/yük tanımlama aşamasında gerekiyordu, şimdiden
-      genel bir geometri inceleme aracı olarak ekleniyor.
-- [ ] Yüzey kopyalama (`occ.copy`) → seçilen bir yüzey ayrı bir entity olarak
-      çoğaltılır, terminalde yeni tag görülür
-- [ ] Seçilen yüzeye isim/grup atama (Physical Group) → frontend'de yüzey seçilip
-      "inlet", "fixed_support" gibi bir isim verilir, backend bunu Gmsh Physical
-      Group olarak kaydeder → `.geo`/mesh çıktısında grup adı görülür
-- [ ] Geometry healing (`occ.healShapes`) → bozuk/toleranslı bir test STEP dosyası ile
-      önce/sonra yüzey-katı sayısı loglanıp karşılaştırılır
-- [ ] Basit defeature: küçük delik/fillet bastırma → kullanıcı bir boyut eşiği girer,
-      o eşiğin altındaki dairesel yüzeyler işaretlenir (henüz kaldırmadan) → frontend'de
-      "bunlar bastırılacak" diye vurgulanır, sonra onaylanınca kaldırılır
-- [ ] Midsurface (manuel, 2 yüzey seçimi): test parçası (sabit kalınlıklı düz plaka)
-      üzerinde iki paralel yüzey seçilip "midsurface çıkar" butonuna basılır → sonuç ayrı
-      bir shell geometrisi olarak viewer'da orijinal katının üstünde/yanında gösterilir.
-      Otomatik yüzey-çifti tespiti YOK — kullanıcı hangi iki yüzeyin çift olduğunu kendi
-      seçer, bu bilinçli bir tasarım kararı (bkz. `ARCHITECTURE.md#midsurface`)
+- [x] Frontend'de seçim modu navbar'ı: Part / Surface / Edge / Point → aktif moda göre
+      tıklama farklı seviyede seçim yapar
+- [x] Yüzey kopyalama (`occ.copy`) → seçilen bir yüzey ayrı entity olarak çoğaltılır
+- [x] Seçilen yüzeye isim/grup atama (Physical Group) → frontend + DB kalıcılığı
+- [x] Geometry healing (`occ.healShapes` + silindirik delik doldurma)
+- [x] Defeature: 2D/midsurface radyus kaldırma (seçim veya otomatik) → keskin köşe shell;
+      solid fillet için AABB yolu da mevcut
+- [x] Midsurface: parça bazlı otomatik (tüm ince cidarlar + fillet mid) + manuel 2 yüzey;
+      kapalı köşe / C-kanal / eş-R fillet desteği
 
 ### 2. Mesh üretimi
-- [ ] Mesh size parametre formu (global değer) + Gmsh ile tet mesh üretimi (en basit
-      durum: 3D solid, tet) → backend mesh dosyasını (.inp'e uygun) üretir, terminalde
-      eleman/düğüm sayısı loglanır
-- [ ] Eleman tipi seçimi: quad/hexa/mixed + 2D shell / 3D solid seçenekleri → aynı form
-      genişler, farklı seçimlerde farklı eleman tipi üretildiği terminalde görülür
-      (örn. tri→quad değişince eleman sayısı/tipi loglarda değişir)
-- [ ] Frontend'de mesh'i (kaba/tel kafes olarak) önizleme → three.js viewer artık mesh
-      çizgilerini gösterir
-- [ ] Mesh kalite hesaplama: Jacobian + aspect ratio (native metriklerle) → backend
-      endpoint'i her eleman için değer döner, terminalde min/max/ortalama görülür
+- [x] Global mesh size + mesh üretimi: **3D tet (solid)** ve **2D shell (tri)** →
+      backend `POST /geometry/{id}/mesh` (`element_size`, `dimension` 2|3); `.msh` +
+      düğüm/eleman sayısı. Frontend: viewer sağında mesh paneli (boyut + 2D/3D + üret).
+      2D yalnız orphan/midsurface yüzeylere; 3D solid volume. Mesh göster/gizle.
+- [x] Eleman tipi seçimi: tet / quad / mix → mesh paneli droplist; shell'de quad
+      varsayılan (recombine), tet→tri, mix→tri+quad; 3D'de tet / hex(quad) / mix
+- [x] Frontend'de mesh'i (shaded + wireframe) önizleme → yüzey üçgenleri (2D shell /
+      3D tet dış yüzeyi) yeşil dolu + siyah kenar; CAD mesh varken gizlenir; göster/gizle
+
+- [x] Mesh kalite hesaplama: Jacobian + aspect ratio (native metriklerle) →
+      `GET /geometry/{id}/mesh/quality?dimension=` minSJ + maxEdge/minEdge;
+      mesh bar **Kalite** butonu (Free edge / Equivalence / Rigid body yer tutucu)
 - [ ] Mesh kalite hesaplama: skewness + warpage (custom) → aynı endpoint'e eklenir,
       bilinen kötü bir test mesh'inde (bilerek çarpık üretilmiş) yüksek değer çıktığı
       doğrulanır
@@ -99,41 +87,32 @@ Her biri ayrı onay noktası — sırayla, birbirinin üstüne inşa edilir.
       kart (`*RIGID BODY` / `/RBODY`) göze görünür şekilde oluşur
 
 ### 2b. Malzeme kütüphanesi ve atama
-- [ ] `material` tablosu + migration, 3-5 malzemeyle seed (S235, S355, 6061-T6) →
-      `psql` ile tablo ve satırlar görülür
-- [ ] Malzeme listeleme endpoint'i → `GET /materials` kütüphaneyi JSON olarak döner
-- [ ] Frontend'de malzeme seçici (kütüphaneden) → bir dropdown/liste açılır, malzeme
-      özellikleri (E, yoğunluk, akma) seçilince görünür
-- [ ] Volume/parça seçip malzeme atama → seçilen parça ile malzeme eşleşmesi
-      veritabanına yazılır, `psql`'de `material_assignment` satırı görülür
-- [ ] Kullanıcı tanımlı malzeme girişi (kütüphane dışı) → form ile E/yoğunluk/akma
+- [x] `material` tablosu + migration, 3-5 malzemeyle seed (S235, S275, S355, 6061-T6,
+      7075-T6) → `alembic upgrade head`; tipik/nominal değerler
+- [x] Malzeme listeleme endpoint'i → `GET /materials` kütüphaneyi JSON olarak döner
+- [x] Frontend'de malzeme seçici (kütüphaneden) → sol panelde geometri altında Malzeme
+      menüsü; E / ν / ρ / Rp0.2 / Rm görünür
+- [x] Volume/parça seçip malzeme atama → `POST /materials/assignments`; panelde
+      **Malzeme ata** + Atamalar listesi (parça #N → malzeme)
+- [x] Kullanıcı tanımlı malzeme girişi (kütüphane dışı) → form ile E/yoğunluk/akma
       girilir, `source="user_defined"` olarak kaydedilir
-- [ ] S-N eğrisi verisi: tahmini (Rm'den) vs kullanıcı girişi ayrımı → her ikisi de
-      girilebilir, frontend'de "tahmini" etiketiyle net gösterilir
+- [x] S-N eğrisi verisi: tahmini (Rm'den) vs kullanıcı girişi ayrımı →
+      `PUT /materials/{id}/sn-curve`; frontend'de tahmini/test etiketi
 
 ### 3. Solver adaptörü (CalculiX) — BC ve yükler
-- [ ] Malzeme atamasının `.inp`'e yazılması: seçilen malzeme `*MATERIAL`/`*ELASTIC`/
-      `*DENSITY` + `*SOLID SECTION` kartlarına çevrilir → üretilen `.inp` dosyasında
-      doğru E/yoğunluk değerleri görülür
-- [ ] Sabit/basit bir yük senaryosu (hardcoded) ile CalculiX'in subprocess olarak
-      çalıştırılması → terminalde CalculiX çıktı logu, `.frd` sonuç dosyası diskte oluşur
-- [ ] Nokta/kenar/yüzey seçim mekanizmasının BC'ye bağlanması: seçilen entity'den node
-      listesi çıkarma → backend endpoint'i seçilen bir yüzey için "şu kadar node etkilenir"
-      döner, terminalde/response'ta görülür
-- [ ] Fixed support + point load (en basit ikili: `*BOUNDARY` + `*CLOAD`) → frontend'de
-      bir yüzey "sabit" olarak, bir node "yük" olarak işaretlenir, üretilen `.inp`
-      dosyasında ilgili kartlar görülür, CalculiX çalışıp sonuç üretir
-- [ ] Pressure + distributed load (`*DLOAD`) → aynı akışa yeni bir BC tipi eklenir,
-      seçilen yüzeyde `.inp`'te `*DLOAD` kartı oluşur
-- [ ] Displacement (prescribed) + sliding support (`*TRANSFORM` dahil) → seçilen kenarda
-      belirli DOF'ların serbest bırakıldığı, açılı yönlerde yerel eksenin doğru
-      tanımlandığı `.inp` içeriğinde doğrulanır
-- [ ] Bearing load (custom, kosinüs dağılımlı) → bir delik çevresi seçilip yük girilir,
-      üretilen `*CLOAD` kartlarının açısal dağılımı bir grafikle (yük vs açı) doğrulanır
-- [ ] Acceleration (gravity, `*DLOAD GRAV`) → basit bir yönlendirme formu, `.inp`'te
-      `GRAV` kartı görülür
-- [ ] Parametrelerin (yük büyüklüğü, sınır koşulu) forma tam bağlanması → tüm yukarıdaki
-      BC/yük tipleri artık kullanıcı girdisine göre değişir, hardcoded değer kalmaz
+- [x] Malzeme atamasının `.inp`'e yazılması: `*MATERIAL`/`*ELASTIC`/`*DENSITY` +
+      `*SOLID SECTION` / `*SHELL SECTION` → `POST /geometry/{id}/solve`
+- [x] Sabit/basit senaryo + ccx subprocess (kuruluysa) → `run_solver`; ccx yoksa .inp
+      yine üretilir, mesajda uyarılır
+- [x] BC kartları `.inp` içinde: fixed (`*BOUNDARY`), point/face CLOAD, pressure
+      (2D: `*DLOAD P` / 3D: dağıtılmış CLOAD), displacement, sliding (`*TRANSFORM` +
+      local normal fix), bearing (kosinüs), gravity (`*DLOAD GRAV`)
+- [x] Frontend Solver paneli: tüm BC butonları (Fixed / CLOAD / Pressure /
+      Displacement / Sliding / Bearing / Gravity) + parametre alanları + BC listesi +
+      shell kalınlık + .inp üret/çöz
+- [x] Parametrelerin forma bağlanması (Fx/Fy/Fz, |P|, U, normal, bearing ekseni, g)
+- [ ] Nokta/kenar/yüzey → node listesi ayrı rapor endpoint'i (şimdilik solve içinde
+      NSET üretiliyor)
 
 ### 4. Sonuçlar (deformation, von Mises, safety factor, modal)
 - [ ] Deformation okuma (`.frd`'den `U`) → terminalde maksimum deplasman değeri görülür

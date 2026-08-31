@@ -8,9 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.geometry import TESSELLATION_DIR
+from app.api.geometry import MESH_DIR, TESSELLATION_DIR
 from app.api.geometry import router as geometry_router
 from app.api.health import router as health_router
+from app.api.components import router as components_router
+from app.api.materials import router as materials_router
+from app.api.solve import RUNS_DIR
+from app.api.solve import router as solve_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -43,12 +47,26 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(geometry_router)
+app.include_router(materials_router)
+app.include_router(components_router)
+app.include_router(solve_router)
 
-# Üretilen tessellation (STL) dosyalarını frontend'in three.js viewer'ının
-# okuyabileceği bir HTTP yolu üzerinden sun.
+# Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.
 Path(TESSELLATION_DIR).mkdir(parents=True, exist_ok=True)
 app.mount(
     "/files/tessellations",
     StaticFiles(directory=str(TESSELLATION_DIR)),
     name="tessellations",
+)
+Path(MESH_DIR).mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/files/meshes",
+    StaticFiles(directory=str(MESH_DIR)),
+    name="meshes",
+)
+Path(RUNS_DIR).mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/files/runs",
+    StaticFiles(directory=str(RUNS_DIR)),
+    name="runs",
 )
