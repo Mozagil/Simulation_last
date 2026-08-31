@@ -96,6 +96,87 @@ def _face_normal(
     return (nx / length, ny / length, nz / length)
 
 
+def _face_vertex_keys(face_tag: int, decimals: int = 4) -> set[tuple[float, float, float]]:
+    """Yüzeyin köşe koordinatları (yuvarlanmış) — kenar tag'i paylaşmayan mid'ler için."""
+    keys: set[tuple[float, float, float]] = set()
+    try:
+        boundary = gmsh.model.getBoundary(
+            [(2, face_tag)], oriented=False, recursive=True
+        )
+    except Exception:
+        return keys
+    for bdim, btag in boundary:
+        if bdim != 0:
+            continue
+        try:
+            bb = gmsh.model.getBoundingBox(0, int(btag))
+        except Exception:
+            continue
+        keys.add(
+            (
+                round(float(bb[0]), decimals),
+                round(float(bb[1]), decimals),
+                round(float(bb[2]), decimals),
+            )
+        )
+    return keys
+
+
+def _merge_orphan_faces_by_coincident_vertices(
+    face_to_part: dict[int, int],
+    orphan_faces: list[int],
+    volume_backed_part_ids: set[int],
+    next_part_id: int,
+) -> int:
+    """Köşesi çakışan orphan yüzeyleri aynı part_id'ye toplar."""
+    if len(orphan_faces) < 2:
+        return next_part_id
+    parent: dict[int, int] = {}
+
+    def find(a: int) -> int:
+        parent.setdefault(a, a)
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    coord_to_pid: dict[tuple[float, float, float], int] = {}
+    for face in orphan_faces:
+        pid = face_to_part[face]
+        if pid in volume_backed_part_ids:
+            continue
+        parent.setdefault(pid, pid)
+        for key in _face_vertex_keys(face):
+            existing = coord_to_pid.get(key)
+            if existing is None:
+                coord_to_pid[key] = pid
+            else:
+                union(pid, existing)
+
+    orphan_pids = sorted(
+        {face_to_part[f] for f in orphan_faces if face_to_part[f] not in volume_backed_part_ids}
+    )
+    roots: dict[int, int] = {}
+    remap_start = min(orphan_pids) if orphan_pids else next_part_id
+    n_new = 0
+    for pid in orphan_pids:
+        r = find(pid)
+        if r not in roots:
+            roots[r] = remap_start + n_new
+            n_new += 1
+    for face in orphan_faces:
+        pid = face_to_part[face]
+        if pid in volume_backed_part_ids:
+            continue
+        face_to_part[face] = roots[find(pid)]
+    return remap_start + n_new
+
+
 def _compute_face_to_part() -> tuple[dict[int, int], int, set[int]]:
     """Açık Gmsh oturumundaki her yüzeyin (face) hangi parçaya ait olduğunu
     hesaplar.
@@ -161,9 +242,13 @@ def _compute_face_to_part() -> tuple[dict[int, int], int, set[int]]:
                     queue.append(other)
         for face_id in component:
             face_to_part[face_id] = next_part_id
-        # NOT: next_part_id volume_backed_part_ids'e EKLENMİYOR — bu bir
-        # orphan yüzey grubu, gerçek bir solid değil.
         next_part_id += 1
+
+    # Midsurface dikdörtgenleri CAD kenar tag'i paylaşmaz; köşede çakışan
+    # vertex ile aynı orphan parçaya al (Parça / Attached tek cidarda kalmasın).
+    next_part_id = _merge_orphan_faces_by_coincident_vertices(
+        face_to_part, orphan_faces, volume_backed_part_ids, next_part_id
+    )
 
     part_count = max(next_part_id, 1)
     return face_to_part, part_count, volume_backed_part_ids
@@ -1012,15 +1097,48 @@ def _approx_radius_of_blend_face(face_tag: int, surface_type: str) -> float | No
 
 
 def _is_through_hole_cylinder(face_tag: int, part_bbox: tuple[float, ...]) -> bool:
-    """Silindir, parçanın ince doğrultusunda delik mi (fillet değil mi)?"""
+    """Silindir, cidarı delen delik mi (eksen boyunca fillet değil mi)?
+
+    Fillet: eksen parçanın uzun kenarı kadar (profil boyu).
+    Delik: eksen cidar kalınlığı kadar kısa — kutu profilde bbox'un en kısa
+    kenarı profil genişliği (40 mm) olduğu için eski 'axis ≈ min(bbox)'
+    karşılaştırması deliği fillet sanıyordu.
+    """
     bb = gmsh.model.getBoundingBox(2, face_tag)
-    c_ext = sorted([bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2]], reverse=True)
-    axis_len = c_ext[0]
-    p_ext = sorted([part_bbox[3] - part_bbox[0], part_bbox[4] - part_bbox[1], part_bbox[5] - part_bbox[2]])
-    thickness = p_ext[0]
-    if thickness < 1e-9:
+    axis_len = max(bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2])
+    p_ext = [
+        part_bbox[3] - part_bbox[0],
+        part_bbox[4] - part_bbox[1],
+        part_bbox[5] - part_bbox[2],
+    ]
+    longest = max(p_ext)
+    if longest < 1e-9:
         return False
-    return abs(axis_len - thickness) / thickness < 0.35
+    return axis_len / longest < 0.25
+
+
+def _filter_profile_wall_pairs(
+    pairs: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """Delik/uç kapak gibi küçük düzlem çiftlerini eler; asıl cidarlar kalır."""
+    if len(pairs) <= 1:
+        return pairs
+    scored: list[tuple[float, int, int]] = []
+    for face_a, face_b in pairs:
+        area = min(
+            gmsh.model.occ.getMass(2, face_a),
+            gmsh.model.occ.getMass(2, face_b),
+        )
+        scored.append((area, face_a, face_b))
+    max_area = max(item[0] for item in scored)
+    if max_area < 1e-12:
+        return pairs
+    kept = [
+        (face_a, face_b)
+        for area, face_a, face_b in scored
+        if area >= 0.2 * max_area
+    ]
+    return kept if kept else pairs
 
 
 def _collect_fillet_faces(max_radius: float) -> list[tuple[int, float, str, int]]:
@@ -1213,6 +1331,36 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
         "triangle_to_face": triangle_to_face,
         "triangle_to_element": triangle_to_element,
     }
+
+
+def _apply_curve_node_seeds(
+    curve_nodes: dict[int, int],
+    *,
+    transfinite_surfaces: bool,
+) -> None:
+    """Kenar başına düğüm sayısı (transfinite curve). İsteğe bağlı yüzey.
+
+    `nodes` uç noktalar dahil (Gmsh setTransfiniteCurve). 4 mm / 5 mm gibi
+    global size değişince topoloji sıçramasını azaltır.
+    """
+    if not curve_nodes:
+        return
+    existing = {int(t) for _d, t in gmsh.model.getEntities(dim=1)}
+    seeded: set[int] = set()
+    for raw_tag, raw_n in curve_nodes.items():
+        tag = int(raw_tag)
+        n = int(raw_n)
+        if tag not in existing or n < 2:
+            continue
+        gmsh.model.mesh.setTransfiniteCurve(tag, n)
+        seeded.add(tag)
+    if not transfinite_surfaces or not seeded:
+        return
+    for _d, ftag in gmsh.model.getEntities(dim=2):
+        boundary = gmsh.model.getBoundary([(2, int(ftag))], oriented=False)
+        curves = [int(t) for dim, t in boundary if dim == 1]
+        if len(curves) in (3, 4) and curves and all(c in seeded for c in curves):
+            gmsh.model.mesh.setTransfiniteSurface(int(ftag))
 
 
 class GmshMesherAdapter(MesherAdapter):
@@ -1657,11 +1805,12 @@ class GmshMesherAdapter(MesherAdapter):
     def create_midsurface_for_part(
         self, geom: GeometryHandle, part_id: int
     ) -> list[tuple[int, int, int]]:
-        """Parçadaki ince cidarlar + fillet (radyus) çiftleri için midsurface.
+        """Parçadaki ince cidarlar için midsurface.
 
-        - Fillet (iç↔dış) varsa: kısa düz mid + köşe çeyrek-silindir mid
-          (radyuslu kapalı shell; düzleri köşeye uzatmak overlap yaratır).
-        - Fillet yoksa: düz mid'leri komşu kesişime kadar uzat (C/U/kutu gap yok).
+        Kapalı/açık profil (kutu, C, L) tanınırsa köşede birleşen düz kabuk
+        üretilir — fillet silindirleri mid olarak yazılmaz (ayrı 'kanat'
+        yüzeyler Attached seçimini tek yüzde bırakıyordu). Tanınmazsa ve
+        fillet çifti varsa eski düz+silindir mid yoluna düşülür.
         """
         try:
             face_to_part, _part_count, _volume_backed = _compute_face_to_part()
@@ -1675,13 +1824,15 @@ class GmshMesherAdapter(MesherAdapter):
             ]
 
             wall_pairs = _find_thin_wall_pairs(planar_faces) if len(planar_faces) >= 2 else []
-            # Through-hole silindirlerini fillet adayından çıkar
+            wall_pairs = _filter_profile_wall_pairs(wall_pairs)
+
             volumes = gmsh.model.getEntities(dim=3)
-            part_bbox = (
-                gmsh.model.getBoundingBox(3, volumes[0][1])
-                if volumes
-                else gmsh.model.getBoundingBox(-1, -1)
-            )
+            if part_id < len(volumes):
+                part_bbox = gmsh.model.getBoundingBox(3, volumes[part_id][1])
+            elif volumes:
+                part_bbox = gmsh.model.getBoundingBox(3, volumes[0][1])
+            else:
+                part_bbox = gmsh.model.getBoundingBox(-1, -1)
             fillet_faces = [
                 f
                 for f in cylinder_faces
@@ -1695,8 +1846,16 @@ class GmshMesherAdapter(MesherAdapter):
                 )
 
             results: list[tuple[int, int, int]] = []
-            if cyl_pairs:
-                # Radyus mid köşeyi doldurur → düz mid kısa (yüz bbox ortası) kalır.
+            # Kapalı düz kabuk varsa radyus mid üretme — uzun fillet silindirleri
+            # ayrı "kanat" yüzeyleri olarak kalıyordu (Attached tek yüzde kalıyordu).
+            connected = (
+                _try_construct_connected_planar_midshell(wall_pairs)
+                if wall_pairs
+                else None
+            )
+            if connected is not None:
+                results.extend(connected)
+            elif cyl_pairs:
                 for face_id_a, face_id_b in wall_pairs:
                     _validate_planar_parallel_pair(face_id_a, face_id_b)
                     new_face_id = _construct_midsurface(face_id_a, face_id_b)
@@ -1705,14 +1864,10 @@ class GmshMesherAdapter(MesherAdapter):
                     new_face_id = _construct_cylinder_midsurface(face_id_a, face_id_b)
                     results.append((new_face_id, face_id_a, face_id_b))
             else:
-                connected = _try_construct_connected_planar_midshell(wall_pairs)
-                if connected is not None:
-                    results.extend(connected)
-                else:
-                    for face_id_a, face_id_b in wall_pairs:
-                        _validate_planar_parallel_pair(face_id_a, face_id_b)
-                        new_face_id = _construct_midsurface(face_id_a, face_id_b)
-                        results.append((new_face_id, face_id_a, face_id_b))
+                for face_id_a, face_id_b in wall_pairs:
+                    _validate_planar_parallel_pair(face_id_a, face_id_b)
+                    new_face_id = _construct_midsurface(face_id_a, face_id_b)
+                    results.append((new_face_id, face_id_a, face_id_b))
 
             gmsh.write(str(geom.source_file))
         finally:
@@ -1741,6 +1896,13 @@ class GmshMesherAdapter(MesherAdapter):
             gmsh.option.setNumber("Mesh.RecombineAll", 0)
             gmsh.option.setNumber("Mesh.Recombine3DAll", 0)
             gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 0)
+
+            _apply_curve_node_seeds(
+                params.curve_nodes or {},
+                transfinite_surfaces=(
+                    params.dimension == 2 or scheme == "quad"
+                ),
+            )
 
             if params.dimension == 3:
                 if not gmsh.model.getEntities(dim=3):

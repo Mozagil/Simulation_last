@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/api/components.ts","./src/api/geometry.ts","./src/api/materials.ts","./src/components/buttongroup.tsx","./src/components/geometryviewer.tsx"],"version":"5.9.3"}

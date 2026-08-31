@@ -91,3 +91,31 @@ export async function fetchProductTree(
   }
   return (await response.json()) as ProductTree;
 }
+
+export async function ensureDefaultComponents(
+  geometryId: number,
+  body: {
+    part_ids: number[];
+    property_kind?: PropertyKind;
+    thickness?: number | null;
+    material_id?: number | null;
+  },
+): Promise<{ created_count: number; skipped_count: number; components: ComponentRecord[] }> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/components/defaults`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Varsayılan component oluşturulamadı (HTTP ${response.status}).`);
+  }
+  return (await response.json()) as {
+    created_count: number;
+    skipped_count: number;
+    components: ComponentRecord[];
+  };
+}

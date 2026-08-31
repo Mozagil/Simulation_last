@@ -189,9 +189,22 @@ p {
   color: var(--accent);
 }
 
-.bc-add-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.bc-add-button.active {
+  border-color: var(--accent);
+  background: #eef6ea;
+  color: var(--accent);
+}
+
+.bc-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.bc-add-confirm {
+  margin-top: 8px;
+  width: 100%;
 }
 
 .bc-list-item {
@@ -557,6 +570,13 @@ p {
   cursor: not-allowed;
 }
 
+.mesh-side-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .mesh-generate-button {
   padding: 9px 8px;
   border: none;
@@ -641,6 +661,22 @@ p {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   background: #ffffff;
+  align-items: flex-end;
+}
+
+.opacity-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.opacity-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
 }
 
 .button-group {
@@ -717,6 +753,65 @@ p {
   display: block;
 }
 
+.viewer-canvas canvas.viewer-axes {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 88px;
+  height: 88px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.edge-seed-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+}
+
+.edge-seed-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(27, 31, 28, 0.12);
+  pointer-events: auto;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--ink);
+}
+
+.edge-seed-chip button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.edge-seed-chip button:hover {
+  color: var(--accent);
+}
+
+.edge-seed-chip span {
+  min-width: 14px;
+  text-align: center;
+}
+
 .viewer-placeholder {
   width: 100%;
   height: 100%;
@@ -770,10 +865,10 @@ p {
 }
 
 .product-tree-props {
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 6px;
+  gap: 6px;
   font-size: 12px;
   color: var(--muted);
 }

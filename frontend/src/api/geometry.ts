@@ -347,6 +347,7 @@ export async function generateMesh(
   elementSize: number,
   dimension: 2 | 3,
   elementScheme: MeshElementScheme = "tet",
+  curveNodes: Record<number, number> = {},
 ): Promise<MeshGenerateResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
     method: "POST",
@@ -355,6 +356,7 @@ export async function generateMesh(
       element_size: elementSize,
       dimension,
       element_scheme: elementScheme,
+      curve_nodes: curveNodes,
     }),
   });
   if (!response.ok) {
