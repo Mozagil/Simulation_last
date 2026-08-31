@@ -80,9 +80,19 @@ export interface HealResponse extends TessellationFields {
 }
 
 export interface DefeatureCandidate {
-  edge_id: number;
-  approx_diameter: number;
+  face_id: number;
+  approx_radius: number;
+  surface_type: string;
   part_id: number;
+}
+
+export interface DefeatureApplyResponse extends TessellationFields {
+  geometry_id: number;
+  max_radius: number;
+  volumes_before: number;
+  surfaces_before: number;
+  volumes_after: number;
+  surfaces_after: number;
 }
 
 export interface MidsurfaceResponse extends TessellationFields {
@@ -92,9 +102,19 @@ export interface MidsurfaceResponse extends TessellationFields {
   new_face_id: number;
 }
 
+export interface MidsurfacePairResult {
+  face_id_a: number;
+  face_id_b: number;
+  new_face_id: number;
+}
+
 export interface MidsurfaceForPartResponse extends TessellationFields {
   geometry_id: number;
   part_id: number;
+  midsurface_count: number;
+  midsurfaces: MidsurfacePairResult[];
+  new_face_ids: number[];
+  /** Geriye dönük: ilk çift (tek cidarlı plaka mesajları için). */
   chosen_face_id_a: number;
   chosen_face_id_b: number;
   new_face_id: number;
@@ -102,7 +122,7 @@ export interface MidsurfaceForPartResponse extends TessellationFields {
 
 interface DefeatureCandidatesResponse {
   geometry_id: number;
-  max_diameter: number;
+  max_radius: number;
   candidate_count: number;
   candidates: DefeatureCandidate[];
 }
@@ -248,14 +268,13 @@ export async function undoLastMutation(geometryId: number): Promise<Tessellation
   return (await response.json()) as TessellationFields;
 }
 
-/** Verilen eşik altındaki dairesel/döngü kenarları tespit eder (sadece
- * tespit, henüz kaldırma yok). */
+/** Yarıçapı eşik altındaki fillet yüzeylerini tespit eder (kaldırmadan). */
 export async function findDefeatureCandidates(
   geometryId: number,
-  maxDiameter: number,
+  maxRadius: number,
 ): Promise<DefeatureCandidate[]> {
   const response = await fetch(
-    `${API_BASE_URL}/geometry/${geometryId}/defeature-candidates?max_diameter=${maxDiameter}`,
+    `${API_BASE_URL}/geometry/${geometryId}/defeature-candidates?max_radius=${maxRadius}`,
   );
   if (!response.ok) {
     throw new GeometryUploadError(
@@ -264,6 +283,130 @@ export async function findDefeatureCandidates(
   }
   const body = (await response.json()) as DefeatureCandidatesResponse;
   return body.candidates;
+}
+
+/** Seçilen fillet/radyus yüzeylerini kaldırır; yüzeysizse mid kabuktaki
+ * tüm radyusları otomatik kaldırır (max_radius). */
+export async function applyDefeature(
+  geometryId: number,
+  options: { faceIds?: number[]; maxRadius?: number },
+): Promise<DefeatureApplyResponse> {
+  const body: { face_ids?: number[]; max_radius?: number } = {};
+  if (options.faceIds && options.faceIds.length > 0) {
+    body.face_ids = options.faceIds;
+  }
+  if (options.maxRadius != null) {
+    body.max_radius = options.maxRadius;
+  }
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/defeature`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Defeature başarısız (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as DefeatureApplyResponse;
+}
+
+export interface MeshGenerateResponse {
+  geometry_id: number;
+  element_size: number;
+  dimension: number;
+  element_scheme: "tet" | "quad" | "mix";
+  node_count: number;
+  element_count: number;
+  element_type_counts: Record<string, number>;
+  mesh_path: string;
+  mesh_url: string;
+  preview_url: string | null;
+}
+
+export type MeshElementScheme = "tet" | "quad" | "mix";
+
+/** Mesh önizleme: nodes + yüzey üçgenleri + kenar çiftleri (CAD koordinatı). */
+export interface MeshPreviewData {
+  nodes: number[][];
+  /** Üçgen indeksleri [i0,i1,i2, ...] — shaded yüzey. */
+  faces: number[];
+  /** Kenar uç çiftleri [a,b, ...] — wireframe overlay. */
+  lines: number[];
+  /** Her önizleme üçgeninin CalculiX ELSET PART_{n} indeksi. Yoksa tümü 0. */
+  triangle_to_part?: number[];
+  /** Gmsh yüzey tag'i — Face grow. */
+  triangle_to_face?: number[];
+  /** FE eleman id (quad = iki üçgen aynı id) — eleman picking. */
+  triangle_to_element?: number[];
+}
+
+/** FEA mesh üretir: dimension 2 = shell, 3 = solid; scheme tet|quad|mix. */
+export async function generateMesh(
+  geometryId: number,
+  elementSize: number,
+  dimension: 2 | 3,
+  elementScheme: MeshElementScheme = "tet",
+): Promise<MeshGenerateResponse> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      element_size: elementSize,
+      dimension,
+      element_scheme: elementScheme,
+    }),
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Mesh üretimi başarısız (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as MeshGenerateResponse;
+}
+
+export interface MeshQualityMetricSummary {
+  name: string;
+  min: number;
+  max: number;
+  mean: number;
+  values: number[];
+}
+
+export interface MeshQualityResponse {
+  geometry_id: number;
+  dimension: number;
+  element_count: number;
+  mesh_path: string;
+  jacobian: MeshQualityMetricSummary;
+  aspect_ratio: MeshQualityMetricSummary;
+}
+
+/** Kayıtlı mesh için Jacobian (minSJ) + aspect ratio özeti. */
+export async function fetchMeshQuality(
+  geometryId: number,
+  dimension: 2 | 3,
+): Promise<MeshQualityResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/mesh/quality?dimension=${dimension}`,
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Mesh kalite alınamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as MeshQualityResponse;
+}
+
+/** Mesh wireframe JSON'unu çeker (`/files/meshes/...preview.json`). */
+export async function fetchMeshPreview(previewUrl: string): Promise<MeshPreviewData> {
+  const response = await fetch(`${API_BASE_URL}${previewUrl}?t=${Date.now()}`);
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      `Mesh önizleme alınamadı (HTTP ${response.status}).`,
+    );
+  }
+  return (await response.json()) as MeshPreviewData;
 }
 
 /** İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar. Kalıcıdır. */

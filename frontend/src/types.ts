@@ -1,5 +1,13 @@
 export type SelectionMode = "part" | "surface" | "edge" | "point";
 
+export type MeshGrowMode = "element" | "face" | "attached";
+
+export interface MeshPickInfo {
+  elementId: number;
+  faceId: number;
+  partId: number;
+}
+
 export const SELECTION_MODES: { mode: SelectionMode; label: string }[] = [
   { mode: "part", label: "Parça" },
   { mode: "surface", label: "Yüzey" },

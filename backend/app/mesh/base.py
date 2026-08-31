@@ -10,7 +10,6 @@ olarak `NotImplementedError` bırakıldı, bu adımın kapsamı sadece web öniz
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 
 @dataclass
@@ -102,19 +101,74 @@ class HealResult:
 
 @dataclass
 class DefeatureCandidate:
-    """Küçük delik/fillet bastırma için aday bir kenar (dairesel/döngü).
+    """Fillet/blend adayı yüzey (Cylinder / Sphere / Torus).
 
-    Bu adımın kapsamı sadece TESPİT — ROADMAP: "o eşiğin altındaki dairesel
-    yüzeyler işaretlenir (henüz kaldırmadan)". Gerçek kaldırma (boolean
-    operasyon) Gmsh'in düz Python API'sinde yok (OCC'nin BRepAlgoAPI_Defeaturing
-    sınıfı gerekir, bu da pythonocc-core bağımlılığı ister — ayrı bir mimari
-    karar, ROADMAP/ARCHITECTURE'da zaten "Gmsh'in yetersiz kaldığı yerlerde"
-    pythonocc-core kullanılacağı belirtilmiş).
+    Tespit: yaklaşık yarıçap <= eşik. Through-hole silindirleri (Heal kapsamı)
+    aday değildir. Kaldırma: 2D/midsurface kabukta keskin shell; solid'de
+    keskin AABB kutu (`apply_defeature`).
     """
 
-    edge_id: int
-    approx_diameter: float
+    face_id: int
+    approx_radius: float
+    surface_type: str
     part_id: int
+
+
+
+@dataclass
+class MeshParams:
+    """FEA mesh üretim parametreleri.
+
+    `dimension=3`: solid volume mesh.
+    `dimension=2`: shell (orphan/midsurface) yüzey mesh.
+    `element_scheme`: tet | quad | mix
+      - 2D: tet→tri, quad→recombine quad, mix→tri+quad
+      - 3D: tet→tet, quad→hex (recombine3D), mix→tet (şimdilik)
+    """
+
+    element_size: float
+    dimension: int  # 2 | 3
+    element_scheme: str = "tet"  # tet | quad | mix
+
+
+@dataclass
+class MeshResult:
+    """Üretilmiş FEA mesh özeti + viewer wireframe önizleme dosyası."""
+
+    mesh_path: Path
+    node_count: int
+    element_count: int
+    dimension: int
+    element_type_counts: dict[str, int]
+    preview_path: Path | None = None
+    element_scheme: str = "tet"
+
+
+@dataclass
+class MeshQualityMetric:
+    """Tek bir kalite metriğinin özeti + eleman bazlı değerler."""
+
+    name: str
+    min: float
+    max: float
+    mean: float
+    values: list[float]
+
+
+@dataclass
+class MeshQualityResult:
+    """Mesh kalite raporu (Jacobian + aspect ratio)."""
+
+    mesh_path: Path
+    dimension: int
+    element_count: int
+    element_tags: list[int]
+    jacobian: MeshQualityMetric
+    aspect_ratio: MeshQualityMetric
+
+
+class MeshError(Exception):
+    """Mesh üretimi için geçersiz parametre / yetersiz geometri."""
 
 
 class MesherAdapter(ABC):
@@ -166,18 +220,28 @@ class MesherAdapter(ABC):
 
     @abstractmethod
     def heal_geometry(self, geom: GeometryHandle) -> HealResult:
-        """Küçük boşluk/tolerans hatalarını düzeltir (`occ.healShapes`).
+        """Tolerans onarımı + silindirik yüzey deliklerini kapatma.
 
-        Kalıcılık: `copy_surface` ile aynı desen — sonuç `geom.source_file`'a
-        geri yazılır.
+        `occ.healShapes` sonrası Cylinder delikleri plug+fuse ile doldurulur.
+        Kalıcılık: sonuç `geom.source_file`'a geri yazılır.
         """
 
     @abstractmethod
     def find_defeature_candidates(
-        self, geom: GeometryHandle, max_diameter: float
+        self, geom: GeometryHandle, max_radius: float
     ) -> list[DefeatureCandidate]:
-        """Verilen eşik altındaki dairesel/döngü kenarları tespit eder (henüz
-        kaldırmaz — sadece işaretleme adımı).
+        """Yarıçapı eşik altındaki fillet yüzeylerini tespit eder (kaldırmadan)."""
+
+    @abstractmethod
+    def apply_defeature(
+        self,
+        geom: GeometryHandle,
+        max_radius: float | None = None,
+        face_ids: list[int] | None = None,
+    ) -> HealResult:
+        """Fillet/radyus kaldırıp keskin köşe üretir.
+
+        face_ids (2D seçim) veya max_radius (otomatik) ile çalışır.
         """
 
     @abstractmethod
@@ -199,16 +263,19 @@ class MesherAdapter(ABC):
     @abstractmethod
     def create_midsurface_for_part(
         self, geom: GeometryHandle, part_id: int
-    ) -> tuple[int, int, int]:
-        """Verilen parçanın en uygun paralel/düzlemsel yüzey çiftini OTOMATİK
-        tespit edip midsurface hesaplar. Döndürür: (yeni_yüzey_id,
-        seçilen_yüzey_a_id, seçilen_yüzey_b_id).
+    ) -> list[tuple[int, int, int]]:
+        """Verilen parçadaki TÜM ince-cidar (thin-wall) yüzey çiftleri için
+        midsurface hesaplar.
 
-        Tespit: alan toplamı en büyük paralel düzlemsel çift seçilir (tipik
-        bir plakanın ana yüzeyleri, kenar yüzeylerinden çok daha büyük
-        alanlıdır).
+        Döndürür: [(yeni_yüzey_id, yüz_a_id, yüz_b_id), ...] — kutu profilde
+        her cidar için bir orta yüzey (örn. 40×40×2 mm profil → ~38×38 mid-shell
+        oluşturan 4 yüzey); düz plakada tek çift.
+
+        Tespit: her düzlemsel yüzeyin en yakın paralel eşi; kalınlık /
+        sqrt(min_alan) eşiğin altındaysa ince cidar sayılır. "En büyük alan"
+        tek çifti seçilmez.
         """
 
     @abstractmethod
-    def generate_mesh(self, geom: GeometryHandle, params: dict[str, Any]) -> Any:
-        """Gerçek FEA mesh'i üretir (tet/tri, shell/solid). Henüz implemente edilmedi."""
+    def generate_mesh(self, geom: GeometryHandle, params: MeshParams) -> MeshResult:
+        """FEA mesh üretir: dimension=3 tet (solid), dimension=2 tri (shell)."""

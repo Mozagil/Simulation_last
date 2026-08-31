@@ -49,7 +49,12 @@ def _clean_state():
         shutil.rmtree(UPLOAD_DIR)
     if _db_available():
         db = SessionLocal()
-        db.execute(text("TRUNCATE physical_groups, geometries RESTART IDENTITY CASCADE"))
+        db.execute(
+            text(
+                "TRUNCATE material_assignments, physical_groups, geometries "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
         db.commit()
         db.close()
 
@@ -366,12 +371,12 @@ def test_heal_geometry_returns_404_for_unknown_geometry():
 
 
 @requires_db
-def test_defeature_candidates_narrow_threshold_empty():
+def test_defeature_candidates_clean_box_empty():
     upload_body = _upload_box()
     geometry_id = upload_body["geometry_id"]
 
     response = client.get(
-        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 2.0}
+        f"/geometry/{geometry_id}/defeature-candidates", params={"max_radius": 5.0}
     )
 
     assert response.status_code == 200
@@ -381,26 +386,12 @@ def test_defeature_candidates_narrow_threshold_empty():
 
 
 @requires_db
-def test_defeature_candidates_wide_threshold_finds_all_edges():
-    upload_body = _upload_box()
-    geometry_id = upload_body["geometry_id"]
-
-    response = client.get(
-        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 100.0}
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["candidate_count"] == 12
-
-
-@requires_db
 def test_defeature_candidates_rejects_non_positive_threshold():
     upload_body = _upload_box()
     geometry_id = upload_body["geometry_id"]
 
     response = client.get(
-        f"/geometry/{geometry_id}/defeature-candidates", params={"max_diameter": 0}
+        f"/geometry/{geometry_id}/defeature-candidates", params={"max_radius": 0}
     )
     assert response.status_code == 400
 
@@ -408,7 +399,7 @@ def test_defeature_candidates_rejects_non_positive_threshold():
 @requires_db
 def test_defeature_candidates_returns_404_for_unknown_geometry():
     response = client.get(
-        "/geometry/999999/defeature-candidates", params={"max_diameter": 5.0}
+        "/geometry/999999/defeature-candidates", params={"max_radius": 5.0}
     )
     assert response.status_code == 404
 
@@ -482,7 +473,9 @@ def test_create_midsurface_for_part_after_upload():
 
     assert response.status_code == 200
     body = response.json()
-    # Ana yüzeyler (alan=5000) otomatik seçilmeli, kenar yüzeyleri değil.
+    # İnce plaka: tek ince-cidar çifti (ana yüzeyler).
+    assert body["midsurface_count"] == 1
+    assert len(body["midsurfaces"]) == 1
     assert {body["chosen_face_id_a"], body["chosen_face_id_b"]} == {5, 6}
     assert body["new_face_id"] not in {1, 2, 3, 4, 5, 6}
     assert body["face_count"] == 7
@@ -577,6 +570,122 @@ def test_undo_can_only_be_used_once_per_mutation():
 def test_undo_returns_404_for_unknown_geometry():
     response = client.post("/geometry/999999/undo")
     assert response.status_code == 404
+
+
+@requires_db
+def test_generate_mesh_3d_via_api():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 5.0, "dimension": 3},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dimension"] == 3
+    assert body["node_count"] > 0
+    assert body["element_count"] > 0
+    assert "Tetrahedron" in body["element_type_counts"]
+    assert body["mesh_url"].startswith("/files/meshes/")
+    assert body["preview_url"] is not None
+    assert body["preview_url"].startswith("/files/meshes/")
+    assert body["preview_url"].endswith(".preview.json")
+
+    preview_resp = client.get(body["preview_url"])
+    assert preview_resp.status_code == 200
+    preview = preview_resp.json()
+    assert len(preview["nodes"]) == body["node_count"]
+    assert len(preview["faces"]) >= 9
+    assert len(preview["faces"]) % 3 == 0
+    assert len(preview["lines"]) >= 6
+    assert len(preview["lines"]) % 2 == 0
+    assert len(preview["triangle_to_part"]) == len(preview["faces"]) // 3
+    # 3D: yüzey yüzleri eleman sayısından az olmalı (iç tet yüzleri yok)
+    assert len(preview["faces"]) // 3 < body["element_count"] * 2
+
+
+@requires_db
+def test_generate_mesh_2d_requires_midsurface_via_api():
+    """Solid-only kutuda 2D mesh → 422 (midsurface yok)."""
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2},
+    )
+    assert response.status_code == 422
+    assert "midsurface" in response.json()["detail"].lower()
+
+
+@requires_db
+def test_generate_mesh_2d_via_api_after_midsurface():
+    """Midsurface sonrası 2D shell mesh başarılı."""
+    from pathlib import Path
+
+    thin = Path(__file__).parent / "fixtures" / "thin_plate.step"
+    assert thin.exists()
+    with thin.open("rb") as f:
+        response = client.post(
+            "/geometry/upload",
+            files={"file": ("thin_plate.step", f, "application/octet-stream")},
+        )
+    assert response.status_code == 200
+    geometry_id = response.json()["geometry_id"]
+
+    mid = client.post(f"/geometry/{geometry_id}/parts/0/midsurface")
+    assert mid.status_code == 200
+
+    mesh = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2, "element_scheme": "quad"},
+    )
+    assert mesh.status_code == 200
+    body = mesh.json()
+    assert body["dimension"] == 2
+    assert body["element_scheme"] == "quad"
+    assert body["element_count"] > 0
+    assert "Quad" in body["element_type_counts"]
+    assert body["preview_url"] is not None
+
+
+@requires_db
+def test_generate_mesh_rejects_bad_dimension():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 5.0, "dimension": 4},
+    )
+    assert response.status_code == 400
+
+
+@requires_db
+def test_mesh_quality_via_api_after_3d_mesh():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    missing = client.get(f"/geometry/{geometry_id}/mesh/quality", params={"dimension": 3})
+    assert missing.status_code == 404
+
+    mesh = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 5.0, "dimension": 3, "element_scheme": "tet"},
+    )
+    assert mesh.status_code == 200
+
+    quality = client.get(
+        f"/geometry/{geometry_id}/mesh/quality", params={"dimension": 3}
+    )
+    assert quality.status_code == 200
+    body = quality.json()
+    assert body["dimension"] == 3
+    assert body["element_count"] > 0
+    assert body["jacobian"]["min"] <= body["jacobian"]["mean"] <= body["jacobian"]["max"]
+    assert body["aspect_ratio"]["min"] <= body["aspect_ratio"]["mean"] <= body["aspect_ratio"]["max"]
+    assert len(body["jacobian"]["values"]) == body["element_count"]
 
 
 @requires_db

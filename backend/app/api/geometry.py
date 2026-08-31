@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.mesh.base import TessellationResult
+from app.mesh.base import MeshError, MeshParams, TessellationResult
 from app.mesh.gmsh_adapter import (
     GmshImportError,
     GmshMesherAdapter,
@@ -51,6 +51,7 @@ router = APIRouter(prefix="/geometry", tags=["geometry"])
 ALLOWED_EXTENSIONS = {".step", ".stp", ".igs", ".iges"}
 UPLOAD_DIR = Path("uploads")
 TESSELLATION_DIR = UPLOAD_DIR / "tessellations"
+MESH_DIR = UPLOAD_DIR / "meshes"
 
 
 def _ensure_dirs() -> None:
@@ -386,7 +387,7 @@ def list_physical_groups(geometry_id: int, db: Session = Depends(get_db)) -> dic
 
 @router.post("/{geometry_id}/heal")
 def heal_geometry(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Küçük boşluk/tolerans hatalarını düzeltir (`occ.healShapes`).
+    """Tolerans onarımı + silindirik delikleri kapatma (`healShapes` + plug fuse).
 
     Kalıcı: sonuç `current_filename`'e geri yazılır, tessellation tazelenir.
     """
@@ -427,42 +428,99 @@ def heal_geometry(geometry_id: int, db: Session = Depends(get_db)) -> dict[str, 
 
 @router.get("/{geometry_id}/defeature-candidates")
 def find_defeature_candidates(
-    geometry_id: int, max_diameter: float, db: Session = Depends(get_db)
+    geometry_id: int, max_radius: float, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Verilen eşik altındaki dairesel/döngü kenarları tespit eder.
-
-    Sadece TESPİT — hiçbir şey kaldırılmaz/değiştirilmez (dosyaya geri yazma
-    yok). ROADMAP: "o eşiğin altındaki dairesel yüzeyler işaretlenir (henüz
-    kaldırmadan)".
-    """
+    """Yarıçapı eşik altındaki fillet yüzeylerini tespit eder (kaldırmadan)."""
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
 
-    if max_diameter <= 0:
-        raise HTTPException(status_code=400, detail="max_diameter pozitif olmalı.")
+    if max_radius <= 0:
+        raise HTTPException(status_code=400, detail="max_radius pozitif olmalı.")
 
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
-        candidates = adapter.find_defeature_candidates(geom, max_diameter)
+        candidates = adapter.find_defeature_candidates(geom, max_radius)
     except GmshImportError as exc:
         raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
 
     logger.info(
         "Defeature adayları tespit edildi: geometry_id=%d, esik=%.4f, aday_sayisi=%d",
         geometry_id,
-        max_diameter,
+        max_radius,
         len(candidates),
     )
 
     return {
         "geometry_id": geometry_id,
-        "max_diameter": max_diameter,
+        "max_radius": max_radius,
         "candidate_count": len(candidates),
         "candidates": [
-            {"edge_id": c.edge_id, "approx_diameter": c.approx_diameter, "part_id": c.part_id}
+            {
+                "face_id": c.face_id,
+                "approx_radius": c.approx_radius,
+                "surface_type": c.surface_type,
+                "part_id": c.part_id,
+            }
             for c in candidates
         ],
+    }
+
+
+class ApplyDefeatureRequest(BaseModel):
+    face_ids: list[int] = []
+    max_radius: float | None = None
+
+
+@router.post("/{geometry_id}/defeature")
+def apply_defeature(
+    geometry_id: int, body: ApplyDefeatureRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Seçilen radyus yüzeylerini kaldırır (veya max_radius ile otomatik).
+
+    Tipik akış: midsurface sonrası radyus mid'leri seç → keskin köşe shell.
+    """
+    if not body.face_ids and (body.max_radius is None or body.max_radius <= 0):
+        raise HTTPException(
+            status_code=400,
+            detail="face_ids (seçim) veya pozitif max_radius gerekli.",
+        )
+
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        defeature_result = adapter.apply_defeature(
+            geom, max_radius=body.max_radius, face_ids=body.face_ids or None
+        )
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Defeature uygulandı: geometry_id=%d, surface_once=%d, surface_sonra=%d",
+        geometry_id,
+        defeature_result.surfaces_before,
+        defeature_result.surfaces_after,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "face_ids": body.face_ids,
+        "max_radius": body.max_radius,
+        "volumes_before": defeature_result.volumes_before,
+        "surfaces_before": defeature_result.surfaces_before,
+        "volumes_after": defeature_result.volumes_after,
+        "surfaces_after": defeature_result.surfaces_after,
+        **_tessellation_response_fields(geometry_id, result),
     }
 
 
@@ -520,11 +578,11 @@ def create_midsurface(
 def create_midsurface_for_part(
     geometry_id: int, part_id: int, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Verilen parçanın en uygun paralel/düzlemsel yüzey çiftini OTOMATİK
-    tespit edip midsurface hesaplar — kullanıcının manuel olarak iki yüzey
-    seçmesi gerekmez, sadece parçayı seçmesi yeterli.
+    """Parçadaki tüm ince-cidar yüzey çiftleri için midsurface üretir.
 
-    Kalıcı: sonuç `current_filename`'e geri yazılır.
+    Kutu profil gibi ince cidarlı parçalarda her cidar için ayrı orta yüzey
+    (örn. 40×40×2 mm → ~38×38 mid-shell, 4 yüzey). Kalıcı: sonuç
+    `current_filename`'e geri yazılır.
     """
     geo = _get_geometry_or_404(db, geometry_id)
     file_path = UPLOAD_DIR / geo.current_filename
@@ -533,9 +591,7 @@ def create_midsurface_for_part(
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
-        new_face_id, chosen_face_a, chosen_face_b = adapter.create_midsurface_for_part(
-            geom, part_id
-        )
+        midsurface_results = adapter.create_midsurface_for_part(geom, part_id)
     except GmshImportError as exc:
         raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
     except SurfaceNotFoundError as exc:
@@ -547,22 +603,35 @@ def create_midsurface_for_part(
     geo.updated_at = datetime.now(timezone.utc)
     db.commit()
 
+    midsurfaces = [
+        {
+            "face_id_a": face_a,
+            "face_id_b": face_b,
+            "new_face_id": new_id,
+        }
+        for new_id, face_a, face_b in midsurface_results
+    ]
+    new_face_ids = [item["new_face_id"] for item in midsurfaces]
+
     logger.info(
         "Midsurface (otomatik) oluşturuldu: geometry_id=%d, part_id=%d, "
-        "secilen_a=%d, secilen_b=%d, yeni_id=%d",
+        "adet=%d, yeni_idler=%s",
         geometry_id,
         part_id,
-        chosen_face_a,
-        chosen_face_b,
-        new_face_id,
+        len(midsurfaces),
+        new_face_ids,
     )
 
     return {
         "geometry_id": geometry_id,
         "part_id": part_id,
-        "chosen_face_id_a": chosen_face_a,
-        "chosen_face_id_b": chosen_face_b,
-        "new_face_id": new_face_id,
+        "midsurface_count": len(midsurfaces),
+        "midsurfaces": midsurfaces,
+        "new_face_ids": new_face_ids,
+        # Geriye dönük: ilk çift (plaka gibi tek sonuçta UI mesajı için)
+        "chosen_face_id_a": midsurfaces[0]["face_id_a"],
+        "chosen_face_id_b": midsurfaces[0]["face_id_b"],
+        "new_face_id": midsurfaces[0]["new_face_id"],
         **_tessellation_response_fields(geometry_id, result),
     }
 
@@ -603,4 +672,150 @@ def undo_last_mutation(geometry_id: int, db: Session = Depends(get_db)) -> dict[
     return {
         "geometry_id": geometry_id,
         **_tessellation_response_fields(geometry_id, result),
+    }
+
+
+class GenerateMeshRequest(BaseModel):
+    element_size: float = Field(..., gt=0, description="Global mesh boyutu")
+    dimension: int = Field(
+        ...,
+        description="2 = shell, 3 = solid",
+    )
+    element_scheme: str = Field(
+        default="tet",
+        description="tet | quad | mix (2D: tet→tri, quad→quad, mix→tri+quad; 3D: tet/hex)",
+    )
+
+
+@router.post("/{geometry_id}/mesh")
+def generate_mesh(
+    geometry_id: int, body: GenerateMeshRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """FEA mesh üretir: dimension=2 shell, dimension=3 solid; scheme tet/quad/mix.
+
+    Geometri dosyasını değiştirmez; `uploads/meshes/{id}_d{2|3}.msh` yazar.
+    """
+    if body.dimension not in (2, 3):
+        raise HTTPException(
+            status_code=400, detail="dimension 2 (shell) veya 3 (solid) olmalı."
+        )
+    scheme = body.element_scheme.lower()
+    if scheme not in ("tet", "quad", "mix"):
+        raise HTTPException(
+            status_code=400, detail="element_scheme tet, quad veya mix olmalı."
+        )
+
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+    MESH_DIR.mkdir(parents=True, exist_ok=True)
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        mesh_result = adapter.generate_mesh(
+            geom,
+            MeshParams(
+                element_size=body.element_size,
+                dimension=body.dimension,
+                element_scheme=scheme,
+            ),
+        )
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    logger.info(
+        "Mesh üretildi: geometry_id=%d, dim=%d, scheme=%s, size=%.4f, nodes=%d, elems=%d, path=%s",
+        geometry_id,
+        mesh_result.dimension,
+        scheme,
+        body.element_size,
+        mesh_result.node_count,
+        mesh_result.element_count,
+        mesh_result.mesh_path,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "element_size": body.element_size,
+        "dimension": mesh_result.dimension,
+        "element_scheme": mesh_result.element_scheme,
+        "node_count": mesh_result.node_count,
+        "element_count": mesh_result.element_count,
+        "element_type_counts": mesh_result.element_type_counts,
+        "mesh_path": str(mesh_result.mesh_path).replace("\\", "/"),
+        "mesh_url": f"/files/meshes/{mesh_result.mesh_path.name}",
+        "preview_url": (
+            f"/files/meshes/{mesh_result.preview_path.name}"
+            if mesh_result.preview_path
+            else None
+        ),
+    }
+
+
+def _mesh_path_for_geometry(geo: Geometry, dimension: int) -> Path:
+    """uploads/meshes/{stem}_d{2|3}.msh — stem = geometry id dosya adı kökü."""
+    stem = Path(geo.current_filename).stem
+    return MESH_DIR / f"{stem}_d{dimension}.msh"
+
+
+def _quality_metric_payload(metric) -> dict[str, Any]:
+    return {
+        "name": metric.name,
+        "min": metric.min,
+        "max": metric.max,
+        "mean": metric.mean,
+        "values": metric.values,
+    }
+
+
+@router.get("/{geometry_id}/mesh/quality")
+def get_mesh_quality(
+    geometry_id: int,
+    dimension: int = 2,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Kayıtlı FEA mesh için Jacobian (minSJ) + aspect ratio (maxEdge/minEdge)."""
+    if dimension not in (2, 3):
+        raise HTTPException(status_code=400, detail="dimension 2 veya 3 olmalı.")
+
+    geo = _get_geometry_or_404(db, geometry_id)
+    mesh_path = _mesh_path_for_geometry(geo, dimension)
+    if not mesh_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Önce dimension={dimension} mesh üretin "
+                f"(beklenen: {mesh_path.name})."
+            ),
+        )
+
+    adapter = GmshMesherAdapter()
+    try:
+        result = adapter.compute_mesh_quality(mesh_path, dimension)
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    logger.info(
+        "Mesh kalite: geometry_id=%d dim=%d elems=%d jac[min=%.4g max=%.4g mean=%.4g] "
+        "aspect[min=%.4g max=%.4g mean=%.4g]",
+        geometry_id,
+        dimension,
+        result.element_count,
+        result.jacobian.min,
+        result.jacobian.max,
+        result.jacobian.mean,
+        result.aspect_ratio.min,
+        result.aspect_ratio.max,
+        result.aspect_ratio.mean,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "dimension": result.dimension,
+        "element_count": result.element_count,
+        "mesh_path": str(result.mesh_path).replace("\\", "/"),
+        "jacobian": _quality_metric_payload(result.jacobian),
+        "aspect_ratio": _quality_metric_payload(result.aspect_ratio),
     }
