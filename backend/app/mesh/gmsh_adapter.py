@@ -416,7 +416,7 @@ def _try_construct_connected_planar_midshell(
     for face_a, face_b in wall_pairs:
         normal = _get_face_normal(face_a)
         axis = max(range(3), key=lambda i: abs(normal[i]))
-        if abs(abs(normal[axis]) - 1.0) > 1e-2:
+        if abs(abs(normal[axis]) - 1.0) > 1e-6:
             return None
         ba = gmsh.model.getBoundingBox(2, face_a)
         bb = gmsh.model.getBoundingBox(2, face_b)
@@ -512,7 +512,7 @@ def _wall_specs_from_orphan_planes(planar_faces: list[int]) -> list[dict[str, An
     for face in planar_faces:
         normal = _get_face_normal(face)
         axis = max(range(3), key=lambda i: abs(normal[i]))
-        if abs(abs(normal[axis]) - 1.0) > 1e-2:
+        if abs(abs(normal[axis]) - 1.0) > 1e-6:
             continue
         bb = gmsh.model.getBoundingBox(2, face)
         extents = [bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2]]

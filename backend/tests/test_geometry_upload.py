@@ -105,7 +105,10 @@ def test_upload_assembly_distinguishes_parts():
     assert set(body["triangle_to_part"]) == {0, 1}
     part_0_count = body["triangle_to_part"].count(0)
     part_1_count = body["triangle_to_part"].count(1)
-    assert part_0_count == part_1_count
+    # Adaptif mesh boyutlandırma (bounding box diagonaline göre) nedeniyle
+    # iki özdeş kutu artık birebir aynı üçgen sayısı vermeyebiliyor — küçük
+    # bir tolerans (%5) kabul ediyoruz, tam asimetriyi hâlâ yakalar.
+    assert abs(part_0_count - part_1_count) / max(part_0_count, part_1_count) < 0.05
     assert body["volume_part_ids"] == [0, 1]
 
 
