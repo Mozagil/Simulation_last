@@ -1,0 +1,11 @@
+{
+  "name": "Simulation_last",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y calculix-ccx",
+  "forwardPorts": [8000, 5173, 5432],
+  "portsAttributes": {
+    "8000": { "label": "Backend (FastAPI)" },
+    "5173": { "label": "Frontend (Vite)" },
+    "5432": { "label": "PostgreSQL" }
+  }
+}
