@@ -192,6 +192,10 @@ function App() {
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
   const [offsetThickness, setOffsetThickness] = useState("3");
+  const [offsetAutoThickness, setOffsetAutoThickness] = useState(false);
+  const [offsetFlip, setOffsetFlip] = useState(false);
+  const [showDefeaturePanel, setShowDefeaturePanel] = useState(false);
+  const [defeatureRadius, setDefeatureRadius] = useState("5");
   const [physicalGroups, setPhysicalGroups] = useState<PhysicalGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
@@ -283,10 +287,11 @@ function App() {
     });
   }, [edges, meshElementSize]);
 
-  // Mod değişince aktif grup vurgusu ve offset paneli anlamsızlaşır, temizle.
+  // Mod değişince aktif grup vurgusu ve offset/defeature panelleri anlamsızlaşır, temizle.
   useEffect(() => {
     setActiveGroupId(null);
     setShowOffsetPanel(false);
+    setShowDefeaturePanel(false);
   }, [mode]);
 
   async function handleFileSelected(file: File) {
@@ -494,21 +499,34 @@ function App() {
    */
   async function handleCreateOffsetMidsurfaces() {
     if (!geometryId || mode !== "surface" || selection.ids.length === 0) return;
-    const thickness = parseFloat(offsetThickness);
-    if (!Number.isFinite(thickness) || thickness <= 0) {
-      setErrorMessage("Geçerli bir pozitif kalınlık değeri girin.");
-      return;
+
+    let thickness: number | undefined;
+    if (!offsetAutoThickness) {
+      const parsed = parseFloat(offsetThickness);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setErrorMessage("Geçerli bir pozitif kalınlık değeri girin.");
+        return;
+      }
+      thickness = parsed;
     }
 
     setBusyAction("offset-midsurface");
     setErrorMessage(null);
     setInfoMessage(null);
     try {
-      const result = await createOffsetMidsurfaces(geometryId, selection.ids, thickness);
+      const result = await createOffsetMidsurfaces(
+        geometryId,
+        selection.ids,
+        thickness,
+        offsetFlip,
+      );
       await refreshAfterMutation(geometryId, result);
+      const thicknessSummary = result.used_thicknesses
+        .map((t) => t.toFixed(2))
+        .join(", ");
       setInfoMessage(
-        `${result.new_face_ids.length} orta yüzey oluşturuldu (kalınlık=${thickness}): ` +
-          `#${result.new_face_ids.join(", #")}.`,
+        `${result.new_face_ids.length} orta yüzey oluşturuldu (kalınlık: ${thicknessSummary}` +
+          `${offsetFlip ? ", yön: dışa" : ", yön: içe"}): #${result.new_face_ids.join(", #")}.`,
       );
     } catch (err) {
       const message =
@@ -667,6 +685,18 @@ function App() {
     const faceIds =
       selection.mode === "surface" && selection.ids.length > 0 ? [...selection.ids] : [];
 
+    // Yüzey seçilmediyse: kullanıcının girdiği radius eşiğinin altındaki
+    // fillet'leri kaldır (ARTIK OTOMATİK/SABİT DEĞİL — kullanıcı kontrolünde).
+    let radius: number | undefined;
+    if (faceIds.length === 0) {
+      const parsed = parseFloat(defeatureRadius);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setErrorMessage("Geçerli bir pozitif radius değeri girin.");
+        return;
+      }
+      radius = parsed;
+    }
+
     // Mid radyusları görünsün diye solid'leri gizle
     if (volumePartIds.length > 0) {
       setHiddenParts(new Set(volumePartIds));
@@ -678,14 +708,9 @@ function App() {
     try {
       let result;
       if (faceIds.length > 0) {
-        try {
-          result = await applyDefeature(geometryId, { faceIds });
-        } catch {
-          // Solid yüzeyi seçildiyse mid kabuktaki tüm radyusları kaldır
-          result = await applyDefeature(geometryId, { maxRadius: 50 });
-        }
+        result = await applyDefeature(geometryId, { faceIds });
       } else {
-        result = await applyDefeature(geometryId, { maxRadius: 50 });
+        result = await applyDefeature(geometryId, { maxRadius: radius });
       }
       await refreshAfterMutation(geometryId, result);
       setSelection(EMPTY_SELECTION);
@@ -1416,17 +1441,37 @@ function App() {
             )}
 
             {showOffsetPanel && (
-              <div className="group-create-form">
-                <input
-                  type="number"
-                  className="group-name-input"
-                  placeholder="Kalınlık (örn. 3)"
-                  value={offsetThickness}
-                  onChange={(e) => setOffsetThickness(e.target.value)}
-                  disabled={busyAction === "offset-midsurface"}
-                  min="0"
-                  step="0.1"
-                />
+              <div className="group-create-form offset-panel">
+                <label className="offset-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={offsetAutoThickness}
+                    onChange={(e) => setOffsetAutoThickness(e.target.checked)}
+                    disabled={busyAction === "offset-midsurface"}
+                  />
+                  Kalınlığı otomatik tespit et (en yakın paralel yüzeye göre)
+                </label>
+                {!offsetAutoThickness && (
+                  <input
+                    type="number"
+                    className="group-name-input"
+                    placeholder="Kalınlık (örn. 3)"
+                    value={offsetThickness}
+                    onChange={(e) => setOffsetThickness(e.target.value)}
+                    disabled={busyAction === "offset-midsurface"}
+                    min="0"
+                    step="0.1"
+                  />
+                )}
+                <label className="offset-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={offsetFlip}
+                    onChange={(e) => setOffsetFlip(e.target.checked)}
+                    disabled={busyAction === "offset-midsurface"}
+                  />
+                  Yönü ters çevir (dışa doğru — varsayılan: içe)
+                </label>
                 <button
                   type="button"
                   className="group-create-button"
@@ -1434,6 +1479,29 @@ function App() {
                   disabled={!canOffsetMidsurface || busyAction === "offset-midsurface"}
                 >
                   {busyAction === "offset-midsurface" ? "Oluşturuluyor…" : "Uygula"}
+                </button>
+              </div>
+            )}
+
+            {showDefeaturePanel && (
+              <div className="group-create-form">
+                <input
+                  type="number"
+                  className="group-name-input"
+                  placeholder="Radius eşiği (örn. 5)"
+                  value={defeatureRadius}
+                  onChange={(e) => setDefeatureRadius(e.target.value)}
+                  disabled={busyAction === "defeature"}
+                  min="0"
+                  step="0.1"
+                />
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleApplyDefeature()}
+                  disabled={busyAction === "defeature"}
+                >
+                  {busyAction === "defeature" ? "Kaldırılıyor…" : "Uygula"}
                 </button>
               </div>
             )}
@@ -1982,8 +2050,17 @@ function App() {
                   {
                     key: "defeature",
                     label: busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır",
+                    active: showDefeaturePanel,
                     disabled: !canDefeature || busyAction !== null,
-                    onClick: () => void handleApplyDefeature(),
+                    onClick: () => {
+                      const hasFaceSelection =
+                        selection.mode === "surface" && selection.ids.length > 0;
+                      if (hasFaceSelection) {
+                        void handleApplyDefeature();
+                      } else {
+                        setShowDefeaturePanel((prev) => !prev);
+                      }
+                    },
                   },
                   {
                     key: "midsurface",

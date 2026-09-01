@@ -41,7 +41,10 @@ export interface OffsetMidsurfacesResponse extends TessellationFields {
   geometry_id: number;
   original_face_ids: number[];
   new_face_ids: number[];
-  thickness: number;
+  /** Her yeni yüzey için KULLANILAN kalınlık (sabit verilmişse hepsi aynı,
+   * otomatik tespit edilmişse her yüzey için farklı olabilir). */
+  used_thicknesses: number[];
+  flip: boolean;
 }
 
 export interface EdgeInfo {
@@ -245,14 +248,19 @@ export async function copySurfaces(
 export async function createOffsetMidsurfaces(
   geometryId: number,
   faceIds: number[],
-  thickness: number,
+  thickness: number | undefined,
+  flip: boolean,
 ): Promise<OffsetMidsurfacesResponse> {
   const response = await fetch(
     `${API_BASE_URL}/geometry/${geometryId}/surfaces/offset-midsurface`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ face_ids: faceIds, thickness }),
+      body: JSON.stringify({
+        face_ids: faceIds,
+        ...(thickness !== undefined ? { thickness } : {}),
+        flip,
+      }),
     },
   );
   if (!response.ok) {
