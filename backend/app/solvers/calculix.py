@@ -80,11 +80,15 @@ class CalculiXAdapter(SolverAdapter):
             mesh_path, dimension, materials, shell_thickness
         )
         mat_block = _materials_inp_block(materials, dimension, shell_thickness)
-        bc_block = _bcs_inp_block(bcs, nsets, elsets, dimension)
-        step_block = _static_step_block()
+        # model_bc_block: *BOUNDARY/*TRANSFORM (STEP DIŞINDA kalabilir).
+        # step_bc_block: *CLOAD/*DLOAD (SADECE STEP İÇİNDE geçerli — gerçek
+        # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
+        # used within a STEP" hatasıyla durduğu doğrulandı).
+        model_bc_block, step_bc_block = _bcs_inp_block(bcs, nsets, elsets, dimension)
+        step_block = _static_step_block(step_bc_block)
 
         inp_path.write_text(
-            mesh_block + mat_block + bc_block + step_block,
+            mesh_block + mat_block + model_bc_block + step_block,
             encoding="utf-8",
         )
         logger.info("CalculiX .inp yazıldı: %s", inp_path)
@@ -338,8 +342,19 @@ def _bcs_inp_block(
     nsets: dict[str, list[int]],
     elsets: dict[str, list[int]],
     dimension: int,
-) -> str:
-    lines: list[str] = []
+) -> tuple[str, str]:
+    """BC kartlarını üretir — döndürür: (model_seviyesi, step_seviyesi).
+
+    CalculiX/Abaqus format kuralı: `*BOUNDARY`/`*TRANSFORM` gibi kalıcı model
+    tanımı kartları `*STEP`'in DIŞINDA kalabilir, ama `*CLOAD`/`*DLOAD` gibi
+    yük kartları SADECE `*STEP` İÇİNDE olabilir — gerçek bir çalıştırmada
+    `*CLOAD` dışarıda kalınca CalculiX "*CLOAD should only be used within a
+    STEP" hatasıyla durduğu doğrulandı. Bu yüzden ikisi ayrı listelerde
+    tutulup, step-seviyesi olanlar çağıran tarafından `*STEP`/`*STATIC` ile
+    `*NODE FILE` arasına yerleştiriliyor.
+    """
+    model_lines: list[str] = []
+    step_lines: list[str] = []
     for bc in bcs:
         btype = str(bc.get("type", "")).lower()
         if btype == "fixed":
@@ -347,45 +362,45 @@ def _bcs_inp_block(
                 nset = f"FACE_{int(fid)}"
                 if nset not in nsets or not nsets[nset]:
                     continue
-                lines.append("*BOUNDARY")
-                lines.append(f"{nset}, 1, 3")
+                model_lines.append("*BOUNDARY")
+                model_lines.append(f"{nset}, 1, 3")
             for eid in bc.get("edge_ids") or []:
                 nset = f"EDGE_{int(eid)}"
                 if nset not in nsets or not nsets[nset]:
                     continue
-                lines.append("*BOUNDARY")
-                lines.append(f"{nset}, 1, 3")
+                model_lines.append("*BOUNDARY")
+                model_lines.append(f"{nset}, 1, 3")
             for nid in bc.get("node_ids") or []:
-                lines.append("*BOUNDARY")
-                lines.append(f"{int(nid)}, 1, 3")
+                model_lines.append("*BOUNDARY")
+                model_lines.append(f"{int(nid)}, 1, 3")
         elif btype == "cload":
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
             fz = float(bc.get("fz", 0.0))
             node_ids = bc.get("node_ids") or []
             if node_ids:
-                lines.append("*CLOAD")
+                step_lines.append("*CLOAD")
                 for nid in node_ids:
                     if abs(fx) > 0:
-                        lines.append(f"{int(nid)}, 1, {fx:.6g}")
+                        step_lines.append(f"{int(nid)}, 1, {fx:.6g}")
                     if abs(fy) > 0:
-                        lines.append(f"{int(nid)}, 2, {fy:.6g}")
+                        step_lines.append(f"{int(nid)}, 2, {fy:.6g}")
                     if abs(fz) > 0:
-                        lines.append(f"{int(nid)}, 3, {fz:.6g}")
+                        step_lines.append(f"{int(nid)}, 3, {fz:.6g}")
             for fid in bc.get("face_ids") or []:
                 nset = f"FACE_{int(fid)}"
                 ids = nsets.get(nset) or []
                 if not ids:
                     continue
                 n = len(ids)
-                lines.append("*CLOAD")
+                step_lines.append("*CLOAD")
                 for nid in ids:
                     if abs(fx) > 0:
-                        lines.append(f"{nid}, 1, {fx / n:.6g}")
+                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
                     if abs(fy) > 0:
-                        lines.append(f"{nid}, 2, {fy / n:.6g}")
+                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
                     if abs(fz) > 0:
-                        lines.append(f"{nid}, 3, {fz / n:.6g}")
+                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
         elif btype == "pressure":
             mag = float(bc.get("magnitude", 0.0))
             if abs(mag) < 1e-30:
@@ -393,8 +408,8 @@ def _bcs_inp_block(
             for fid in bc.get("face_ids") or []:
                 elset = f"FACE_EL_{int(fid)}"
                 if elset in elsets and elsets[elset]:
-                    lines.append("*DLOAD")
-                    lines.append(f"{elset}, P, {mag:.6g}")
+                    step_lines.append("*DLOAD")
+                    step_lines.append(f"{elset}, P, {mag:.6g}")
                     continue
                 # 3D solid: yüzey ELSET yok → düğümlere dağıtılmış CLOAD
                 nset = f"FACE_{int(fid)}"
@@ -407,15 +422,15 @@ def _bcs_inp_block(
                 norm = math.sqrt(dx * dx + dy * dy + dz * dz) or 1.0
                 fx, fy, fz = mag * dx / norm, mag * dy / norm, mag * dz / norm
                 n = len(ids)
-                lines.append(f"** pressure face {fid} as distributed CLOAD (no FACE_EL)")
-                lines.append("*CLOAD")
+                step_lines.append(f"** pressure face {fid} as distributed CLOAD (no FACE_EL)")
+                step_lines.append("*CLOAD")
                 for nid in ids:
                     if abs(fx) > 0:
-                        lines.append(f"{nid}, 1, {fx / n:.6g}")
+                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
                     if abs(fy) > 0:
-                        lines.append(f"{nid}, 2, {fy / n:.6g}")
+                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
                     if abs(fz) > 0:
-                        lines.append(f"{nid}, 3, {fz / n:.6g}")
+                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
         elif btype == "displacement":
             dofs = bc.get("dofs") or {"1": 0.0, "2": 0.0, "3": 0.0}
             targets: list[str] = []
@@ -424,17 +439,17 @@ def _bcs_inp_block(
             for fid in bc.get("face_ids") or []:
                 targets.append(f"FACE_{int(fid)}")
             for nid in bc.get("node_ids") or []:
-                lines.append("*BOUNDARY")
+                model_lines.append("*BOUNDARY")
                 for dof, val in dofs.items():
-                    lines.append(
+                    model_lines.append(
                         f"{int(nid)}, {int(dof)}, {int(dof)}, {float(val):.6g}"
                     )
             for nset in targets:
                 if nset not in nsets:
                     continue
-                lines.append("*BOUNDARY")
+                model_lines.append("*BOUNDARY")
                 for dof, val in dofs.items():
-                    lines.append(f"{nset}, {int(dof)}, {int(dof)}, {float(val):.6g}")
+                    model_lines.append(f"{nset}, {int(dof)}, {int(dof)}, {float(val):.6g}")
         elif btype == "sliding":
             # Yerel eksen: normal = 1. DOF; teğet serbest. *TRANSFORM + *BOUNDARY
             normal = bc.get("normal") or [0.0, 0.0, 1.0]
@@ -456,13 +471,13 @@ def _bcs_inp_block(
             for nset in nsets_targets:
                 if nset not in nsets or not nsets[nset]:
                     continue
-                lines.append(f"*TRANSFORM, NSET={nset}, TYPE=C")
-                lines.append(
+                model_lines.append(f"*TRANSFORM, NSET={nset}, TYPE=C")
+                model_lines.append(
                     f"{nx:.6g}, {ny:.6g}, {nz:.6g}, {tx:.6g}, {ty:.6g}, {tz:.6g}"
                 )
-                lines.append("*BOUNDARY")
+                model_lines.append("*BOUNDARY")
                 # Local 1 (normal) sabit; 2-3 serbest (sliding)
-                lines.append(f"{nset}, 1, 1")
+                model_lines.append(f"{nset}, 1, 1")
         elif btype == "gravity":
             gx = float(bc.get("gx", 0.0))
             gy = float(bc.get("gy", 0.0))
@@ -473,9 +488,9 @@ def _bcs_inp_block(
             ]
             if not part_elsets:
                 part_elsets = ["PART_0"]
-            lines.append("*DLOAD")
+            step_lines.append("*DLOAD")
             for pel in part_elsets:
-                lines.append(
+                step_lines.append(
                     f"{pel}, GRAV, {mag:.6g}, {gx / mag:.6g}, {gy / mag:.6g}, {gz / mag:.6g}"
                 )
         elif btype == "bearing":
@@ -492,27 +507,30 @@ def _bcs_inp_block(
                     for i in range(len(ids))
                 ]
                 wsum = sum(weights) or 1.0
-                lines.append(f"** bearing load face {fid}")
-                lines.append("*CLOAD")
+                step_lines.append(f"** bearing load face {fid}")
+                step_lines.append("*CLOAD")
                 for nid, w in zip(ids, weights):
                     f = mag * w / wsum
                     if abs(ax) > 0:
-                        lines.append(f"{nid}, 1, {f * ax:.6g}")
+                        step_lines.append(f"{nid}, 1, {f * ax:.6g}")
                     if abs(ay) > 0:
-                        lines.append(f"{nid}, 2, {f * ay:.6g}")
+                        step_lines.append(f"{nid}, 2, {f * ay:.6g}")
                     if abs(az) > 0:
-                        lines.append(f"{nid}, 3, {f * az:.6g}")
+                        step_lines.append(f"{nid}, 3, {f * az:.6g}")
         else:
-            lines.append(f"** unknown bc type: {btype}")
+            model_lines.append(f"** unknown bc type: {btype}")
 
     _ = dimension
-    return ("\n".join(lines) + "\n") if lines else ""
+    model_block = ("\n".join(model_lines) + "\n") if model_lines else ""
+    step_block = ("\n".join(step_lines) + "\n") if step_lines else ""
+    return model_block, step_block
 
 
-def _static_step_block() -> str:
+def _static_step_block(step_bc_lines: str = "") -> str:
     return (
         "*STEP\n"
         "*STATIC\n"
+        f"{step_bc_lines}"
         "*NODE FILE\n"
         "U\n"
         "*EL FILE\n"
