@@ -745,35 +745,48 @@ def _try_defeature_selected_faces(face_ids: list[int]) -> bool:
 def _rebuild_sharp_shell_removing(
     remove_face_ids: list[int], plane_face_ids: list[int]
 ) -> bool:
-    """Verilen düzlemlerden keskin shell kurar; remove listesini siler."""
+    """Verilen düzlemlerden keskin shell kurmayı DENER (henüz hiçbir şey
+    SİLMEDEN) — başarılı olursa eski duvarlar + seçilenler silinip yeni
+    shell'le değiştirilir. Rebuild karmaşık profillerde (basit kutu/tüp
+    kesiti olmayan) BAŞARISIZ olabilir — bu durumda GÜVENLİ BİR YEDEĞE
+    düşülür: SADECE kullanıcının seçtiği (remove_face_ids) yüzeyler
+    silinir, diğer düz duvarlara HİÇ DOKUNULMAZ (gerçek bir kullanım
+    hatasında doğrulandı — önceden burada hem duvarlar siliniyor hem de
+    hata fırlatılıyordu, bu da veri kaybına yol açıyordu; artık dosyaya
+    hiçbir şey yazılmadan önce rebuild'in başarılı olacağından emin
+    oluyoruz).
+    """
     wall_specs = _wall_specs_from_orphan_planes(plane_face_ids)
-    if wall_specs is None:
-        if not remove_face_ids:
-            return False
-        gmsh.model.occ.remove([(2, fid) for fid in remove_face_ids], recursive=True)
-        gmsh.model.occ.synchronize()
-        return True
 
-    specs_snapshot = [
-        {
-            "axis": w["axis"],
-            "pos": w["pos"],
-            "pair": w["pair"],
-            "face": w["face"],
-            "mid_min": list(w["mid_min"]),
-            "mid_max": list(w["mid_max"]),
-        }
-        for w in wall_specs
-    ]
-    to_remove = list(dict.fromkeys(remove_face_ids + [w["face"] for w in wall_specs]))
-    gmsh.model.occ.remove([(2, fid) for fid in to_remove], recursive=True)
+    if wall_specs is not None:
+        specs_snapshot = [
+            {
+                "axis": w["axis"],
+                "pos": w["pos"],
+                "pair": w["pair"],
+                "face": w["face"],
+                "mid_min": list(w["mid_min"]),
+                "mid_max": list(w["mid_max"]),
+            }
+            for w in wall_specs
+        ]
+        # ÖNEMLİ: hiçbir şey silinmeden ÖNCE deniyoruz — yeni yüzeyler
+        # sadece sayısal koordinatlardan (specs_snapshot) kuruluyor, eski
+        # yüzey objelerine bağımlı değil, bu yüzden sırayı değiştirmek
+        # güvenli.
+        built = _construct_connected_planar_shell_from_walls(specs_snapshot)
+        if built is not None:
+            to_remove = list(dict.fromkeys(remove_face_ids + [w["face"] for w in wall_specs]))
+            gmsh.model.occ.remove([(2, fid) for fid in to_remove], recursive=True)
+            gmsh.model.occ.synchronize()
+            return True
+
+    # Rebuild mümkün değil (karmaşık/kesik profil) — GÜVENLİ YEDEK: sadece
+    # kullanıcının seçtiği yüzeyleri sil, diğer düz duvarlara DOKUNMA.
+    if not remove_face_ids:
+        return False
+    gmsh.model.occ.remove([(2, fid) for fid in remove_face_ids], recursive=True)
     gmsh.model.occ.synchronize()
-
-    built = _construct_connected_planar_shell_from_walls(specs_snapshot)
-    if built is None:
-        raise RuntimeError(
-            "Seçilen radyuslar silindi ancak keskin köşe shell kurulamadı."
-        )
     return True
 
 
