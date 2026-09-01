@@ -484,6 +484,53 @@ def test_apply_defeature_by_selected_face_ids(tmp_path):
     assert types.count("Plane") == 3
 
 
+def test_rebuild_sharp_shell_falls_back_safely_when_reconstruction_impossible():
+    """KRİTİK GÜVENLİK TESTİ: gerçek bir kullanıcı hatasında bulundu —
+    karmaşık/kesik profillerde `_construct_connected_planar_shell_from_walls`
+    (sadece basit kutu/tüp kesitini destekler) None dönebiliyor. ESKİDEN bu
+    durumda önce duvarlar SİLİNİYOR, sonra RuntimeError fırlatılıyordu (veri
+    kaybı + kullanıcıya 422 hatası). ŞİMDİ: hiçbir şey silinmeden önce
+    rebuild deneniyor, başarısız olursa SADECE seçilen yüzeyler silinip
+    diğer duvarlara DOKUNULMUYOR — asla hata fırlatmıyor, asla veri
+    kaybetmiyor.
+    """
+    import gmsh
+    from unittest.mock import patch
+
+    from app.mesh import gmsh_adapter
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("test_fallback")
+
+    # 3 farklı eksende duvar — fonksiyonun kendi kuralına göre (tam 2 duvar
+    # ekseni + 1 uzatma ekseni gerekir) KESİN None dönmesi gereken senaryo.
+    fake_walls = [
+        {
+            "axis": 0, "pos": 0.0, "pair": (1, 2), "face": 1,
+            "mid_min": [0, 0, 0], "mid_max": [0, 10, 10],
+        },
+        {
+            "axis": 1, "pos": 0.0, "pair": (3, 4), "face": 3,
+            "mid_min": [0, 0, 0], "mid_max": [10, 0, 10],
+        },
+        {
+            "axis": 2, "pos": 0.0, "pair": (5, 6), "face": 5,
+            "mid_min": [0, 0, 0], "mid_max": [10, 10, 0],
+        },
+    ]
+
+    with patch.object(gmsh_adapter, "_wall_specs_from_orphan_planes", return_value=fake_walls):
+        # Hata FIRLATMAMALI (eski davranış buydu) — güvenli yedeğe düşmeli.
+        result = gmsh_adapter._rebuild_sharp_shell_removing(
+            remove_face_ids=[99],
+            plane_face_ids=[1, 3, 5],
+        )
+        assert result is True
+
+    gmsh.finalize()
+
+
 def test_find_defeature_skips_through_hole_cylinder():
     """Delikli plakadaki silindir fillet değil — Defeature adayı olmamalı."""
     adapter = GmshMesherAdapter()
