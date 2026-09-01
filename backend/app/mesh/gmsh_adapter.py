@@ -1869,6 +1869,124 @@ class GmshMesherAdapter(MesherAdapter):
 
         return results
 
+    def copy_surfaces(self, geom: GeometryHandle, face_ids: list[int]) -> list[int]:
+        """Verilen TÜM yüzeyleri tek bir mutasyonda çoğaltır (çoklu seçim
+        desteği) — her biri `copy_surface` ile aynı mantıkla ama tek Gmsh
+        oturumunda, tek `gmsh.write` ile. Yeni yüzey id'lerini, verilen
+        sırayla döner.
+        """
+        try:
+            existing_faces = {tag for _dim, tag in gmsh.model.getEntities(dim=2)}
+            for fid in face_ids:
+                if fid not in existing_faces:
+                    raise SurfaceNotFoundError(
+                        f"Yüzey bulunamadı: id={fid}. Mevcut yüzeyler: {sorted(existing_faces)}"
+                    )
+            if not face_ids:
+                raise MidsurfaceError("En az bir yüzey seçilmeli.")
+
+            new_ids: list[int] = []
+            for face_id in face_ids:
+                copied = gmsh.model.occ.copy([(2, face_id)])
+                gmsh.model.occ.synchronize()
+                if not copied or copied[0][0] != 2:
+                    raise MidsurfaceError(
+                        f"Yüzey kopyalanamadı: id={face_id} (beklenmeyen Gmsh yanıtı: {copied})"
+                    )
+                new_ids.append(copied[0][1])
+
+            gmsh.write(str(geom.source_file))
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return new_ids
+
+    def create_offset_midsurfaces(
+        self, geom: GeometryHandle, face_ids: list[int], thickness: float
+    ) -> list[int]:
+        """Verilen her yüzeyi KENDİ normali boyunca, kalınlığın yarısı kadar
+        İÇE doğru kaydırarak orta yüzeyini üretir (`_construct_midsurface`'in
+        aksine iki yüzey eşleştirmeye gerek yok — kullanıcı doğrudan dış
+        yüzeyleri seçip bir kalınlık girer).
+
+        Yön belirleme: Gmsh'in `getNormal()` sonucunun "içe/dışa" anlamı
+        oturuma göre tutarsız çıkabildiği gerçek bir testte doğrulandı — bu
+        yüzden yön, o yüzeyin ait olduğu VOLUME'ün kütle merkezine göre
+        MATEMATİKSEL olarak belirleniyor (normal ile "yüzeyden merkeze"
+        vektörünün dot product'ı negatifse normal zaten dışa bakıyor demektir,
+        içe gitmek için ters çevrilir). Bu yöntem gerçek verilerle doğrulandı.
+
+        NOT: Sadece DÜZLEMSEL yüzeyler için matematiksel olarak kesin bir
+        sonuç verir (öteleme = gerçek ofset). Eğri (silindirik vb.)
+        yüzeylerde bu sadece bir yaklaşıklıktır (gerçek eş-mesafeli ofset
+        değil) — kapsam bilinçli olarak düz panellerle sınırlı tutuluyor
+        (ROADMAP'in "sabit kalınlıklı düz plaka" senaryosuyla uyumlu).
+
+        Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır.
+        """
+        try:
+            existing_faces = {tag for _dim, tag in gmsh.model.getEntities(dim=2)}
+            for fid in face_ids:
+                if fid not in existing_faces:
+                    raise SurfaceNotFoundError(
+                        f"Yüzey bulunamadı: id={fid}. Mevcut yüzeyler: {sorted(existing_faces)}"
+                    )
+            if not face_ids:
+                raise MidsurfaceError("En az bir yüzey seçilmeli.")
+            if thickness <= 0:
+                raise MidsurfaceError("thickness pozitif olmalı.")
+
+            for fid in face_ids:
+                face_type = gmsh.model.getType(2, fid)
+                if face_type != "Plane":
+                    raise MidsurfaceError(
+                        f"Yüzey {fid} düzlemsel değil ({face_type}) — kalınlık/2 "
+                        f"kaydırma sadece düzlemsel yüzeyler için destekleniyor."
+                    )
+
+            # face_id -> hangi volume'e ait olduğunu bul (kütle merkezi referansı için).
+            face_to_part, _pc, volume_backed = _compute_face_to_part()
+            volumes = gmsh.model.getEntities(dim=3)
+            part_to_volume_tag: dict[int, int] = {}
+            for idx, (_dim, vtag) in enumerate(volumes):
+                part_to_volume_tag[idx] = vtag
+
+            new_ids: list[int] = []
+            for face_id in face_ids:
+                normal = _get_face_normal(face_id)
+                point = _get_face_point(face_id)
+
+                part_id = face_to_part.get(face_id)
+                vol_tag = part_to_volume_tag.get(part_id) if part_id is not None else None
+                inward = normal
+                if vol_tag is not None:
+                    vol_center = gmsh.model.occ.getCenterOfMass(3, vol_tag)
+                    inward_vec = [vol_center[i] - point[i] for i in range(3)]
+                    dot = sum(normal[i] * inward_vec[i] for i in range(3))
+                    if dot < 0:
+                        inward = tuple(-n for n in normal)
+
+                offset = tuple(inward[i] * (thickness / 2) for i in range(3))
+
+                copied = gmsh.model.occ.copy([(2, face_id)])
+                gmsh.model.occ.synchronize()
+                if not copied or copied[0][0] != 2:
+                    raise MidsurfaceError(
+                        f"Yüzey kopyalanamadı: id={face_id} (beklenmeyen Gmsh yanıtı: {copied})"
+                    )
+                new_face_id = copied[0][1]
+                gmsh.model.occ.translate([(2, new_face_id)], *offset)
+                gmsh.model.occ.synchronize()
+                new_ids.append(new_face_id)
+
+            gmsh.write(str(geom.source_file))
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+        return new_ids
+
     def generate_mesh(self, geom: GeometryHandle, params: MeshParams) -> MeshResult:
         """FEA mesh üretir: 3D solid veya 2D shell; scheme tet/quad/mix.
 

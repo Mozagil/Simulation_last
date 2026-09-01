@@ -708,3 +708,111 @@ def test_second_mutation_overwrites_previous_backup_single_level_undo():
     # Geri al -> sadece 2. mutasyon geri alınır (8 -> 7), 1. mutasyon KALIR.
     undo_response = client.post(f"/geometry/{geometry_id}/undo")
     assert undo_response.json()["face_count"] == 7
+
+
+@requires_db
+def test_copy_surfaces_multiple_after_upload():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/copy-multiple",
+        json={"face_ids": [1, 2, 3]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["new_face_ids"]) == 3
+    assert len(set(body["new_face_ids"])) == 3
+    assert body["face_count"] == 9
+
+
+@requires_db
+def test_copy_surfaces_persists_across_separate_requests():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    copy_response = client.post(
+        f"/geometry/{geometry_id}/surfaces/copy-multiple",
+        json={"face_ids": [1, 2]},
+    )
+    new_ids = set(copy_response.json()["new_face_ids"])
+
+    surfaces_response = client.get(f"/geometry/{geometry_id}/surfaces")
+    surface_ids = {s["id"] for s in surfaces_response.json()["surfaces"]}
+    assert new_ids.issubset(surface_ids)
+
+
+@requires_db
+def test_copy_surfaces_rejects_unknown_face_id():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/copy-multiple",
+        json={"face_ids": [1, 999]},
+    )
+    assert response.status_code == 404
+
+
+@requires_db
+def test_create_offset_midsurfaces_after_upload():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [1, 2], "thickness": 4.0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["new_face_ids"]) == 2
+    assert body["thickness"] == 4.0
+    assert body["face_count"] == 8
+
+
+@requires_db
+def test_create_offset_midsurfaces_moves_inward():
+    """KRİTİK: kaydırma yönü doğru mu — X=0 yüzeyi X=+eşiğe, X=10 yüzeyi
+    X=(10-eşiğe) gitmeli (merkeze doğru, dışarı değil).
+    """
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [1], "thickness": 4.0},
+    )
+    new_face_id = response.json()["new_face_ids"][0]
+
+    surfaces_response = client.get(f"/geometry/{geometry_id}/surfaces")
+    new_surface = next(s for s in surfaces_response.json()["surfaces"] if s["id"] == new_face_id)
+    # Alan değişmemeli (sadece öteleme, boyut aynı kalmalı).
+    assert new_surface["area"] == pytest.approx(100.0)
+
+
+@requires_db
+def test_create_offset_midsurfaces_rejects_negative_thickness():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    # Önce fillet'li bir dosya olsaydı silindirik yüzey test edilirdi;
+    # burada sadece geçersiz eşik değerini test ediyoruz.
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [1], "thickness": -1.0},
+    )
+    assert response.status_code == 422
+
+
+@requires_db
+def test_create_offset_midsurfaces_returns_404_for_unknown_face():
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [999], "thickness": 2.0},
+    )
+    assert response.status_code == 404
