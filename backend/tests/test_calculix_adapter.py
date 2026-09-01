@@ -78,7 +78,7 @@ def test_bcs_pressure_dload_and_sliding_transform():
 
     nsets = {"FACE_1": [1, 2, 3], "EDGE_1": [4, 5]}
     elsets = {"FACE_EL_1": [10, 11], "PART_0": [10, 11]}
-    text = _bcs_inp_block(
+    model_text, step_text = _bcs_inp_block(
         [
             {"type": "pressure", "face_ids": [1], "magnitude": 1e5},
             {
@@ -92,18 +92,29 @@ def test_bcs_pressure_dload_and_sliding_transform():
         elsets,
         dimension=2,
     )
-    assert "*DLOAD" in text
-    assert "FACE_EL_1, P," in text
-    assert "*TRANSFORM, NSET=EDGE_1" in text
-    assert "EDGE_1, 1, 1" in text
-    assert "PART_0, GRAV," in text
+    # KRİTİK: *DLOAD (yük) SADECE step_text'te olmalı, model_text'te DEĞİL —
+    # gerçek bir CalculiX çalıştırmasında *CLOAD/*DLOAD *STEP dışında kalınca
+    # "should only be used within a STEP" hatasıyla durduğu doğrulandı.
+    assert "*DLOAD" in step_text
+    assert "*DLOAD" not in model_text
+    assert "FACE_EL_1, P," in step_text
+    assert "PART_0, GRAV," in step_text
+    # *TRANSFORM/*BOUNDARY (model seviyesi) model_text'te olmalı.
+    assert "*TRANSFORM, NSET=EDGE_1" in model_text
+    assert "EDGE_1, 1, 1" in model_text
+    assert "*TRANSFORM" not in step_text
 
 
 def test_calculix_submit_without_ccx_raises(tmp_path):
     inp = tmp_path / "x.inp"
     inp.write_text("*HEADING\n", encoding="utf-8")
     from app.solvers.base import InputArtifact
+    from unittest.mock import patch
 
     ccx = CalculiXAdapter()
-    with pytest.raises(SolverError, match="ccx"):
-        ccx.submit(InputArtifact(path=inp))
+    # Bu sandbox'ta gerçek ccx kurulu olabilir (biz kurduk) — test her
+    # ortamda tutarlı çalışsın diye _ccx_executable'ı None dönecek şekilde
+    # geçici olarak mock'luyoruz (gerçek "kurulu değil" senaryosu).
+    with patch("app.solvers.calculix._ccx_executable", return_value=None):
+        with pytest.raises(SolverError, match="ccx"):
+            ccx.submit(InputArtifact(path=inp))
