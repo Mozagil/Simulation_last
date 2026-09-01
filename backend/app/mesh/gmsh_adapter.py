@@ -1733,23 +1733,16 @@ class GmshMesherAdapter(MesherAdapter):
                 if _try_defeature_orphan_midshell(max_radius):
                     applied = True
                 else:
-                    fillets = _collect_fillet_faces(max_radius)
-                    if fillets:
-                        volumes = gmsh.model.getEntities(dim=3)
-                        if not volumes:
-                            raise RuntimeError(
-                                "Yüzey modelde fillet bulundu ancak keskin shell "
-                                "kurulamadı (cidar düzeni tanınmadı)."
-                            )
-                        vbb = gmsh.model.getBoundingBox(3, volumes[0][1])
-                        gmsh.model.occ.remove(gmsh.model.getEntities(), recursive=True)
-                        gmsh.model.occ.synchronize()
-                        xmin, ymin, zmin, xmax, ymax, zmax = vbb
-                        gmsh.model.occ.addBox(
-                            xmin, ymin, zmin, xmax - xmin, ymax - ymin, zmax - zmin
-                        )
-                        gmsh.model.occ.synchronize()
-                        applied = True
+                    # GÜVENLİK: eskiden burada tüm model silinip bounding
+                    # box'tan ibaret boş bir kutuyla DEĞİŞTİRİLİYORDU (veri
+                    # kaybı riski). Artık geometriye hiç dokunmadan, anlaşılır
+                    # bir hata fırlatıyoruz.
+                    raise RuntimeError(
+                        "Bu geometri için otomatik fillet kaldırma desteklenmiyor "
+                        "(cidar düzeni tanınmadı). Geometri DEĞİŞTİRİLMEDİ. "
+                        "Yüzey modunda ilgili radyus (mid) yüzeylerini elle seçip "
+                        "face_ids ile tekrar deneyin."
+                    )
             else:
                 raise RuntimeError("face_ids veya max_radius gerekli.")
 

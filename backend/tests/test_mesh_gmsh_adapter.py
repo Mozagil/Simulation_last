@@ -371,41 +371,25 @@ def test_find_defeature_candidates_finds_fillets_on_filleted_box():
     assert all(c.approx_radius <= 2.5 + 1e-6 for c in candidates)
 
 
-def test_apply_defeature_makes_sharp_box(tmp_path):
+def test_apply_defeature_raises_when_no_safe_path(tmp_path):
+    """GÜVENLİK: eskiden fillet kaldırma başarısız olunca tüm model bounding
+    box'tan ibaret boş bir kutuyla DEĞİŞTİRİLİYORDU (veri kaybı riski).
+    Şimdi güvenli bir hata fırlatılıyor, geometri DEĞİŞMİYOR (dosyaya hiç
+    yazılmıyor).
+    """
     fixture = FIXTURES_DIR / "box_with_fillet.step"
-    test_file = tmp_path / "fillet_defeature.step"
+    test_file = tmp_path / "fillet_defeature_safety.step"
     test_file.write_bytes(fixture.read_bytes())
-
-    import gmsh
+    original_bytes = test_file.read_bytes()
 
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(test_file)
-    result = adapter.apply_defeature(geom, max_radius=2.5)
 
-    assert result.volumes_after == 1
-    assert result.surfaces_after == 6
+    with pytest.raises(RuntimeError, match="desteklenmiyor"):
+        adapter.apply_defeature(geom, max_radius=2.5)
 
-    gmsh.initialize(interruptible=False)
-    gmsh.option.setNumber("General.Terminal", 0)
-    gmsh.model.add("verify")
-    gmsh.open(str(test_file))
-    gmsh.model.occ.synchronize()
-    blend = sum(
-        1
-        for _d, t in gmsh.model.getEntities(2)
-        if gmsh.model.getType(2, t) in {"Cylinder", "Sphere", "Torus"}
-    )
-    # Keskin kutu: üst yüz alanı 20*20=400
-    top_masses = [
-        gmsh.model.occ.getMass(2, t)
-        for _d, t in gmsh.model.getEntities(2)
-        if gmsh.model.getType(2, t) == "Plane"
-    ]
-    gmsh.finalize()
-
-    assert blend == 0
-    assert any(m == pytest.approx(400.0, rel=1e-3) for m in top_masses)
-
+    # Geometri dosyası HİÇ değişmemiş olmalı (güvenlik kanıtı).
+    assert test_file.read_bytes() == original_bytes
 
 def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
     """Fillet'li profil midsurface: zaten 4 keskin düzlem, tek orphan parça."""
