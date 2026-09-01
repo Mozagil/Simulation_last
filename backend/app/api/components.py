@@ -38,6 +38,13 @@ class PatchComponentRequest(BaseModel):
     thickness: float | None = Field(default=None, gt=0)
 
 
+class EnsureDefaultComponentsRequest(BaseModel):
+    part_ids: list[int] = Field(..., min_length=1)
+    property_kind: str = Field(default="shell")
+    thickness: float | None = Field(default=3.0, gt=0)
+    material_id: int | None = Field(default=None, ge=1)
+
+
 def _component_payload(c: Component) -> dict[str, Any]:
     mat = c.material
     return {
@@ -156,6 +163,82 @@ def upsert_component(
         existing.material_id,
     )
     return {"component": _component_payload(existing)}
+
+
+@router.post("/geometry/{geometry_id}/components/defaults")
+def ensure_default_components(
+    geometry_id: int,
+    body: EnsureDefaultComponentsRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Mesh PART_n için eksik component'leri oluşturur; mevcut kayıtları ezmez."""
+    geo = db.get(Geometry, geometry_id)
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Geometri bulunamadı.")
+
+    kind = body.property_kind.strip().lower()
+    if kind not in _ALLOWED_KINDS:
+        raise HTTPException(status_code=400, detail="property_kind shell veya solid olmalı.")
+    if kind == "shell" and body.thickness is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Shell property için thickness (kalınlık) gerekli.",
+        )
+
+    if body.material_id is not None:
+        mat = db.get(Material, body.material_id)
+        if mat is None:
+            raise HTTPException(status_code=404, detail="Malzeme bulunamadı.")
+
+    unique_ids = sorted({int(p) for p in body.part_ids if p >= 0})
+    existing_ids = {
+        row[0]
+        for row in db.query(Component.part_id)
+        .filter(Component.geometry_id == geometry_id, Component.part_id.in_(unique_ids))
+        .all()
+    }
+
+    created: list[Component] = []
+    for part_id in unique_ids:
+        if part_id in existing_ids:
+            continue
+        row = Component(
+            geometry_id=geometry_id,
+            part_id=part_id,
+            name=f"COMP_PART_{part_id}",
+            source="mesh",
+            material_id=body.material_id,
+            property_kind=kind,
+            thickness=body.thickness if kind == "shell" else None,
+        )
+        db.add(row)
+        created.append(row)
+        _sync_material_assignment(db, geometry_id, part_id, body.material_id)
+
+    db.commit()
+    created_payloads = []
+    for row in created:
+        db.refresh(row)
+        loaded = (
+            db.query(Component)
+            .options(joinedload(Component.material))
+            .filter(Component.id == row.id)
+            .one()
+        )
+        created_payloads.append(_component_payload(loaded))
+
+    logger.info(
+        "Default component: geometry_id=%d created=%d skipped=%d",
+        geometry_id,
+        len(created_payloads),
+        len(unique_ids) - len(created_payloads),
+    )
+    return {
+        "geometry_id": geometry_id,
+        "created_count": len(created_payloads),
+        "skipped_count": len(unique_ids) - len(created_payloads),
+        "components": created_payloads,
+    }
 
 
 @router.patch("/components/{component_id}")

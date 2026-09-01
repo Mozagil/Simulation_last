@@ -408,7 +408,7 @@ def test_apply_defeature_makes_sharp_box(tmp_path):
 
 
 def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
-    """Midsurface sonrası 2D kabuk: radyus mid'ler kalkar, 4 keskin düzlem kalır."""
+    """Fillet'li profil midsurface: zaten 4 keskin düzlem, tek orphan parça."""
     fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
     test_file = tmp_path / "midshell_defeature.step"
     test_file.write_bytes(fixture.read_bytes())
@@ -418,13 +418,7 @@ def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(test_file)
     mid = adapter.create_midsurface_for_part(geom, 0)
-    assert len(mid) == 8
-
-    geom = adapter.import_geometry(test_file)
-    result = adapter.apply_defeature(geom, max_radius=5.0)
-
-    # Solid korunur; orphan mid: 4 plane, 0 cylinder
-    assert result.volumes_after == 1
+    assert len(mid) == 4
 
     gmsh.initialize(interruptible=False)
     gmsh.option.setNumber("General.Terminal", 0)
@@ -442,6 +436,7 @@ def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
 
     assert types.count("Cylinder") == 0
     assert types.count("Plane") == 4
+    assert len({ftp[f] for f in planes}) == 1
     # Köşe birleşimi: X cidar Y span = Y cidar konumları
     gmsh.initialize(interruptible=False)
     gmsh.option.setNumber("General.Terminal", 0)
@@ -467,7 +462,7 @@ def test_apply_defeature_midshell_removes_radii_sharp_corners(tmp_path):
 
 
 def test_apply_defeature_by_selected_face_ids(tmp_path):
-    """Seçilen radyus mid yüzeyleri face_ids ile kaldırılır."""
+    """Seçilen orphan mid yüzeyi face_ids ile kaldırılır; kalan 3 cidar kalır."""
     fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
     test_file = tmp_path / "select_defeature.step"
     test_file.write_bytes(fixture.read_bytes())
@@ -477,20 +472,20 @@ def test_apply_defeature_by_selected_face_ids(tmp_path):
     adapter = GmshMesherAdapter()
     geom = adapter.import_geometry(test_file)
     mid = adapter.create_midsurface_for_part(geom, 0)
-    assert len(mid) == 8
+    assert len(mid) == 4
 
     geom = adapter.import_geometry(test_file)
     from app.mesh.gmsh_adapter import _compute_face_to_part, _orphan_face_ids
 
     ftp, _, vb = _compute_face_to_part()
-    cyl_ids = [
+    plane_ids = [
         fid
         for fid in _orphan_face_ids(ftp, vb)
-        if gmsh.model.getType(2, fid) == "Cylinder"
+        if gmsh.model.getType(2, fid) == "Plane"
     ]
-    assert len(cyl_ids) == 4
+    assert len(plane_ids) == 4
 
-    result = adapter.apply_defeature(geom, face_ids=cyl_ids)
+    result = adapter.apply_defeature(geom, face_ids=[plane_ids[0]])
     assert result.surfaces_after < result.surfaces_before
 
     gmsh.initialize(interruptible=False)
@@ -502,7 +497,7 @@ def test_apply_defeature_by_selected_face_ids(tmp_path):
     types = [gmsh.model.getType(2, f) for f in _orphan_face_ids(ftp, vb)]
     gmsh.finalize()
     assert types.count("Cylinder") == 0
-    assert types.count("Plane") == 4
+    assert types.count("Plane") == 3
 
 
 def test_find_defeature_skips_through_hole_cylinder():
@@ -680,7 +675,7 @@ def test_create_midsurface_for_part_c_channel_connected_corners(tmp_path):
 
 
 def test_create_midsurface_for_part_equal_r_offset_fillets(tmp_path):
-    """İç/dış fillet R aynı, merkez kayık (sac köşe): 4 düz + 4 radyus mid."""
+    """İç/dış fillet R aynı: kapalı düz kabuk (radyus mid kanat üretmez)."""
     fixture = FIXTURES_DIR / "box_equal_r_fillets.step"
     test_file = tmp_path / "equal_r.step"
     test_file.write_bytes(fixture.read_bytes())
@@ -689,7 +684,7 @@ def test_create_midsurface_for_part_equal_r_offset_fillets(tmp_path):
     geom = adapter.import_geometry(test_file)
     results = adapter.create_midsurface_for_part(geom, 0)
 
-    assert len(results) == 8
+    assert len(results) == 4
 
     import gmsh
 
@@ -703,11 +698,11 @@ def test_create_midsurface_for_part_equal_r_offset_fillets(tmp_path):
     gmsh.finalize()
 
     assert types.count("Plane") == 4
-    assert types.count("Cylinder") == 4
+    assert types.count("Cylinder") == 0
 
 
-def test_create_midsurface_for_part_filleted_profile_includes_cylinder_mids(tmp_path):
-    """İç+dış fillet'li kutu profil: 4 düz mid + 4 radyus mid."""
+def test_create_midsurface_for_part_filleted_profile_connected_planes(tmp_path):
+    """Fillet'li kutu: köşede birleşen 4 düz mid (radyus mid yok)."""
     fixture = FIXTURES_DIR / "box_profile_filleted.step"
     test_file = tmp_path / "filleted_profile.step"
     test_file.write_bytes(fixture.read_bytes())
@@ -716,7 +711,7 @@ def test_create_midsurface_for_part_filleted_profile_includes_cylinder_mids(tmp_
     geom = adapter.import_geometry(test_file)
     results = adapter.create_midsurface_for_part(geom, 0)
 
-    assert len(results) == 8  # 4 plane + 4 cylinder
+    assert len(results) == 4
 
     import gmsh
 
@@ -729,10 +724,20 @@ def test_create_midsurface_for_part_filleted_profile_includes_cylinder_mids(tmp_
     types = []
     for new_face_id, _a, _b in results:
         types.append(gmsh.model.getType(2, new_face_id))
-    gmsh.finalize()
 
     assert types.count("Plane") == 4
-    assert types.count("Cylinder") == 4
+    assert types.count("Cylinder") == 0
+
+    from app.mesh.gmsh_adapter import _compute_face_to_part, _orphan_face_ids
+
+    ftp, _, vb = _compute_face_to_part()
+    planes = [
+        f for f in _orphan_face_ids(ftp, vb) if gmsh.model.getType(2, f) == "Plane"
+    ]
+    assert len(planes) == 4
+    assert len({ftp[f] for f in planes}) == 1
+
+    gmsh.finalize()
 
 
 def test_preview_tessellation_uses_curvature_on_filleted_box(tmp_path):
@@ -784,6 +789,36 @@ def test_generate_mesh_3d_tet_on_box(tmp_path):
     assert len(preview["lines"]) % 2 == 0
     tri_count = len(preview["faces"]) // 3
     assert preview["triangle_to_part"] == [0] * tri_count
+
+
+def test_generate_mesh_curve_node_seeds_increase_nodes(tmp_path):
+    """Kenar tohumu (transfinite) düğüm sayısını global size'dan bağımsız artırır."""
+    from app.mesh.base import MeshParams
+
+    test_file = tmp_path / "box_seed.step"
+    test_file.write_bytes(VALID_STEP_FILE.read_bytes())
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(test_file)
+    edges = adapter.list_edges(geom)
+    assert len(edges) >= 4
+    seeds = {e.id: 12 for e in edges}
+
+    geom = adapter.import_geometry(test_file)
+    coarse = adapter.generate_mesh(
+        geom, MeshParams(element_size=20.0, dimension=3, element_scheme="tet")
+    )
+    geom = adapter.import_geometry(test_file)
+    seeded = adapter.generate_mesh(
+        geom,
+        MeshParams(
+            element_size=20.0,
+            dimension=3,
+            element_scheme="tet",
+            curve_nodes=seeds,
+        ),
+    )
+    assert seeded.node_count > coarse.node_count
 
 
 def test_generate_mesh_2d_rejects_without_shell_faces(tmp_path):

@@ -8,7 +8,7 @@ olarak `NotImplementedError` bırakıldı, bu adımın kapsamı sadece web öniz
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -129,6 +129,8 @@ class MeshParams:
     element_size: float
     dimension: int  # 2 | 3
     element_scheme: str = "tet"  # tet | quad | mix
+    # Kenar tag → düğüm sayısı (uçlar dahil, min 2). Gmsh transfinite curve.
+    curve_nodes: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass

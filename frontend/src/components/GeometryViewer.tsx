@@ -20,6 +20,13 @@ interface GeometryViewerProps {
   meshPreview: MeshPreviewData | null;
   /** Mesh overlay görünür mü (göster/gizle). */
   showMesh: boolean;
+  /** Mesh dolgusunu kapat, yalnız kenar çizgisi (arka geometri görünsün). */
+  meshWireframe: boolean;
+  /** Katı (CAD) opaklığı 0–1; kullanıcı ayarlar, mesh açılınca otomatik düşmez. */
+  cadOpacity: number;
+  /** Kenar başına düğüm sayısı (mesh tohumu). */
+  edgeNodeCounts?: Record<number, number>;
+  onEdgeNodeCountChange?: (edgeId: number, next: number) => void;
   /** App state'teki seçim — turuncu vurgu bununla senkron (sahne rebuild sonrası da kalır). */
   selectedIds: number[];
   /** Mesh overlay: seçili eleman(lar) + Face/Attached büyüme. */
@@ -203,6 +210,10 @@ function GeometryViewer({
   showEdges,
   meshPreview,
   showMesh,
+  meshWireframe,
+  cadOpacity,
+  edgeNodeCounts,
+  onEdgeNodeCountChange,
   selectedIds,
   meshPicks,
   meshGrow,
@@ -221,11 +232,24 @@ function GeometryViewer({
   meshPreviewRef.current = meshPreview;
   const showMeshRef = useRef(showMesh);
   showMeshRef.current = showMesh;
+  const meshWireframeRef = useRef(meshWireframe);
+  meshWireframeRef.current = meshWireframe;
+  const cadOpacityRef = useRef(cadOpacity);
+  cadOpacityRef.current = cadOpacity;
 
   const meshPicksRef = useRef(meshPicks);
   meshPicksRef.current = meshPicks;
   const meshGrowRef = useRef(meshGrow);
   meshGrowRef.current = meshGrow;
+  const edgeNodeCountsRef = useRef(edgeNodeCounts);
+  edgeNodeCountsRef.current = edgeNodeCounts;
+  const onEdgeNodeCountChangeRef = useRef(onEdgeNodeCountChange);
+  onEdgeNodeCountChangeRef.current = onEdgeNodeCountChange;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+  const edgeSeedLayerRef = useRef<HTMLDivElement>(null);
 
   const sceneRefs = useRef<{
     modelGroup: THREE.Group | null;
@@ -252,6 +276,7 @@ function GeometryViewer({
     selectedEdgeIds: Set<number>;
     selectedPointIds: Set<number>;
     maxDim: number;
+    camera: THREE.PerspectiveCamera | null;
   }>({
     modelGroup: null,
     modelCenter: new THREE.Vector3(),
@@ -277,6 +302,7 @@ function GeometryViewer({
     selectedEdgeIds: new Set(),
     selectedPointIds: new Set(),
     maxDim: 1,
+    camera: null,
   });
 
   function clearOverlayMaps(refs: typeof sceneRefs.current) {
@@ -350,11 +376,27 @@ function GeometryViewer({
     attr.needsUpdate = true;
   }
 
+  function applyCadOpacity() {
+    const refs = sceneRefs.current;
+    const opacity = Math.min(1, Math.max(0, cadOpacityRef.current));
+    const transparent = opacity < 0.999;
+    for (const entry of refs.partMeshes) {
+      entry.mesh.visible = opacity > 0.005 && !entry.mesh.userData._hiddenByUser;
+      const mat = entry.mesh.material as THREE.MeshStandardMaterial;
+      mat.transparent = transparent;
+      mat.opacity = opacity;
+      mat.depthWrite = !transparent;
+      mat.needsUpdate = true;
+    }
+  }
+
   function setCadVisible(visible: boolean) {
     const refs = sceneRefs.current;
     for (const entry of refs.partMeshes) {
-      entry.mesh.visible = visible && !entry.mesh.userData._hiddenByUser;
+      entry.mesh.visible =
+        visible && cadOpacityRef.current > 0.005 && !entry.mesh.userData._hiddenByUser;
     }
+    if (visible) applyCadOpacity();
   }
 
   function applyMeshPreview(preview: MeshPreviewData | null, visible: boolean) {
@@ -447,7 +489,79 @@ function GeometryViewer({
     refs.modelGroup.add(group);
     refs.meshOverlay = group;
     paintMeshGrow(meshPicksRef.current, meshGrowRef.current);
-    setCadVisible(false);
+    setCadVisible(true);
+    applyMeshWireframe(meshWireframeRef.current);
+  }
+
+  function applyMeshWireframe(wire: boolean) {
+    const mesh = sceneRefs.current.overlayMesh;
+    if (!mesh) return;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (wire) {
+      mat.transparent = true;
+      mat.opacity = 0;
+      mat.depthWrite = false;
+    } else {
+      mat.transparent = false;
+      mat.opacity = 1;
+      mat.depthWrite = true;
+    }
+    mat.needsUpdate = true;
+  }
+
+  function updateEdgeSeedScreenPositions() {
+    const layer = edgeSeedLayerRef.current;
+    const camera = sceneRefs.current.camera;
+    if (!layer || !camera) return;
+    const counts = edgeNodeCountsRef.current ?? {};
+    const edgeList = edgesRef.current;
+    const pointList = pointsRef.current;
+    if (edgeList.length === 0) {
+      layer.replaceChildren();
+      return;
+    }
+    const pointById = new Map(pointList.map((p) => [p.id, p.coordinate]));
+    const selected = new Set(selectedIdsRef.current);
+    const showAll = edgeList.length <= 40 || modeRef.current === "edge";
+    const width = layer.clientWidth;
+    const height = layer.clientHeight;
+    if (width < 2 || height < 2) return;
+    const center = sceneRefs.current.modelCenter;
+    const visibleIds = new Set<number>();
+    const ndc = new THREE.Vector3();
+    for (const edge of edgeList) {
+      const n = counts[edge.id];
+      if (n == null) continue;
+      if (!showAll && !selected.has(edge.id)) continue;
+      const a = pointById.get(edge.start_point);
+      const b = pointById.get(edge.end_point);
+      if (!a || !b) continue;
+      ndc.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+      ndc.sub(center);
+      ndc.project(camera);
+      if (ndc.z < -1 || ndc.z > 1) continue;
+      visibleIds.add(edge.id);
+      let chip = layer.querySelector(`[data-edge-id="${edge.id}"]`) as HTMLDivElement | null;
+      if (!chip) {
+        chip = document.createElement("div");
+        chip.className = "edge-seed-chip";
+        chip.dataset.edgeId = String(edge.id);
+        chip.innerHTML =
+          '<button type="button" data-delta="-1" tabindex="-1">−</button>' +
+          '<span></span>' +
+          '<button type="button" data-delta="1" tabindex="-1">+</button>';
+        layer.appendChild(chip);
+      }
+      const span = chip.querySelector("span");
+      if (span) span.textContent = String(n);
+      const x = (ndc.x * 0.5 + 0.5) * width;
+      const y = (-ndc.y * 0.5 + 0.5) * height;
+      chip.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+    }
+    for (const child of [...layer.children]) {
+      const id = Number((child as HTMLElement).dataset.edgeId);
+      if (!visibleIds.has(id)) child.remove();
+    }
   }
 
   // Ana sahne kurulumu — sadece geometri değiştiğinde.
@@ -468,10 +582,50 @@ function GeometryViewer({
       10000,
     );
     camera.position.set(10, 8, 10);
+    sceneRefs.current.camera = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
+
+    const axesCanvas = document.createElement("canvas");
+    axesCanvas.className = "viewer-axes";
+    axesCanvas.width = 88;
+    axesCanvas.height = 88;
+    container.appendChild(axesCanvas);
+    const axesRenderer = new THREE.WebGLRenderer({
+      canvas: axesCanvas,
+      alpha: true,
+      antialias: true,
+    });
+    axesRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    axesRenderer.setSize(88, 88, false);
+    const axesScene = new THREE.Scene();
+    const axesHelper = new THREE.AxesHelper(1);
+    axesScene.add(axesHelper);
+    const makeAxisLabel = (text: string, color: string, x: number, y: number, z: number) => {
+      const c = document.createElement("canvas");
+      c.width = 64;
+      c.height = 64;
+      const ctx = c.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = color;
+        ctx.font = "bold 42px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, 32, 36);
+      }
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }),
+      );
+      sprite.position.set(x, y, z);
+      sprite.scale.set(0.4, 0.4, 0.4);
+      axesScene.add(sprite);
+    };
+    makeAxisLabel("X", "#c0392b", 1.2, 0, 0);
+    makeAxisLabel("Y", "#1e8449", 0, 1.2, 0);
+    makeAxisLabel("Z", "#2471a3", 0, 0, 1.2);
+    const axesCam = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -921,13 +1075,12 @@ function GeometryViewer({
 
         for (const entry of partMeshes) {
           entry.mesh.userData._hiddenByUser = hiddenParts.has(entry.partId);
-          entry.mesh.visible =
-            !(meshPreviewRef.current && showMeshRef.current) &&
-            !entry.mesh.userData._hiddenByUser;
+          entry.mesh.visible = !entry.mesh.userData._hiddenByUser;
         }
 
         applyHighlightFromAppState();
         applyMeshPreview(meshPreviewRef.current, showMeshRef.current);
+        applyCadOpacity();
       },
       undefined,
       (error) => {
@@ -939,6 +1092,12 @@ function GeometryViewer({
       animationFrameId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+      const offset = camera.position.clone().sub(controls.target).normalize().multiplyScalar(2.4);
+      axesCam.position.copy(offset);
+      axesCam.up.copy(camera.up);
+      axesCam.lookAt(0, 0, 0);
+      axesRenderer.render(axesScene, axesCam);
+      updateEdgeSeedScreenPositions();
     };
     animate();
 
@@ -965,6 +1124,17 @@ function GeometryViewer({
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       controls.dispose();
       renderer.dispose();
+      axesRenderer.dispose();
+      axesScene.traverse((obj) => {
+        if (obj instanceof THREE.Sprite) {
+          const mat = obj.material as THREE.SpriteMaterial;
+          mat.map?.dispose();
+          mat.dispose();
+        }
+      });
+      if (axesCanvas.parentElement === container) {
+        container.removeChild(axesCanvas);
+      }
       modelGroup.traverse((obj) => {
         if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments || obj instanceof THREE.Line) {
           obj.geometry.dispose();
@@ -1005,6 +1175,7 @@ function GeometryViewer({
         selectedEdgeIds: new Set(),
         selectedPointIds: new Set(),
         maxDim: 1,
+        camera: null,
       };
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1015,6 +1186,11 @@ function GeometryViewer({
     applyMeshPreview(meshPreview, showMesh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meshPreview, showMesh]);
+
+  useEffect(() => {
+    meshWireframeRef.current = meshWireframe;
+    applyMeshWireframe(meshWireframe);
+  }, [meshWireframe]);
 
   // Mod değişimi: görünürlük + App seçimini yeniden boya (sahne rebuild yok).
   useEffect(() => {
@@ -1037,15 +1213,18 @@ function GeometryViewer({
   }, [mode]);
 
   // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
-  // Mesh overlay açıkken CAD zaten gizli kalır.
   useEffect(() => {
     const refs = sceneRefs.current;
-    const meshShown = refs.meshOverlay !== null;
     for (const entry of refs.partMeshes) {
       entry.mesh.userData._hiddenByUser = hiddenParts.has(entry.partId);
-      entry.mesh.visible = !meshShown && !entry.mesh.userData._hiddenByUser;
     }
+    applyCadOpacity();
   }, [hiddenParts]);
+
+  useEffect(() => {
+    cadOpacityRef.current = cadOpacity;
+    applyCadOpacity();
+  }, [cadOpacity]);
 
   // showEdges değişimi: her parçanın kendi kenar çizgisinin görünürlüğünü
   // toplu güncelle.
@@ -1148,7 +1327,32 @@ function GeometryViewer({
     paintMeshGrow(meshPicks, meshGrow);
   }, [selectedIds, mode, externalHighlight, meshPicks, meshGrow]);
 
-  return <div ref={containerRef} className="viewer-canvas" />;
+  useEffect(() => {
+    const layer = edgeSeedLayerRef.current;
+    if (!layer) return;
+    const onPointerDown = (ev: PointerEvent) => {
+      ev.stopPropagation();
+      const target = ev.target as HTMLElement | null;
+      const btn = target?.closest("button[data-delta]") as HTMLButtonElement | null;
+      if (!btn) return;
+      const chip = btn.closest("[data-edge-id]") as HTMLElement | null;
+      if (!chip) return;
+      const edgeId = Number(chip.dataset.edgeId);
+      const delta = Number(btn.dataset.delta);
+      if (!Number.isFinite(edgeId) || !Number.isFinite(delta)) return;
+      const current = edgeNodeCountsRef.current?.[edgeId] ?? 2;
+      const next = Math.max(2, Math.min(500, current + delta));
+      onEdgeNodeCountChangeRef.current?.(edgeId, next);
+    };
+    layer.addEventListener("pointerdown", onPointerDown);
+    return () => layer.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="viewer-canvas">
+      <div ref={edgeSeedLayerRef} className="edge-seed-layer" />
+    </div>
+  );
 }
 
 export default GeometryViewer;

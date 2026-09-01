@@ -685,6 +685,10 @@ class GenerateMeshRequest(BaseModel):
         default="tet",
         description="tet | quad | mix (2D: tet→tri, quad→quad, mix→tri+quad; 3D: tet/hex)",
     )
+    curve_nodes: dict[int, int] = Field(
+        default_factory=dict,
+        description="Kenar id → düğüm sayısı (uçlar dahil, min 2)",
+    )
 
 
 @router.post("/{geometry_id}/mesh")
@@ -718,6 +722,11 @@ def generate_mesh(
                 element_size=body.element_size,
                 dimension=body.dimension,
                 element_scheme=scheme,
+                curve_nodes={
+                    int(k): int(v)
+                    for k, v in (body.curve_nodes or {}).items()
+                    if int(v) >= 2
+                },
             ),
         )
     except GmshImportError as exc:

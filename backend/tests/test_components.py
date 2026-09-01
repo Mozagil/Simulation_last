@@ -87,3 +87,52 @@ def test_create_mesh_component_and_product_tree():
     assert patched.status_code == 200
     assert patched.json()["component"]["thickness"] == pytest.approx(4.5)
     assert patched.json()["component"]["material_name"] == "S355"
+
+
+@requires_db
+def test_ensure_default_components_skips_existing():
+    fixtures = FIXTURES / "box.step"
+    with fixtures.open("rb") as f:
+        upload = client.post(
+            "/geometry/upload",
+            files={"file": ("box.step", f, "application/octet-stream")},
+        )
+    assert upload.status_code == 200
+    geometry_id = upload.json()["geometry_id"]
+
+    materials = client.get("/materials").json()["materials"]
+    material_id = next(m["id"] for m in materials if m["name"] == "S355")
+
+    first = client.post(
+        f"/geometry/{geometry_id}/components/defaults",
+        json={
+            "part_ids": [0],
+            "property_kind": "shell",
+            "thickness": 3.0,
+            "material_id": material_id,
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["created_count"] == 1
+    assert first.json()["components"][0]["name"] == "COMP_PART_0"
+    assert first.json()["components"][0]["thickness"] == pytest.approx(3.0)
+
+    second = client.post(
+        f"/geometry/{geometry_id}/components/defaults",
+        json={
+            "part_ids": [0],
+            "property_kind": "shell",
+            "thickness": 9.0,
+            "material_id": material_id,
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["created_count"] == 0
+    assert second.json()["skipped_count"] == 1
+
+    tree = client.get(f"/geometry/{geometry_id}/product-tree")
+    assert tree.status_code == 200
+    item0 = next(i for i in tree.json()["items"] if i["part_id"] == 0)
+    assert item0["component"]["name"] == "COMP_PART_0"
+    assert item0["thickness"] == pytest.approx(3.0)
+    assert item0["material_name"] == "S355"

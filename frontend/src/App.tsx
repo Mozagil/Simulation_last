@@ -41,7 +41,10 @@ import {
 import {
   fetchProductTree,
   upsertComponent,
+  patchComponent,
+  ensureDefaultComponents,
   type ProductTree,
+  type ProductTreeItem,
   type PropertyKind,
 } from "./api/components";
 import ButtonGroup from "./components/ButtonGroup";
@@ -85,6 +88,88 @@ const BC_KIND_LABELS: Record<BcKind, string> = {
   gravity: "Gravity",
 };
 
+const BC_KIND_HINTS: Record<BcKind, string> = {
+  fixed: "Seçim: mesh yüzeyi (Face) veya CAD yüzey/kenar/nokta. Alan yok.",
+  cload: "Seçim: mesh yüzeyi veya CAD yüzey/nokta. Fx/Fy/Fz toplam kuvvet.",
+  pressure: "Seçim: mesh veya CAD yüzeyi. |P| ve isteğe bağlı yön.",
+  displacement: "Seçim: mesh yüzeyi veya CAD yüzey/kenar/nokta. Ux/Uy/Uz.",
+  sliding: "Seçim: mesh veya CAD yüzeyi/kenarı. Kayma düzlemi normali.",
+  bearing: "Seçim: mesh veya CAD yüzeyi. Büyüklük + eksen.",
+  gravity: "Seçim gerekmez. gx/gy/gz (mm/s², varsayılan −9810).",
+};
+
+function uniquePartIdsFromPreview(preview: MeshPreviewData | null): number[] {
+  const parts = new Set<number>(preview?.triangle_to_part ?? [0]);
+  if (parts.size === 0) parts.add(0);
+  return [...parts].sort((a, b) => a - b);
+}
+
+function suggestedEdgeNodes(length: number, size: number): number {
+  if (!(size > 0) || !(length > 0)) return 2;
+  return Math.max(2, Math.round(length / size) + 1);
+}
+
+function ProductTreeRow({
+  item,
+  materials,
+  busy,
+  onSave,
+}: {
+  item: ProductTreeItem;
+  materials: Material[];
+  busy: boolean;
+  onSave: (componentId: number, thickness: string, materialId: number | null) => void;
+}) {
+  const component = item.component;
+  const [thickness, setThickness] = useState(String(item.thickness ?? ""));
+  const [materialId, setMaterialId] = useState<number | "">(
+    component?.material_id ?? "",
+  );
+  if (!component) return null;
+  return (
+    <li className="product-tree-item">
+      <div className="product-tree-row">
+        <strong>{component.name}</strong>
+        <span className="product-tree-meta">{item.label}</span>
+      </div>
+      <div className="product-tree-props">
+        {component.property_kind === "shell" && (
+          <label className="mesh-field">
+            <span>Kalınlık</span>
+            <input value={thickness} onChange={(e) => setThickness(e.target.value)} />
+          </label>
+        )}
+        <label className="mesh-field">
+          <span>Malzeme</span>
+          <select
+            value={materialId}
+            onChange={(e) =>
+              setMaterialId(e.target.value === "" ? "" : Number(e.target.value))
+            }
+          >
+            <option value="">— seçin —</option>
+            {materials.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="material-secondary-button"
+          disabled={busy}
+          onClick={() =>
+            onSave(component.id, thickness, materialId === "" ? null : materialId)
+          }
+        >
+          Kaydet
+        </button>
+      </div>
+    </li>
+  );
+}
+
 function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -118,6 +203,8 @@ function App() {
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
   const [meshPreview, setMeshPreview] = useState<MeshPreviewData | null>(null);
   const [showMesh, setShowMesh] = useState(true);
+  const [meshWireframe, setMeshWireframe] = useState(false);
+  const [cadOpacityPct, setCadOpacityPct] = useState(100);
   const [meshQuality, setMeshQuality] = useState<MeshQualityResponse | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null);
@@ -131,6 +218,7 @@ function App() {
   const [snEstimate, setSnEstimate] = useState(true);
   const [solveResult, setSolveResult] = useState<SolveResponse | null>(null);
   const [bcList, setBcList] = useState<BcListItem[]>([]);
+  const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
   const [bcFy, setBcFy] = useState("0");
   const [bcFz, setBcFz] = useState("-1000");
@@ -154,6 +242,8 @@ function App() {
   const [productTree, setProductTree] = useState<ProductTree | null>(null);
   const [componentName, setComponentName] = useState("");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("shell");
+  const [edgeNodeCounts, setEdgeNodeCounts] = useState<Record<number, number>>({});
+  const edgeSeedManualRef = useRef(new Set<number>());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,6 +266,19 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const size = parseFloat(meshElementSize);
+    const elemSize = Number.isFinite(size) && size > 0 ? size : 5;
+    setEdgeNodeCounts((prev) => {
+      const next = { ...prev };
+      for (const e of edges) {
+        if (edgeSeedManualRef.current.has(e.id)) continue;
+        next[e.id] = suggestedEdgeNodes(e.length, elemSize);
+      }
+      return next;
+    });
+  }, [edges, meshElementSize]);
+
   // Mod değişince aktif grup vurgusu anlamsızlaşır, temizle.
   useEffect(() => {
     setActiveGroupId(null);
@@ -195,6 +298,7 @@ function App() {
     setMeshResult(null);
     setMeshPreview(null);
     setShowMesh(true);
+    setMeshWireframe(false);
     setMeshQuality(null);
     setMaterialAssignments([]);
     setSolveResult(null);
@@ -202,6 +306,8 @@ function App() {
     setMeshGrow("element");
     setProductTree(null);
     setComponentName("");
+    setEdgeNodeCounts({});
+    edgeSeedManualRef.current = new Set();
 
     try {
       const result = await uploadGeometry(file);
@@ -286,12 +392,15 @@ function App() {
     setMeshResult(null);
     setMeshPreview(null);
     setShowMesh(true);
+    setMeshWireframe(false);
     setMeshQuality(null);
     setMaterialAssignments([]);
     setMeshPicks([]);
     setMeshGrow("element");
     setProductTree(null);
     setComponentName("");
+    setEdgeNodeCounts({});
+    edgeSeedManualRef.current = new Set();
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -406,6 +515,19 @@ function App() {
     }
   }
 
+  function toggleHiddenPartIds(targetPartIds: number[]) {
+    if (targetPartIds.length === 0) return;
+    setHiddenParts((prev) => {
+      const next = new Set(prev);
+      const allHidden = targetPartIds.every((id) => next.has(id));
+      for (const id of targetPartIds) {
+        if (allHidden) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }
+
   function handleToggleHidePart() {
     // Hiçbir şey seçili değilse TÜM gerçek solid'leri hedefle (global
     // göster/gizle) — "Solid gizle/göster" her zaman aktif olmalı, seçim
@@ -417,17 +539,24 @@ function App() {
       selection.ids.length > 0
         ? resolvePartIdsForSelection(selection).filter((id) => volumeSet.has(id))
         : volumePartIds;
-    if (targetPartIds.length === 0) return;
+    toggleHiddenPartIds(targetPartIds);
+  }
 
-    setHiddenParts((prev) => {
-      const next = new Set(prev);
-      const allHidden = targetPartIds.every((id) => next.has(id));
-      for (const id of targetPartIds) {
-        if (allHidden) next.delete(id);
-        else next.add(id);
-      }
-      return next;
-    });
+  function handleToggleHideSurfaces() {
+    // Solid'den ayrı: midsurface / yüzey kopyası gibi hacimsiz CAD parçaları.
+    const volumeSet = new Set(volumePartIds);
+    const allSurfaceIds: number[] = [];
+    const seen = new Set<number>();
+    for (const pid of triangleToPart) {
+      if (pid < 0 || volumeSet.has(pid) || seen.has(pid)) continue;
+      seen.add(pid);
+      allSurfaceIds.push(pid);
+    }
+    const fromSelection =
+      selection.ids.length > 0
+        ? resolvePartIdsForSelection(selection).filter((id) => seen.has(id))
+        : [];
+    toggleHiddenPartIds(fromSelection.length > 0 ? fromSelection : allSurfaceIds);
   }
 
   async function handleCreatePhysicalGroup() {
@@ -543,7 +672,13 @@ function App() {
     setMeshPicks([]);
     setMeshGrow("element");
     try {
-      const result = await generateMesh(geometryId, size, meshDimension, meshScheme);
+      const result = await generateMesh(
+        geometryId,
+        size,
+        meshDimension,
+        meshScheme,
+        edgeNodeCounts,
+      );
       setMeshResult(result);
       setMeshDimension(result.dimension === 3 ? 3 : 2);
       if (result.element_scheme === "tet" || result.element_scheme === "quad" || result.element_scheme === "mix") {
@@ -554,11 +689,33 @@ function App() {
         setMeshPreview(preview);
         setShowMesh(true);
         setPropertyKind(result.dimension === 2 ? "shell" : "solid");
+        const partIds = uniquePartIdsFromPreview(preview);
+        const thickness = parseFloat(shellThickness);
+        try {
+          await ensureDefaultComponents(geometryId, {
+            part_ids: partIds,
+            property_kind: result.dimension === 2 ? "shell" : "solid",
+            thickness:
+              result.dimension === 2 && Number.isFinite(thickness) && thickness > 0
+                ? thickness
+                : result.dimension === 2
+                  ? 3
+                  : null,
+            material_id: selectedMaterialId,
+          });
+          const tree = await fetchProductTree(geometryId, 0);
+          setProductTree(tree);
+          const assignments = await fetchMaterialAssignments(geometryId);
+          setMaterialAssignments(assignments);
+        } catch (compErr) {
+          console.error(compErr);
+        }
       }
       const dim = result.dimension === 3 ? 3 : 2;
       setInfoMessage(
         `Mesh üretildi (${dim === 2 ? "2D shell" : "3D solid"}): ` +
-          `${result.node_count} düğüm, ${result.element_count} eleman.`,
+          `${result.node_count} düğüm, ${result.element_count} eleman. ` +
+          `Varsayılan component ürün ağacında.`,
       );
     } catch (err) {
       const message = err instanceof GeometryUploadError ? err.message : "Mesh üretilemedi.";
@@ -592,20 +749,34 @@ function App() {
     }
   }
 
-  /** Midsurface: Parça modunda seçili parçanın tüm ince cidarları için mid-yüzey. */
+  /** Midsurface: Parça modunda seçili katı(lar)ın ince cidarları. */
   async function handleMidsurfaceForPart() {
-    if (!geometryId || mode !== "part" || selection.ids.length !== 1) return;
-    const partId = selection.ids[0];
+    if (!geometryId || mode !== "part") return;
+    const partIds = selection.ids.filter((id) => volumePartIds.includes(id));
+    if (partIds.length === 0) return;
 
     setBusyAction("midsurface");
     setErrorMessage(null);
     setInfoMessage(null);
     try {
-      const result = await createMidsurfaceForPart(geometryId, partId);
-      await refreshAfterMutation(geometryId, result);
+      let lastResult: Awaited<ReturnType<typeof createMidsurfaceForPart>> | null = null;
+      let totalMids = 0;
+      const allNew: number[] = [];
+      for (const partId of partIds) {
+        lastResult = await createMidsurfaceForPart(geometryId, partId);
+        totalMids += lastResult.midsurface_count;
+        allNew.push(...lastResult.new_face_ids);
+      }
+      if (lastResult) {
+        await refreshAfterMutation(geometryId, lastResult);
+      }
+      const leftover = volumePartIds.filter((id) => !partIds.includes(id));
+      const extra =
+        leftover.length > 0
+          ? ` Diğer katı(lar) #${leftover.join(", #")} hâlâ duruyor — onları da seçip Midsurface alın.`
+          : "";
       setInfoMessage(
-        `Midsurface oluşturuldu: parça #${partId} için ${result.midsurface_count} ince cidar ` +
-          `(yeni yüzeyler: ${result.new_face_ids.join(", ")}).`,
+        `Midsurface: ${partIds.length} parça, ${totalMids} cidar (yüzeyler: ${allNew.join(", ")}). Katı duruyor; gizlemek için Solid gizle.${extra}`,
       );
     } catch (err) {
       const message =
@@ -682,49 +853,65 @@ function App() {
   // seçim varsa (hangi modda olursa olsun) sadece o seçime karşılık gelen
   // gerçek solid'ler.
   const volumePartIdSet = new Set(volumePartIds);
+  const surfacePartIds: number[] = [];
+  {
+    const seen = new Set<number>();
+    for (const pid of triangleToPart) {
+      if (pid < 0 || volumePartIdSet.has(pid) || seen.has(pid)) continue;
+      seen.add(pid);
+      surfacePartIds.push(pid);
+    }
+  }
+  const surfacePartIdSet = new Set(surfacePartIds);
   const resolvedPartIdsForHide =
     selection.ids.length > 0
       ? resolvePartIdsForSelection(selection).filter((id) => volumePartIdSet.has(id))
       : volumePartIds;
+  const resolvedSurfaceIdsForHide =
+    selection.ids.length > 0
+      ? resolvePartIdsForSelection(selection).filter((id) => surfacePartIdSet.has(id))
+      : [];
+  const surfaceIdsForToggle =
+    resolvedSurfaceIdsForHide.length > 0 ? resolvedSurfaceIdsForHide : surfacePartIds;
   const canToggleHidePart = geometryId !== null && volumePartIds.length > 0;
+  const canToggleHideSurfaces = geometryId !== null && surfacePartIds.length > 0;
   const allSelectedPartsHidden =
     resolvedPartIdsForHide.length > 0 &&
     resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
+  const allSelectedSurfacesHidden =
+    surfaceIdsForToggle.length > 0 &&
+    surfaceIdsForToggle.every((id) => hiddenParts.has(id));
 
   // Midsurface: Parça modunda TEK parça seçiliyse OTOMATİK tespit; Yüzey
   // modunda TAM 2 yüzey seçiliyse MANUEL (kullanıcı kendi çifti belirler —
   // otomatik tespit karmaşık profillerde (örn. 4 köşeli C-kanal) yanlış
   // çifti seçebiliyor, bu yüzden manuel bir yedek yol tutuluyor).
-  const canUseMidsurfaceAuto = mode === "part" && selection.ids.length === 1;
+  const canUseMidsurfaceAuto =
+    mode === "part" && selection.ids.some((id) => volumePartIdSet.has(id));
   const canUseMidsurfaceManual = mode === "surface" && selection.ids.length === 2;
   const canUseMidsurface = canUseMidsurfaceAuto || canUseMidsurfaceManual;
 
   const selectedMaterial =
     materials.find((m) => m.id === selectedMaterialId) ?? null;
 
-  const attachedPartIds =
-    meshPicks.length > 0 && meshGrow === "attached"
-      ? [...new Set(meshPicks.map((p) => p.partId))]
-      : [];
-  const meshPartId = attachedPartIds.length === 1 ? attachedPartIds[0] : null;
+  const meshPartIds = [...new Set(meshPicks.map((p) => p.partId))];
   const cadPartId =
     meshPicks.length === 0 && mode === "part" && selection.ids.length === 1
       ? selection.ids[0]
       : null;
-  const assignPartId = meshPartId ?? cadPartId;
+  const assignPartId = meshPartIds.length === 1 ? meshPartIds[0] : cadPartId;
 
   const canAssignMaterial =
     geometryId !== null &&
     selectedMaterialId !== null &&
-    (assignPartId !== null || attachedPartIds.length > 1);
+    (meshPartIds.length > 0 || cadPartId !== null);
 
-  const canCreateComponent =
-    geometryId !== null && meshPicks.length > 0 && meshGrow === "attached";
+  const canCreateComponent = geometryId !== null && meshPartIds.length > 0;
 
   async function handleAssignMaterial() {
     const partIds =
-      attachedPartIds.length > 0
-        ? attachedPartIds
+      meshPartIds.length > 0
+        ? meshPartIds
         : assignPartId !== null
           ? [assignPartId]
           : [];
@@ -759,8 +946,7 @@ function App() {
   }
 
   async function handleUpsertComponent() {
-    if (!geometryId || meshPicks.length === 0 || meshGrow !== "attached") return;
-    const partId = meshPicks[0].partId;
+    if (!geometryId || meshPartIds.length === 0) return;
     const thickness = parseFloat(shellThickness);
     if (propertyKind === "shell" && (!Number.isFinite(thickness) || thickness <= 0)) {
       setErrorMessage("Shell property için geçerli bir kalınlık girin.");
@@ -769,39 +955,79 @@ function App() {
     setBusyAction("component");
     setErrorMessage(null);
     try {
-      const component = await upsertComponent(geometryId, {
-        part_id: partId,
-        name: componentName.trim() || `COMP_PART_${partId}`,
-        source: "mesh",
-        material_id: selectedMaterialId,
-        property_kind: propertyKind,
-        thickness: propertyKind === "shell" ? thickness : null,
-      });
+      let last = null as Awaited<ReturnType<typeof upsertComponent>> | null;
+      for (const partId of meshPartIds) {
+        last = await upsertComponent(geometryId, {
+          part_id: partId,
+          name: componentName.trim() || `COMP_PART_${partId}`,
+          source: "mesh",
+          material_id: selectedMaterialId,
+          property_kind: propertyKind,
+          thickness: propertyKind === "shell" ? thickness : null,
+        });
+        if (selectedMaterialId !== null && selectedMaterial) {
+          setMaterialAssignments((prev) => {
+            const without = prev.filter((a) => a.part_id !== partId);
+            return [
+              ...without,
+              {
+                id: last!.id,
+                geometry_id: geometryId,
+                part_id: partId,
+                material_id: selectedMaterialId,
+                material_name: selectedMaterial.name,
+                material_category: selectedMaterial.category,
+              },
+            ].sort((a, b) => a.part_id - b.part_id);
+          });
+        }
+      }
       const tree = await fetchProductTree(geometryId, 0);
       setProductTree(tree);
-      if (selectedMaterialId !== null && selectedMaterial) {
-        setMaterialAssignments((prev) => {
-          const without = prev.filter((a) => a.part_id !== partId);
-          return [
-            ...without,
-            {
-              id: component.id,
-              geometry_id: geometryId,
-              part_id: partId,
-              material_id: selectedMaterialId,
-              material_name: selectedMaterial.name,
-              material_category: selectedMaterial.category,
-            },
-          ].sort((a, b) => a.part_id - b.part_id);
-        });
-      }
       setInfoMessage(
-        `Component: ${component.name} · PART_${partId} · ${component.material_name ?? "malzeme yok"} · ${
-          component.property_kind
-        }${component.thickness != null ? ` t=${component.thickness}` : ""}.`,
+        last
+          ? `Component kaydedildi: ${meshPartIds.map((id) => `PART_${id}`).join(", ")}.`
+          : "Component kaydedildi.",
       );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Component kaydedilemedi.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handlePatchTreeComponent(
+    componentId: number,
+    thicknessRaw: string,
+    materialId: number | null,
+  ) {
+    const thickness = parseFloat(thicknessRaw);
+    setBusyAction("component");
+    setErrorMessage(null);
+    try {
+      const updated = await patchComponent(componentId, {
+        ...(Number.isFinite(thickness) && thickness > 0 ? { thickness } : {}),
+        material_id: materialId ?? 0,
+      });
+      if (updated.thickness != null) {
+        setShellThickness(String(updated.thickness));
+      }
+      if (updated.material_id != null) {
+        setSelectedMaterialId(updated.material_id);
+      }
+      if (geometryId !== null) {
+        const tree = await fetchProductTree(geometryId, 0);
+        setProductTree(tree);
+        const assignments = await fetchMaterialAssignments(geometryId);
+        setMaterialAssignments(assignments);
+      }
+      setInfoMessage(
+        `Component güncellendi: ${updated.name} · ${updated.material_name ?? "malzeme yok"}${
+          updated.thickness != null ? ` · t=${updated.thickness}` : ""
+        }.`,
+      );
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Component güncellenemedi.");
     } finally {
       setBusyAction(null);
     }
@@ -857,17 +1083,23 @@ function App() {
   }
 
   function handleAddBc(kind: BcKind) {
-    const faceIds = mode === "surface" ? [...selection.ids] : [];
-    const edgeIds = mode === "edge" ? [...selection.ids] : [];
-    const nodeIds = mode === "point" ? [...selection.ids] : [];
+    const meshFaceIds =
+      showMesh && meshPicks.length > 0
+        ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
+        : [];
+    const faceIds =
+      meshFaceIds.length > 0 ? meshFaceIds : mode === "surface" ? [...selection.ids] : [];
+    const edgeIds = meshFaceIds.length > 0 ? [] : mode === "edge" ? [...selection.ids] : [];
+    const nodeIds = meshFaceIds.length > 0 ? [] : mode === "point" ? [...selection.ids] : [];
     const id = `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const meshTag = meshFaceIds.length > 0 ? "mesh yüzey" : "yüzey";
 
     let payload: SolveBC;
     let summary: string;
 
     if (kind === "fixed") {
       if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Fixed için yüzey, kenar veya nokta seçin.");
+        setErrorMessage("Fixed için mesh yüzeyi (Face) veya CAD yüzey/kenar/nokta seçin.");
         return;
       }
       payload = {
@@ -876,7 +1108,7 @@ function App() {
         ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
       };
-      summary = `Fixed · ${faceIds.length ? `yüzey ${faceIds.join(",")}` : ""}${
+      summary = `Fixed · ${faceIds.length ? `${meshTag} ${faceIds.join(",")}` : ""}${
         edgeIds.length ? `kenar ${edgeIds.join(",")}` : ""
       }${nodeIds.length ? `nokta ${nodeIds.join(",")}` : ""}`.trim();
     } else if (kind === "cload") {
@@ -888,7 +1120,7 @@ function App() {
         return;
       }
       if (faceIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Nokta/yüzey yük için yüzey veya nokta seçin.");
+        setErrorMessage("Nokta/yüzey yük için mesh yüzeyi veya CAD yüzey/nokta seçin.");
         return;
       }
       payload = {
@@ -900,12 +1132,12 @@ function App() {
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
       };
       summary = `CLOAD (${fx},${fy},${fz}) · ${
-        faceIds.length ? `yüzey ${faceIds.join(",")}` : `nokta ${nodeIds.join(",")}`
+        faceIds.length ? `${meshTag} ${faceIds.join(",")}` : `nokta ${nodeIds.join(",")}`
       }`;
     } else if (kind === "pressure") {
       const magnitude = parseFloat(bcMagnitude);
       if (!Number.isFinite(magnitude) || faceIds.length === 0) {
-        setErrorMessage("Pressure için yüzey seçin ve büyüklük girin.");
+        setErrorMessage("Pressure için mesh veya CAD yüzeyi seçin ve büyüklük girin.");
         return;
       }
       const dx = parseFloat(bcNx);
@@ -919,7 +1151,7 @@ function App() {
         dy: Number.isFinite(dy) ? dy : 0,
         dz: Number.isFinite(dz) ? dz : -1,
       };
-      summary = `Pressure ${magnitude} · yüzey ${faceIds.join(",")}`;
+      summary = `Pressure ${magnitude} · ${meshTag} ${faceIds.join(",")}`;
     } else if (kind === "displacement") {
       const ux = parseFloat(bcUx);
       const uy = parseFloat(bcUy);
@@ -929,7 +1161,7 @@ function App() {
         return;
       }
       if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Displacement için yüzey, kenar veya nokta seçin.");
+        setErrorMessage("Displacement için mesh yüzeyi veya CAD yüzey/kenar/nokta seçin.");
         return;
       }
       payload = {
@@ -949,7 +1181,7 @@ function App() {
         return;
       }
       if (faceIds.length === 0 && edgeIds.length === 0) {
-        setErrorMessage("Sliding için yüzey veya kenar seçin.");
+        setErrorMessage("Sliding için mesh veya CAD yüzeyi/kenarı seçin.");
         return;
       }
       payload = {
@@ -959,7 +1191,7 @@ function App() {
         ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
       };
       summary = `Sliding n=(${nx},${ny},${nz}) · ${
-        faceIds.length ? `yüzey ${faceIds.join(",")}` : `kenar ${edgeIds.join(",")}`
+        faceIds.length ? `${meshTag} ${faceIds.join(",")}` : `kenar ${edgeIds.join(",")}`
       }`;
     } else if (kind === "bearing") {
       const magnitude = parseFloat(bcMagnitude);
@@ -967,7 +1199,7 @@ function App() {
       const ay = parseFloat(bcAy);
       const az = parseFloat(bcAz);
       if (!Number.isFinite(magnitude) || faceIds.length === 0) {
-        setErrorMessage("Bearing için yüzey ve büyüklük gerekli.");
+        setErrorMessage("Bearing için mesh veya CAD yüzeyi ve büyüklük gerekli.");
         return;
       }
       payload = {
@@ -980,7 +1212,7 @@ function App() {
           Number.isFinite(az) ? az : -1,
         ],
       };
-      summary = `Bearing ${magnitude} · yüzey ${faceIds.join(",")}`;
+      summary = `Bearing ${magnitude} · ${meshTag} ${faceIds.join(",")}`;
     } else {
       const gx = parseFloat(bcGx);
       const gy = parseFloat(bcGy);
@@ -1016,10 +1248,16 @@ function App() {
 
     setBusyAction("solve");
     setErrorMessage(null);
+    const treeThickness = productTree?.items.find(
+      (i) => i.thickness != null && Number(i.thickness) > 0,
+    )?.thickness;
+    const thickness =
+      treeThickness ??
+      (Number.isFinite(parseFloat(shellThickness)) ? parseFloat(shellThickness) : 3);
     try {
       const result = await solveGeometry(geometryId, {
         dimension: dim,
-        shell_thickness: parseFloat(shellThickness) || 3,
+        shell_thickness: thickness,
         run_solver: runCcx,
         bcs,
       });
@@ -1145,9 +1383,8 @@ function App() {
         <span className="eyebrow">Faz 0 · Malzeme</span>
         <h1>Malzeme</h1>
         <p className="lead material-lead">
-          Kütüphaneden tipik/nominal değer seçin (mill certificate değil). Mesh
-          elemanına tıklayıp <strong>Attached</strong> ile tüm parçayı seçin,
-          sonra malzeme atayın veya component kaydedin.
+          Kütüphaneden tipik/nominal değer seçin. Mesh sonrası component
+          otomatik oluşur; kalınlık ve malzeme ürün ağacından girilir.
         </p>
         {materials.length === 0 ? (
           <p className="filename">Malzeme listesi yükleniyor…</p>
@@ -1240,8 +1477,8 @@ function App() {
                 value={componentName}
                 onChange={(e) => setComponentName(e.target.value)}
                 placeholder={
-                  meshPicks.length > 0 && meshGrow === "attached"
-                    ? `COMP_PART_${meshPicks[0].partId}`
+                  meshPartIds.length > 0
+                    ? `COMP_PART_${meshPartIds[0]}`
                     : "COMP_PART_n"
                 }
               />
@@ -1271,7 +1508,7 @@ function App() {
               disabled={!canCreateComponent || busyAction !== null}
               onClick={() => void handleUpsertComponent()}
             >
-              {busyAction === "component" ? "Kaydediliyor…" : "Mesh’i component yap"}
+              {busyAction === "component" ? "Kaydediliyor…" : "Component güncelle"}
             </button>
             <button
               type="button"
@@ -1283,8 +1520,7 @@ function App() {
             </button>
             {!canAssignMaterial && geometryId !== null && (
               <p className="material-assign-hint">
-                Mesh’e tıklayın (Ctrl ile birden fazla eleman). Face: seçili
-                elemanların yüzeyleri. Attached: tüm bağlı parça.
+                Mesh elemanına tıklayın. Face: o CAD yüzeyi. Attached: tüm parça.
               </p>
             )}
             {canCreateComponent && !canAssignMaterial && (
@@ -1292,28 +1528,20 @@ function App() {
             )}
             {productTree && productTree.items.filter((i) => i.component).length > 0 && (
               <div className="product-tree">
-                <p className="material-assignments-title">Component’ler</p>
+                <p className="material-assignments-title">Ürün ağacı</p>
                 <ul className="product-tree-list">
                   {productTree.items
                     .filter((i) => i.component)
                     .map((item) => (
-                      <li key={item.part_id} className="product-tree-item">
-                        <div className="product-tree-row">
-                          <strong>{item.component?.name ?? item.label}</strong>
-                          <span className="product-tree-meta">{item.label}</span>
-                        </div>
-                        <div className="product-tree-props">
-                          <span>Malzeme: {item.material_name ?? "—"}</span>
-                          <span>
-                            Property:{" "}
-                            {item.property_kind
-                              ? item.property_kind === "shell"
-                                ? `shell t=${item.thickness ?? "—"}`
-                                : "solid"
-                              : "—"}
-                          </span>
-                        </div>
-                      </li>
+                      <ProductTreeRow
+                        key={item.component?.id ?? item.part_id}
+                        item={item}
+                        materials={materials}
+                        busy={busyAction !== null}
+                        onSave={(componentId, thickness, materialId) =>
+                          void handlePatchTreeComponent(componentId, thickness, materialId)
+                        }
+                      />
                     ))}
                 </ul>
               </div>
@@ -1388,85 +1616,18 @@ function App() {
         <span className="eyebrow">Faz 0 · CalculiX</span>
         <h1>Solver / BC</h1>
         <p className="lead material-lead">
-          Seçim yapın → BC butonuna tıklayın → listeye eklenir. Sonra .inp üretin.
+          Mesh elemanına tıklayın (Face = tüm yüzey) → BC türünü seçin → Listeye ekle.
+          Kalınlık ürün ağacındadır.
         </p>
-        <label className="mesh-field material-field">
-          <span>Shell kalınlık (2D)</span>
-          <input
-            value={shellThickness}
-            onChange={(e) => setShellThickness(e.target.value)}
-          />
-        </label>
+        {showMesh && meshPicks.length > 0 && (
+          <p className="material-assign-hint">
+            Mesh seçim: {meshGrow} · yüzey{" "}
+            {[...new Set(meshPicks.map((p) => p.faceId))].join(", ")} · parça{" "}
+            {meshPartIds.join(", ")}
+          </p>
+        )}
 
-        <p className="material-assignments-title">Yük / deplasman alanları</p>
-        <div className="material-custom-grid">
-          <label className="mesh-field">
-            <span>Fx</span>
-            <input value={bcFx} onChange={(e) => setBcFx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Fy</span>
-            <input value={bcFy} onChange={(e) => setBcFy(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Fz</span>
-            <input value={bcFz} onChange={(e) => setBcFz(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>|P| / bearing</span>
-            <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Ux</span>
-            <input value={bcUx} onChange={(e) => setBcUx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Uy</span>
-            <input value={bcUy} onChange={(e) => setBcUy(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Uz</span>
-            <input value={bcUz} onChange={(e) => setBcUz(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Nx / dx</span>
-            <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Ny / dy</span>
-            <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Nz / dz</span>
-            <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Axis x</span>
-            <input value={bcAx} onChange={(e) => setBcAx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Axis y</span>
-            <input value={bcAy} onChange={(e) => setBcAy(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Axis z</span>
-            <input value={bcAz} onChange={(e) => setBcAz(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>gx</span>
-            <input value={bcGx} onChange={(e) => setBcGx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>gy</span>
-            <input value={bcGy} onChange={(e) => setBcGy(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>gz</span>
-            <input value={bcGz} onChange={(e) => setBcGz(e.target.value)} />
-          </label>
-        </div>
-
-        <p className="material-assignments-title">BC ekle</p>
+        <p className="material-assignments-title">BC türü</p>
         <div className="bc-button-row">
           {(
             [
@@ -1482,18 +1643,129 @@ function App() {
             <button
               key={kind}
               type="button"
-              className="bc-add-button"
+              className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
               disabled={busyAction !== null}
-              onClick={() => handleAddBc(kind)}
+              onClick={() => setBcDraftKind(kind)}
             >
               {BC_KIND_LABELS[kind]}
             </button>
           ))}
         </div>
-        <p className="material-assign-hint">
-          Fixed/Disp/Sliding: yüzey·kenar·nokta · CLOAD: yüzey/nokta · Pressure/Bearing:
-          yüzey · Gravity: seçim gerekmez
-        </p>
+        <p className="material-assign-hint">{BC_KIND_HINTS[bcDraftKind]}</p>
+
+        {bcDraftKind === "cload" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Fx</span>
+              <input value={bcFx} onChange={(e) => setBcFx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Fy</span>
+              <input value={bcFy} onChange={(e) => setBcFy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Fz</span>
+              <input value={bcFz} onChange={(e) => setBcFz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "pressure" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>|P|</span>
+              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dx</span>
+              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dy</span>
+              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dz</span>
+              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "displacement" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Ux</span>
+              <input value={bcUx} onChange={(e) => setBcUx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Uy</span>
+              <input value={bcUy} onChange={(e) => setBcUy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Uz</span>
+              <input value={bcUz} onChange={(e) => setBcUz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "sliding" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Nx</span>
+              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ny</span>
+              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Nz</span>
+              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "bearing" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Büyüklük</span>
+              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis x</span>
+              <input value={bcAx} onChange={(e) => setBcAx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis y</span>
+              <input value={bcAy} onChange={(e) => setBcAy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis z</span>
+              <input value={bcAz} onChange={(e) => setBcAz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "gravity" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>gx</span>
+              <input value={bcGx} onChange={(e) => setBcGx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>gy</span>
+              <input value={bcGy} onChange={(e) => setBcGy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>gz</span>
+              <input value={bcGz} onChange={(e) => setBcGz(e.target.value)} />
+            </label>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="material-assign-button bc-add-confirm"
+          disabled={busyAction !== null}
+          onClick={() => handleAddBc(bcDraftKind)}
+        >
+          Listeye ekle
+        </button>
 
         {bcList.length > 0 && (
           <div className="material-assignments">
@@ -1579,11 +1851,24 @@ function App() {
                     onClick: handleToggleHidePart,
                   },
                   {
+                    key: "toggle-hide-surfaces",
+                    label: allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle",
+                    disabled: !canToggleHideSurfaces,
+                    onClick: handleToggleHideSurfaces,
+                  },
+                  {
                     key: "toggle-mesh",
                     label: showMesh ? "Mesh gizle" : "Mesh göster",
                     disabled: meshPreview === null,
                     active: showMesh && meshPreview !== null,
                     onClick: () => setShowMesh((prev) => !prev),
+                  },
+                  {
+                    key: "toggle-mesh-wireframe",
+                    label: meshWireframe ? "Mesh tel kafes (açık)" : "Mesh tel kafes",
+                    disabled: meshPreview === null || !showMesh,
+                    active: meshWireframe && showMesh && meshPreview !== null,
+                    onClick: () => setMeshWireframe((prev) => !prev),
                   },
                   {
                     key: "toggle-edges",
@@ -1599,6 +1884,17 @@ function App() {
                   },
                 ]}
               />
+              <label className="opacity-field">
+                <span>Katı opaklık {cadOpacityPct}%</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={cadOpacityPct}
+                  onChange={(e) => setCadOpacityPct(Number(e.target.value))}
+                />
+              </label>
               <ButtonGroup
                 title="Geometri"
                 items={[
@@ -1673,10 +1969,17 @@ function App() {
                   showEdges={showEdges}
                   meshPreview={meshPreview}
                   showMesh={showMesh}
+                  meshWireframe={meshWireframe}
+                  cadOpacity={cadOpacityPct / 100}
                   meshPicks={meshPicks}
                   meshGrow={meshGrow}
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
+                  edgeNodeCounts={edgeNodeCounts}
+                  onEdgeNodeCountChange={(edgeId, next) => {
+                    edgeSeedManualRef.current.add(edgeId);
+                    setEdgeNodeCounts((prev) => ({ ...prev, [edgeId]: next }));
+                  }}
                   onSelectionChange={handleSelectionChange}
                   onMeshPicks={handleMeshPicks}
                 />
@@ -1730,6 +2033,10 @@ function App() {
                     <option value="mix">mix</option>
                   </select>
                 </label>
+                <p className="mesh-side-hint">
+                  Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
+                  değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).
+                </p>
                 <button
                   type="button"
                   className="mesh-generate-button"
