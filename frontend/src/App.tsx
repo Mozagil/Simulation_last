@@ -6,6 +6,8 @@ import {
   MeshGenerateResponse,
   PointInfo,
   copySurface,
+  copySurfaces,
+  createOffsetMidsurfaces,
   createMidsurface,
   createMidsurfaceForPart,
   createPhysicalGroup,
@@ -188,6 +190,8 @@ function App() {
   const [selection, setSelection] = useState<MultiSelectionInfo>(EMPTY_SELECTION);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
+  const [showOffsetPanel, setShowOffsetPanel] = useState(false);
+  const [offsetThickness, setOffsetThickness] = useState("3");
   const [physicalGroups, setPhysicalGroups] = useState<PhysicalGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [newGroupName, setNewGroupName] = useState("");
@@ -279,9 +283,10 @@ function App() {
     });
   }, [edges, meshElementSize]);
 
-  // Mod değişince aktif grup vurgusu anlamsızlaşır, temizle.
+  // Mod değişince aktif grup vurgusu ve offset paneli anlamsızlaşır, temizle.
   useEffect(() => {
     setActiveGroupId(null);
+    setShowOffsetPanel(false);
   }, [mode]);
 
   async function handleFileSelected(file: File) {
@@ -459,16 +464,55 @@ function App() {
   }
 
   async function handleCopySurface() {
-    if (!geometryId || mode !== "surface" || selection.ids.length !== 1) return;
+    if (!geometryId || mode !== "surface" || selection.ids.length === 0) return;
 
     setBusyAction("copy");
     setErrorMessage(null);
     setInfoMessage(null);
     try {
-      const result = await copySurface(geometryId, selection.ids[0]);
-      await refreshAfterMutation(geometryId, result);
+      if (selection.ids.length === 1) {
+        const result = await copySurface(geometryId, selection.ids[0]);
+        await refreshAfterMutation(geometryId, result);
+      } else {
+        const result = await copySurfaces(geometryId, selection.ids);
+        await refreshAfterMutation(geometryId, result);
+        setInfoMessage(
+          `${result.new_face_ids.length} yüzey kopyalandı: #${result.new_face_ids.join(", #")}.`,
+        );
+      }
     } catch (err) {
       const message = err instanceof GeometryUploadError ? err.message : "Yüzey kopyalanamadı.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /** Kalınlık/2 kaydırma: seçili (düzlemsel) dış yüzey(ler)i kendi
+   * normalinde içe doğru kaydırarak orta yüzeyini üretir — iki yüzey
+   * eşleştirmeye gerek yok.
+   */
+  async function handleCreateOffsetMidsurfaces() {
+    if (!geometryId || mode !== "surface" || selection.ids.length === 0) return;
+    const thickness = parseFloat(offsetThickness);
+    if (!Number.isFinite(thickness) || thickness <= 0) {
+      setErrorMessage("Geçerli bir pozitif kalınlık değeri girin.");
+      return;
+    }
+
+    setBusyAction("offset-midsurface");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const result = await createOffsetMidsurfaces(geometryId, selection.ids, thickness);
+      await refreshAfterMutation(geometryId, result);
+      setInfoMessage(
+        `${result.new_face_ids.length} orta yüzey oluşturuldu (kalınlık=${thickness}): ` +
+          `#${result.new_face_ids.join(", #")}.`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof GeometryUploadError ? err.message : "Offset midsurface oluşturulamadı.";
       setErrorMessage(message);
     } finally {
       setBusyAction(null);
@@ -842,7 +886,8 @@ function App() {
   const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
   const externalHighlight = activeGroup ? { faceIds: activeGroup.entity_tags } : null;
 
-  const canCopySurface = mode === "surface" && selection.ids.length === 1;
+  const canCopySurface = mode === "surface" && selection.ids.length >= 1;
+  const canOffsetMidsurface = mode === "surface" && selection.ids.length >= 1;
   const canDefeature = geometryId !== null;
   const showGroupForm = mode === "surface" && selection.ids.length > 0;
   const canCreateGroup = showGroupForm && newGroupName.trim().length > 0;
@@ -1369,6 +1414,29 @@ function App() {
                 </button>
               </div>
             )}
+
+            {showOffsetPanel && (
+              <div className="group-create-form">
+                <input
+                  type="number"
+                  className="group-name-input"
+                  placeholder="Kalınlık (örn. 3)"
+                  value={offsetThickness}
+                  onChange={(e) => setOffsetThickness(e.target.value)}
+                  disabled={busyAction === "offset-midsurface"}
+                  min="0"
+                  step="0.1"
+                />
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleCreateOffsetMidsurfaces()}
+                  disabled={!canOffsetMidsurface || busyAction === "offset-midsurface"}
+                >
+                  {busyAction === "offset-midsurface" ? "Oluşturuluyor…" : "Uygula"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1843,6 +1911,13 @@ function App() {
                     label: busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala",
                     disabled: !canCopySurface || busyAction !== null,
                     onClick: () => void handleCopySurface(),
+                  },
+                  {
+                    key: "offset-midsurface",
+                    label: "Kalınlık/2 kaydır",
+                    active: showOffsetPanel,
+                    disabled: !canOffsetMidsurface || busyAction !== null,
+                    onClick: () => setShowOffsetPanel((prev) => !prev),
                   },
                   {
                     key: "toggle-hide-part",

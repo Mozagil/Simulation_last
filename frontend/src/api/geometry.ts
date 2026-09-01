@@ -31,6 +31,19 @@ export interface CopySurfaceResponse extends TessellationFields {
   new_face_id: number;
 }
 
+export interface CopySurfacesResponse extends TessellationFields {
+  geometry_id: number;
+  original_face_ids: number[];
+  new_face_ids: number[];
+}
+
+export interface OffsetMidsurfacesResponse extends TessellationFields {
+  geometry_id: number;
+  original_face_ids: number[];
+  new_face_ids: number[];
+  thickness: number;
+}
+
 export interface EdgeInfo {
   id: number;
   length: number;
@@ -205,6 +218,49 @@ export async function copySurface(geometryId: number, faceId: number): Promise<C
     );
   }
   return (await response.json()) as CopySurfaceResponse;
+}
+
+/** Verilen TÜM yüzeyleri tek bir mutasyonda çoğaltır (çoklu seçim desteği). */
+export async function copySurfaces(
+  geometryId: number,
+  faceIds: number[],
+): Promise<CopySurfacesResponse> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/surfaces/copy-multiple`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ face_ids: faceIds }),
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Yüzeyler kopyalanamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as CopySurfacesResponse;
+}
+
+/** Verilen her (düzlemsel) yüzeyi kendi normali boyunca, kalınlığın yarısı
+ * kadar İÇE doğru kaydırarak orta yüzeyini üretir — iki yüzey eşleştirmeye
+ * gerek yok, sadece dış yüzey(ler) + kalınlık.
+ */
+export async function createOffsetMidsurfaces(
+  geometryId: number,
+  faceIds: number[],
+  thickness: number,
+): Promise<OffsetMidsurfacesResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/surfaces/offset-midsurface`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ face_ids: faceIds, thickness }),
+    },
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Offset midsurface oluşturulamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as OffsetMidsurfacesResponse;
 }
 
 /** Verilen yüzeyleri isimli bir Physical Group'a atar (kalıcı, DB'de). */
