@@ -308,6 +308,103 @@ def copy_surface(geometry_id: int, face_id: int, db: Session = Depends(get_db)) 
     }
 
 
+class CopySurfacesRequest(BaseModel):
+    face_ids: list[int] = Field(min_length=1)
+
+
+@router.post("/{geometry_id}/surfaces/copy-multiple")
+def copy_surfaces(
+    geometry_id: int, body: CopySurfacesRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Verilen TÜM yüzeyleri tek bir mutasyonda çoğaltır (çoklu seçim
+    desteği). Kalıcı: sonuç `current_filename`'e geri yazılır.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        new_face_ids = adapter.copy_surfaces(geom, body.face_ids)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MidsurfaceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Coklu yuzey kopyalandi: geometry_id=%d, orijinal_id'ler=%s, yeni_id'ler=%s",
+        geometry_id,
+        body.face_ids,
+        new_face_ids,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "original_face_ids": body.face_ids,
+        "new_face_ids": new_face_ids,
+        **_tessellation_response_fields(geometry_id, result),
+    }
+
+
+class CreateOffsetMidsurfacesRequest(BaseModel):
+    face_ids: list[int] = Field(min_length=1)
+    thickness: float = Field(gt=0)
+
+
+@router.post("/{geometry_id}/surfaces/offset-midsurface")
+def create_offset_midsurfaces(
+    geometry_id: int, body: CreateOffsetMidsurfacesRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Verilen her (düzlemsel) yüzeyi kendi normali boyunca, kalınlığın
+    yarısı kadar İÇE doğru kaydırarak orta yüzeyini üretir — iki yüzey
+    eşleştirmeye gerek yok, sadece dış yüzey(ler) + kalınlık.
+
+    Kalıcı: sonuç `current_filename`'e geri yazılır.
+    """
+    geo = _get_geometry_or_404(db, geometry_id)
+    file_path = UPLOAD_DIR / geo.current_filename
+    _backup_before_mutation(db, geo, file_path)
+
+    adapter = GmshMesherAdapter()
+    try:
+        geom = adapter.import_geometry(file_path)
+        new_face_ids = adapter.create_offset_midsurfaces(geom, body.face_ids, body.thickness)
+    except GmshImportError as exc:
+        raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
+    except SurfaceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MidsurfaceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result = _regenerate_tessellation(geometry_id, file_path)
+    geo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    logger.info(
+        "Offset midsurface uretildi: geometry_id=%d, orijinal_id'ler=%s, "
+        "yeni_id'ler=%s, kalinlik=%.4f",
+        geometry_id,
+        body.face_ids,
+        new_face_ids,
+        body.thickness,
+    )
+
+    return {
+        "geometry_id": geometry_id,
+        "original_face_ids": body.face_ids,
+        "new_face_ids": new_face_ids,
+        "thickness": body.thickness,
+        **_tessellation_response_fields(geometry_id, result),
+    }
+
+
 class CreatePhysicalGroupRequest(BaseModel):
     name: str = Field(min_length=1)
     face_ids: list[int] = Field(min_length=1)
