@@ -401,6 +401,34 @@ def _plane_separation(face_id_a: int, face_id_b: int) -> float:
     return abs(sum(delta[i] * normal_a[i] for i in range(3)))
 
 
+def _find_nearest_parallel_face(
+    target_face: int, candidate_faces: list[int]
+) -> tuple[int, float] | None:
+    """`target_face`'e en yakın PARALEL düzlemsel yüzeyi (ve aralarındaki
+    mesafeyi) bulur — `create_offset_midsurfaces`'in otomatik kalınlık
+    tespiti için. `_find_thin_wall_pairs`'deki eşleştirme mantığıyla aynı,
+    ama tek bir hedef yüzey için.
+    """
+    normal_a = _get_face_normal(target_face)
+    best_face: int | None = None
+    best_dist = float("inf")
+    for face_b in candidate_faces:
+        if face_b == target_face:
+            continue
+        normal_b = _get_face_normal(face_b)
+        dot = sum(a * b for a, b in zip(normal_a, normal_b))
+        if abs(abs(dot) - 1.0) > 1e-3:
+            continue
+        dist = _plane_separation(target_face, face_b)
+        if dist < 1e-9 or dist >= best_dist:
+            continue
+        best_dist = dist
+        best_face = face_b
+    if best_face is None:
+        return None
+    return (best_face, best_dist)
+
+
 def _find_thin_wall_pairs(planar_faces: list[int]) -> list[tuple[int, int]]:
     """Her düzlemsel yüzey için en yakın paralel eşi bulur; ince cidar
     oranını sağlayan benzersiz çiftleri döner.
@@ -1903,25 +1931,37 @@ class GmshMesherAdapter(MesherAdapter):
         return new_ids
 
     def create_offset_midsurfaces(
-        self, geom: GeometryHandle, face_ids: list[int], thickness: float
-    ) -> list[int]:
+        self,
+        geom: GeometryHandle,
+        face_ids: list[int],
+        thickness: float | None = None,
+        flip: bool = False,
+    ) -> list[tuple[int, float]]:
         """Verilen her yüzeyi KENDİ normali boyunca, kalınlığın yarısı kadar
-        İÇE doğru kaydırarak orta yüzeyini üretir (`_construct_midsurface`'in
-        aksine iki yüzey eşleştirmeye gerek yok — kullanıcı doğrudan dış
-        yüzeyleri seçip bir kalınlık girer).
+        İÇE (ya da `flip=True` ise DIŞA) doğru kaydırarak orta yüzeyini
+        üretir (`_construct_midsurface`'in aksine iki yüzey eşleştirmeye
+        gerek yok — kullanıcı doğrudan dış yüzeyleri seçer).
 
-        Yön belirleme: Gmsh'in `getNormal()` sonucunun "içe/dışa" anlamı
-        oturuma göre tutarsız çıkabildiği gerçek bir testte doğrulandı — bu
-        yüzden yön, o yüzeyin ait olduğu VOLUME'ün kütle merkezine göre
-        MATEMATİKSEL olarak belirleniyor (normal ile "yüzeyden merkeze"
-        vektörünün dot product'ı negatifse normal zaten dışa bakıyor demektir,
-        içe gitmek için ters çevrilir). Bu yöntem gerçek verilerle doğrulandı.
+        Yön belirleme: varsayılan olarak VOLUME'ün kütle merkezine göre
+        MATEMATİKSEL olarak İÇE doğru hesaplanır (gerçek verilerle
+        doğrulandı). `flip=True` verilirse bu yön TERSİNE çevrilir —
+        kullanıcı yönü kendisi kontrol edebilsin diye (bazı geometrilerde
+        otomatik tespit beklenmeyen sonuç verebilir).
+
+        `thickness=None` verilirse, HER yüzey için AYRI AYRI otomatik tespit
+        edilir: o yüzeye en yakın PARALEL düzlemsel yüzey aranır (aynı
+        mantık `_find_thin_wall_pairs`'de kullanılan), aralarındaki mesafe
+        kalınlık olarak alınır. Bir yüzey için eş bulunamazsa hata fırlatılır
+        (o yüzey için elle kalınlık girilmeli).
 
         NOT: Sadece DÜZLEMSEL yüzeyler için matematiksel olarak kesin bir
         sonuç verir (öteleme = gerçek ofset). Eğri (silindirik vb.)
         yüzeylerde bu sadece bir yaklaşıklıktır (gerçek eş-mesafeli ofset
         değil) — kapsam bilinçli olarak düz panellerle sınırlı tutuluyor
         (ROADMAP'in "sabit kalınlıklı düz plaka" senaryosuyla uyumlu).
+
+        Döndürür: (yeni_yüzey_id, kullanılan_kalınlık) çiftlerinin listesi —
+        otomatik tespit edilen kalınlık da şeffaf şekilde bildirilsin diye.
 
         Kalıcılık için güncellenmiş model `geom.source_file`'a geri yazılır.
         """
@@ -1934,7 +1974,7 @@ class GmshMesherAdapter(MesherAdapter):
                     )
             if not face_ids:
                 raise MidsurfaceError("En az bir yüzey seçilmeli.")
-            if thickness <= 0:
+            if thickness is not None and thickness <= 0:
                 raise MidsurfaceError("thickness pozitif olmalı.")
 
             for fid in face_ids:
@@ -1952,7 +1992,12 @@ class GmshMesherAdapter(MesherAdapter):
             for idx, (_dim, vtag) in enumerate(volumes):
                 part_to_volume_tag[idx] = vtag
 
-            new_ids: list[int] = []
+            all_planar_faces = [
+                tag for _dim, tag in gmsh.model.getEntities(dim=2)
+                if gmsh.model.getType(2, tag) == "Plane"
+            ]
+
+            results: list[tuple[int, float]] = []
             for face_id in face_ids:
                 normal = _get_face_normal(face_id)
                 point = _get_face_point(face_id)
@@ -1966,8 +2011,21 @@ class GmshMesherAdapter(MesherAdapter):
                     dot = sum(normal[i] * inward_vec[i] for i in range(3))
                     if dot < 0:
                         inward = tuple(-n for n in normal)
+                if flip:
+                    inward = tuple(-n for n in inward)
 
-                offset = tuple(inward[i] * (thickness / 2) for i in range(3))
+                if thickness is not None:
+                    face_thickness = thickness
+                else:
+                    match = _find_nearest_parallel_face(face_id, all_planar_faces)
+                    if match is None:
+                        raise MidsurfaceError(
+                            f"Yüzey {face_id} için otomatik kalınlık tespit edilemedi "
+                            f"(paralel bir eş bulunamadı) — bu yüzey için elle kalınlık girin."
+                        )
+                    _matched_face, face_thickness = match
+
+                offset = tuple(inward[i] * (face_thickness / 2) for i in range(3))
 
                 copied = gmsh.model.occ.copy([(2, face_id)])
                 gmsh.model.occ.synchronize()
@@ -1978,14 +2036,14 @@ class GmshMesherAdapter(MesherAdapter):
                 new_face_id = copied[0][1]
                 gmsh.model.occ.translate([(2, new_face_id)], *offset)
                 gmsh.model.occ.synchronize()
-                new_ids.append(new_face_id)
+                results.append((new_face_id, face_thickness))
 
             gmsh.write(str(geom.source_file))
         finally:
             gmsh.finalize()
             _gmsh_lock.release()
 
-        return new_ids
+        return results
 
     def generate_mesh(self, geom: GeometryHandle, params: MeshParams) -> MeshResult:
         """FEA mesh üretir: 3D solid veya 2D shell; scheme tet/quad/mix.
