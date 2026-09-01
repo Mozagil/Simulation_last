@@ -355,16 +355,22 @@ def copy_surfaces(
 
 class CreateOffsetMidsurfacesRequest(BaseModel):
     face_ids: list[int] = Field(min_length=1)
-    thickness: float = Field(gt=0)
+    # None ise HER yüzey için otomatik tespit edilir (en yakın paralel yüzey
+    # mesafesi). Belirtilirse tüm yüzeyler için sabit kalınlık kullanılır.
+    thickness: float | None = Field(default=None, gt=0)
+    # True ise yön (varsayılan: içe) tersine çevrilir — kullanıcı yönü kendi
+    # kontrol edebilsin diye (otomatik tespit her zaman doğru olmayabilir).
+    flip: bool = False
 
 
 @router.post("/{geometry_id}/surfaces/offset-midsurface")
 def create_offset_midsurfaces(
     geometry_id: int, body: CreateOffsetMidsurfacesRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Verilen her (düzlemsel) yüzeyi kendi normali boyunca, kalınlığın
-    yarısı kadar İÇE doğru kaydırarak orta yüzeyini üretir — iki yüzey
-    eşleştirmeye gerek yok, sadece dış yüzey(ler) + kalınlık.
+    """Verilen her (düzlemsel) yüzeyi kendi normali boyunca kaydırarak orta
+    yüzeyini üretir — iki yüzey eşleştirmeye gerek yok, sadece dış
+    yüzey(ler). Kalınlık verilmezse her yüzey için otomatik tespit edilir.
+    `flip` ile yön (içe/dışa) kullanıcı tarafından kontrol edilebilir.
 
     Kalıcı: sonuç `current_filename`'e geri yazılır.
     """
@@ -375,7 +381,9 @@ def create_offset_midsurfaces(
     adapter = GmshMesherAdapter()
     try:
         geom = adapter.import_geometry(file_path)
-        new_face_ids = adapter.create_offset_midsurfaces(geom, body.face_ids, body.thickness)
+        results = adapter.create_offset_midsurfaces(
+            geom, body.face_ids, body.thickness, body.flip
+        )
     except GmshImportError as exc:
         raise HTTPException(status_code=422, detail=f"Geometri okunamadı: {exc}") from exc
     except SurfaceNotFoundError as exc:
@@ -383,24 +391,29 @@ def create_offset_midsurfaces(
     except MidsurfaceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    new_face_ids = [r[0] for r in results]
+    used_thicknesses = [r[1] for r in results]
+
     result = _regenerate_tessellation(geometry_id, file_path)
     geo.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     logger.info(
         "Offset midsurface uretildi: geometry_id=%d, orijinal_id'ler=%s, "
-        "yeni_id'ler=%s, kalinlik=%.4f",
+        "yeni_id'ler=%s, kalinliklar=%s, flip=%s",
         geometry_id,
         body.face_ids,
         new_face_ids,
-        body.thickness,
+        used_thicknesses,
+        body.flip,
     )
 
     return {
         "geometry_id": geometry_id,
         "original_face_ids": body.face_ids,
         "new_face_ids": new_face_ids,
-        "thickness": body.thickness,
+        "used_thicknesses": used_thicknesses,
+        "flip": body.flip,
         **_tessellation_response_fields(geometry_id, result),
     }
 

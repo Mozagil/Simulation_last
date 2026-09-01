@@ -768,7 +768,8 @@ def test_create_offset_midsurfaces_after_upload():
     assert response.status_code == 200
     body = response.json()
     assert len(body["new_face_ids"]) == 2
-    assert body["thickness"] == 4.0
+    assert body["used_thicknesses"] == [4.0, 4.0]
+    assert body["flip"] is False
     assert body["face_count"] == 8
 
 
@@ -790,6 +791,60 @@ def test_create_offset_midsurfaces_moves_inward():
     new_surface = next(s for s in surfaces_response.json()["surfaces"] if s["id"] == new_face_id)
     # Alan değişmemeli (sadece öteleme, boyut aynı kalmalı).
     assert new_surface["area"] == pytest.approx(100.0)
+
+
+@requires_db
+def test_create_offset_midsurfaces_flip_reverses_direction():
+    """KRİTİK: flip=True verilince yön tersine çevrilmeli (dışa doğru).
+    Yüzey 1 (X=0), flip olmadan X=+2'ye (içe) gider; flip=True ile X=-2'ye
+    (dışa) gitmeli.
+    """
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+    current_filename = upload_body["current_filename"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [1], "thickness": 4.0, "flip": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["flip"] is True
+    new_face_id = body["new_face_ids"][0]
+
+    # Ayrı bir Gmsh oturumunda X koordinatını doğrula (dışa = negatif X).
+    import gmsh
+
+    gmsh.initialize(interruptible=False)
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.add("verify_flip")
+    gmsh.open(str(UPLOAD_DIR / current_filename))
+    gmsh.model.occ.synchronize()
+    (umin, vmin), (umax, vmax) = gmsh.model.getParametrizationBounds(2, new_face_id)
+    umid, vmid = (umin + umax) / 2, (vmin + vmax) / 2
+    point = gmsh.model.getValue(2, new_face_id, [umid, vmid])
+    gmsh.finalize()
+
+    assert point[0] == pytest.approx(-2.0)
+
+
+@requires_db
+def test_create_offset_midsurfaces_auto_detects_thickness():
+    """thickness verilmezse HER yüzey için otomatik tespit edilmeli —
+    kutunun karşılıklı yüzeyleri 10 birim aralıklı, otomatik tespit bunu
+    bulmalı.
+    """
+    upload_body = _upload_box()
+    geometry_id = upload_body["geometry_id"]
+
+    response = client.post(
+        f"/geometry/{geometry_id}/surfaces/offset-midsurface",
+        json={"face_ids": [1]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["used_thicknesses"] == [pytest.approx(10.0)]
 
 
 @requires_db
