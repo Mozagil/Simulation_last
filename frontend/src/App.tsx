@@ -2025,6 +2025,17 @@ function App() {
                         Deplasman
                       </button>
                     </div>
+                    <div className="results-legend">
+                      <span className="results-legend-label">
+                        0
+                      </span>
+                      <div className="results-legend-bar" />
+                      <span className="results-legend-label">
+                        {resultsField === "von_mises"
+                          ? resultsPreview.max_von_mises.toExponential(2)
+                          : resultsPreview.max_displacement.toExponential(2)}
+                      </span>
+                    </div>
                     <p className="material-assign-hint">
                       {resultsField === "von_mises"
                         ? `Max von Mises: ${resultsPreview.max_von_mises.toExponential(3)}`
