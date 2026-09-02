@@ -2054,147 +2054,6 @@ function App() {
             <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
               .inp indir
             </a>
-            {resultsPreview && (
-              <div className="results-viz-controls">
-                <label className="offset-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={showResults}
-                    onChange={(e) => setShowResults(e.target.checked)}
-                  />
-                  Sonuçları göster ({resultsPreview.nodes.length} nokta)
-                </label>
-                {showResults && (() => {
-                  const autoMax =
-                    resultsField === "von_mises"
-                      ? resultsPreview.max_von_mises
-                      : resultsPreview.max_displacement;
-                  const parsedMin = parseFloat(resultsScaleMinInput);
-                  const parsedMax = parseFloat(resultsScaleMaxInput);
-                  const effMin = Number.isFinite(parsedMin) ? parsedMin : 0;
-                  const effMax = Number.isFinite(parsedMax) ? parsedMax : autoMax || 1;
-                  const tickCount = 5;
-                  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => {
-                    const t = i / tickCount;
-                    return effMin + t * (effMax - effMin);
-                  }).reverse();
-                  const gradientStops = Array.from({ length: 11 }, (_, i) => {
-                    const t = i / 10;
-                    return `${jetRgb(t)} ${(1 - t) * 100}%`;
-                  }).join(", ");
-
-                  return (
-                    <>
-                      <div className="results-field-toggle">
-                        <button
-                          type="button"
-                          className={
-                            resultsField === "von_mises"
-                              ? "group-create-button"
-                              : "reset-button"
-                          }
-                          onClick={() => setResultsField("von_mises")}
-                        >
-                          Von Mises
-                        </button>
-                        <button
-                          type="button"
-                          className={
-                            resultsField === "displacement_magnitude"
-                              ? "group-create-button"
-                              : "reset-button"
-                          }
-                          onClick={() => setResultsField("displacement_magnitude")}
-                        >
-                          Deplasman
-                        </button>
-                      </div>
-
-                      <div className="results-colorbar-row">
-                        <div
-                          className="results-colorbar-track"
-                          style={{ background: `linear-gradient(to top, ${gradientStops})` }}
-                        />
-                        <div className="results-colorbar-ticks">
-                          {ticks.map((v, i) => (
-                            <span key={i} className="results-colorbar-tick">
-                              {v.toExponential(2)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="results-scale-inputs">
-                        <label>
-                          <span>Max</span>
-                          <input
-                            type="number"
-                            placeholder={autoMax.toExponential(2)}
-                            value={resultsScaleMaxInput}
-                            onChange={(e) => setResultsScaleMaxInput(e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span>Min</span>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={resultsScaleMinInput}
-                            onChange={(e) => setResultsScaleMinInput(e.target.value)}
-                          />
-                        </label>
-                      </div>
-
-                      <div className="results-deform-row">
-                        {(() => {
-                          // Slider'ın uç noktası, max deplasmanı model
-                          // boyutunun ~%30'una getirecek şekilde otomatik
-                          // hesaplanıyor — sabit bir aralık yerine (ki
-                          // gerçek bir testte görünmez kaldığı kanıtlandı).
-                          const maxDispVal = resultsPreview.max_displacement;
-                          const adaptiveMax =
-                            maxDispVal > 1e-30
-                              ? (0.3 * modelBBoxSize) / maxDispVal
-                              : 200;
-                          return (
-                            <label>
-                              <span>
-                                Deformasyon ölçeği {resultsDeformScale.toFixed(0)}× (görünen
-                                kayma ≈ {(resultsDeformScale * maxDispVal).toExponential(2)})
-                              </span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={adaptiveMax}
-                                step={adaptiveMax / 200}
-                                value={resultsDeformScale}
-                                onChange={(e) => {
-                                  setResultsAnimating(false);
-                                  setResultsDeformScale(parseFloat(e.target.value));
-                                }}
-                              />
-                            </label>
-                          );
-                        })()}
-                        <button
-                          type="button"
-                          className={resultsAnimating ? "group-create-button" : "reset-button"}
-                          onClick={() => setResultsAnimating((prev) => !prev)}
-                        >
-                          {resultsAnimating ? "⏸ Durdur" : "▶ Animasyon"}
-                        </button>
-                      </div>
-
-                      <p className="material-assign-hint">
-                        {resultsField === "von_mises"
-                          ? `Max von Mises: ${resultsPreview.max_von_mises.toExponential(3)}`
-                          : `Max deplasman: ${resultsPreview.max_displacement.toExponential(3)}`}
-                      </p>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -2373,6 +2232,136 @@ function App() {
                       ]}
                     />
                   </div>
+                )}
+                {resultsPreview && (
+                  <>
+                    <div className="viewer-panel-float viewer-results-toggle">
+                      <label className="viewer-float-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={showResults}
+                          onChange={(e) => setShowResults(e.target.checked)}
+                        />
+                        Sonuçları göster ({resultsPreview.nodes.length} nokta)
+                      </label>
+                    </div>
+
+                    {showResults && (() => {
+                      const autoMax =
+                        resultsField === "von_mises"
+                          ? resultsPreview.max_von_mises
+                          : resultsPreview.max_displacement;
+                      const parsedMin = parseFloat(resultsScaleMinInput);
+                      const parsedMax = parseFloat(resultsScaleMaxInput);
+                      const effMin = Number.isFinite(parsedMin) ? parsedMin : 0;
+                      const effMax = Number.isFinite(parsedMax) ? parsedMax : autoMax || 1;
+                      const tickCount = 5;
+                      const ticks = Array.from({ length: tickCount + 1 }, (_, i) => {
+                        const t = i / tickCount;
+                        return effMin + t * (effMax - effMin);
+                      }).reverse();
+                      const gradientStops = Array.from({ length: 11 }, (_, i) => {
+                        const t = i / 10;
+                        return `${jetRgb(t)} ${(1 - t) * 100}%`;
+                      }).join(", ");
+                      const maxDispVal = resultsPreview.max_displacement;
+                      const adaptiveMax =
+                        maxDispVal > 1e-30 ? (0.3 * modelBBoxSize) / maxDispVal : 200;
+
+                      return (
+                        <>
+                          {/* Sağ üst: renk skalası (demo'daki colorbar-panel gibi) */}
+                          <div className="viewer-panel-float viewer-colorbar-panel">
+                            <div className="viewer-colorbar-title">
+                              {resultsField === "von_mises" ? "VON MISES" : "DEPLASMAN"}
+                            </div>
+                            <div className="viewer-field-toggle">
+                              <button
+                                type="button"
+                                className={resultsField === "von_mises" ? "vf-btn vf-active" : "vf-btn"}
+                                onClick={() => setResultsField("von_mises")}
+                              >
+                                Von Mises
+                              </button>
+                              <button
+                                type="button"
+                                className={
+                                  resultsField === "displacement_magnitude" ? "vf-btn vf-active" : "vf-btn"
+                                }
+                                onClick={() => setResultsField("displacement_magnitude")}
+                              >
+                                Deplasman
+                              </button>
+                            </div>
+                            <div className="viewer-colorbar-row">
+                              <div
+                                className="viewer-colorbar-track"
+                                style={{ background: `linear-gradient(to top, ${gradientStops})` }}
+                              />
+                              <div className="viewer-colorbar-ticks">
+                                {ticks.map((v, i) => (
+                                  <span key={i}>{v.toExponential(2)}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="viewer-scale-inputs">
+                              <label>
+                                <span>Max</span>
+                                <input
+                                  type="number"
+                                  placeholder={autoMax.toExponential(2)}
+                                  value={resultsScaleMaxInput}
+                                  onChange={(e) => setResultsScaleMaxInput(e.target.value)}
+                                />
+                              </label>
+                              <label>
+                                <span>Min</span>
+                                <input
+                                  type="number"
+                                  placeholder="0"
+                                  value={resultsScaleMinInput}
+                                  onChange={(e) => setResultsScaleMinInput(e.target.value)}
+                                />
+                              </label>
+                            </div>
+                            <div className="viewer-max-hint">
+                              {resultsField === "von_mises"
+                                ? `Max: ${resultsPreview.max_von_mises.toExponential(3)}`
+                                : `Max: ${resultsPreview.max_displacement.toExponential(3)}`}
+                            </div>
+                          </div>
+
+                          {/* Sağ alt: deformasyon ölçeği + animasyon (demo'daki controls-panel gibi) */}
+                          <div className="viewer-panel-float viewer-controls-panel">
+                            <label className="viewer-deform-label">
+                              <span>
+                                Deformasyon ölçeği {resultsDeformScale.toFixed(0)}× (kayma ≈{" "}
+                                {(resultsDeformScale * maxDispVal).toExponential(2)})
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={adaptiveMax}
+                                step={adaptiveMax / 200}
+                                value={resultsDeformScale}
+                                onChange={(e) => {
+                                  setResultsAnimating(false);
+                                  setResultsDeformScale(parseFloat(e.target.value));
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className={resultsAnimating ? "vf-btn vf-active" : "vf-btn"}
+                              onClick={() => setResultsAnimating((prev) => !prev)}
+                            >
+                              {resultsAnimating ? "⏸ Durdur" : "▶ Animasyon"}
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
                 )}
                 <GeometryViewer
                   stlUrl={stlUrl}

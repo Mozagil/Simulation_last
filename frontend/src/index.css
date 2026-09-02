@@ -393,79 +393,6 @@ p {
   gap: 8px;
 }
 
-.results-field-toggle {
-  display: flex;
-  gap: 6px;
-}
-
-.results-colorbar-row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.results-colorbar-track {
-  width: 18px;
-  height: 140px;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.results-colorbar-ticks {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 140px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.results-colorbar-tick {
-  white-space: nowrap;
-}
-
-.results-scale-inputs {
-  display: flex;
-  gap: 8px;
-}
-
-.results-scale-inputs label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.results-scale-inputs input {
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--ink);
-}
-
-.results-deform-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.results-deform-row label {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.results-deform-row input[type="range"] {
-  width: 100%;
-}
-
 .group-name-input {
   flex: 1;
   padding: 6px 8px;
@@ -591,6 +518,161 @@ p {
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(27, 31, 28, 0.1);
   padding: 6px 8px;
+}
+
+/* ---- Sonuç görselleştirme: 3B görünümün üzerine yüzen paneller
+   (yüklenen beam_viewer.html demosundaki koyu/yarı saydam panel
+   estetiğine göre) ---- */
+.viewer-panel-float {
+  position: absolute;
+  z-index: 4;
+  background: rgba(20, 24, 29, 0.86);
+  border: 1px solid #2b323b;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  color: #d7dde3;
+  font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+
+.viewer-results-toggle {
+  top: 14px;
+  left: 14px;
+  padding: 8px 12px;
+}
+
+.viewer-float-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.viewer-colorbar-panel {
+  top: 14px;
+  right: 14px;
+  width: 168px;
+  padding: 12px;
+}
+
+.viewer-colorbar-title {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #8b95a1;
+  margin-bottom: 8px;
+}
+
+.viewer-field-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.vf-btn {
+  flex: 1;
+  background: #1e2530;
+  border: 1px solid #3a4149;
+  color: #d7dde3;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.vf-btn:hover {
+  border-color: #4b8fd6;
+  color: #fff;
+}
+
+.vf-btn.vf-active {
+  background: #234067;
+  border-color: #4b8fd6;
+  color: #fff;
+}
+
+.viewer-colorbar-row {
+  display: flex;
+  gap: 8px;
+}
+
+.viewer-colorbar-track {
+  width: 18px;
+  height: 140px;
+  border-radius: 2px;
+  border: 1px solid #3a4149;
+  flex-shrink: 0;
+}
+
+.viewer-colorbar-ticks {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 140px;
+  font-size: 10px;
+  color: #c3cad2;
+}
+
+.viewer-scale-inputs {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.viewer-scale-inputs label {
+  font-size: 10px;
+  color: #8b95a1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.viewer-scale-inputs input {
+  width: 80px;
+  background: #1a1f25;
+  border: 1px solid #3a4149;
+  color: #e8ebee;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.viewer-scale-inputs input:focus {
+  outline: none;
+  border-color: #4b8fd6;
+}
+
+.viewer-max-hint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #8b95a1;
+}
+
+.viewer-controls-panel {
+  bottom: 14px;
+  right: 14px;
+  padding: 12px 14px;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.viewer-deform-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #8b95a1;
+}
+
+.viewer-deform-label input[type="range"] {
+  width: 100%;
+  accent-color: #4b8fd6;
 }
 
 .mesh-side-panel {
