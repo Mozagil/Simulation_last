@@ -484,14 +484,27 @@ def _materials_inp_block(
     for m in materials:
         mname = _sanitize_name(str(m["name"]))
         if mname not in seen_mat:
-            E = float(m["youngs_modulus"])
+            # KRİTİK BİRİM DÖNÜŞÜMÜ: malzeme kütüphanesi SI birimlerinde
+            # saklıyor (Young modülü Pa, yoğunluk kg/m³ — bkz.
+            # ARCHITECTURE.md#malzeme-kütüphanesi). Ama geometri mm, yükler
+            # N cinsinden — CalculiX tutarlı bir birim sistemi gerektiriyor
+            # (mm/N/MPa/tonne). Dönüştürmeden E'yi Pa olarak göndermek,
+            # malzemeyi 1.000.000 kat daha sert gösteriyordu — gerçek bir
+            # ankastre kiriş testinde elle hesapla (25.5mm) karşılaştırılıp
+            # kanıtlandı: dönüşümsüz sonuç 0.0000226mm çıkıyordu (beklenenin
+            # ~1 milyonda biri).
+            #   E: Pa -> MPa (1 MPa = 1e6 Pa)
+            #   yoğunluk: kg/m³ -> tonne/mm³ (1 kg/m³ = 1e-12 tonne/mm³)
+            E_pa = float(m["youngs_modulus"])
             nu = float(m["poisson_ratio"])
-            rho = float(m["density"])
+            rho_kg_m3 = float(m["density"])
+            E = E_pa / 1e6
+            rho = rho_kg_m3 * 1e-12
             lines.append(f"*MATERIAL, NAME={mname}")
             lines.append("*ELASTIC")
             lines.append(f"{E:.6e}, {nu:.6g}")
             lines.append("*DENSITY")
-            lines.append(f"{rho:.6g}")
+            lines.append(f"{rho:.6e}")
             seen_mat.add(mname)
         elset = f"PART_{int(m['part_id'])}"
         if dimension == 2:

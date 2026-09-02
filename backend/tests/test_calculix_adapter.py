@@ -13,6 +13,35 @@ FIXTURES = Path(__file__).parent / "fixtures"
 BOX = FIXTURES / "box.step"
 
 
+def test_materials_inp_block_converts_si_to_consistent_mm_units():
+    """KRİTİK: malzeme kütüphanesi SI birimlerinde saklıyor (E: Pa,
+    yoğunluk: kg/m³) ama geometri mm — CalculiX'e dönüştürmeden gönderilirse
+    malzeme 1.000.000 kat daha sert görünüyordu (gerçek bir ankastre kiriş
+    testinde: beklenen 25.5mm sapma yerine 0.0000226mm çıkmıştı). Bu test,
+    dönüşümün .inp çıktısında doğru uygulandığını doğruluyor.
+    """
+    from app.solvers.calculix import _materials_inp_block
+
+    text = _materials_inp_block(
+        [
+            {
+                "part_id": 0,
+                "name": "6061-T6",
+                "youngs_modulus": 68900000000.0,  # Pa (SI, veritabanı formatı)
+                "poisson_ratio": 0.33,
+                "density": 2700.0,  # kg/m³ (SI, veritabanı formatı)
+            }
+        ],
+        dimension=3,
+        shell_thickness=0.0,
+    )
+    # E: Pa -> MPa (1e6'ya bölünmeli): 68900000000.0 / 1e6 = 68900.0
+    assert "6.890000e+04" in text  # 68900 MPa
+    assert "6.890000e+10" not in text  # eski (dönüştürülmemiş) Pa değeri OLMAMALI
+    # yoğunluk: kg/m³ -> tonne/mm³ (1e-12 ile çarpılmalı): 2700 * 1e-12 = 2.7e-9
+    assert "2.700000e-09" in text
+
+
 def test_calculix_build_input_writes_material_and_section(tmp_path):
     step = tmp_path / "box.step"
     step.write_bytes(BOX.read_bytes())
