@@ -246,6 +246,8 @@ def test_parse_results_writes_results_preview_json_aligned_with_node_order(tmp_p
     assert preview["displacement_magnitude"][0] == pytest.approx(
         (0.01**2 + 0.02**2 + 0.03**2) ** 0.5
     )
+    assert preview["displacement_vectors"][0] == pytest.approx([0.01, 0.02, 0.03])
+    assert preview["displacement_vectors"][1] == pytest.approx([0.0, 0.0, 0.0])
     assert preview["von_mises"][0] == pytest.approx(100.0)
     assert preview["von_mises"][1] == pytest.approx(0.0)
     assert preview["max_von_mises"] == pytest.approx(100.0)

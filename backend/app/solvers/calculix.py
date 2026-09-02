@@ -277,6 +277,11 @@ class CalculiXAdapter(SolverAdapter):
 
         disp_mag_array = [disp_mag.get(nid, 0.0) for nid in node_order]
         von_mises_array = [von_mises.get(nid, 0.0) for nid in node_order]
+        # Deforme şekil (deformed shape) görselleştirmesi için — sadece
+        # büyüklük değil, gerçek vektör (dx,dy,dz) gerekiyor.
+        disp_vector_array = [
+            list(displacement.get(nid, (0.0, 0.0, 0.0))) for nid in node_order
+        ]
 
         max_disp = max(disp_mag_array, default=0.0)
         max_vm = max(von_mises_array, default=0.0)
@@ -288,6 +293,7 @@ class CalculiXAdapter(SolverAdapter):
                     "node_ids": node_order,
                     "nodes": nodes_array,
                     "displacement_magnitude": disp_mag_array,
+                    "displacement_vectors": disp_vector_array,
                     "von_mises": von_mises_array,
                     "max_displacement": max_disp,
                     "max_von_mises": max_vm,
