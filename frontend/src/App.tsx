@@ -21,6 +21,8 @@ import {
   healGeometry,
   undoLastMutation,
   resolveTessellationUrl,
+  fetchResultsPreview,
+  type ResultsPreviewData,
   uploadGeometry,
   type MeshElementScheme,
   type MeshPreviewData,
@@ -225,6 +227,11 @@ function App() {
   const [customRm, setCustomRm] = useState("360"); // MPa
   const [snEstimate, setSnEstimate] = useState(true);
   const [solveResult, setSolveResult] = useState<SolveResponse | null>(null);
+  const [resultsPreview, setResultsPreview] = useState<ResultsPreviewData | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [resultsField, setResultsField] = useState<"von_mises" | "displacement_magnitude">(
+    "von_mises",
+  );
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
@@ -312,6 +319,8 @@ function App() {
     setMeshQuality(null);
     setMaterialAssignments([]);
     setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
     setMeshPicks([]);
     setMeshGrow("element");
     setProductTree(null);
@@ -1333,6 +1342,19 @@ function App() {
       });
       setSolveResult(result);
       setInfoMessage(result.message);
+
+      if (result.results_preview_url) {
+        try {
+          const preview = await fetchResultsPreview(result.results_preview_url);
+          setResultsPreview(preview);
+          setShowResults(true);
+        } catch (previewErr) {
+          console.error("Sonuç önizlemesi alınamadı:", previewErr);
+          setResultsPreview(null);
+        }
+      } else {
+        setResultsPreview(null);
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Solve başarısız.");
     } finally {
@@ -1948,6 +1970,51 @@ function App() {
             <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
               .inp indir
             </a>
+            {resultsPreview && (
+              <div className="results-viz-controls">
+                <label className="offset-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={showResults}
+                    onChange={(e) => setShowResults(e.target.checked)}
+                  />
+                  Sonuçları göster ({resultsPreview.nodes.length} nokta)
+                </label>
+                {showResults && (
+                  <>
+                    <div className="results-field-toggle">
+                      <button
+                        type="button"
+                        className={
+                          resultsField === "von_mises"
+                            ? "group-create-button"
+                            : "reset-button"
+                        }
+                        onClick={() => setResultsField("von_mises")}
+                      >
+                        Von Mises
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          resultsField === "displacement_magnitude"
+                            ? "group-create-button"
+                            : "reset-button"
+                        }
+                        onClick={() => setResultsField("displacement_magnitude")}
+                      >
+                        Deplasman
+                      </button>
+                    </div>
+                    <p className="material-assign-hint">
+                      {resultsField === "von_mises"
+                        ? `Max von Mises: ${resultsPreview.max_von_mises.toExponential(3)}`
+                        : `Max deplasman: ${resultsPreview.max_displacement.toExponential(3)}`}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2122,6 +2189,9 @@ function App() {
                   meshPreview={meshPreview}
                   showMesh={showMesh}
                   meshWireframe={meshWireframe}
+                  resultsPreview={resultsPreview}
+                  showResults={showResults}
+                  resultsField={resultsField}
                   cadOpacity={cadOpacityPct / 100}
                   meshPicks={meshPicks}
                   meshGrow={meshGrow}

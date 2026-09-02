@@ -146,6 +146,7 @@ export interface SolveResponse {
   frd_path: string | null;
   message: string;
   scalars?: Record<string, number>;
+  results_preview_url?: string | null;
 }
 
 export type SolveBC = {
