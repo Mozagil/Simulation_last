@@ -2262,7 +2262,14 @@ function App() {
                       }).reverse();
                       const gradientStops = Array.from({ length: 11 }, (_, i) => {
                         const t = i / 10;
-                        return `${jetRgb(t)} ${(1 - t) * 100}%`;
+                        // KRİTİK: CSS linear-gradient durakları ARTAN sırada
+                        // olmalı, aksi halde tarayıcı hepsini tek renge
+                        // sıkıştırıyor (düz mavi görünmesinin sebebi buydu,
+                        // gerçek bir ekran görüntüsüyle doğrulandı). t=0
+                        // (mavi, düşük değer) -> %0 (alt), t=1 (kırmızı,
+                        // yüksek değer) -> %100 (üst) — tik etiketleriyle
+                        // (üstte max, altta min) tutarlı.
+                        return `${jetRgb(t)} ${t * 100}%`;
                       }).join(", ");
                       const maxDispVal = resultsPreview.max_displacement;
                       const adaptiveMax =
