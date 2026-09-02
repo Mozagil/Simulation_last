@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import type { EdgeInfo, MeshPreviewData, PointInfo } from "../api/geometry";
+import type { EdgeInfo, MeshPreviewData, PointInfo, ResultsPreviewData } from "../api/geometry";
 import type { MeshGrowMode, MeshPickInfo, MultiSelectionInfo, SelectionMode } from "../types";
 
 interface GeometryViewerProps {
@@ -22,6 +22,16 @@ interface GeometryViewerProps {
   showMesh: boolean;
   /** Mesh dolgusunu kapat, yalnız kenar çizgisi (arka geometri görünsün). */
   meshWireframe: boolean;
+  /** CalculiX .frd'den parse edilmiş düğüm bazlı sonuçlar (von Mises,
+   * deplasman) — kendi (kalınlık dahil) koordinatlarıyla bağımsız bir nokta
+   * bulutu olarak gösterilir (mesh önizlemesiyle node hizası GARANTİ
+   * DEĞİL — gerçek bir testte doğrulandı, kabuk elemanlarda CalculiX her
+   * node'u üst/alt yüzey için ikiye katlıyor). */
+  resultsPreview: ResultsPreviewData | null;
+  /** Sonuç nokta bulutu görünür mü. */
+  showResults: boolean;
+  /** Hangi alan renklendirilecek. */
+  resultsField: "von_mises" | "displacement_magnitude";
   /** Katı (CAD) opaklığı 0–1; kullanıcı ayarlar, mesh açılınca otomatik düşmez. */
   cadOpacity: number;
   /** Kenar başına düğüm sayısı (mesh tohumu). */
@@ -211,6 +221,9 @@ function GeometryViewer({
   meshPreview,
   showMesh,
   meshWireframe,
+  resultsPreview,
+  showResults,
+  resultsField,
   cadOpacity,
   edgeNodeCounts,
   onEdgeNodeCountChange,
@@ -255,6 +268,7 @@ function GeometryViewer({
     modelGroup: THREE.Group | null;
     modelCenter: THREE.Vector3;
     meshOverlay: THREE.Group | null;
+    resultsOverlay: THREE.Group | null;
     overlayMesh: THREE.Mesh | null;
     overlayColorAttr: THREE.BufferAttribute | null;
     overlayTriCount: number;
@@ -281,6 +295,7 @@ function GeometryViewer({
     modelGroup: null,
     modelCenter: new THREE.Vector3(),
     meshOverlay: null,
+    resultsOverlay: null,
     overlayMesh: null,
     overlayColorAttr: null,
     overlayTriCount: 0,
@@ -334,6 +349,65 @@ function GeometryViewer({
     });
     refs.meshOverlay = null;
     clearOverlayMaps(refs);
+  }
+
+  function disposeResultsOverlay() {
+    const refs = sceneRefs.current;
+    if (!refs.resultsOverlay) return;
+    refs.modelGroup?.remove(refs.resultsOverlay);
+    refs.resultsOverlay.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        const mat = obj.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat.dispose();
+      }
+    });
+    refs.resultsOverlay = null;
+  }
+
+  /** Sonuç nokta bulutunu (von Mises / deplasman renkli küreler) kurar.
+   *
+   * NOT: Bu koordinatlar mesh önizlemesindeki node'larla HİZALI DEĞİL —
+   * kabuk elemanlarda CalculiX her node'u üst/alt yüzey için ikiye
+   * katlıyor (gerçek bir testte doğrulandı). Bu yüzden mesh'e bağımlı
+   * kalmadan, kendi gerçek koordinatlarıyla bağımsız bir görselleştirme.
+   */
+  function applyResultsOverlay(
+    preview: ResultsPreviewData | null,
+    visible: boolean,
+    field: "von_mises" | "displacement_magnitude",
+  ) {
+    const refs = sceneRefs.current;
+    disposeResultsOverlay();
+    if (!preview || !visible || !refs.modelGroup || preview.nodes.length === 0) return;
+
+    const values = field === "von_mises" ? preview.von_mises : preview.displacement_magnitude;
+    const maxVal = field === "von_mises" ? preview.max_von_mises : preview.max_displacement;
+    const safeMax = maxVal > 1e-30 ? maxVal : 1;
+
+    const group = new THREE.Group();
+    group.position.copy(refs.modelCenter).multiplyScalar(-1);
+
+    const maxDim = refs.maxDim || 1;
+    const sphereRadius = Math.max(maxDim * 0.012, 0.02);
+    const sphereGeom = new THREE.SphereGeometry(sphereRadius, 8, 8);
+
+    for (let i = 0; i < preview.nodes.length; i++) {
+      const [x, y, z] = preview.nodes[i];
+      const t = Math.min(1, Math.max(0, (values[i] ?? 0) / safeMax));
+      // Renk skalası: mavi (düşük değer) -> kırmızı (yüksek değer).
+      const hue = (1 - t) * 0.667;
+      const color = new THREE.Color();
+      color.setHSL(hue, 1, 0.5);
+      const mat = new THREE.MeshBasicMaterial({ color });
+      const sphere = new THREE.Mesh(sphereGeom, mat);
+      sphere.position.set(x, y, z);
+      group.add(sphere);
+    }
+
+    refs.modelGroup.add(group);
+    refs.resultsOverlay = group;
   }
 
   function trisForGrow(picks: MeshPickInfo[], grow: MeshGrowMode): number[] {
@@ -648,6 +722,7 @@ function GeometryViewer({
     scene.add(modelGroup);
     sceneRefs.current.modelGroup = modelGroup;
     sceneRefs.current.meshOverlay = null;
+    sceneRefs.current.resultsOverlay = null;
     clearOverlayMaps(sceneRefs.current);
 
     let gridHelper: THREE.GridHelper | null = null;
@@ -1154,6 +1229,7 @@ function GeometryViewer({
         modelGroup: null,
         modelCenter: new THREE.Vector3(),
         meshOverlay: null,
+        resultsOverlay: null,
         overlayMesh: null,
         overlayColorAttr: null,
         overlayTriCount: 0,
@@ -1186,6 +1262,12 @@ function GeometryViewer({
     applyMeshPreview(meshPreview, showMesh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meshPreview, showMesh]);
+
+  // Sonuç nokta bulutu (von Mises / deplasman) — sahne rebuild etmeden güncellenir.
+  useEffect(() => {
+    applyResultsOverlay(resultsPreview, showResults, resultsField);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultsPreview, showResults, resultsField]);
 
   useEffect(() => {
     meshWireframeRef.current = meshWireframe;

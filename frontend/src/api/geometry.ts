@@ -475,6 +475,36 @@ export async function fetchMeshPreview(previewUrl: string): Promise<MeshPreviewD
   return (await response.json()) as MeshPreviewData;
 }
 
+/** CalculiX .frd'den parse edilmiş, düğüm bazlı sonuç önizlemesi.
+ *
+ * NOT: Bu düğüm koordinatları mesh önizlemesindeki (`MeshPreviewData.nodes`)
+ * DÜZ (kalınlıksız) node'larla BİREBİR AYNI SIRADA DEĞİL — kabuk (shell)
+ * elemanlarında CalculiX her fiziksel node'u üst/alt yüzey için ikiye
+ * katlayıp kalınlığın yarısı kadar öteliyor (gerçek bir testte doğrulandı:
+ * X=5'teki bir node, sonuçta X=3.5 ve X=6.5 olarak iki ayrı node'a
+ * dönüşüyor). Bu yüzden sonuçlar, mesh'e zorla hizalanmadan KENDİ gerçek
+ * (kalınlık dahil) koordinatlarıyla bağımsız bir nokta bulutu olarak
+ * gösteriliyor.
+ */
+export interface ResultsPreviewData {
+  node_ids: number[];
+  nodes: number[][];
+  displacement_magnitude: number[];
+  von_mises: number[];
+  max_displacement: number;
+  max_von_mises: number;
+}
+
+export async function fetchResultsPreview(previewUrl: string): Promise<ResultsPreviewData> {
+  const response = await fetch(`${API_BASE_URL}${previewUrl}?t=${Date.now()}`);
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      `Sonuç önizlemesi alınamadı (HTTP ${response.status}).`,
+    );
+  }
+  return (await response.json()) as ResultsPreviewData;
+}
+
 /** İki paralel, düzlemsel yüzey arasında orta yüzeyi hesaplar. Kalıcıdır. */
 export async function createMidsurface(
   geometryId: number,

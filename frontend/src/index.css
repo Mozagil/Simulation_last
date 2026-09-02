@@ -384,6 +384,20 @@ p {
   cursor: pointer;
 }
 
+.results-viz-controls {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.results-field-toggle {
+  display: flex;
+  gap: 6px;
+}
+
 .group-name-input {
   flex: 1;
   padding: 6px 8px;
