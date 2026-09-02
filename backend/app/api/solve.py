@@ -157,6 +157,11 @@ def solve_geometry(
             )
             result["message"] = f"ccx bitti ({status.state})"
             result["scalars"] = parsed.scalars
+            result["results_preview_url"] = (
+                f"/files/runs/{geometry_id}/{parsed.results_preview_path.name}"
+                if parsed.results_preview_path
+                else None
+            )
         except SolverError as exc:
             result["message"] = str(exc)
             # .inp yine döner; 200 ile uyarı
