@@ -398,33 +398,72 @@ p {
   gap: 6px;
 }
 
-.results-legend {
+.results-colorbar-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 8px;
+  align-items: stretch;
 }
 
-.results-legend-bar {
-  flex: 1;
-  height: 10px;
-  border-radius: 4px;
-  /* Mavi (düşük) -> camgöbeği -> yeşil -> sarı -> kırmızı (yüksek) —
-     GeometryViewer'daki HSL hue formülüyle (hue = (1-t)*0.667) birebir
-     aynı renk geçişi. */
-  background: linear-gradient(
-    to right,
-    hsl(240, 100%, 50%),
-    hsl(180, 100%, 50%),
-    hsl(120, 100%, 50%),
-    hsl(60, 100%, 50%),
-    hsl(0, 100%, 50%)
-  );
+.results-colorbar-track {
+  width: 18px;
+  height: 140px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.results-legend-label {
-  font-size: 11px;
+.results-colorbar-ticks {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 140px;
+  font-size: 10px;
   color: var(--muted);
+}
+
+.results-colorbar-tick {
   white-space: nowrap;
+}
+
+.results-scale-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+.results-scale-inputs label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.results-scale-inputs input {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.results-deform-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.results-deform-row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.results-deform-row input[type="range"] {
+  width: 100%;
 }
 
 .group-name-input {
