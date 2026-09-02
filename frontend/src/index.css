@@ -398,6 +398,35 @@ p {
   gap: 6px;
 }
 
+.results-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.results-legend-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 4px;
+  /* Mavi (düşük) -> camgöbeği -> yeşil -> sarı -> kırmızı (yüksek) —
+     GeometryViewer'daki HSL hue formülüyle (hue = (1-t)*0.667) birebir
+     aynı renk geçişi. */
+  background: linear-gradient(
+    to right,
+    hsl(240, 100%, 50%),
+    hsl(180, 100%, 50%),
+    hsl(120, 100%, 50%),
+    hsl(60, 100%, 50%),
+    hsl(0, 100%, 50%)
+  );
+}
+
+.results-legend-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .group-name-input {
   flex: 1;
   padding: 6px 8px;

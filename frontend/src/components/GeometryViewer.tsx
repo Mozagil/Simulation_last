@@ -410,6 +410,100 @@ function GeometryViewer({
     refs.resultsOverlay = group;
   }
 
+  /** Sonuç değerlerini (von Mises / deplasman) gerçek mesh üçgenleri
+   * üzerinde DÜZGÜN GÖLGELİ (Gouraud interpolasyonlu) bir kontur olarak
+   * render eder — SADECE 3D solid mesh için kullanılır, çünkü sadece o
+   * durumda mesh önizlemesi ile sonuç node sırası birebir hizalı olduğu
+   * gerçek verilerle doğrulandı (2D shell'de CalculiX her node'u üst/alt
+   * yüzey için ikiye katlıyor, hizalama garanti değil — o durumda
+   * `applyResultsOverlay` (nokta bulutu) kullanılır).
+   *
+   * Aynı node'u paylaşan komşu üçgenler AYNI renk değerini kullanır (ikisi
+   * de `resultsValues[ni]`'den geliyor) — bu, üçgenler arası kenarlarda
+   * pürüzsüz bir renk geçişi sağlar, ayrı ayrı boyanmış "benekli" bir
+   * görünüm yerine.
+   *
+   * Döndürür: true = başarıyla render edildi, false = koşullar
+   * sağlanmadı (çağıran taraf nokta bulutuna düşmeli).
+   */
+  function applyResultsColoredSurface(
+    meshPreviewData: MeshPreviewData | null,
+    resultsPreviewData: ResultsPreviewData | null,
+    visible: boolean,
+    field: "von_mises" | "displacement_magnitude",
+  ): boolean {
+    const refs = sceneRefs.current;
+    disposeResultsOverlay();
+    if (
+      !meshPreviewData ||
+      !resultsPreviewData ||
+      !visible ||
+      !refs.modelGroup ||
+      meshPreviewData.nodes.length === 0 ||
+      resultsPreviewData.nodes.length !== meshPreviewData.nodes.length
+    ) {
+      return false;
+    }
+
+    const faces = meshPreviewData.faces ?? [];
+    if (faces.length < 3) return false;
+
+    const values =
+      field === "von_mises" ? resultsPreviewData.von_mises : resultsPreviewData.displacement_magnitude;
+    const maxVal =
+      field === "von_mises" ? resultsPreviewData.max_von_mises : resultsPreviewData.max_displacement;
+    const safeMax = maxVal > 1e-30 ? maxVal : 1;
+
+    const nodePos = new Float32Array(meshPreviewData.nodes.length * 3);
+    for (let i = 0; i < meshPreviewData.nodes.length; i++) {
+      const n = meshPreviewData.nodes[i];
+      nodePos[i * 3] = n[0];
+      nodePos[i * 3 + 1] = n[1];
+      nodePos[i * 3 + 2] = n[2];
+    }
+
+    const triCount = Math.floor(faces.length / 3);
+    const positions = new Float32Array(triCount * 9);
+    const colors = new Float32Array(triCount * 9);
+    const color = new THREE.Color();
+
+    for (let t = 0; t < triCount; t++) {
+      for (let v = 0; v < 3; v++) {
+        const ni = faces[t * 3 + v];
+        const dst = (t * 3 + v) * 3;
+        positions[dst] = nodePos[ni * 3];
+        positions[dst + 1] = nodePos[ni * 3 + 1];
+        positions[dst + 2] = nodePos[ni * 3 + 2];
+
+        const t01 = Math.min(1, Math.max(0, (values[ni] ?? 0) / safeMax));
+        const hue = (1 - t01) * 0.667; // mavi (düşük) -> kırmızı (yüksek)
+        color.setHSL(hue, 1, 0.5);
+        colors[dst] = color.r;
+        colors[dst + 1] = color.g;
+        colors[dst + 2] = color.b;
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+
+    const group = new THREE.Group();
+    group.position.copy(refs.modelCenter).multiplyScalar(-1);
+    group.add(mesh);
+
+    refs.modelGroup.add(group);
+    refs.resultsOverlay = group;
+    return true;
+  }
+
   function trisForGrow(picks: MeshPickInfo[], grow: MeshGrowMode): number[] {
     const refs = sceneRefs.current;
     if (picks.length === 0) return [];
@@ -1263,11 +1357,20 @@ function GeometryViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meshPreview, showMesh]);
 
-  // Sonuç nokta bulutu (von Mises / deplasman) — sahne rebuild etmeden güncellenir.
+  // Sonuç görselleştirme: 3D solid'de düzgün gölgeli kontur (mesh-hizalı),
+  // 2D shell'de ya da hizalama tutmazsa nokta bulutuna düşülür.
   useEffect(() => {
-    applyResultsOverlay(resultsPreview, showResults, resultsField);
+    const usedSmoothSurface = applyResultsColoredSurface(
+      meshPreview,
+      resultsPreview,
+      showResults,
+      resultsField,
+    );
+    if (!usedSmoothSurface) {
+      applyResultsOverlay(resultsPreview, showResults, resultsField);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultsPreview, showResults, resultsField]);
+  }, [meshPreview, resultsPreview, showResults, resultsField]);
 
   useEffect(() => {
     meshWireframeRef.current = meshWireframe;
