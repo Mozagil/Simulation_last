@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EdgeInfo,
   GeometryUploadError,
@@ -223,9 +223,31 @@ function App() {
   const [meshScheme, setMeshScheme] = useState<MeshElementScheme>("quad");
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
   const [meshPreview, setMeshPreview] = useState<MeshPreviewData | null>(null);
+  // Modelin en büyük bounding box boyutu (mm) — deformasyon slider'ının
+  // aralığını PROBLEME GÖRE otomatik ölçeklendirmek için gerekli. Sabit bir
+  // 0-200 aralığı, gerçek deplasman büyüklüğü (mikron mertebesinde
+  // olabilir) ile model boyutu (yüzlerce mm) arasındaki uçurumu kapatamıyor
+  // — gerçek bir testte doğrulandı: 200x'te bile kayma model boyutunun
+  // %0.9'u kadar kalıyordu (görünmez).
+  const modelBBoxSize = useMemo(() => {
+    if (!meshPreview || meshPreview.nodes.length === 0) return 1;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (const [x, y, z] of meshPreview.nodes) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+    return Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
+  }, [meshPreview]);
   const [showMesh, setShowMesh] = useState(true);
   const [meshWireframe, setMeshWireframe] = useState(false);
   const [cadOpacityPct, setCadOpacityPct] = useState(100);
+  const [viewerBackground, setViewerBackground] = useState<"white" | "black">("white");
   const [meshQuality, setMeshQuality] = useState<MeshQualityResponse | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null);
@@ -317,12 +339,18 @@ function App() {
   }, [mode]);
 
   // Deformasyon animasyonu: slider'daki hedef değere kadar yumuşak bir
-  // 0 -> hedef -> 0 salınımı (requestAnimationFrame ile).
+  // 0 -> hedef -> 0 salınımı (requestAnimationFrame ile). Kullanıcı
+  // slider'a hiç dokunmadan animasyona basarsa, hedef sabit "1" DEĞİL —
+  // model boyutuna göre otomatik hesaplanan görünür bir değer (aksi halde
+  // gerçek deplasman mikron mertebesinde kalıp görünmez oluyordu, gerçek
+  // bir testte kanıtlandı).
   useEffect(() => {
     if (!resultsAnimating) return;
     let raf = 0;
     let t = 0;
-    const target = resultsDeformScale > 0 ? resultsDeformScale : 1;
+    const maxDispVal = resultsPreview?.max_displacement ?? 0;
+    const autoTarget = maxDispVal > 1e-30 ? (0.3 * modelBBoxSize) / maxDispVal : 1;
+    const target = resultsDeformScale > 0 ? resultsDeformScale : autoTarget;
     const step = () => {
       t += 0.018;
       const ease = 0.5 - 0.5 * Math.cos(t);
@@ -2118,20 +2146,36 @@ function App() {
                       </div>
 
                       <div className="results-deform-row">
-                        <label>
-                          <span>Deformasyon ölçeği {resultsDeformScale.toFixed(1)}×</span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={200}
-                            step={1}
-                            value={resultsDeformScale}
-                            onChange={(e) => {
-                              setResultsAnimating(false);
-                              setResultsDeformScale(parseFloat(e.target.value));
-                            }}
-                          />
-                        </label>
+                        {(() => {
+                          // Slider'ın uç noktası, max deplasmanı model
+                          // boyutunun ~%30'una getirecek şekilde otomatik
+                          // hesaplanıyor — sabit bir aralık yerine (ki
+                          // gerçek bir testte görünmez kaldığı kanıtlandı).
+                          const maxDispVal = resultsPreview.max_displacement;
+                          const adaptiveMax =
+                            maxDispVal > 1e-30
+                              ? (0.3 * modelBBoxSize) / maxDispVal
+                              : 200;
+                          return (
+                            <label>
+                              <span>
+                                Deformasyon ölçeği {resultsDeformScale.toFixed(0)}× (görünen
+                                kayma ≈ {(resultsDeformScale * maxDispVal).toExponential(2)})
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={adaptiveMax}
+                                step={adaptiveMax / 200}
+                                value={resultsDeformScale}
+                                onChange={(e) => {
+                                  setResultsAnimating(false);
+                                  setResultsDeformScale(parseFloat(e.target.value));
+                                }}
+                              />
+                            </label>
+                          );
+                        })()}
                         <button
                           type="button"
                           className={resultsAnimating ? "group-create-button" : "reset-button"}
@@ -2241,6 +2285,23 @@ function App() {
                   onChange={(e) => setCadOpacityPct(Number(e.target.value))}
                 />
               </label>
+              <div className="bg-toggle">
+                <span className="bg-toggle-label">Arkaplan</span>
+                <button
+                  type="button"
+                  className={viewerBackground === "white" ? "group-create-button" : "reset-button"}
+                  onClick={() => setViewerBackground("white")}
+                >
+                  Beyaz
+                </button>
+                <button
+                  type="button"
+                  className={viewerBackground === "black" ? "group-create-button" : "reset-button"}
+                  onClick={() => setViewerBackground("black")}
+                >
+                  Siyah
+                </button>
+              </div>
               <ButtonGroup
                 title="Geometri"
                 items={[
@@ -2340,6 +2401,7 @@ function App() {
                       : null
                   }
                   cadOpacity={cadOpacityPct / 100}
+                  viewerBackground={viewerBackground}
                   meshPicks={meshPicks}
                   meshGrow={meshGrow}
                   externalHighlight={externalHighlight}

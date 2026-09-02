@@ -776,6 +776,18 @@ p {
   accent-color: var(--accent);
 }
 
+.bg-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bg-toggle-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .button-group {
   display: flex;
   flex-direction: column;
