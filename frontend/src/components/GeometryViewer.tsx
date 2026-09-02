@@ -32,6 +32,11 @@ interface GeometryViewerProps {
   showResults: boolean;
   /** Hangi alan renklendirilecek. */
   resultsField: "von_mises" | "displacement_magnitude";
+  /** Deformasyon büyütme çarpanı (0 = deforme etme). */
+  resultsDeformScale: number;
+  /** Elle girilen renk skalası — null ise otomatik (0..max). */
+  resultsScaleMin: number | null;
+  resultsScaleMax: number | null;
   /** Katı (CAD) opaklığı 0–1; kullanıcı ayarlar, mesh açılınca otomatik düşmez. */
   cadOpacity: number;
   /** Kenar başına düğüm sayısı (mesh tohumu). */
@@ -75,6 +80,18 @@ function buildGroupIndex(triangleToGroup: number[]): Map<number, number[]> {
 }
 
 /** Kenar paylaşan üçgenler aynı parça — tıklanınca tüm bağlı mesh turuncu olur. */
+/** Klasik mühendislik "jet" renk haritası (mavi -> camgöbeği -> yeşil ->
+ * sarı -> kırmızı) — basit HSL mavi-kırmızı geçişinden daha standart ve
+ * ara değerleri daha ayırt edilebilir kılıyor.
+ */
+function jetColor(t: number): THREE.Color {
+  const clamped = Math.min(1, Math.max(0, t));
+  const r = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * clamped - 3)));
+  const g = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * clamped - 2)));
+  const b = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * clamped - 1)));
+  return new THREE.Color(r, g, b);
+}
+
 function connectedTriangleParts(faces: number[]): number[] {
   const triCount = Math.floor(faces.length / 3);
   const partOf = new Array<number>(triCount).fill(-1);
@@ -224,6 +241,11 @@ function GeometryViewer({
   resultsPreview,
   showResults,
   resultsField,
+  /** Deformasyon büyütme çarpanı (0 = deforme etme, gerçek node pozisyonu). */
+  resultsDeformScale,
+  /** Elle girilen renk skalası alt/üst sınırı — null ise otomatik (max/0). */
+  resultsScaleMin,
+  resultsScaleMax,
   cadOpacity,
   edgeNodeCounts,
   onEdgeNodeCountChange,
@@ -377,14 +399,20 @@ function GeometryViewer({
     preview: ResultsPreviewData | null,
     visible: boolean,
     field: "von_mises" | "displacement_magnitude",
+    deformScale: number,
+    scaleMin: number | null,
+    scaleMax: number | null,
   ) {
     const refs = sceneRefs.current;
     disposeResultsOverlay();
     if (!preview || !visible || !refs.modelGroup || preview.nodes.length === 0) return;
 
     const values = field === "von_mises" ? preview.von_mises : preview.displacement_magnitude;
-    const maxVal = field === "von_mises" ? preview.max_von_mises : preview.max_displacement;
-    const safeMax = maxVal > 1e-30 ? maxVal : 1;
+    const autoMax = field === "von_mises" ? preview.max_von_mises : preview.max_displacement;
+    const lo = scaleMin ?? 0;
+    const hi = scaleMax ?? (autoMax > 1e-30 ? autoMax : 1);
+    const safeRange = hi - lo > 1e-30 ? hi - lo : 1;
+    const vectors = preview.displacement_vectors;
 
     const group = new THREE.Group();
     group.position.copy(refs.modelCenter).multiplyScalar(-1);
@@ -395,14 +423,16 @@ function GeometryViewer({
 
     for (let i = 0; i < preview.nodes.length; i++) {
       const [x, y, z] = preview.nodes[i];
-      const t = Math.min(1, Math.max(0, (values[i] ?? 0) / safeMax));
-      // Renk skalası: mavi (düşük değer) -> kırmızı (yüksek değer).
-      const hue = (1 - t) * 0.667;
-      const color = new THREE.Color();
-      color.setHSL(hue, 1, 0.5);
+      const dv = vectors && vectors[i] ? vectors[i] : [0, 0, 0];
+      const t01 = Math.min(1, Math.max(0, ((values[i] ?? 0) - lo) / safeRange));
+      const color = jetColor(t01);
       const mat = new THREE.MeshBasicMaterial({ color });
       const sphere = new THREE.Mesh(sphereGeom, mat);
-      sphere.position.set(x, y, z);
+      sphere.position.set(
+        x + dv[0] * deformScale,
+        y + dv[1] * deformScale,
+        z + dv[2] * deformScale,
+      );
       group.add(sphere);
     }
 
@@ -431,6 +461,9 @@ function GeometryViewer({
     resultsPreviewData: ResultsPreviewData | null,
     visible: boolean,
     field: "von_mises" | "displacement_magnitude",
+    deformScale: number,
+    scaleMin: number | null,
+    scaleMax: number | null,
   ): boolean {
     const refs = sceneRefs.current;
     disposeResultsOverlay();
@@ -450,22 +483,25 @@ function GeometryViewer({
 
     const values =
       field === "von_mises" ? resultsPreviewData.von_mises : resultsPreviewData.displacement_magnitude;
-    const maxVal =
+    const autoMax =
       field === "von_mises" ? resultsPreviewData.max_von_mises : resultsPreviewData.max_displacement;
-    const safeMax = maxVal > 1e-30 ? maxVal : 1;
+    const lo = scaleMin ?? 0;
+    const hi = scaleMax ?? (autoMax > 1e-30 ? autoMax : 1);
+    const safeRange = hi - lo > 1e-30 ? hi - lo : 1;
+    const vectors = resultsPreviewData.displacement_vectors;
 
     const nodePos = new Float32Array(meshPreviewData.nodes.length * 3);
     for (let i = 0; i < meshPreviewData.nodes.length; i++) {
       const n = meshPreviewData.nodes[i];
-      nodePos[i * 3] = n[0];
-      nodePos[i * 3 + 1] = n[1];
-      nodePos[i * 3 + 2] = n[2];
+      const dv = vectors && vectors[i] ? vectors[i] : [0, 0, 0];
+      nodePos[i * 3] = n[0] + dv[0] * deformScale;
+      nodePos[i * 3 + 1] = n[1] + dv[1] * deformScale;
+      nodePos[i * 3 + 2] = n[2] + dv[2] * deformScale;
     }
 
     const triCount = Math.floor(faces.length / 3);
     const positions = new Float32Array(triCount * 9);
     const colors = new Float32Array(triCount * 9);
-    const color = new THREE.Color();
 
     for (let t = 0; t < triCount; t++) {
       for (let v = 0; v < 3; v++) {
@@ -475,9 +511,8 @@ function GeometryViewer({
         positions[dst + 1] = nodePos[ni * 3 + 1];
         positions[dst + 2] = nodePos[ni * 3 + 2];
 
-        const t01 = Math.min(1, Math.max(0, (values[ni] ?? 0) / safeMax));
-        const hue = (1 - t01) * 0.667; // mavi (düşük) -> kırmızı (yüksek)
-        color.setHSL(hue, 1, 0.5);
+        const t01 = Math.min(1, Math.max(0, ((values[ni] ?? 0) - lo) / safeRange));
+        const color = jetColor(t01);
         colors[dst] = color.r;
         colors[dst + 1] = color.g;
         colors[dst + 2] = color.b;
@@ -1365,12 +1400,30 @@ function GeometryViewer({
       resultsPreview,
       showResults,
       resultsField,
+      resultsDeformScale,
+      resultsScaleMin,
+      resultsScaleMax,
     );
     if (!usedSmoothSurface) {
-      applyResultsOverlay(resultsPreview, showResults, resultsField);
+      applyResultsOverlay(
+        resultsPreview,
+        showResults,
+        resultsField,
+        resultsDeformScale,
+        resultsScaleMin,
+        resultsScaleMax,
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meshPreview, resultsPreview, showResults, resultsField]);
+  }, [
+    meshPreview,
+    resultsPreview,
+    showResults,
+    resultsField,
+    resultsDeformScale,
+    resultsScaleMin,
+    resultsScaleMax,
+  ]);
 
   useEffect(() => {
     meshWireframeRef.current = meshWireframe;

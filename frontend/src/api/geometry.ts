@@ -490,6 +490,8 @@ export interface ResultsPreviewData {
   node_ids: number[];
   nodes: number[][];
   displacement_magnitude: number[];
+  /** Her node için (dx,dy,dz) — deforme şekil görselleştirmesi için. */
+  displacement_vectors: number[][];
   von_mises: number[];
   max_displacement: number;
   max_von_mises: number;

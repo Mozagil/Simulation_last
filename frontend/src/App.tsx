@@ -66,6 +66,17 @@ type Status = "idle" | "uploading" | "error" | "success";
 const ACCEPTED_EXTENSIONS = ".step,.stp,.igs,.iges";
 const EMPTY_SELECTION: MultiSelectionInfo = { mode: "surface", ids: [] };
 
+/** GeometryViewer'daki jetColor() ile BİREBİR aynı formül — renk skalası
+ * (legend) 3B render ile piksel piksel tutarlı olsun diye.
+ */
+function jetRgb(t: number): string {
+  const c = Math.min(1, Math.max(0, t));
+  const r = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * c - 3)));
+  const g = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * c - 2)));
+  const b = Math.min(1, Math.max(0, 1.5 - Math.abs(4 * c - 1)));
+  return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+}
+
 type BcKind =
   | "fixed"
   | "cload"
@@ -232,6 +243,10 @@ function App() {
   const [resultsField, setResultsField] = useState<"von_mises" | "displacement_magnitude">(
     "von_mises",
   );
+  const [resultsDeformScale, setResultsDeformScale] = useState(0);
+  const [resultsAnimating, setResultsAnimating] = useState(false);
+  const [resultsScaleMinInput, setResultsScaleMinInput] = useState("");
+  const [resultsScaleMaxInput, setResultsScaleMaxInput] = useState("");
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
@@ -301,6 +316,24 @@ function App() {
     setShowDefeaturePanel(false);
   }, [mode]);
 
+  // Deformasyon animasyonu: slider'daki hedef değere kadar yumuşak bir
+  // 0 -> hedef -> 0 salınımı (requestAnimationFrame ile).
+  useEffect(() => {
+    if (!resultsAnimating) return;
+    let raf = 0;
+    let t = 0;
+    const target = resultsDeformScale > 0 ? resultsDeformScale : 1;
+    const step = () => {
+      t += 0.018;
+      const ease = 0.5 - 0.5 * Math.cos(t);
+      setResultsDeformScale(target * ease);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultsAnimating]);
+
   async function handleFileSelected(file: File) {
     setStatus("uploading");
     setErrorMessage(null);
@@ -321,6 +354,10 @@ function App() {
     setSolveResult(null);
     setResultsPreview(null);
     setShowResults(false);
+    setResultsDeformScale(0);
+    setResultsAnimating(false);
+    setResultsScaleMinInput("");
+    setResultsScaleMaxInput("");
     setMeshPicks([]);
     setMeshGrow("element");
     setProductTree(null);
@@ -1999,50 +2036,119 @@ function App() {
                   />
                   Sonuçları göster ({resultsPreview.nodes.length} nokta)
                 </label>
-                {showResults && (
-                  <>
-                    <div className="results-field-toggle">
-                      <button
-                        type="button"
-                        className={
-                          resultsField === "von_mises"
-                            ? "group-create-button"
-                            : "reset-button"
-                        }
-                        onClick={() => setResultsField("von_mises")}
-                      >
-                        Von Mises
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          resultsField === "displacement_magnitude"
-                            ? "group-create-button"
-                            : "reset-button"
-                        }
-                        onClick={() => setResultsField("displacement_magnitude")}
-                      >
-                        Deplasman
-                      </button>
-                    </div>
-                    <div className="results-legend">
-                      <span className="results-legend-label">
-                        0
-                      </span>
-                      <div className="results-legend-bar" />
-                      <span className="results-legend-label">
+                {showResults && (() => {
+                  const autoMax =
+                    resultsField === "von_mises"
+                      ? resultsPreview.max_von_mises
+                      : resultsPreview.max_displacement;
+                  const parsedMin = parseFloat(resultsScaleMinInput);
+                  const parsedMax = parseFloat(resultsScaleMaxInput);
+                  const effMin = Number.isFinite(parsedMin) ? parsedMin : 0;
+                  const effMax = Number.isFinite(parsedMax) ? parsedMax : autoMax || 1;
+                  const tickCount = 5;
+                  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => {
+                    const t = i / tickCount;
+                    return effMin + t * (effMax - effMin);
+                  }).reverse();
+                  const gradientStops = Array.from({ length: 11 }, (_, i) => {
+                    const t = i / 10;
+                    return `${jetRgb(t)} ${(1 - t) * 100}%`;
+                  }).join(", ");
+
+                  return (
+                    <>
+                      <div className="results-field-toggle">
+                        <button
+                          type="button"
+                          className={
+                            resultsField === "von_mises"
+                              ? "group-create-button"
+                              : "reset-button"
+                          }
+                          onClick={() => setResultsField("von_mises")}
+                        >
+                          Von Mises
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            resultsField === "displacement_magnitude"
+                              ? "group-create-button"
+                              : "reset-button"
+                          }
+                          onClick={() => setResultsField("displacement_magnitude")}
+                        >
+                          Deplasman
+                        </button>
+                      </div>
+
+                      <div className="results-colorbar-row">
+                        <div
+                          className="results-colorbar-track"
+                          style={{ background: `linear-gradient(to top, ${gradientStops})` }}
+                        />
+                        <div className="results-colorbar-ticks">
+                          {ticks.map((v, i) => (
+                            <span key={i} className="results-colorbar-tick">
+                              {v.toExponential(2)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="results-scale-inputs">
+                        <label>
+                          <span>Max</span>
+                          <input
+                            type="number"
+                            placeholder={autoMax.toExponential(2)}
+                            value={resultsScaleMaxInput}
+                            onChange={(e) => setResultsScaleMaxInput(e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>Min</span>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={resultsScaleMinInput}
+                            onChange={(e) => setResultsScaleMinInput(e.target.value)}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="results-deform-row">
+                        <label>
+                          <span>Deformasyon ölçeği {resultsDeformScale.toFixed(1)}×</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={200}
+                            step={1}
+                            value={resultsDeformScale}
+                            onChange={(e) => {
+                              setResultsAnimating(false);
+                              setResultsDeformScale(parseFloat(e.target.value));
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className={resultsAnimating ? "group-create-button" : "reset-button"}
+                          onClick={() => setResultsAnimating((prev) => !prev)}
+                        >
+                          {resultsAnimating ? "⏸ Durdur" : "▶ Animasyon"}
+                        </button>
+                      </div>
+
+                      <p className="material-assign-hint">
                         {resultsField === "von_mises"
-                          ? resultsPreview.max_von_mises.toExponential(2)
-                          : resultsPreview.max_displacement.toExponential(2)}
-                      </span>
-                    </div>
-                    <p className="material-assign-hint">
-                      {resultsField === "von_mises"
-                        ? `Max von Mises: ${resultsPreview.max_von_mises.toExponential(3)}`
-                        : `Max deplasman: ${resultsPreview.max_displacement.toExponential(3)}`}
-                    </p>
-                  </>
-                )}
+                          ? `Max von Mises: ${resultsPreview.max_von_mises.toExponential(3)}`
+                          : `Max deplasman: ${resultsPreview.max_displacement.toExponential(3)}`}
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -2222,6 +2328,17 @@ function App() {
                   resultsPreview={resultsPreview}
                   showResults={showResults}
                   resultsField={resultsField}
+                  resultsDeformScale={resultsDeformScale}
+                  resultsScaleMin={
+                    Number.isFinite(parseFloat(resultsScaleMinInput))
+                      ? parseFloat(resultsScaleMinInput)
+                      : null
+                  }
+                  resultsScaleMax={
+                    Number.isFinite(parseFloat(resultsScaleMaxInput))
+                      ? parseFloat(resultsScaleMaxInput)
+                      : null
+                  }
                   cadOpacity={cadOpacityPct / 100}
                   meshPicks={meshPicks}
                   meshGrow={meshGrow}
