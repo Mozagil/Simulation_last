@@ -1162,16 +1162,30 @@ function App() {
   }
 
   function handleAddBc(kind: BcKind) {
+    // ANSYS Mechanical mantığı: 3D solid mesh'te BC CAD geometrisinden
+    // (yüzeyden) verilir — mesh elemanı seçimi olsa bile CAD yüzey seçimi
+    // önceliklidir (Ansys'te de böyle: "geometriye" BC verirsin, mesh'e
+    // değil). 2D shell'de ise mesh elemanları önceliklidir (mevcut
+    // davranış — pressure/DLOAD gibi element-tabanlı kartlar için gerekli).
+    const is3DSolid = meshResult?.dimension === 3;
     const meshFaceIds =
       showMesh && meshPicks.length > 0
         ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
         : [];
-    const faceIds =
-      meshFaceIds.length > 0 ? meshFaceIds : mode === "surface" ? [...selection.ids] : [];
-    const edgeIds = meshFaceIds.length > 0 ? [] : mode === "edge" ? [...selection.ids] : [];
-    const nodeIds = meshFaceIds.length > 0 ? [] : mode === "point" ? [...selection.ids] : [];
+    const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
+
+    const faceIds = is3DSolid
+      ? cadFaceIds.length > 0
+        ? cadFaceIds
+        : meshFaceIds
+      : meshFaceIds.length > 0
+        ? meshFaceIds
+        : cadFaceIds;
+    const usingMeshFaces = faceIds === meshFaceIds && meshFaceIds.length > 0;
+    const edgeIds = usingMeshFaces ? [] : mode === "edge" ? [...selection.ids] : [];
+    const nodeIds = usingMeshFaces ? [] : mode === "point" ? [...selection.ids] : [];
     const id = `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const meshTag = meshFaceIds.length > 0 ? "mesh yüzey" : "yüzey";
+    const meshTag = usingMeshFaces ? "mesh yüzey" : "yüzey";
 
     let payload: SolveBC;
     let summary: string;
