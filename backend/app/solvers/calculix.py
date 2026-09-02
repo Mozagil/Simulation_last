@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -38,6 +39,104 @@ _GMSH_TO_CCX_2D = {
     2: "S3",  # tri3 shell
     3: "S4",  # quad4 shell
 }
+
+
+def _frd_data_line(line: str) -> tuple[int, list[float]] | None:
+    """CalculiX .frd sabit-sütun-genişlikli veri satırını parse eder.
+
+    Format (gerçek bir .frd dosyasıyla doğrulandı): " -1" + node_id (10
+    karakter) + N × değer (12 karakter). Negatif sayılarda boşluk OLMADIĞI
+    için basit `split()` yanlış parse eder — sütun pozisyonuna göre dilimleme
+    zorunlu.
+    """
+    if not line.startswith(" -1"):
+        return None
+    try:
+        node_id = int(line[3:13])
+    except ValueError:
+        return None
+    values: list[float] = []
+    pos = 13
+    while pos + 12 <= len(line):
+        chunk = line[pos : pos + 12]
+        try:
+            values.append(float(chunk))
+        except ValueError:
+            break
+        pos += 12
+    return node_id, values
+
+
+def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
+    """CalculiX .frd (ASCII) sonuç dosyasını parse eder.
+
+    Döndürür: node_coords (id -> (x,y,z)), displacement (id -> (dx,dy,dz)),
+    stress (id -> (sxx,syy,szz,sxy,syz,szx)). Dict sırası dosyadaki sıraya
+    göre korunur (Python 3.7+) — bu, mesh'in kanonik node sırasıyla aynıdır
+    (CalculiX, .inp'teki *NODE sırasını aynen yansıtır).
+    """
+    lines = frd_path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    node_coords: dict[int, tuple[float, ...]] = {}
+    displacement: dict[int, tuple[float, ...]] = {}
+    stress: dict[int, tuple[float, ...]] = {}
+
+    in_node_block = False
+    current_result_type: str | None = None
+
+    for line in lines:
+        stripped_start = line[:6] if len(line) >= 6 else line
+        if stripped_start.strip() == "2C" or line.lstrip().startswith("2C "):
+            in_node_block = True
+            current_result_type = None
+            continue
+        if line.startswith(" -4"):
+            # örn: " -4  DISP        4    1" / " -4  STRESS      6    1"
+            rest = line[4:].split()
+            current_result_type = rest[0] if rest else None
+            in_node_block = False
+            continue
+        if line.startswith(" -3"):
+            in_node_block = False
+            current_result_type = None
+            continue
+        if line.startswith(" -5"):
+            continue  # component tanım satırı, veri değil
+
+        if in_node_block:
+            parsed = _frd_data_line(line)
+            if parsed and len(parsed[1]) >= 3:
+                nid, vals = parsed
+                node_coords[nid] = (vals[0], vals[1], vals[2])
+            continue
+
+        if current_result_type == "DISP":
+            parsed = _frd_data_line(line)
+            if parsed and len(parsed[1]) >= 3:
+                nid, vals = parsed
+                displacement[nid] = (vals[0], vals[1], vals[2])
+        elif current_result_type == "STRESS":
+            parsed = _frd_data_line(line)
+            if parsed and len(parsed[1]) >= 6:
+                nid, vals = parsed
+                stress[nid] = tuple(vals[:6])
+
+    return {"node_coords": node_coords, "displacement": displacement, "stress": stress}
+
+
+def _von_mises_stress(
+    sxx: float, syy: float, szz: float, sxy: float, syz: float, szx: float
+) -> float:
+    """Standart von Mises eşdeğer gerilme formülü (gerilme tensöründen)."""
+    return math.sqrt(
+        0.5
+        * (
+            (sxx - syy) ** 2
+            + (syy - szz) ** 2
+            + (szz - sxx) ** 2
+            + 6 * (sxy**2 + syz**2 + szx**2)
+        )
+    )
 
 
 def _ccx_executable() -> str | None:
@@ -147,10 +246,74 @@ class CalculiXAdapter(SolverAdapter):
         frd = job.work_dir / f"{job.artifact.path.stem}.frd"
         if not frd.exists():
             return ResultSet(raw_result_path=None, scalars={"frd_exists": 0.0})
-        # Minimal: dosya boyutu + varlık; tam U/vonMises parse sonraki adım (ROADMAP §4)
+
+        try:
+            parsed = _parse_frd(frd)
+        except Exception as exc:  # noqa: BLE001 — parse hatası çözümü bozmasın
+            logger.warning("FRD parse edilemedi: %s", exc)
+            return ResultSet(
+                scalars={"frd_bytes": float(frd.stat().st_size)},
+                raw_result_path=frd,
+            )
+
+        node_coords = parsed["node_coords"]
+        displacement = parsed["displacement"]
+        stress = parsed["stress"]
+
+        # Dosyadaki (2C bloğundaki) node sırası = mesh'in kanonik sırası —
+        # aynı sıralama frontend'in mesh önizlemesindeki `nodes[]` dizisiyle
+        # birebir eşleşir (ikisi de aynı Gmsh `getNodes()` çağrısından gelir).
+        node_order = list(node_coords.keys())
+
+        nodes_array = [list(node_coords[nid]) for nid in node_order]
+
+        disp_mag: dict[int, float] = {}
+        for nid, (dx, dy, dz) in displacement.items():
+            disp_mag[nid] = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+        von_mises: dict[int, float] = {}
+        for nid, (sxx, syy, szz, sxy, syz, szx) in stress.items():
+            von_mises[nid] = _von_mises_stress(sxx, syy, szz, sxy, syz, szx)
+
+        disp_mag_array = [disp_mag.get(nid, 0.0) for nid in node_order]
+        von_mises_array = [von_mises.get(nid, 0.0) for nid in node_order]
+
+        max_disp = max(disp_mag_array, default=0.0)
+        max_vm = max(von_mises_array, default=0.0)
+
+        results_preview_path = job.work_dir / f"{job.artifact.path.stem}.results.json"
+        results_preview_path.write_text(
+            json.dumps(
+                {
+                    "node_ids": node_order,
+                    "nodes": nodes_array,
+                    "displacement_magnitude": disp_mag_array,
+                    "von_mises": von_mises_array,
+                    "max_displacement": max_disp,
+                    "max_von_mises": max_vm,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+
+        logger.info(
+            "FRD parse edildi: %s, node_sayisi=%d, max_disp=%.6g, max_von_mises=%.6g",
+            frd,
+            len(node_order),
+            max_disp,
+            max_vm,
+        )
+
         return ResultSet(
-            scalars={"frd_bytes": float(frd.stat().st_size)},
+            scalars={
+                "frd_bytes": float(frd.stat().st_size),
+                "node_count": float(len(node_order)),
+                "max_displacement": max_disp,
+                "max_von_mises": max_vm,
+            },
             raw_result_path=frd,
+            results_preview_path=results_preview_path,
         )
 
 

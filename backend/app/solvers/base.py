@@ -33,6 +33,9 @@ class ResultSet:
     scalars: dict[str, float] = field(default_factory=dict)
     curves: dict[str, Any] = field(default_factory=dict)
     raw_result_path: Path | None = None
+    # Frontend'in mesh önizlemesiyle aynı node sırasına hizalı, düğüm bazlı
+    # sonuç dizilerini (von Mises, deplasman büyüklüğü) içeren JSON dosyası.
+    results_preview_path: Path | None = None
 
 
 class SolverError(Exception):
