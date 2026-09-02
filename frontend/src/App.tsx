@@ -1212,8 +1212,8 @@ function App() {
         setErrorMessage("CLOAD için geçerli Fx/Fy/Fz girin.");
         return;
       }
-      if (faceIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Nokta/yüzey yük için mesh yüzeyi veya CAD yüzey/nokta seçin.");
+      if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
+        setErrorMessage("Nokta/kenar/yüzey yük için mesh yüzeyi veya CAD yüzey/kenar/nokta seçin.");
         return;
       }
       payload = {
@@ -1222,10 +1222,15 @@ function App() {
         fy,
         fz,
         ...(faceIds.length ? { face_ids: faceIds } : {}),
+        ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
       };
       summary = `CLOAD (${fx},${fy},${fz}) · ${
-        faceIds.length ? `${meshTag} ${faceIds.join(",")}` : `nokta ${nodeIds.join(",")}`
+        faceIds.length
+          ? `${meshTag} ${faceIds.join(",")}`
+          : edgeIds.length
+            ? `kenar ${edgeIds.join(",")}`
+            : `nokta ${nodeIds.join(",")}`
       }`;
     } else if (kind === "pressure") {
       const magnitude = parseFloat(bcMagnitude);
