@@ -105,6 +105,27 @@ def test_bcs_pressure_dload_and_sliding_transform():
     assert "*TRANSFORM" not in step_text
 
 
+def test_cload_edge_ids_distributes_force_across_edge_nodes():
+    """KRİTİK: kenar seçip kuvvet uygulama (ör. ankastre kiriş serbest uç
+    yükü, klasik mukavemet problemi) — toplam kuvvet, kenardaki node
+    sayısına eşit bölünmeli.
+    """
+    from app.solvers.calculix import _bcs_inp_block
+
+    nsets = {"EDGE_12": [226, 227, 228]}
+    _model_text, step_text = _bcs_inp_block(
+        [{"type": "cload", "edge_ids": [12], "fx": 0, "fy": -9000, "fz": 0}],
+        nsets,
+        {},
+        dimension=3,
+    )
+    assert "*CLOAD" in step_text
+    # 9000 N / 3 node = 3000 N her birine.
+    assert "226, 2, -3000" in step_text
+    assert "227, 2, -3000" in step_text
+    assert "228, 2, -3000" in step_text
+
+
 def test_calculix_submit_without_ccx_raises(tmp_path):
     inp = tmp_path / "x.inp"
     inp.write_text("*HEADING\n", encoding="utf-8")

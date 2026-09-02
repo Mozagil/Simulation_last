@@ -564,6 +564,20 @@ def _bcs_inp_block(
                         step_lines.append(f"{nid}, 2, {fy / n:.6g}")
                     if abs(fz) > 0:
                         step_lines.append(f"{nid}, 3, {fz / n:.6g}")
+            for eid in bc.get("edge_ids") or []:
+                nset = f"EDGE_{int(eid)}"
+                ids = nsets.get(nset) or []
+                if not ids:
+                    continue
+                n = len(ids)
+                step_lines.append("*CLOAD")
+                for nid in ids:
+                    if abs(fx) > 0:
+                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
+                    if abs(fy) > 0:
+                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
+                    if abs(fz) > 0:
+                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
         elif btype == "pressure":
             mag = float(bc.get("magnitude", 0.0))
             if abs(mag) < 1e-30:
