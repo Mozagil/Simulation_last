@@ -37,6 +37,8 @@ interface GeometryViewerProps {
   /** Elle girilen renk skalası — null ise otomatik (0..max). */
   resultsScaleMin: number | null;
   resultsScaleMax: number | null;
+  /** 3B görünüm arkaplan rengi. */
+  viewerBackground: "white" | "black";
   /** Katı (CAD) opaklığı 0–1; kullanıcı ayarlar, mesh açılınca otomatik düşmez. */
   cadOpacity: number;
   /** Kenar başına düğüm sayısı (mesh tohumu). */
@@ -246,6 +248,7 @@ function GeometryViewer({
   /** Elle girilen renk skalası alt/üst sınırı — null ise otomatik (max/0). */
   resultsScaleMin,
   resultsScaleMax,
+  viewerBackground,
   cadOpacity,
   edgeNodeCounts,
   onEdgeNodeCountChange,
@@ -288,6 +291,7 @@ function GeometryViewer({
 
   const sceneRefs = useRef<{
     modelGroup: THREE.Group | null;
+    scene: THREE.Scene | null;
     modelCenter: THREE.Vector3;
     meshOverlay: THREE.Group | null;
     resultsOverlay: THREE.Group | null;
@@ -315,6 +319,7 @@ function GeometryViewer({
     camera: THREE.PerspectiveCamera | null;
   }>({
     modelGroup: null,
+    scene: null,
     modelCenter: new THREE.Vector3(),
     meshOverlay: null,
     resultsOverlay: null,
@@ -776,7 +781,8 @@ function GeometryViewer({
     let disposed = false;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#eef0ec");
+    scene.background = new THREE.Color(viewerBackground === "black" ? "#0e1116" : "#eef0ec");
+    sceneRefs.current.scene = scene;
 
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -1356,6 +1362,7 @@ function GeometryViewer({
       }
       sceneRefs.current = {
         modelGroup: null,
+        scene: null,
         modelCenter: new THREE.Vector3(),
         meshOverlay: null,
         resultsOverlay: null,
@@ -1385,6 +1392,13 @@ function GeometryViewer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stlUrl, edges, points, triangleToFace, triangleToPart]);
+
+  // Arkaplan rengi — sahne rebuild etmeden güncellenir.
+  useEffect(() => {
+    const scene = sceneRefs.current.scene;
+    if (!scene) return;
+    scene.background = new THREE.Color(viewerBackground === "black" ? "#0e1116" : "#eef0ec");
+  }, [viewerBackground]);
 
   // Mesh wireframe overlay — sahne rebuild etmeden güncellenir.
   useEffect(() => {
