@@ -147,6 +147,8 @@ export interface SolveResponse {
   frd_path: string | null;
   message: string;
   scalars?: Record<string, number>;
+  fatigue_note?: string | null;
+  fatigue_runout?: boolean;
   results_preview_url?: string | null;
 }
 

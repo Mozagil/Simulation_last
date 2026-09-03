@@ -2370,42 +2370,43 @@ function App() {
           </div>
         )}
         <p className="lead material-lead">
-          Mesh elemanına tıklayın (Face = tüm yüzey) → BC türünü seçin → Listeye ekle.
-          Kalınlık ürün ağacındadır.
+          Mesh elemanına tıklayın → BC türü seçin → ekleyin.
         </p>
-        {showMesh && meshPicks.length > 0 && (
-          <p className="material-assign-hint">
-            Mesh seçim: {meshGrow} · yüzey{" "}
-            {[...new Set(meshPicks.map((p) => p.faceId))].join(", ")} · parça{" "}
-            {meshPartIds.join(", ")}
-          </p>
-        )}
 
-        <p className="material-assignments-title">BC türü</p>
-        <div className="bc-button-row">
-          {(
-            [
-              "fixed",
-              "cload",
-              "pressure",
-              "displacement",
-              "sliding",
-              "bearing",
-              "gravity",
-            ] as BcKind[]
-          ).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
-              disabled={busyAction !== null}
-              onClick={() => setBcDraftKind(kind)}
-            >
-              {BC_KIND_LABELS[kind]}
-            </button>
-          ))}
-        </div>
-        <p className="material-assign-hint">{BC_KIND_HINTS[bcDraftKind]}</p>
+        <div className="bc-add-card">
+          {showMesh && meshPicks.length > 0 && (
+            <p className="material-assign-hint">
+              Mesh seçim: {meshGrow} · yüzey{" "}
+              {[...new Set(meshPicks.map((p) => p.faceId))].join(", ")} · parça{" "}
+              {meshPartIds.join(", ")}
+            </p>
+          )}
+
+          <p className="material-assignments-title">BC türü</p>
+          <div className="bc-button-row">
+            {(
+              [
+                "fixed",
+                "cload",
+                "pressure",
+                "displacement",
+                "sliding",
+                "bearing",
+                "gravity",
+              ] as BcKind[]
+            ).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
+                disabled={busyAction !== null}
+                onClick={() => setBcDraftKind(kind)}
+              >
+                {BC_KIND_LABELS[kind]}
+              </button>
+            ))}
+          </div>
+          <p className="material-assign-hint">{BC_KIND_HINTS[bcDraftKind]}</p>
 
         {bcDraftKind === "cload" && (
           <div className="bc-fields">
@@ -2520,6 +2521,7 @@ function App() {
         >
           Listeye ekle
         </button>
+        </div>
 
         {bcList.length > 0 && (
           <div className="material-assignments">
@@ -2924,6 +2926,58 @@ function App() {
                 />
               </div>
             </div>
+            {solveResult?.scalars && solveResult.scalars.max_von_mises !== undefined && (
+              <div className="metric-cards-row">
+                <div className="metric-card">
+                  <span className="metric-card-label">MAX STRESS</span>
+                  <span className="metric-card-value">
+                    {solveResult.scalars.max_von_mises.toFixed(0)}
+                  </span>
+                  <span className="metric-card-sub">
+                    MPa
+                    {solveResult.scalars.critical_node_id !== undefined
+                      ? ` · node #${solveResult.scalars.critical_node_id.toFixed(0)}`
+                      : ""}
+                  </span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-card-label">SAFETY FACTOR</span>
+                  <span
+                    className={
+                      solveResult.scalars.safety_factor !== undefined &&
+                      solveResult.scalars.safety_factor < 1
+                        ? "metric-card-value metric-card-value-danger"
+                        : "metric-card-value"
+                    }
+                  >
+                    {solveResult.scalars.safety_factor !== undefined
+                      ? solveResult.scalars.safety_factor.toFixed(2)
+                      : "—"}
+                  </span>
+                  <span className="metric-card-sub">akma dayanımına göre</span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-card-label">FATIGUE LIFE</span>
+                  <span className="metric-card-value">
+                    {solveResult.scalars.fatigue_life_cycles !== undefined
+                      ? solveResult.scalars.fatigue_life_cycles.toExponential(1)
+                      : "—"}
+                  </span>
+                  <span className="metric-card-sub">
+                    cycle{solveResult.fatigue_runout ? " · runout" : ""}
+                  </span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-card-label">CRITICAL NODE</span>
+                  <span className="metric-card-value">
+                    {solveResult.scalars.critical_node_id !== undefined
+                      ? `#${solveResult.scalars.critical_node_id.toFixed(0)}`
+                      : "—"}
+                  </span>
+                  <span className="metric-card-sub">max von Mises</span>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="viewer-placeholder">
