@@ -194,7 +194,6 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  const [showGroupsPanel, setShowGroupsPanel] = useState(false);
   type WizardStep = "geometry" | "mesh" | "material" | "bc" | "results";
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
@@ -1629,76 +1628,6 @@ function App() {
               >
                 ●
               </button>
-              <span className="toolbar-sep" />
-              <button
-                type="button"
-                className="toolbar-icon-button"
-                disabled={busyAction !== null}
-                onClick={() => void handleHeal()}
-                title={busyAction === "heal" ? "Düzeltiliyor…" : "Heal (geometri onarımı)"}
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 8l3 3 7-7" /></svg>
-              </button>
-              <button
-                type="button"
-                className={showDefeaturePanel ? "toolbar-icon-button active" : "toolbar-icon-button"}
-                disabled={!canDefeature || busyAction !== null}
-                onClick={() => {
-                  const hasFaceSelection = selection.mode === "surface" && selection.ids.length > 0;
-                  if (hasFaceSelection) {
-                    void handleApplyDefeature();
-                  } else {
-                    setShowDefeaturePanel((prev) => !prev);
-                  }
-                }}
-                title={busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır"}
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 13V6a3 3 0 0 1 3-3h7" /><circle cx="11" cy="11" r="2" /></svg>
-              </button>
-              <button
-                type="button"
-                className="toolbar-icon-button"
-                disabled={!canUseMidsurface || busyAction !== null}
-                onClick={handleMidsurfaceClick}
-                title={
-                  busyAction === "midsurface"
-                    ? "Oluşturuluyor…"
-                    : canUseMidsurfaceManual
-                      ? "Midsurface (2 yüzey)"
-                      : "Midsurface (parça seç)"
-                }
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 5h10v6H3z M3 8h10" /></svg>
-              </button>
-              <div className="toolbar-groups-wrap">
-                <button
-                  type="button"
-                  className={showGroupsPanel ? "toolbar-icon-button active" : "toolbar-icon-button"}
-                  onClick={() => setShowGroupsPanel((prev) => !prev)}
-                  title="Physical Group'lar"
-                >
-                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
-                </button>
-                {showGroupsPanel && (
-                  <div className="toolbar-groups-panel">
-                    <p className="toolbar-groups-title">PHYSICAL GROUP'LAR</p>
-                    {physicalGroups.length === 0 ? (
-                      <p className="toolbar-groups-empty">Henüz grup yok</p>
-                    ) : (
-                      physicalGroups.map((g) => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          className={activeGroupId === g.id ? "toolbar-groups-item active" : "toolbar-groups-item"}
-                          onClick={() => handleGroupButtonClick(g.id)}
-                        >
-                          {g.name}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           )}
           <button
@@ -1787,6 +1716,57 @@ function App() {
                 }))}
               />
             </div>
+
+            <ButtonGroup
+              title="GEOMETRİ"
+              items={[
+                {
+                  key: "heal",
+                  label: busyAction === "heal" ? "Düzeltiliyor…" : "Heal",
+                  disabled: busyAction !== null,
+                  onClick: () => void handleHeal(),
+                },
+                {
+                  key: "defeature",
+                  label: busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır",
+                  active: showDefeaturePanel,
+                  disabled: !canDefeature || busyAction !== null,
+                  onClick: () => {
+                    const hasFaceSelection =
+                      selection.mode === "surface" && selection.ids.length > 0;
+                    if (hasFaceSelection) {
+                      void handleApplyDefeature();
+                    } else {
+                      setShowDefeaturePanel((prev) => !prev);
+                    }
+                  },
+                },
+                {
+                  key: "midsurface",
+                  label:
+                    busyAction === "midsurface"
+                      ? "Oluşturuluyor…"
+                      : canUseMidsurfaceManual
+                        ? "Midsurface (2 yüzey)"
+                        : "Midsurface (parça seç)",
+                  disabled: !canUseMidsurface || busyAction !== null,
+                  onClick: handleMidsurfaceClick,
+                },
+              ]}
+              layout="column"
+            />
+
+            <ButtonGroup
+              title="PHYSICAL GROUP'LAR"
+              items={physicalGroups.map((g) => ({
+                key: String(g.id),
+                label: g.name,
+                active: activeGroupId === g.id,
+                onClick: () => handleGroupButtonClick(g.id),
+              }))}
+              emptyLabel="Henüz grup yok"
+              layout="column"
+            />
 
             {showGroupForm && (
               <div className="group-create-form">
