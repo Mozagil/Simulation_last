@@ -70,13 +70,6 @@ type Status = "idle" | "uploading" | "error" | "success";
 const ACCEPTED_EXTENSIONS = ".step,.stp,.igs,.iges";
 const EMPTY_SELECTION: MultiSelectionInfo = { mode: "surface", ids: [] };
 
-const WIZARD_STEPS: { id: "geometry" | "material" | "bc" | "results"; label: string }[] = [
-  { id: "geometry", label: "1 · GEOMETRY" },
-  { id: "material", label: "2 · MATERIAL" },
-  { id: "bc", label: "3 · BOUNDARY CONDITIONS" },
-  { id: "results", label: "4 · RESULTS" },
-];
-
 /** GeometryViewer'daki jetColor() ile BİREBİR aynı formül — renk skalası
  * (legend) 3B render ile piksel piksel tutarlı olsun diye.
  */
@@ -199,8 +192,24 @@ function ProductTreeRow({
 function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  type WizardStep = "geometry" | "material" | "bc" | "results";
-  const [activeStep, setActiveStep] = useState<WizardStep>("geometry");
+  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "results";
+  // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
+  // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
+  // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
+  const [expandedSteps, setExpandedSteps] = useState<Set<WizardStep>>(
+    () => new Set(["geometry"]),
+  );
+  function toggleStep(step: WizardStep) {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(step)) next.delete(step);
+      else next.add(step);
+      return next;
+    });
+  }
+  function ensureStepExpanded(step: WizardStep) {
+    setExpandedSteps((prev) => (prev.has(step) ? prev : new Set(prev).add(step)));
+  }
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -274,6 +283,8 @@ function App() {
   const [customFy, setCustomFy] = useState("235"); // MPa
   const [customRm, setCustomRm] = useState("360"); // MPa
   const [snEstimate, setSnEstimate] = useState(true);
+  const [showAdvancedMaterial, setShowAdvancedMaterial] = useState(false);
+  const [showCustomMaterialForm, setShowCustomMaterialForm] = useState(false);
   const [solveResult, setSolveResult] = useState<SolveResponse | null>(null);
   const [resultsPreview, setResultsPreview] = useState<ResultsPreviewData | null>(null);
   const [showResults, setShowResults] = useState(false);
@@ -452,6 +463,7 @@ function App() {
       // Gmsh kilidini uzun süre tutup UI'yi "Yükleniyor"da bırakıyordu.
       setStatus("success");
       setInfoMessage("Önizleme hazır. Kenar/nokta listesi arka planda yükleniyor…");
+      ensureStepExpanded("mesh");
 
       const geoId = result.geometry_id;
       void (async () => {
@@ -873,6 +885,7 @@ function App() {
         edgeNodeCounts,
       );
       setMeshResult(result);
+      ensureStepExpanded("material");
       setMeshDimension(result.dimension === 3 ? 3 : 2);
       if (result.element_scheme === "tet" || result.element_scheme === "quad" || result.element_scheme === "mix") {
         setMeshScheme(result.element_scheme);
@@ -1126,6 +1139,7 @@ function App() {
       }
       const tree = await fetchProductTree(geometryId, 0);
       setProductTree(tree);
+      ensureStepExpanded("bc");
       setInfoMessage(
         last
           ? `Malzeme atandı: parça #${partIds.join(", #")} → ${last.material_name}.`
@@ -1476,6 +1490,7 @@ function App() {
         name: caseNameInput.trim() || undefined,
       });
       setSolveResult(result);
+      ensureStepExpanded("results");
       setInfoMessage(result.message);
       void refreshHistory();
 
@@ -1548,8 +1563,40 @@ function App() {
   return (
     <main className="page" data-collapsed={sidebarCollapsed ? "" : undefined}>
       <div className="toolbar">
-        <span className="toolbar-title">CAE Analiz Otomasyon Platformu</span>
+        <div className="toolbar-left">
+          <span className="toolbar-icon" aria-hidden="true">
+            ◆
+          </span>
+          <span className="toolbar-title">
+            CALCULIX · DURABILITY{fileName ? ` / ${fileName}` : ""}
+          </span>
+        </div>
         <div className="toolbar-actions">
+          <span className="toolbar-status">
+            <span
+              className={
+                busyAction === "solve"
+                  ? "toolbar-status-dot toolbar-status-dot-busy"
+                  : solveResult
+                    ? "toolbar-status-dot toolbar-status-dot-ok"
+                    : "toolbar-status-dot"
+              }
+            />
+            {busyAction === "solve"
+              ? "çözülüyor…"
+              : solveResult
+                ? `çözüldü · ${solveResult.solver_ran ? "ccx" : "inp"}`
+                : "solver hazır"}
+          </span>
+          <button
+            type="button"
+            className="toolbar-run-button"
+            disabled={busyAction !== null || geometryId === null || meshResult === null}
+            onClick={() => void handleSolve()}
+            title="Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
+          >
+            ▶ {busyAction === "solve" ? "ÜRETİLİYOR…" : "RUN SIMULATION"}
+          </button>
           <button
             type="button"
             className="sidebar-collapse-button"
@@ -1562,7 +1609,14 @@ function App() {
         </div>
       </div>
       <div className="left-column">
-      {activeStep === "geometry" && (
+      <button
+        type="button"
+        className={expandedSteps.has("geometry") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("geometry")}
+      >
+        1 · GEOMETRY
+      </button>
+      {expandedSteps.has("geometry") && (
       <div className="panel">
         <span className="eyebrow">Faz 0 · Geometri önizleme</span>
         <h1>Geometri yükle</h1>
@@ -1708,21 +1762,6 @@ function App() {
         </div>
       )}
 
-      {status === "success" && (
-        <div className="step-nav">
-          {WIZARD_STEPS.map((step) => (
-            <button
-              key={step.id}
-              type="button"
-              className={activeStep === step.id ? "step-nav-item active" : "step-nav-item"}
-              onClick={() => setActiveStep(step.id)}
-            >
-              {step.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="panel history-panel">
         <span className="eyebrow">Faz 0 · Geçmiş</span>
         <h1>Analiz Geçmişi ({runsHistory.length})</h1>
@@ -1775,14 +1814,142 @@ function App() {
         )}
       </div>
 
-      {activeStep === "material" && (
+      <button
+        type="button"
+        className={expandedSteps.has("mesh") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("mesh")}
+      >
+        2 · MESH
+      </button>
+      {expandedSteps.has("mesh") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · Mesh</span>
+        <h1>Mesh</h1>
+        <label className="mesh-field">
+          <span>Eleman boyutu</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.1"
+            value={meshElementSize}
+            onChange={(e) => setMeshElementSize(e.target.value)}
+            disabled={busyAction === "mesh"}
+          />
+        </label>
+        <div className="mesh-dim-row" role="group" aria-label="Mesh boyutu">
+          <button
+            type="button"
+            className={meshDimension === 2 ? "active" : undefined}
+            disabled={busyAction === "mesh"}
+            onClick={() => {
+              setMeshDimension(2);
+              setMeshScheme("quad");
+            }}
+          >
+            2D shell
+          </button>
+          <button
+            type="button"
+            className={meshDimension === 3 ? "active" : undefined}
+            disabled={busyAction === "mesh"}
+            onClick={() => {
+              setMeshDimension(3);
+              setMeshScheme("tet");
+            }}
+          >
+            3D solid
+          </button>
+        </div>
+        <label className="mesh-field">
+          <span>Eleman tipi</span>
+          <select
+            value={meshScheme}
+            disabled={busyAction === "mesh"}
+            onChange={(e) => setMeshScheme(e.target.value as MeshElementScheme)}
+          >
+            <option value="tet">tet</option>
+            <option value="quad">quad</option>
+            <option value="mix">mix</option>
+          </select>
+        </label>
+        <p className="mesh-side-hint">
+          Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
+          değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).
+        </p>
+        <button
+          type="button"
+          className="mesh-generate-button"
+          disabled={busyAction !== null}
+          onClick={() => void handleGenerateMesh()}
+        >
+          {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
+        </button>
+        <div className="mesh-tools" role="group" aria-label="Mesh araçları">
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleMeshQuality()}
+          >
+            {busyAction === "mesh-quality" ? "Hesaplanıyor…" : "Kalite"}
+          </button>
+          <button type="button" disabled title="Sonraki adım">
+            Free edge
+          </button>
+          <button type="button" disabled title="Sonraki adım">
+            Equivalence
+          </button>
+          <button type="button" disabled title="Sonraki adım">
+            Rigid body
+          </button>
+        </div>
+        {meshResult && (
+          <div className="mesh-result">
+            <p>
+              {meshResult.dimension === 2 ? "Shell" : "Solid"} ·{" "}
+              {meshResult.element_scheme} · size {meshResult.element_size}
+            </p>
+            <p>
+              {meshResult.node_count} düğüm · {meshResult.element_count} eleman
+            </p>
+            <ul>
+              {Object.entries(meshResult.element_type_counts).map(([name, n]) => (
+                <li key={name}>
+                  {name}: {n}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {meshQuality && (
+          <div className="mesh-result mesh-quality-result">
+            <p>Kalite · {meshQuality.element_count} eleman</p>
+            <p>
+              Jacobian (minSJ): {meshQuality.jacobian.min.toFixed(4)} /{" "}
+              {meshQuality.jacobian.mean.toFixed(4)} /{" "}
+              {meshQuality.jacobian.max.toFixed(4)}
+            </p>
+            <p>
+              Aspect: {meshQuality.aspect_ratio.min.toFixed(3)} /{" "}
+              {meshQuality.aspect_ratio.mean.toFixed(3)} /{" "}
+              {meshQuality.aspect_ratio.max.toFixed(3)}
+            </p>
+            <p className="mesh-quality-hint">min / mean / max</p>
+          </div>
+        )}
+      </div>
+      )}
+
+      <button
+        type="button"
+        className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("material")}
+      >
+        3 · MATERIAL
+      </button>
+      {expandedSteps.has("material") && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Malzeme</span>
         <h1>Malzeme</h1>
-        <p className="lead material-lead">
-          Kütüphaneden tipik/nominal değer seçin. Mesh sonrası component
-          otomatik oluşur; kalınlık ve malzeme ürün ağacından girilir.
-        </p>
         {materials.length === 0 ? (
           <p className="filename">Malzeme listesi yükleniyor…</p>
         ) : (
@@ -1802,20 +1969,6 @@ function App() {
             </label>
             {selectedMaterial && (
               <div className="material-props">
-                <p>
-                  <span>Kaynak</span>
-                  {selectedMaterial.source === "library"
-                    ? "kütüphane (tipik)"
-                    : selectedMaterial.source === "user_defined"
-                      ? "kullanıcı tanımlı"
-                      : selectedMaterial.source}
-                </p>
-                {selectedMaterial.standard && (
-                  <p>
-                    <span>Standart</span>
-                    {selectedMaterial.standard}
-                  </p>
-                )}
                 <p>
                   <span>E</span>
                   {formatGPa(selectedMaterial.youngs_modulus)}
@@ -1860,14 +2013,32 @@ function App() {
                 </p>
               </div>
             )}
+            <div className="material-action-row">
+              <button
+                type="button"
+                className="material-assign-button"
+                disabled={!canAssignMaterial || busyAction !== null}
+                onClick={() => void handleAssignMaterial()}
+              >
+                {busyAction === "assign-material" ? "Atanıyor…" : "ATA"}
+              </button>
+              <button
+                type="button"
+                className="material-secondary-button"
+                onClick={() => setShowCustomMaterialForm((prev) => !prev)}
+              >
+                + ÖZEL
+              </button>
+            </div>
             <button
               type="button"
-              className="material-assign-button"
-              disabled={!canAssignMaterial || busyAction !== null}
-              onClick={() => void handleAssignMaterial()}
+              className="material-advanced-toggle"
+              onClick={() => setShowAdvancedMaterial((prev) => !prev)}
             >
-              {busyAction === "assign-material" ? "Atanıyor…" : "Malzeme ata"}
+              {showAdvancedMaterial ? "▾" : "▸"} Gelişmiş (component / kalınlık)
             </button>
+            {showAdvancedMaterial && (
+              <>
             <label className="mesh-field material-field">
               <span>Component adı</span>
               <input
@@ -1923,6 +2094,8 @@ function App() {
             {canCreateComponent && !canAssignMaterial && (
               <p className="material-assign-hint">Kütüphaneden malzeme seçin.</p>
             )}
+              </>
+            )}
             {productTree && productTree.items.filter((i) => i.component).length > 0 && (
               <div className="product-tree">
                 <p className="material-assignments-title">Ürün ağacı</p>
@@ -1956,6 +2129,7 @@ function App() {
                 </ul>
               </div>
             )}
+            {showCustomMaterialForm && (
             <div className="material-custom">
               <p className="material-assignments-title">Özel malzeme</p>
               <label className="mesh-field material-field">
@@ -2005,15 +2179,36 @@ function App() {
                 {busyAction === "create-material" ? "Ekleniyor…" : "Özel malzeme ekle"}
               </button>
             </div>
+            )}
           </>
         )}
       </div>
       )}
 
-      {activeStep === "bc" && (
+      <button
+        type="button"
+        className={expandedSteps.has("bc") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("bc")}
+      >
+        4 · BOUNDARY CONDITIONS
+      </button>
+      {expandedSteps.has("bc") && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · CalculiX</span>
         <h1>Solver / BC</h1>
+        {meshResult && (
+          <div className="bc-mesh-summary">
+            <p>
+              <span>element size</span>
+              {meshResult.element_size} mm
+            </p>
+            <p>
+              <span>scheme</span>
+              {meshResult.dimension === 2 ? "2D · " : "3D · "}
+              {meshResult.element_scheme}
+            </p>
+          </div>
+        )}
         <p className="lead material-lead">
           Mesh elemanına tıklayın (Face = tüm yüzey) → BC türünü seçin → Listeye ekle.
           Kalınlık ürün ağacındadır.
@@ -2168,17 +2363,28 @@ function App() {
 
         {bcList.length > 0 && (
           <div className="material-assignments">
-            <p className="material-assignments-title">Eklenen BC ({bcList.length})</p>
-            <ul>
-              {bcList.map((b) => (
-                <li key={b.id} className="bc-list-item">
+            <div className="bc-list-header">
+              <p className="material-assignments-title">BC LİSTESİ</p>
+              <span className="bc-list-count">{bcList.length}</span>
+            </div>
+            <ul className="bc-card-list">
+              {bcList.map((b, i) => (
+                <li key={b.id} className={i === 0 ? "bc-card bc-card-first" : "bc-card"}>
                   <span>{b.summary}</span>
-                  <button type="button" className="bc-remove-button" onClick={() => handleRemoveBc(b.id)}>
-                    Sil
+                  <button
+                    type="button"
+                    className="bc-remove-button"
+                    onClick={() => handleRemoveBc(b.id)}
+                    title="Kaldır"
+                  >
+                    ⋯
                   </button>
                 </li>
               ))}
             </ul>
+            <p className="bc-type-hint">
+              Fixed · Force · Pressure · Displacement · Sliding · Bearing · Gravity
+            </p>
           </div>
         )}
 
@@ -2210,13 +2416,20 @@ function App() {
       </div>
       )}
 
-      {activeStep === "results" && (
+      <button
+        type="button"
+        className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("results")}
+      >
+        5 · RESULTS
+      </button>
+      {expandedSteps.has("results") && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Sonuç</span>
         <h1>Results</h1>
         {!solveResult && (
           <p className="lead material-lead">
-            Henüz çözüm yok — önce "3 · BOUNDARY CONDITIONS" adımından BC ekleyip
+            Henüz çözüm yok — önce "4 · BOUNDARY CONDITIONS" adımından BC ekleyip
             ".inp üret / çöz" butonuna basın. Sonuç görselleştirmesi (renk skalası,
             deformasyon) 3B görünümün üzerinde (sağ üst/alt köşelerde) belirir.
           </p>
@@ -2598,120 +2811,6 @@ function App() {
                   onMeshPicks={handleMeshPicks}
                 />
               </div>
-              <aside className="mesh-side-panel" aria-label="Mesh">
-                <p className="mesh-side-title">Mesh</p>
-                <label className="mesh-field">
-                  <span>Eleman boyutu</span>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.1"
-                    value={meshElementSize}
-                    onChange={(e) => setMeshElementSize(e.target.value)}
-                    disabled={busyAction === "mesh"}
-                  />
-                </label>
-                <div className="mesh-dim-row" role="group" aria-label="Mesh boyutu">
-                  <button
-                    type="button"
-                    className={meshDimension === 2 ? "active" : undefined}
-                    disabled={busyAction === "mesh"}
-                    onClick={() => {
-                      setMeshDimension(2);
-                      setMeshScheme("quad");
-                    }}
-                  >
-                    2D shell
-                  </button>
-                  <button
-                    type="button"
-                    className={meshDimension === 3 ? "active" : undefined}
-                    disabled={busyAction === "mesh"}
-                    onClick={() => {
-                      setMeshDimension(3);
-                      setMeshScheme("tet");
-                    }}
-                  >
-                    3D solid
-                  </button>
-                </div>
-                <label className="mesh-field">
-                  <span>Eleman tipi</span>
-                  <select
-                    value={meshScheme}
-                    disabled={busyAction === "mesh"}
-                    onChange={(e) => setMeshScheme(e.target.value as MeshElementScheme)}
-                  >
-                    <option value="tet">tet</option>
-                    <option value="quad">quad</option>
-                    <option value="mix">mix</option>
-                  </select>
-                </label>
-                <p className="mesh-side-hint">
-                  Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
-                  değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).
-                </p>
-                <button
-                  type="button"
-                  className="mesh-generate-button"
-                  disabled={busyAction !== null}
-                  onClick={() => void handleGenerateMesh()}
-                >
-                  {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
-                </button>
-                <div className="mesh-tools" role="group" aria-label="Mesh araçları">
-                  <button
-                    type="button"
-                    disabled={busyAction !== null || meshResult === null}
-                    onClick={() => void handleMeshQuality()}
-                  >
-                    {busyAction === "mesh-quality" ? "Hesaplanıyor…" : "Kalite"}
-                  </button>
-                  <button type="button" disabled title="Sonraki adım">
-                    Free edge
-                  </button>
-                  <button type="button" disabled title="Sonraki adım">
-                    Equivalence
-                  </button>
-                  <button type="button" disabled title="Sonraki adım">
-                    Rigid body
-                  </button>
-                </div>
-                {meshResult && (
-                  <div className="mesh-result">
-                    <p>
-                      {meshResult.dimension === 2 ? "Shell" : "Solid"} ·{" "}
-                      {meshResult.element_scheme} · size {meshResult.element_size}
-                    </p>
-                    <p>
-                      {meshResult.node_count} düğüm · {meshResult.element_count} eleman
-                    </p>
-                    <ul>
-                      {Object.entries(meshResult.element_type_counts).map(([name, n]) => (
-                        <li key={name}>
-                          {name}: {n}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {meshQuality && (
-                  <div className="mesh-result mesh-quality-result">
-                    <p>Kalite · {meshQuality.element_count} eleman</p>
-                    <p>
-                      Jacobian (minSJ): {meshQuality.jacobian.min.toFixed(4)} /{" "}
-                      {meshQuality.jacobian.mean.toFixed(4)} /{" "}
-                      {meshQuality.jacobian.max.toFixed(4)}
-                    </p>
-                    <p>
-                      Aspect: {meshQuality.aspect_ratio.min.toFixed(3)} /{" "}
-                      {meshQuality.aspect_ratio.mean.toFixed(3)} /{" "}
-                      {meshQuality.aspect_ratio.max.toFixed(3)}
-                    </p>
-                    <p className="mesh-quality-hint">min / mean / max</p>
-                  </div>
-                )}
-              </aside>
             </div>
           </>
         ) : (
