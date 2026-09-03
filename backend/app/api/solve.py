@@ -97,12 +97,38 @@ def solve_geometry(
     ]
 
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
-    # En az bir fixed yoksa ve bcs boşsa — hardcoded basit senaryo
+    # KRİTİK: eskiden bcs boşsa sessizce `face_ids=[]` ile bir "fixed" BC
+    # (aslında hiçbir düğümü sabitlemeyen, no-op) + gravity kullanılıyordu.
+    # Bu, cismi hiçbir yerde sabitlemeden yerçekimine bırakıyordu — rijit
+    # cisim hareketi (singular stiffness matrix), sayısal olarak anlamsız
+    # dev sonuçlar üretiyordu (gerçek bir testte doğrulandı:
+    # max_displacement=87709030867 mm gibi). Artık sessizce "çalışıyormuş
+    # gibi" davranmak yerine net bir hata döndürüyoruz — mühendis en az
+    # bir yer değiştirme kısıtı (Fixed/Displacement/Sliding) eklemeden
+    # çözüm yapılamaz.
     if not bcs:
-        bcs = [
-            {"type": "fixed", "face_ids": []},  # adapter atlar
-            {"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -9810.0},
-        ]
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "En az bir sınır koşulu (BC) eklemeden çözülemez. "
+                "BC olmadan (özellikle bir Fixed support olmadan) model "
+                "boşlukta serbestçe hareket eder — rijit cisim hareketi "
+                "(anlamsız, aşırı büyük deplasman) üretir."
+            ),
+        )
+    has_constraint = any(
+        bc.get("type") in ("fixed", "displacement", "sliding") for bc in bcs
+    )
+    if not has_constraint:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "En az bir yer değiştirme kısıtlayan BC gerekli "
+                "(Fixed / Displacement / Sliding). Sadece yük (Force / "
+                "Pressure / Gravity) ile model boşlukta asılı kalır — "
+                "rijit cisim hareketi oluşur, sonuçlar anlamsız çıkar."
+            ),
+        )
 
     # ÖNCE kalıcı bir AnalysisRun satırı oluşturulur (status="pending") —
     # bu, ROADMAP.md "7. Veritabanına kayıt + geçmiş" gereksinimi: her
