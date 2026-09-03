@@ -56,18 +56,78 @@ p {
   background: var(--surface);
 }
 
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-icon {
+  color: var(--accent);
+  font-size: 15px;
+}
+
 .toolbar-title {
   font-family: var(--font-head);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.toolbar-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.toolbar-status-dot-busy {
+  background: var(--highlight);
+}
+
+.toolbar-status-dot-ok {
+  background: var(--success);
+}
+
+.toolbar-run-button {
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toolbar-run-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.toolbar-run-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sidebar-collapse-button {
@@ -147,6 +207,33 @@ p {
 .material-props span {
   color: var(--muted);
   font-weight: 500;
+}
+
+.material-action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.material-action-row .material-assign-button,
+.material-action-row .material-secondary-button {
+  margin-top: 0;
+  flex: 1;
+}
+
+.material-advanced-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.material-advanced-toggle:hover {
+  color: var(--accent);
 }
 
 .material-assign-button {
@@ -251,6 +338,74 @@ p {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.bc-mesh-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.bc-mesh-summary p {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.bc-mesh-summary p span {
+  color: var(--muted);
+}
+
+.bc-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.bc-list-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bc-card-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bc-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.bc-card-first {
+  border-left: 2px solid var(--accent);
+}
+
+.bc-type-hint {
+  margin-top: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .bc-remove-button {
