@@ -60,5 +60,12 @@ class AnalysisRun(Base):
     # Bu run'ın kendi mesh önizlemesinin ANLIK GÖRÜNTÜSÜ (aynı geometride
     # sonraki bir case'in mesh'i yeniden üretilse bile bu run etkilenmez).
     mesh_preview_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Bu run'ın kendi CAD tessellation'ının (STL) ANLIK GÖRÜNTÜSÜ — geometri
+    # bu run'dan SONRA mutasyona uğrarsa (heal/defeature/offset/midsurface)
+    # canlı tessellation_url artık FARKLI bir geometri durumuna işaret eder.
+    # Karşılaştırma/geçmiş görünümü bu yüzden HER ZAMAN bu anlık görüntüyü
+    # kullanmalı, canlı geometrinin STL'ini değil — gerçek bir ekran
+    # görüntüsünde ("sonuçlar geometriden kaymış görünüyor") kanıtlandı.
+    tessellation_snapshot_path: Mapped[str | None] = mapped_column(String, nullable=True)
 
     geometry: Mapped["Geometry"] = relationship()  # noqa: F821

@@ -7,14 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.geometry import MESH_DIR, UPLOAD_DIR, _get_geometry_or_404
+from app.api.geometry import MESH_DIR, TESSELLATION_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import get_db
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
 from app.postprocess.fatigue import compute_safety_factor, estimate_fatigue_life
+from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 
@@ -166,6 +168,18 @@ def solve_geometry(
         mesh_preview_dst.write_bytes(mesh_preview_src.read_bytes())
         mesh_preview_snapshot_path = str(mesh_preview_dst).replace("\\", "/")
         run.mesh_preview_path = mesh_preview_snapshot_path
+
+    # Bu run'ın kendi CAD tessellation'ının (STL) anlık görüntüsü — geometri
+    # bu run'dan SONRA mutasyona uğrarsa (heal/defeature/offset/midsurface)
+    # canlı STL artık FARKLI bir durumu gösterir. Karşılaştırma/geçmiş
+    # görünümü HER ZAMAN bu anlık görüntüyü kullanmalı (gerçek bir ekran
+    # görüntüsünde "sonuçlar geometriden kaymış" diye tespit edilen hatanın
+    # kök nedeni buydu).
+    tessellation_src = TESSELLATION_DIR / f"{geometry_id}.stl"
+    if tessellation_src.exists():
+        tessellation_dst = run_dir / "tessellation.stl"
+        tessellation_dst.write_bytes(tessellation_src.read_bytes())
+        run.tessellation_snapshot_path = str(tessellation_dst).replace("\\", "/")
 
     adapter = CalculiXAdapter()
     try:
@@ -352,7 +366,15 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         "status": run.status,
         "message": run.message,
         "scalars": run.scalars,
-        "tessellation_url": f"/files/tessellations/{run.geometry_id}.stl" if run.geometry_id else None,
+        "tessellation_url": (
+            f"/files/runs/{run.id}/tessellation.stl"
+            if run.tessellation_snapshot_path
+            # Eski run'lar (bu düzeltmeden ÖNCE çözülmüş) anlık görüntüye
+            # sahip değil — geriye dönük uyumluluk için canlı geometriye
+            # düşülür (bu run'dan sonra geometri mutasyona uğramadıysa
+            # doğru, uğradıysa yine kayma görülebilir — bilinen sınırlama).
+            else (f"/files/tessellations/{run.geometry_id}.stl" if run.geometry_id else None)
+        ),
         "mesh_preview_url": f"/files/runs/{run.id}/mesh_preview.json" if run.mesh_preview_path else None,
         "results_preview_url": (
             f"/files/runs/{run.id}/{Path(run.results_preview_path).name}"
@@ -361,6 +383,37 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         ),
         "inp_url": f"/files/runs/{run.id}/{Path(run.inp_path).name}" if run.inp_path else None,
     }
+
+
+@router.get("/runs/{run_id}/report.pdf")
+def get_run_report_pdf(run_id: int, db: Session = Depends(get_db)) -> Response:
+    """Bu run için okunabilir bir PDF özet rapor üretir — proje/case bilgisi,
+    malzeme, BC listesi, sonuç skalerleri. Ham veri (.inp/.frd/.json) ayrı
+    endpoint'lerden zaten indirilebiliyor; bu rapor paylaşılabilir bir özet.
+    """
+    run = db.get(AnalysisRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run bulunamadı: id={run_id}")
+
+    pdf_bytes = build_run_report_pdf(
+        run_id=run.id,
+        run_name=run.name,
+        geometry_filename=run.geometry.original_filename if run.geometry else None,
+        created_at=run.created_at,
+        dimension=run.dimension,
+        status=run.status,
+        message=run.message,
+        bcs=run.bcs or [],
+        materials_snapshot=run.materials_snapshot or [],
+        scalars=run.scalars or {},
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="run{run.id}_report.pdf"',
+        },
+    )
 
 
 # Static mount için dizin

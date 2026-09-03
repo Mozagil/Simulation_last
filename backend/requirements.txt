@@ -10,5 +10,8 @@ alembic==1.19.1
 psycopg2-binary==2.9.12
 python-dotenv==1.2.2
 
+# --- rapor üretimi ---
+reportlab==4.4.10
+
 # --- test ---
 pytest==8.3.3
