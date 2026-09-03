@@ -1709,22 +1709,6 @@ function App() {
               <p className="face-info-selected">{describeSelection(selection)}</p>
             )}
 
-            <div className="geo-selection-mode">
-              <ButtonGroup
-                title="SEÇİM MODU"
-                items={SELECTION_MODES.map(({ mode: m, label }) => ({
-                  key: m,
-                  label,
-                  active: mode === m,
-                  onClick: () => {
-                    setMode(m);
-                    setSelection({ mode: m, ids: [] });
-                    setMeshPicks([]);
-                    setMeshGrow("element");
-                  },
-                }))}
-              />
-            </div>
 
             <ButtonGroup
               title="GEOMETRİ"
@@ -2699,6 +2683,34 @@ function App() {
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
               </button>
+              <span className="viewer-ribbon-sep" />
+              {SELECTION_MODES.map(({ mode: m, label }) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={mode === m ? "active" : undefined}
+                  onClick={() => {
+                    setMode(m);
+                    setSelection({ mode: m, ids: [] });
+                    setMeshPicks([]);
+                    setMeshGrow("element");
+                  }}
+                  title={label}
+                >
+                  {m === "part" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
+                  )}
+                  {m === "surface" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z" /></svg>
+                  )}
+                  {m === "edge" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12L13 4" /></svg>
+                  )}
+                  {m === "point" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5" /></svg>
+                  )}
+                </button>
+              ))}
               <span className="viewer-ribbon-sep" />
               <button
                 type="button"
