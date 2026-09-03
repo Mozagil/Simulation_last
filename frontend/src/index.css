@@ -130,6 +130,119 @@ p {
   cursor: not-allowed;
 }
 
+.toolbar-geo-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
+.toolbar-opacity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.toolbar-opacity input[type="range"] {
+  width: 60px;
+  accent-color: var(--accent);
+}
+
+.toolbar-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toolbar-icon-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar-icon-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.toolbar-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+.toolbar-groups-wrap {
+  position: relative;
+}
+
+.toolbar-groups-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: 200px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-groups-title {
+  margin: 0 0 4px;
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.toolbar-groups-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.toolbar-groups-item {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolbar-groups-item.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
 .sidebar-collapse-button {
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -1164,6 +1277,15 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-2);
+}
+
+.button-group-row-column {
+  flex-direction: column;
+}
+
+.button-group-row-column .button-group-button {
+  width: 100%;
+  text-align: left;
 }
 
 .button-group-button {

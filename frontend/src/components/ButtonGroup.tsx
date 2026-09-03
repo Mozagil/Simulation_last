@@ -10,15 +10,18 @@ interface ButtonGroupProps {
   title: string;
   items: ButtonGroupItem[];
   emptyLabel?: string;
+  /** "row" (varsayılan) yatay sığdırır; "column" uzun etiketli çok sayıda
+   * buton taştığında alt alta dizer. */
+  layout?: "row" | "column";
 }
 
 /** Başlıklı, yatay bir buton grubu — seçim modu, işlemler, dinamik gruplar
  * gibi birden fazla buton kümesi için tek tip görsel dil sağlar. */
-function ButtonGroup({ title, items, emptyLabel }: ButtonGroupProps) {
+function ButtonGroup({ title, items, emptyLabel, layout = "row" }: ButtonGroupProps) {
   return (
     <div className="button-group">
       <span className="button-group-title">{title}</span>
-      <div className="button-group-row">
+      <div className={layout === "column" ? "button-group-row button-group-row-column" : "button-group-row"}>
         {items.length === 0 && emptyLabel ? (
           <span className="button-group-empty">{emptyLabel}</span>
         ) : (
