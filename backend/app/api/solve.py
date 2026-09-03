@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.geometry import MESH_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import get_db
 from app.models.material import MaterialAssignment
+from app.models.run import AnalysisRun
 from app.solvers.base import SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 
@@ -51,6 +52,8 @@ class SolveRequest(BaseModel):
         description="True ise ccx çalıştırılır (kurulu olmalı)",
     )
     bcs: list[SolveBC] = Field(default_factory=list)
+    # Kullanıcının bu çözüme verdiği isteğe bağlı etiket (history'de görünür).
+    name: str | None = Field(default=None)
 
 
 @router.post("/{geometry_id}/solve")
@@ -93,10 +96,6 @@ def solve_geometry(
         for a in assignments
     ]
 
-    run_dir = RUNS_DIR / str(geometry_id)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    job_name = f"geo{geometry_id}_d{body.dimension}"
-
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
     # En az bir fixed yoksa ve bcs boşsa — hardcoded basit senaryo
     if not bcs:
@@ -104,6 +103,42 @@ def solve_geometry(
             {"type": "fixed", "face_ids": []},  # adapter atlar
             {"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -9810.0},
         ]
+
+    # ÖNCE kalıcı bir AnalysisRun satırı oluşturulur (status="pending") —
+    # bu, ROADMAP.md "7. Veritabanına kayıt + geçmiş" gereksinimi: her
+    # çözüm (başarılı ya da başarısız) SİLİNMEDEN kaydedilir, Faz 4'teki
+    # surrogate model eğitimi için veri kaynağı olacak. run.id, dosya
+    # adlandırması için de kullanılıyor — eskiden `geo{id}_d{dim}` idi ve
+    # aynı geometride ikinci bir case çözünce öncekinin dosyalarının üzerine
+    # yazıyordu; artık her run kendi klasöründe (`uploads/runs/{run_id}/`)
+    # bağımsız yaşıyor.
+    run = AnalysisRun(
+        geometry_id=geometry_id,
+        name=body.name,
+        dimension=body.dimension,
+        element_scheme=None,
+        shell_thickness=body.shell_thickness,
+        bcs=bcs,
+        materials_snapshot=materials,
+        status="pending",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    run_dir = RUNS_DIR / str(run.id)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    job_name = f"run{run.id}"
+
+    # Bu run'ın kendi mesh önizlemesinin anlık görüntüsü — aynı geometride
+    # sonraki bir case'in mesh'i yeniden üretilse bile bu run etkilenmesin.
+    mesh_preview_src = MESH_DIR / f"{stem}_d{body.dimension}.preview.json"
+    mesh_preview_snapshot_path: str | None = None
+    if mesh_preview_src.exists():
+        mesh_preview_dst = run_dir / "mesh_preview.json"
+        mesh_preview_dst.write_bytes(mesh_preview_src.read_bytes())
+        mesh_preview_snapshot_path = str(mesh_preview_dst).replace("\\", "/")
+        run.mesh_preview_path = mesh_preview_snapshot_path
 
     adapter = CalculiXAdapter()
     try:
@@ -119,6 +154,9 @@ def solve_geometry(
             }
         )
     except SolverError as exc:
+        run.status = "failed"
+        run.message = str(exc)
+        db.commit()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     inp_text = artifact.path.read_text(encoding="utf-8")
@@ -130,17 +168,26 @@ def solve_geometry(
         "has_step": "*STEP" in inp_text,
     }
 
+    run.inp_path = str(artifact.path).replace("\\", "/")
+    run.status = "inp_only"
+    run.message = "inp üretildi"
+    db.commit()
+
     result: dict[str, Any] = {
         "geometry_id": geometry_id,
+        "run_id": run.id,
         "dimension": body.dimension,
-        "inp_path": str(artifact.path).replace("\\", "/"),
-        "inp_url": f"/files/runs/{geometry_id}/{artifact.path.name}",
+        "inp_path": run.inp_path,
+        "inp_url": f"/files/runs/{run.id}/{artifact.path.name}",
         "ccx_available": _ccx_executable() is not None,
         "cards": cards_ok,
         "solver_ran": False,
         "job_id": None,
         "frd_path": None,
         "message": "inp üretildi",
+        "mesh_preview_url": (
+            f"/files/runs/{run.id}/mesh_preview.json" if mesh_preview_snapshot_path else None
+        ),
     }
 
     if body.run_solver:
@@ -158,23 +205,104 @@ def solve_geometry(
             result["message"] = f"ccx bitti ({status.state})"
             result["scalars"] = parsed.scalars
             result["results_preview_url"] = (
-                f"/files/runs/{geometry_id}/{parsed.results_preview_path.name}"
+                f"/files/runs/{run.id}/{parsed.results_preview_path.name}"
                 if parsed.results_preview_path
                 else None
             )
+
+            run.status = "solved"
+            run.message = result["message"]
+            run.scalars = parsed.scalars
+            run.frd_path = result["frd_path"]
+            run.results_preview_path = (
+                str(parsed.results_preview_path).replace("\\", "/")
+                if parsed.results_preview_path
+                else None
+            )
+            db.commit()
         except SolverError as exc:
             result["message"] = str(exc)
             # .inp yine döner; 200 ile uyarı
             logger.warning("ccx çalıştırılamadı: %s", exc)
+            run.status = "failed"
+            run.message = str(exc)
+            db.commit()
 
     logger.info(
-        "Solve: geometry_id=%d dim=%d inp=%s ran=%s",
+        "Solve: geometry_id=%d run_id=%d dim=%d inp=%s ran=%s",
         geometry_id,
+        run.id,
         body.dimension,
         artifact.path,
         result["solver_ran"],
     )
     return result
+
+
+@router.get("/runs")
+def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Tüm analiz geçmişini (silinmemiş, kalıcı) listeler — en yeni önce.
+
+    ROADMAP.md "7. Veritabanına kayıt + geçmiş" — frontend'de geçmiş
+    analizler listesi ve Faz 4 surrogate model eğitim verisi kaynağı.
+    """
+    runs = (
+        db.query(AnalysisRun)
+        .options(joinedload(AnalysisRun.geometry))
+        .order_by(AnalysisRun.created_at.desc())
+        .all()
+    )
+    return {
+        "count": len(runs),
+        "runs": [
+            {
+                "id": r.id,
+                "geometry_id": r.geometry_id,
+                "geometry_filename": r.geometry.original_filename if r.geometry else None,
+                "name": r.name,
+                "created_at": r.created_at.isoformat(),
+                "dimension": r.dimension,
+                "status": r.status,
+                "message": r.message,
+                "scalars": r.scalars,
+            }
+            for r in runs
+        ],
+    }
+
+
+@router.get("/runs/{run_id}")
+def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Tek bir run'ın tam detayı — split-screen karşılaştırma için gereken
+    tüm URL'leri (geometri tessellation, bu run'ın kendi mesh önizlemesi,
+    sonuç önizlemesi) içerir.
+    """
+    run = db.get(AnalysisRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run bulunamadı: id={run_id}")
+
+    return {
+        "id": run.id,
+        "geometry_id": run.geometry_id,
+        "geometry_filename": run.geometry.original_filename if run.geometry else None,
+        "name": run.name,
+        "created_at": run.created_at.isoformat(),
+        "dimension": run.dimension,
+        "shell_thickness": run.shell_thickness,
+        "bcs": run.bcs,
+        "materials_snapshot": run.materials_snapshot,
+        "status": run.status,
+        "message": run.message,
+        "scalars": run.scalars,
+        "tessellation_url": f"/files/tessellations/{run.geometry_id}.stl" if run.geometry_id else None,
+        "mesh_preview_url": f"/files/runs/{run.id}/mesh_preview.json" if run.mesh_preview_path else None,
+        "results_preview_url": (
+            f"/files/runs/{run.id}/{Path(run.results_preview_path).name}"
+            if run.results_preview_path
+            else None
+        ),
+        "inp_url": f"/files/runs/{run.id}/{Path(run.inp_path).name}" if run.inp_path else None,
+    }
 
 
 # Static mount için dizin
