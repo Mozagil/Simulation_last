@@ -70,6 +70,13 @@ type Status = "idle" | "uploading" | "error" | "success";
 const ACCEPTED_EXTENSIONS = ".step,.stp,.igs,.iges";
 const EMPTY_SELECTION: MultiSelectionInfo = { mode: "surface", ids: [] };
 
+const WIZARD_STEPS: { id: "geometry" | "material" | "bc" | "results"; label: string }[] = [
+  { id: "geometry", label: "1 · GEOMETRY" },
+  { id: "material", label: "2 · MATERIAL" },
+  { id: "bc", label: "3 · BOUNDARY CONDITIONS" },
+  { id: "results", label: "4 · RESULTS" },
+];
+
 /** GeometryViewer'daki jetColor() ile BİREBİR aynı formül — renk skalası
  * (legend) 3B render ile piksel piksel tutarlı olsun diye.
  */
@@ -191,6 +198,9 @@ function ProductTreeRow({
 
 function App() {
   const { theme, toggleTheme } = useTheme();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  type WizardStep = "geometry" | "material" | "bc" | "results";
+  const [activeStep, setActiveStep] = useState<WizardStep>("geometry");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -1536,11 +1546,23 @@ function App() {
   }
 
   return (
-    <main className="page">
-      <div className="theme-toggle-fixed">
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+    <main className="page" data-collapsed={sidebarCollapsed ? "" : undefined}>
+      <div className="toolbar">
+        <span className="toolbar-title">CAE Analiz Otomasyon Platformu</span>
+        <div className="toolbar-actions">
+          <button
+            type="button"
+            className="sidebar-collapse-button"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            title={sidebarCollapsed ? "Paneli genişlet" : "Paneli daralt"}
+          >
+            {sidebarCollapsed ? "»" : "«"}
+          </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
       </div>
       <div className="left-column">
+      {activeStep === "geometry" && (
       <div className="panel">
         <span className="eyebrow">Faz 0 · Geometri önizleme</span>
         <h1>Geometri yükle</h1>
@@ -1674,15 +1696,32 @@ function App() {
           </div>
         )}
 
-        {status !== "idle" && (
-          <div className="new-case-row">
-            <button type="button" className="reset-button" onClick={handleReset}>
-              🔄 Yeni Case Başlat
-            </button>
-            <span className="new-case-hint">Önceki analiz Geçmiş'te kalır, silinmez.</span>
-          </div>
-        )}
       </div>
+      )}
+
+      {status !== "idle" && (
+        <div className="new-case-row">
+          <button type="button" className="reset-button" onClick={handleReset}>
+            🔄 Yeni Case Başlat
+          </button>
+          <span className="new-case-hint">Önceki analiz Geçmiş'te kalır, silinmez.</span>
+        </div>
+      )}
+
+      {status === "success" && (
+        <div className="step-nav">
+          {WIZARD_STEPS.map((step) => (
+            <button
+              key={step.id}
+              type="button"
+              className={activeStep === step.id ? "step-nav-item active" : "step-nav-item"}
+              onClick={() => setActiveStep(step.id)}
+            >
+              {step.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="panel history-panel">
         <span className="eyebrow">Faz 0 · Geçmiş</span>
@@ -1736,6 +1775,7 @@ function App() {
         )}
       </div>
 
+      {activeStep === "material" && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Malzeme</span>
         <h1>Malzeme</h1>
@@ -1968,7 +2008,9 @@ function App() {
           </>
         )}
       </div>
+      )}
 
+      {activeStep === "bc" && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · CalculiX</span>
         <h1>Solver / BC</h1>
@@ -2165,6 +2207,20 @@ function App() {
         >
           {busyAction === "solve" ? "Üretiliyor…" : ".inp üret / çöz"}
         </button>
+      </div>
+      )}
+
+      {activeStep === "results" && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · Sonuç</span>
+        <h1>Results</h1>
+        {!solveResult && (
+          <p className="lead material-lead">
+            Henüz çözüm yok — önce "3 · BOUNDARY CONDITIONS" adımından BC ekleyip
+            ".inp üret / çöz" butonuna basın. Sonuç görselleştirmesi (renk skalası,
+            deformasyon) 3B görünümün üzerinde (sağ üst/alt köşelerde) belirir.
+          </p>
+        )}
         {solveResult && (
           <div className="material-assignments">
             <p className="material-assignments-title">Sonuç</p>
@@ -2178,9 +2234,16 @@ function App() {
             <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
               .inp indir
             </a>
+            <p className="material-assign-hint" style={{ marginTop: 8 }}>
+              Görselleştirme kontrolleri (renk skalası, Von Mises/Deplasman,
+              deformasyon animasyonu) 3B görünümün üzerinde — sağ üst ve sağ alt
+              köşelerdeki yüzen panellerde.
+            </p>
           </div>
         )}
       </div>
+      )}
+
       </div>
 
       <div className="viewer-panel">

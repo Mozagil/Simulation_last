@@ -18,7 +18,7 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
-  --sidebar-w: 260px;
+  --sidebar-w: 400px;
 
   /* contour skalası: sonuç renk gradyanı (legend + colorbar) */
   --contour: linear-gradient(to top, #2f7fd1, #4fbf6a, #f5c63c, #d93b2b);
