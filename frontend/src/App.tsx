@@ -57,6 +57,7 @@ import {
 } from "./api/components";
 import ButtonGroup from "./components/ButtonGroup";
 import GeometryViewer from "./components/GeometryViewer";
+import type { GeometryViewerHandle } from "./components/GeometryViewer";
 import {
   type MeshGrowMode,
   type MeshPickInfo,
@@ -192,6 +193,7 @@ function ProductTreeRow({
 function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const geometryViewerRef = useRef<GeometryViewerHandle>(null);
   type WizardStep = "geometry" | "mesh" | "material" | "bc" | "results";
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
@@ -1620,12 +1622,6 @@ function App() {
       <div className="panel">
         <span className="eyebrow">Faz 0 · Geometri önizleme</span>
         <h1>Geometri yükle</h1>
-        <p className="lead">
-          STEP ya da IGES dosyanızı seçin, sunucu Gmsh ile tessellation üretsin —
-          sonucu aşağıda döndürerek inceleyebilir, seçim modunu değiştirerek
-          parça/yüzey/kenar/nokta seçebilirsiniz. Ctrl (Cmd) + tık ile birden
-          fazla öğe seçebilirsiniz.
-        </p>
 
         <label className="upload-control">
           <input
@@ -1655,11 +1651,40 @@ function App() {
 
         {status === "success" && faceCount !== null && (
           <div className="face-info">
-            <p className="face-info-total">
-              {faceCount} yüzey, {partCount} parça, {edges.length} kenar, {points.length} nokta
-              bulundu.
-            </p>
-            <p className="face-info-selected">{describeSelection(selection)}</p>
+            <div className="geo-count-list">
+              <p>
+                <span>part count</span>
+                {partCount}
+              </p>
+              <p>
+                <span>face count</span>
+                {faceCount}
+              </p>
+              <p>
+                <span>edge / point</span>
+                {edges.length} / {points.length}
+              </p>
+            </div>
+            {selection.ids.length > 0 && (
+              <p className="face-info-selected">{describeSelection(selection)}</p>
+            )}
+
+            <div className="geo-selection-mode">
+              <ButtonGroup
+                title="SEÇİM MODU"
+                items={SELECTION_MODES.map(({ mode: m, label }) => ({
+                  key: m,
+                  label,
+                  active: mode === m,
+                  onClick: () => {
+                    setMode(m);
+                    setSelection({ mode: m, ids: [] });
+                    setMeshPicks([]);
+                    setMeshGrow("element");
+                  },
+                }))}
+              />
+            </div>
 
             {showGroupForm && (
               <div className="group-create-form">
@@ -1747,6 +1772,65 @@ function App() {
                 </button>
               </div>
             )}
+
+            <div className="geo-operations">
+              <ButtonGroup
+                title="İŞLEMLER"
+                items={[
+                  {
+                    key: "copy-surface",
+                    label: busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala",
+                    disabled: !canCopySurface || busyAction !== null,
+                    onClick: () => void handleCopySurface(),
+                  },
+                  {
+                    key: "offset-midsurface",
+                    label: "Kalınlık/2 kaydır",
+                    active: showOffsetPanel,
+                    disabled: !canOffsetMidsurface || busyAction !== null,
+                    onClick: () => setShowOffsetPanel((prev) => !prev),
+                  },
+                  {
+                    key: "toggle-hide-part",
+                    label: allSelectedPartsHidden ? "Solid göster" : "Solid gizle",
+                    disabled: !canToggleHidePart,
+                    onClick: handleToggleHidePart,
+                  },
+                  {
+                    key: "toggle-hide-surfaces",
+                    label: allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle",
+                    disabled: !canToggleHideSurfaces,
+                    onClick: handleToggleHideSurfaces,
+                  },
+                  {
+                    key: "toggle-mesh",
+                    label: showMesh ? "Mesh gizle" : "Mesh göster",
+                    disabled: meshPreview === null,
+                    active: showMesh && meshPreview !== null,
+                    onClick: () => setShowMesh((prev) => !prev),
+                  },
+                  {
+                    key: "toggle-mesh-wireframe",
+                    label: meshWireframe ? "Mesh tel kafes (açık)" : "Mesh tel kafes",
+                    disabled: meshPreview === null || !showMesh,
+                    active: meshWireframe && showMesh && meshPreview !== null,
+                    onClick: () => setMeshWireframe((prev) => !prev),
+                  },
+                  {
+                    key: "toggle-edges",
+                    label: showEdges ? "Kenar çizgileri (açık)" : "Kenar çizgileri (kapalı)",
+                    active: showEdges,
+                    onClick: () => setShowEdges((prev) => !prev),
+                  },
+                  {
+                    key: "undo",
+                    label: busyAction === "undo" ? "Geri alınıyor…" : "Geri al",
+                    disabled: !canUndo || busyAction !== null,
+                    onClick: () => void handleUndo(),
+                  },
+                ]}
+              />
+            </div>
           </div>
         )}
 
@@ -2462,77 +2546,67 @@ function App() {
       <div className="viewer-panel">
         {stlUrl && geometryId !== null ? (
           <>
+            <div className="viewer-ribbon" role="toolbar" aria-label="Görünüm araçları">
+              <button type="button" onClick={() => void handleUndo()} disabled={!canUndo || busyAction !== null} title="Geri al">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 8a5 5 0 1 1 5 5 M3 8V5 M3 8h3" /></svg>
+              </button>
+              <button type="button" onClick={() => geometryViewerRef.current?.zoomIn()} title="Yakınlaştır">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="7" cy="7" r="4" /><path d="M10 10l3 3 M7 5v4 M5 7h4" /></svg>
+              </button>
+              <button type="button" onClick={() => geometryViewerRef.current?.zoomOut()} title="Uzaklaştır">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="7" cy="7" r="4" /><path d="M10 10l3 3 M5 7h4" /></svg>
+              </button>
+              <button type="button" onClick={() => geometryViewerRef.current?.resetView()} title="Görünümü sığdır">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6V3h3 M13 6V3h-3 M3 10v3h3 M13 10v3h-3" /></svg>
+              </button>
+              <span className="viewer-ribbon-sep" />
+              <button
+                type="button"
+                className={showMesh && meshPreview !== null ? "active" : undefined}
+                disabled={meshPreview === null}
+                onClick={() => setShowMesh((prev) => !prev)}
+                title={showMesh ? "Mesh gizle" : "Mesh göster"}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 3h10v10H3z M3 8h10 M8 3v10" /></svg>
+              </button>
+              <button
+                type="button"
+                className={meshWireframe && showMesh && meshPreview !== null ? "active" : undefined}
+                disabled={meshPreview === null || !showMesh}
+                onClick={() => setMeshWireframe((prev) => !prev)}
+                title="Mesh tel kafes"
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 5h10v6H3z M3 5l10 6 M13 5L3 11" /></svg>
+              </button>
+              <button
+                type="button"
+                className={allSelectedPartsHidden ? "active" : undefined}
+                disabled={!canToggleHidePart}
+                onClick={handleToggleHidePart}
+                title={allSelectedPartsHidden ? "Solid göster" : "Solid gizle"}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
+              </button>
+              <button
+                type="button"
+                className={allSelectedSurfacesHidden ? "active" : undefined}
+                disabled={!canToggleHideSurfaces}
+                onClick={handleToggleHideSurfaces}
+                title={allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle"}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
+              </button>
+              <span className="viewer-ribbon-sep" />
+              <button
+                type="button"
+                onClick={() => void handleMeshQuality()}
+                disabled={busyAction !== null || meshResult === null}
+                title="Mesh kalite hesapla"
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 13V4 M3 13h10 M6 11V7 M9 11V5 M12 11V8" /></svg>
+              </button>
+            </div>
             <div className="button-group-stack">
-              <ButtonGroup
-                title="Seçim modu"
-                items={SELECTION_MODES.map(({ mode: m, label }) => ({
-                  key: m,
-                  label,
-                  active: mode === m,
-                  onClick: () => {
-                    setMode(m);
-                    setSelection({ mode: m, ids: [] });
-                    setMeshPicks([]);
-                    setMeshGrow("element");
-                  },
-                }))}
-              />
-              <ButtonGroup
-                title="İşlemler"
-                items={[
-                  {
-                    key: "copy-surface",
-                    label: busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala",
-                    disabled: !canCopySurface || busyAction !== null,
-                    onClick: () => void handleCopySurface(),
-                  },
-                  {
-                    key: "offset-midsurface",
-                    label: "Kalınlık/2 kaydır",
-                    active: showOffsetPanel,
-                    disabled: !canOffsetMidsurface || busyAction !== null,
-                    onClick: () => setShowOffsetPanel((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-hide-part",
-                    label: allSelectedPartsHidden ? "Solid göster" : "Solid gizle",
-                    disabled: !canToggleHidePart,
-                    onClick: handleToggleHidePart,
-                  },
-                  {
-                    key: "toggle-hide-surfaces",
-                    label: allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle",
-                    disabled: !canToggleHideSurfaces,
-                    onClick: handleToggleHideSurfaces,
-                  },
-                  {
-                    key: "toggle-mesh",
-                    label: showMesh ? "Mesh gizle" : "Mesh göster",
-                    disabled: meshPreview === null,
-                    active: showMesh && meshPreview !== null,
-                    onClick: () => setShowMesh((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-mesh-wireframe",
-                    label: meshWireframe ? "Mesh tel kafes (açık)" : "Mesh tel kafes",
-                    disabled: meshPreview === null || !showMesh,
-                    active: meshWireframe && showMesh && meshPreview !== null,
-                    onClick: () => setMeshWireframe((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-edges",
-                    label: showEdges ? "Kenar çizgileri (açık)" : "Kenar çizgileri (kapalı)",
-                    active: showEdges,
-                    onClick: () => setShowEdges((prev) => !prev),
-                  },
-                  {
-                    key: "undo",
-                    label: busyAction === "undo" ? "Geri alınıyor…" : "Geri al",
-                    disabled: !canUndo || busyAction !== null,
-                    onClick: () => void handleUndo(),
-                  },
-                ]}
-              />
               <label className="opacity-field">
                 <span>Katı opaklık {cadOpacityPct}%</span>
                 <input
@@ -2771,6 +2845,7 @@ function App() {
                   </>
                 )}
                 <GeometryViewer
+                  ref={geometryViewerRef}
                   stlUrl={stlUrl}
                   triangleToFace={triangleToFace}
                   triangleToPart={triangleToPart}

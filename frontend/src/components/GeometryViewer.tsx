@@ -1,9 +1,18 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import type { ForwardedRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { EdgeInfo, MeshPreviewData, PointInfo, ResultsPreviewData } from "../api/geometry";
 import type { MeshGrowMode, MeshPickInfo, MultiSelectionInfo, SelectionMode } from "../types";
+
+/** Üst bileşenin (App.tsx) ref üzerinden çağırabileceği kamera komutları —
+ * araç çubuğu ikonları (yakınlaştır, uzaklaştır, görünümü sıfırla) için. */
+export interface GeometryViewerHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetView: () => void;
+}
 
 interface GeometryViewerProps {
   stlUrl: string;
@@ -228,7 +237,7 @@ interface PartMeshEntry {
  * eşlemeleri) değiştiğinde yeniden kurulur; `mode`/`hiddenParts`/
  * `externalHighlight` değişimleri WebGL sahnesini yeniden kurmaz.
  */
-function GeometryViewer({
+const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(function GeometryViewer({
   stlUrl,
   triangleToFace,
   triangleToPart,
@@ -258,7 +267,9 @@ function GeometryViewer({
   externalHighlight,
   onSelectionChange,
   onMeshPicks,
-}: GeometryViewerProps) {
+}: GeometryViewerProps,
+  ref: ForwardedRef<GeometryViewerHandle>,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<SelectionMode>(mode);
   const showEdgesRef = useRef<boolean>(showEdges);
@@ -292,6 +303,7 @@ function GeometryViewer({
   const sceneRefs = useRef<{
     modelGroup: THREE.Group | null;
     scene: THREE.Scene | null;
+    controls: OrbitControls | null;
     modelCenter: THREE.Vector3;
     meshOverlay: THREE.Group | null;
     resultsOverlay: THREE.Group | null;
@@ -319,6 +331,7 @@ function GeometryViewer({
     camera: THREE.PerspectiveCamera | null;
   }>({
     modelGroup: null,
+    controls: null,
     scene: null,
     modelCenter: new THREE.Vector3(),
     meshOverlay: null,
@@ -346,6 +359,36 @@ function GeometryViewer({
     maxDim: 1,
     camera: null,
   });
+
+  // Araç çubuğu ikonları (yakınlaştır/uzaklaştır/görünümü sıfırla) için
+  // kamera komutlarını dışarıya (App.tsx) açıyoruz.
+  useImperativeHandle(ref, () => ({
+    zoomIn() {
+      const refs = sceneRefs.current;
+      if (!refs.camera || !refs.controls) return;
+      const offset = refs.camera.position.clone().sub(refs.controls.target);
+      offset.multiplyScalar(0.8);
+      refs.camera.position.copy(refs.controls.target).add(offset);
+      refs.controls.update();
+    },
+    zoomOut() {
+      const refs = sceneRefs.current;
+      if (!refs.camera || !refs.controls) return;
+      const offset = refs.camera.position.clone().sub(refs.controls.target);
+      offset.multiplyScalar(1.25);
+      refs.camera.position.copy(refs.controls.target).add(offset);
+      refs.controls.update();
+    },
+    resetView() {
+      const refs = sceneRefs.current;
+      if (!refs.camera || !refs.controls) return;
+      const maxDim = refs.maxDim || 1;
+      refs.camera.position.set(maxDim * 1.4, maxDim * 1.1, maxDim * 1.4);
+      refs.controls.target.set(0, 0, 0);
+      refs.camera.lookAt(0, 0, 0);
+      refs.controls.update();
+    },
+  }));
 
   function clearOverlayMaps(refs: typeof sceneRefs.current) {
     refs.overlayMesh = null;
@@ -837,6 +880,7 @@ function GeometryViewer({
     const axesCam = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
 
     const controls = new OrbitControls(camera, renderer.domElement);
+    sceneRefs.current.controls = controls;
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.rotateSpeed = 0.7;
@@ -1362,6 +1406,7 @@ function GeometryViewer({
       }
       sceneRefs.current = {
         modelGroup: null,
+        controls: null,
         scene: null,
         modelCenter: new THREE.Vector3(),
         meshOverlay: null,
@@ -1605,6 +1650,6 @@ function GeometryViewer({
       <div ref={edgeSeedLayerRef} className="edge-seed-layer" />
     </div>
   );
-}
+});
 
 export default GeometryViewer;
