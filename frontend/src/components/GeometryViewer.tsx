@@ -854,6 +854,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     axesRenderer.setSize(88, 88, false);
     const axesScene = new THREE.Scene();
     const axesHelper = new THREE.AxesHelper(1);
+    axesHelper.setColors(
+      new THREE.Color("#ff3b30"),
+      new THREE.Color("#2ecc71"),
+      new THREE.Color("#3b9dff"),
+    );
     axesScene.add(axesHelper);
     const makeAxisLabel = (text: string, color: string, x: number, y: number, z: number) => {
       const c = document.createElement("canvas");
@@ -861,10 +866,20 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       c.height = 64;
       const ctx = c.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = color;
         ctx.font = "bold 42px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        // Beyaz + siyah çift kontur — hangi arkaplanda (aydınlık/karanlık)
+        // ya da hangi açıdan bakılırsa bakılsın X/Y/Z harfleri belirgin
+        // kalsın diye (boyut değil, KONTRAST artırıldı).
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 7;
+        ctx.strokeText(text, 32, 36);
+        ctx.strokeStyle = "#1a1a1a";
+        ctx.lineWidth = 3;
+        ctx.strokeText(text, 32, 36);
+        ctx.fillStyle = color;
         ctx.fillText(text, 32, 36);
       }
       const sprite = new THREE.Sprite(
@@ -874,9 +889,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       sprite.scale.set(0.4, 0.4, 0.4);
       axesScene.add(sprite);
     };
-    makeAxisLabel("X", "#c0392b", 1.2, 0, 0);
-    makeAxisLabel("Y", "#1e8449", 0, 1.2, 0);
-    makeAxisLabel("Z", "#2471a3", 0, 0, 1.2);
+    // Doygun, canlı ana renkler — AxesHelper'ın kendi eksen çizgi
+    // renkleriyle (kırmızı/yeşil/mavi) birebir eşleşir.
+    makeAxisLabel("X", "#ff3b30", 1.2, 0, 0);
+    makeAxisLabel("Y", "#2ecc71", 0, 1.2, 0);
+    makeAxisLabel("Z", "#3b9dff", 0, 0, 1.2);
     const axesCam = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
 
     const controls = new OrbitControls(camera, renderer.domElement);

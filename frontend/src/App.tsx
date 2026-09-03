@@ -1599,6 +1599,37 @@ function App() {
           >
             ▶ {busyAction === "solve" ? "ÜRETİLİYOR…" : "RUN SIMULATION"}
           </button>
+          {status === "success" && (
+            <div className="toolbar-geo-tools">
+              <label className="toolbar-opacity" title="Katı opaklık">
+                <span>{cadOpacityPct}%</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={cadOpacityPct}
+                  onChange={(e) => setCadOpacityPct(Number(e.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className={viewerBackground === "white" ? "toolbar-icon-button active" : "toolbar-icon-button"}
+                onClick={() => setViewerBackground("white")}
+                title="Beyaz arkaplan"
+              >
+                ☀
+              </button>
+              <button
+                type="button"
+                className={viewerBackground === "black" ? "toolbar-icon-button active" : "toolbar-icon-button"}
+                onClick={() => setViewerBackground("black")}
+                title="Siyah arkaplan"
+              >
+                ●
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="sidebar-collapse-button"
@@ -1685,6 +1716,57 @@ function App() {
                 }))}
               />
             </div>
+
+            <ButtonGroup
+              title="GEOMETRİ"
+              items={[
+                {
+                  key: "heal",
+                  label: busyAction === "heal" ? "Düzeltiliyor…" : "Heal",
+                  disabled: busyAction !== null,
+                  onClick: () => void handleHeal(),
+                },
+                {
+                  key: "defeature",
+                  label: busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır",
+                  active: showDefeaturePanel,
+                  disabled: !canDefeature || busyAction !== null,
+                  onClick: () => {
+                    const hasFaceSelection =
+                      selection.mode === "surface" && selection.ids.length > 0;
+                    if (hasFaceSelection) {
+                      void handleApplyDefeature();
+                    } else {
+                      setShowDefeaturePanel((prev) => !prev);
+                    }
+                  },
+                },
+                {
+                  key: "midsurface",
+                  label:
+                    busyAction === "midsurface"
+                      ? "Oluşturuluyor…"
+                      : canUseMidsurfaceManual
+                        ? "Midsurface (2 yüzey)"
+                        : "Midsurface (parça seç)",
+                  disabled: !canUseMidsurface || busyAction !== null,
+                  onClick: handleMidsurfaceClick,
+                },
+              ]}
+              layout="column"
+            />
+
+            <ButtonGroup
+              title="PHYSICAL GROUP'LAR"
+              items={physicalGroups.map((g) => ({
+                key: String(g.id),
+                label: g.name,
+                active: activeGroupId === g.id,
+                onClick: () => handleGroupButtonClick(g.id),
+              }))}
+              emptyLabel="Henüz grup yok"
+              layout="column"
+            />
 
             {showGroupForm && (
               <div className="group-create-form">
@@ -1829,6 +1911,7 @@ function App() {
                     onClick: () => void handleUndo(),
                   },
                 ]}
+                layout="column"
               />
             </div>
           </div>
@@ -2605,84 +2688,6 @@ function App() {
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 13V4 M3 13h10 M6 11V7 M9 11V5 M12 11V8" /></svg>
               </button>
-            </div>
-            <div className="button-group-stack">
-              <label className="opacity-field">
-                <span>Katı opaklık {cadOpacityPct}%</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={cadOpacityPct}
-                  onChange={(e) => setCadOpacityPct(Number(e.target.value))}
-                />
-              </label>
-              <div className="bg-toggle">
-                <span className="bg-toggle-label">Arkaplan</span>
-                <button
-                  type="button"
-                  className={viewerBackground === "white" ? "group-create-button" : "reset-button"}
-                  onClick={() => setViewerBackground("white")}
-                >
-                  Beyaz
-                </button>
-                <button
-                  type="button"
-                  className={viewerBackground === "black" ? "group-create-button" : "reset-button"}
-                  onClick={() => setViewerBackground("black")}
-                >
-                  Siyah
-                </button>
-              </div>
-              <ButtonGroup
-                title="Geometri"
-                items={[
-                  {
-                    key: "heal",
-                    label: busyAction === "heal" ? "Düzeltiliyor…" : "Heal",
-                    disabled: busyAction !== null,
-                    onClick: () => void handleHeal(),
-                  },
-                  {
-                    key: "defeature",
-                    label: busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır",
-                    active: showDefeaturePanel,
-                    disabled: !canDefeature || busyAction !== null,
-                    onClick: () => {
-                      const hasFaceSelection =
-                        selection.mode === "surface" && selection.ids.length > 0;
-                      if (hasFaceSelection) {
-                        void handleApplyDefeature();
-                      } else {
-                        setShowDefeaturePanel((prev) => !prev);
-                      }
-                    },
-                  },
-                  {
-                    key: "midsurface",
-                    label:
-                      busyAction === "midsurface"
-                        ? "Oluşturuluyor…"
-                        : canUseMidsurfaceManual
-                          ? "Midsurface (2 yüzey)"
-                          : "Midsurface (parça seç)",
-                    disabled: !canUseMidsurface || busyAction !== null,
-                    onClick: handleMidsurfaceClick,
-                  },
-                  { key: "placeholder-geometry", label: "Yakında", disabled: true },
-                ]}
-              />
-              <ButtonGroup
-                title="Physical Group'lar"
-                items={physicalGroups.map((g) => ({
-                  key: String(g.id),
-                  label: g.name,
-                  active: activeGroupId === g.id,
-                  onClick: () => handleGroupButtonClick(g.id),
-                }))}
-                emptyLabel="Henüz grup yok"
-              />
             </div>
             <div className="viewer-body">
               <div className="viewer-stage">
