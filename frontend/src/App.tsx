@@ -1593,9 +1593,18 @@ function App() {
           <button
             type="button"
             className="toolbar-run-button"
-            disabled={busyAction !== null || geometryId === null || meshResult === null}
+            disabled={
+              busyAction !== null ||
+              geometryId === null ||
+              meshResult === null ||
+              !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+            }
             onClick={() => void handleSolve()}
-            title="Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
+            title={
+              !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+                ? "En az bir Fixed/Displacement/Sliding BC ekleyin — aksi halde rijit cisim hareketi oluşur"
+                : "Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
+            }
           >
             ▶ {busyAction === "solve" ? "ÜRETİLİYOR…" : "RUN SIMULATION"}
           </button>
@@ -2575,11 +2584,22 @@ function App() {
         <button
           type="button"
           className="material-assign-button"
-          disabled={busyAction !== null || geometryId === null || meshResult === null}
+          disabled={
+            busyAction !== null ||
+            geometryId === null ||
+            meshResult === null ||
+            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+          }
           onClick={() => void handleSolve()}
         >
           {busyAction === "solve" ? "Üretiliyor…" : ".inp üret / çöz"}
         </button>
+        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
+          <p className="material-assign-hint">
+            ⚠ En az bir Fixed / Displacement / Sliding BC eklemeden çözülemez —
+            aksi halde model boşlukta asılı kalır (rijit cisim hareketi).
+          </p>
+        )}
       </div>
       )}
 
