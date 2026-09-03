@@ -136,6 +136,7 @@ export async function setMaterialSnCurve(
 
 export interface SolveResponse {
   geometry_id: number;
+  run_id: number;
   dimension: number;
   inp_path: string;
   inp_url: string;
@@ -177,6 +178,7 @@ export async function solveGeometry(
     shell_thickness?: number;
     run_solver?: boolean;
     bcs: SolveBC[];
+    name?: string;
   },
 ): Promise<SolveResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/solve`, {
@@ -187,6 +189,7 @@ export async function solveGeometry(
       shell_thickness: opts.shell_thickness ?? 3,
       run_solver: opts.run_solver ?? false,
       bcs: opts.bcs,
+      ...(opts.name ? { name: opts.name } : {}),
     }),
   });
   if (!response.ok) {
