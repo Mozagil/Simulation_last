@@ -285,6 +285,12 @@ class CalculiXAdapter(SolverAdapter):
 
         max_disp = max(disp_mag_array, default=0.0)
         max_vm = max(von_mises_array, default=0.0)
+        # Kritik node: maksimum von Mises'e sahip düğümün gerçek CalculiX
+        # node ID'si (frontend'de "CRITICAL NODE: #8421" gibi göstermek
+        # için — index değil, gerçek node numarası).
+        critical_node_id: int | None = None
+        if von_mises:
+            critical_node_id = max(von_mises, key=lambda nid: von_mises[nid])
 
         results_preview_path = job.work_dir / f"{job.artifact.path.stem}.results.json"
         results_preview_path.write_text(
@@ -297,6 +303,7 @@ class CalculiXAdapter(SolverAdapter):
                     "von_mises": von_mises_array,
                     "max_displacement": max_disp,
                     "max_von_mises": max_vm,
+                    "critical_node_id": critical_node_id,
                 },
                 separators=(",", ":"),
             ),
@@ -317,6 +324,11 @@ class CalculiXAdapter(SolverAdapter):
                 "node_count": float(len(node_order)),
                 "max_displacement": max_disp,
                 "max_von_mises": max_vm,
+                **(
+                    {"critical_node_id": float(critical_node_id)}
+                    if critical_node_id is not None
+                    else {}
+                ),
             },
             raw_result_path=frd,
             results_preview_path=results_preview_path,
