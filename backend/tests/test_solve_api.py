@@ -182,6 +182,46 @@ def test_get_run_detail_includes_bcs_and_urls():
 
 
 @requires_db
+def test_solve_rejects_bcs_without_any_constraint():
+    """KRİTİK: sadece yük (Force/Gravity) BC'si olup Fixed/Displacement/
+    Sliding gibi bir yer değiştirme kısıtı YOKSA, çözüme İZİN VERİLMEMELİ —
+    eskiden sessizce çalışıp rijit cisim hareketi (max_displacement ~87
+    milyar mm gibi anlamsız sayılar) üretiyordu, gerçek bir testte
+    kanıtlandı. Artık net bir 422 dönmeli.
+    """
+    geometry_id = _upload_and_mesh_box()
+
+    # Sadece yük, hiç kısıt yok -> reddedilmeli.
+    response = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": False,
+            "bcs": [{"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -9810.0}],
+        },
+    )
+    assert response.status_code == 422
+    assert "kısıt" in response.json()["detail"].lower() or "rijit" in response.json()["detail"].lower()
+
+    runs_body = client.get("/geometry/runs").json()
+    assert runs_body["count"] == 0
+
+    # Fixed eklenince kabul edilmeli (en azından .inp üretim aşamasına geçmeli).
+    response2 = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": False,
+            "bcs": [
+                {"type": "fixed", "face_ids": [1]},
+                {"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -9810.0},
+            ],
+        },
+    )
+    assert response2.status_code == 200
+
+
+@requires_db
 def test_solve_without_materials_does_not_create_orphan_run():
     """Malzeme atanmadan /solve çağrılırsa 422 dönmeli VE hiçbir
     AnalysisRun satırı OLUŞMAMALI (validasyon run oluşturulmadan önce
