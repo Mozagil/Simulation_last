@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import GeometryViewer from "./GeometryViewer";
+import type { CameraState, GeometryViewerHandle } from "./GeometryViewer";
 import {
   fetchMeshPreview,
   fetchResultsPreview,
@@ -71,10 +73,14 @@ function ComparisonPanel({
   runId,
   resultsField,
   sharedScaleMax,
+  viewerRef,
+  onCameraChange,
 }: {
   runId: number;
   resultsField: "von_mises" | "displacement_magnitude";
   sharedScaleMax: number | null;
+  viewerRef: RefObject<GeometryViewerHandle>;
+  onCameraChange: (state: CameraState) => void;
 }) {
   const [data, setData] = useState<RunPanelData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +145,8 @@ function ComparisonPanel({
       </div>
       <div className="compare-panel-viewer">
         <GeometryViewer
+          ref={viewerRef}
+          onCameraChange={onCameraChange}
           stlUrl={data.stlUrl}
           triangleToFace={data.triangleToFace}
           triangleToPart={data.triangleToPart}
@@ -178,6 +186,9 @@ export default function ComparisonView({ runIdA, runIdB, onBack }: ComparisonVie
   );
   const [scalarsA, setScalarsA] = useState<Record<string, number> | null>(null);
   const [scalarsB, setScalarsB] = useState<Record<string, number> | null>(null);
+  const [cameraSyncEnabled, setCameraSyncEnabled] = useState(false);
+  const viewerRefA = useRef<GeometryViewerHandle>(null);
+  const viewerRefB = useRef<GeometryViewerHandle>(null);
 
   useEffect(() => {
     fetchRunDetail(runIdA).then((d) => setScalarsA(d.scalars));
@@ -212,14 +223,38 @@ export default function ComparisonView({ runIdA, runIdB, onBack }: ComparisonVie
             Deplasman
           </button>
         </div>
+        <button
+          type="button"
+          className={cameraSyncEnabled ? "group-create-button" : "reset-button"}
+          onClick={() => setCameraSyncEnabled((prev) => !prev)}
+          title="Bir paneli döndürünce diğeri de aynı şekilde dönsün"
+        >
+          {cameraSyncEnabled ? "🔗 Kamera Senkron (açık)" : "🔗 Kamera Senkron"}
+        </button>
         <span className="compare-hint">
           İki panel de aynı renk skalasını paylaşıyor (max=
           {sharedScaleMax?.toExponential(2) ?? "—"})
         </span>
       </div>
       <div className="compare-panels">
-        <ComparisonPanel runId={runIdA} resultsField={resultsField} sharedScaleMax={sharedScaleMax} />
-        <ComparisonPanel runId={runIdB} resultsField={resultsField} sharedScaleMax={sharedScaleMax} />
+        <ComparisonPanel
+          runId={runIdA}
+          resultsField={resultsField}
+          sharedScaleMax={sharedScaleMax}
+          viewerRef={viewerRefA}
+          onCameraChange={(state) => {
+            if (cameraSyncEnabled) viewerRefB.current?.setCameraState(state);
+          }}
+        />
+        <ComparisonPanel
+          runId={runIdB}
+          resultsField={resultsField}
+          sharedScaleMax={sharedScaleMax}
+          viewerRef={viewerRefB}
+          onCameraChange={(state) => {
+            if (cameraSyncEnabled) viewerRefA.current?.setCameraState(state);
+          }}
+        />
       </div>
     </div>
   );

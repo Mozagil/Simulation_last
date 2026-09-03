@@ -8,10 +8,19 @@ import type { MeshGrowMode, MeshPickInfo, MultiSelectionInfo, SelectionMode } fr
 
 /** Üst bileşenin (App.tsx) ref üzerinden çağırabileceği kamera komutları —
  * araç çubuğu ikonları (yakınlaştır, uzaklaştır, görünümü sıfırla) için. */
+export interface CameraState {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
 export interface GeometryViewerHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   resetView: () => void;
+  /** Kamerayı DIŞARIDAN verilen bir duruma ayarlar — kendi
+   * onCameraChange'ini tetiklemez (karşılaştırma modunda senkron kamera
+   * için, sonsuz döngüyü önler). */
+  setCameraState: (state: CameraState) => void;
 }
 
 interface GeometryViewerProps {
@@ -63,6 +72,10 @@ interface GeometryViewerProps {
   /** Aktif moddaki seçili öğe(ler) değiştiğinde çağrılır. Düz tıklama tek
    * öğeye indirger; Ctrl(/Cmd)+tık mevcut seçime ekler/çıkarır. */
   onSelectionChange?: (info: MultiSelectionInfo) => void;
+  /** Kamera her hareket ettiğinde (kullanıcı etkileşimi VEYA
+   * setCameraState ile programatik değişim DIŞINDA) tetiklenir —
+   * karşılaştırma modunda kamera senkronu için. */
+  onCameraChange?: (state: CameraState) => void;
   /** Mesh elemanına tıklanınca. Ctrl ile çoklu; düz tık tekile indirger. */
   onMeshPicks?: (picks: MeshPickInfo[], keepGrow: boolean) => void;
 }
@@ -267,6 +280,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   externalHighlight,
   onSelectionChange,
   onMeshPicks,
+  onCameraChange,
 }: GeometryViewerProps,
   ref: ForwardedRef<GeometryViewerHandle>,
 ) {
@@ -285,6 +299,12 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshWireframeRef.current = meshWireframe;
   const cadOpacityRef = useRef(cadOpacity);
   cadOpacityRef.current = cadOpacity;
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
+  // setCameraState ile programatik kamera değişimi sırasında true olur —
+  // bu sırada onCameraChange'i TETİKLEMEYİZ (sonsuz senkron döngüsünü
+  // önlemek için).
+  const suppressCameraEventRef = useRef(false);
 
   const meshPicksRef = useRef(meshPicks);
   meshPicksRef.current = meshPicks;
@@ -387,6 +407,15 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       refs.controls.target.set(0, 0, 0);
       refs.camera.lookAt(0, 0, 0);
       refs.controls.update();
+    },
+    setCameraState(state: CameraState) {
+      const refs = sceneRefs.current;
+      if (!refs.camera || !refs.controls) return;
+      suppressCameraEventRef.current = true;
+      refs.camera.position.set(...state.position);
+      refs.controls.target.set(...state.target);
+      refs.controls.update();
+      suppressCameraEventRef.current = false;
     },
   }));
 
@@ -898,6 +927,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
     const controls = new OrbitControls(camera, renderer.domElement);
     sceneRefs.current.controls = controls;
+    controls.addEventListener("change", () => {
+      if (suppressCameraEventRef.current) return;
+      onCameraChangeRef.current?.({
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        target: [controls.target.x, controls.target.y, controls.target.z],
+      });
+    });
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.rotateSpeed = 0.7;

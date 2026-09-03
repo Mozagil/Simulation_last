@@ -1738,3 +1738,37 @@ p {
   font-size: 10px;
   color: var(--muted);
 }
+
+/* ---- Results adımı: sayısal istatistik tablosu + histogram ---- */
+.results-stats-table {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.results-stats-title {
+  margin: 0 0 6px;
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.results-stats-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink);
+  padding: 2px 0;
+}
+
+.results-stats-row span:first-child {
+  color: var(--muted);
+}
+
+.results-histogram {
+  margin-top: 8px;
+}

@@ -44,6 +44,7 @@ import {
 } from "./api/materials";
 import { fetchRuns, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
+import { ResultsHistogram, ResultsStatsTable } from "./components/ResultsCharts";
 import { useTheme } from "./useTheme";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -303,6 +304,22 @@ function App() {
   const [compareSelection, setCompareSelection] = useState<number[]>([]);
   const [viewMode, setViewMode] = useState<"edit" | "compare">("edit");
   const [caseNameInput, setCaseNameInput] = useState("");
+
+  /** Geometri ya da mesh mutasyona uğradığında (heal, defeature, offset,
+   * midsurface, yeniden mesh üretimi, undo) ÖNCEKİ çözüm sonuçlarını
+   * geçersiz kılar — aksi halde eski sonuç overlay'i artık FARKLI bir
+   * geometri durumuna ait node koordinatlarıyla render edilip geometriden
+   * "kaymış" görünürdü (gerçek bir ekran görüntüsünde tespit edildi).
+   * Asla eşleşmeyen bir sonuç göstermemek, kullanıcıyı yeniden çözmeye
+   * yönlendirmek daha güvenli.
+   */
+  function invalidateStaleResults() {
+    setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
+    setResultsDeformScale(0);
+    setResultsAnimating(false);
+  }
 
   async function refreshHistory() {
     try {
@@ -608,6 +625,7 @@ function App() {
 
   async function handleCopySurface() {
     if (!geometryId || mode !== "surface" || selection.ids.length === 0) return;
+    invalidateStaleResults();
 
     setBusyAction("copy");
     setErrorMessage(null);
@@ -637,6 +655,7 @@ function App() {
    */
   async function handleCreateOffsetMidsurfaces() {
     if (!geometryId || mode !== "surface" || selection.ids.length === 0) return;
+    invalidateStaleResults();
 
     let thickness: number | undefined;
     if (!offsetAutoThickness) {
@@ -794,6 +813,7 @@ function App() {
     ) {
       return;
     }
+    invalidateStaleResults();
 
     setBusyAction("heal");
     setErrorMessage(null);
@@ -819,6 +839,7 @@ function App() {
 
   async function handleApplyDefeature() {
     if (!geometryId) return;
+    invalidateStaleResults();
 
     const faceIds =
       selection.mode === "surface" && selection.ids.length > 0 ? [...selection.ids] : [];
@@ -865,6 +886,7 @@ function App() {
 
   async function handleGenerateMesh() {
     if (!geometryId) return;
+    invalidateStaleResults();
     const size = parseFloat(meshElementSize);
     if (!Number.isFinite(size) || size <= 0) {
       setErrorMessage("Geçerli bir pozitif mesh boyutu girin.");
@@ -960,6 +982,7 @@ function App() {
   /** Midsurface: Parça modunda seçili katı(lar)ın ince cidarları. */
   async function handleMidsurfaceForPart() {
     if (!geometryId || mode !== "part") return;
+    invalidateStaleResults();
     const partIds = selection.ids.filter((id) => volumePartIds.includes(id));
     if (partIds.length === 0) return;
 
@@ -1000,6 +1023,7 @@ function App() {
    */
   async function handleMidsurfaceManual() {
     if (!geometryId || mode !== "surface" || selection.ids.length !== 2) return;
+    invalidateStaleResults();
     const [faceIdA, faceIdB] = selection.ids;
 
     setBusyAction("midsurface");
@@ -1030,6 +1054,7 @@ function App() {
    */
   async function handleUndo() {
     if (!geometryId || !canUndo) return;
+    invalidateStaleResults();
 
     setBusyAction("undo");
     setErrorMessage(null);
@@ -2620,10 +2645,33 @@ function App() {
             <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
               .inp indir
             </a>
+
+            {resultsPreview && (
+              <>
+                <ResultsStatsTable
+                  label="Von Mises (MPa)"
+                  values={resultsPreview.von_mises}
+                />
+                <ResultsHistogram
+                  label="Von Mises dağılımı"
+                  values={resultsPreview.von_mises}
+                  color="#e05a3b"
+                />
+                <ResultsStatsTable
+                  label="Deplasman (mm)"
+                  values={resultsPreview.displacement_magnitude}
+                />
+                <ResultsHistogram
+                  label="Deplasman dağılımı"
+                  values={resultsPreview.displacement_magnitude}
+                  color="#2f7fd1"
+                />
+              </>
+            )}
+
             <p className="material-assign-hint" style={{ marginTop: 8 }}>
-              Görselleştirme kontrolleri (renk skalası, Von Mises/Deplasman,
-              deformasyon animasyonu) 3B görünümün üzerinde — sağ üst ve sağ alt
-              köşelerdeki yüzen panellerde.
+              3B renk skalası ve deformasyon kontrolleri, görünümün üzerindeki
+              yüzen panellerde (sağ üst/alt köşeler).
             </p>
           </div>
         )}
