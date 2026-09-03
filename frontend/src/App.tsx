@@ -42,6 +42,10 @@ import {
   type SolveBC,
   type SolveResponse,
 } from "./api/materials";
+import { fetchRuns, type RunSummary } from "./api/runs";
+import ComparisonView from "./components/ComparisonView";
+import { useTheme } from "./useTheme";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   fetchProductTree,
   upsertComponent,
@@ -186,6 +190,7 @@ function ProductTreeRow({
 }
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -269,6 +274,33 @@ function App() {
   const [resultsAnimating, setResultsAnimating] = useState(false);
   const [resultsScaleMinInput, setResultsScaleMinInput] = useState("");
   const [resultsScaleMaxInput, setResultsScaleMaxInput] = useState("");
+  // Analiz geçmişi (AnalysisRun) — ROADMAP.md "7. Veritabanına kayıt +
+  // geçmiş". DB'de kalıcı, hiçbir zaman silinmez.
+  const [runsHistory, setRunsHistory] = useState<RunSummary[]>([]);
+  const [compareSelection, setCompareSelection] = useState<number[]>([]);
+  const [viewMode, setViewMode] = useState<"edit" | "compare">("edit");
+  const [caseNameInput, setCaseNameInput] = useState("");
+
+  async function refreshHistory() {
+    try {
+      const runs = await fetchRuns();
+      setRunsHistory(runs);
+    } catch {
+      // Geçmiş yüklenemezse sessizce yok say — ana akışı bozmasın.
+    }
+  }
+
+  useEffect(() => {
+    void refreshHistory();
+  }, []);
+
+  function toggleCompareSelection(runId: number) {
+    setCompareSelection((prev) => {
+      if (prev.includes(runId)) return prev.filter((id) => id !== runId);
+      if (prev.length >= 2) return [prev[1], runId]; // en eski seçimi at, yenisini ekle
+      return [...prev, runId];
+    });
+  }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
@@ -479,6 +511,14 @@ function App() {
     setMeshWireframe(false);
     setMeshQuality(null);
     setMaterialAssignments([]);
+    setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
+    setResultsDeformScale(0);
+    setResultsAnimating(false);
+    setResultsScaleMinInput("");
+    setResultsScaleMaxInput("");
+    setCaseNameInput("");
     setMeshPicks([]);
     setMeshGrow("element");
     setProductTree(null);
@@ -1423,9 +1463,11 @@ function App() {
         shell_thickness: thickness,
         run_solver: runCcx,
         bcs,
+        name: caseNameInput.trim() || undefined,
       });
       setSolveResult(result);
       setInfoMessage(result.message);
+      void refreshHistory();
 
       if (result.results_preview_url) {
         try {
@@ -1478,8 +1520,26 @@ function App() {
     }
   }
 
+  if (viewMode === "compare" && compareSelection.length === 2) {
+    return (
+      <>
+        <div className="theme-toggle-fixed">
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
+        <ComparisonView
+          runIdA={compareSelection[0]}
+          runIdB={compareSelection[1]}
+          onBack={() => setViewMode("edit")}
+        />
+      </>
+    );
+  }
+
   return (
     <main className="page">
+      <div className="theme-toggle-fixed">
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+      </div>
       <div className="left-column">
       <div className="panel">
         <span className="eyebrow">Faz 0 · Geometri önizleme</span>
@@ -1615,8 +1675,63 @@ function App() {
         )}
 
         {status !== "idle" && (
-          <button type="button" className="reset-button" onClick={handleReset}>
-            Yeni dosya seç
+          <div className="new-case-row">
+            <button type="button" className="reset-button" onClick={handleReset}>
+              🔄 Yeni Case Başlat
+            </button>
+            <span className="new-case-hint">Önceki analiz Geçmiş'te kalır, silinmez.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="panel history-panel">
+        <span className="eyebrow">Faz 0 · Geçmiş</span>
+        <h1>Analiz Geçmişi ({runsHistory.length})</h1>
+        <p className="lead">
+          Her çözüm kalıcı kaydedilir, silinmez. Karşılaştırmak için 2 run seçin.
+        </p>
+        {runsHistory.length === 0 ? (
+          <p className="material-assign-hint">Henüz kayıtlı analiz yok.</p>
+        ) : (
+          <ul className="history-list">
+            {runsHistory.map((r) => (
+              <li key={r.id} className="history-item">
+                <label className="history-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={compareSelection.includes(r.id)}
+                    onChange={() => toggleCompareSelection(r.id)}
+                  />
+                </label>
+                <div className="history-item-body">
+                  <div className="history-item-title">
+                    {r.name ?? `Run #${r.id}`}{" "}
+                    <span className={`history-status history-status-${r.status}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <div className="history-item-sub">
+                    {r.geometry_filename} · {r.dimension === 2 ? "2D" : "3D"} ·{" "}
+                    {new Date(r.created_at).toLocaleString("tr-TR")}
+                  </div>
+                  {r.scalars.max_von_mises !== undefined && (
+                    <div className="history-item-scalar">
+                      VM max: {r.scalars.max_von_mises.toExponential(2)} · Deplasman max:{" "}
+                      {r.scalars.max_displacement?.toExponential(2) ?? "—"}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {compareSelection.length === 2 && (
+          <button
+            type="button"
+            className="material-assign-button"
+            onClick={() => setViewMode("compare")}
+          >
+            İki Case'i Karşılaştır (Split-Screen)
           </button>
         )}
       </div>
@@ -2025,6 +2140,15 @@ function App() {
           </div>
         )}
 
+        <label className="material-check">
+          <input
+            type="text"
+            className="group-name-input"
+            placeholder="Case adı (opsiyonel, örn. '9kN - orijinal')"
+            value={caseNameInput}
+            onChange={(e) => setCaseNameInput(e.target.value)}
+          />
+        </label>
         <label className="material-check">
           <input
             type="checkbox"
