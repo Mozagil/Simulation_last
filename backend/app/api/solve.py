@@ -14,6 +14,7 @@ from app.api.geometry import MESH_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import get_db
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
+from app.postprocess.fatigue import compute_safety_factor, estimate_fatigue_life
 from app.solvers.base import SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 
@@ -235,6 +236,37 @@ def solve_geometry(
                 if parsed.results_preview_path
                 else None
             )
+
+            # Yorulma ömrü + statik güvenlik faktörü — ROADMAP.md "6.
+            # Post-process (fatigue)". Birden fazla malzeme atanmışsa EN
+            # DÜŞÜK akma dayanımına sahip olanı kullanıyoruz (muhafazakar,
+            # en kötü durum) — parça-bazlı ayrı SF şimdilik kapsam dışı.
+            #
+            # KRİTİK BİRİM DÖNÜŞÜMÜ: malzeme kütüphanesi yield_strength ve
+            # ultimate_strength'i Pa (SI) olarak saklıyor (E/density'de
+            # daha önce bulduğumuz AYNI desen) — ama max_von_mises bizim
+            # mm-tutarlı birim sistemimizde MPa (N/mm²) cinsinden. Pa'yı
+            # dönüştürmeden kullanmak safety_factor'ü 1 milyon kat yanlış
+            # veriyordu (gerçek bir testte kanıtlandı: 838145 yerine 0.838
+            # olmalıydı). E/density düzeltmesindeki AYNI ÷1e6 kuralı burada
+            # da geçerli.
+            max_vm = parsed.scalars.get("max_von_mises")
+            if max_vm is not None and assignments:
+                worst = min(assignments, key=lambda a: a.material.yield_strength)
+                yield_mpa = worst.material.yield_strength / 1e6
+                sf = compute_safety_factor(max_vm, yield_mpa)
+                if sf is not None:
+                    result["scalars"]["safety_factor"] = sf
+                sn_curve = worst.material.sn_curve
+                if sn_curve and sn_curve.get("points"):
+                    points_mpa = [
+                        {"N": p["N"], "sigma": p["sigma"] / 1e6} for p in sn_curve["points"]
+                    ]
+                    fatigue = estimate_fatigue_life(max_vm, points_mpa)
+                    if fatigue.get("cycles") is not None:
+                        result["scalars"]["fatigue_life_cycles"] = fatigue["cycles"]
+                        result["fatigue_note"] = fatigue.get("note")
+                        result["fatigue_runout"] = fatigue.get("runout", False)
 
             run.status = "solved"
             run.message = result["message"]

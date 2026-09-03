@@ -279,6 +279,8 @@ def test_parse_results_writes_results_preview_json_aligned_with_node_order(tmp_p
     assert preview["displacement_vectors"][1] == pytest.approx([0.0, 0.0, 0.0])
     assert preview["von_mises"][0] == pytest.approx(100.0)
     assert preview["von_mises"][1] == pytest.approx(0.0)
+    # Kritik node: von_mises'in en yüksek olduğu node_id (10, index 0 — 100.0)
+    assert preview["critical_node_id"] == 10
     assert preview["max_von_mises"] == pytest.approx(100.0)
 
     assert result_set.scalars["max_von_mises"] == pytest.approx(100.0)

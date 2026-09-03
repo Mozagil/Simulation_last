@@ -182,6 +182,56 @@ def test_get_run_detail_includes_bcs_and_urls():
 
 
 @requires_db
+def test_solve_computes_safety_factor_and_fatigue_with_correct_units():
+    """KRİTİK: yield_strength/S-N eğrisi Pa (SI) saklanıyor ama
+    max_von_mises MPa cinsinden — dönüştürmeden kullanılırsa safety_factor
+    1 milyon kat yanlış çıkıyordu (gerçek bir testte kanıtlandı: 838145
+    yerine 0.838 olmalıydı). Bu test doğru dönüşümü doğruluyor.
+    """
+    geometry_id = _upload_and_mesh_box()
+
+    mats = client.get("/materials").json()["materials"]
+    material_id = mats[0]["id"]
+    yield_pa = mats[0]["yield_strength"]
+
+    client.put(f"/materials/{material_id}/sn-curve", json={"source": "estimated"})
+    client.post(
+        "/materials/assignments",
+        json={"geometry_id": geometry_id, "part_id": 0, "material_id": material_id},
+    )
+
+    response = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": True,
+            "bcs": [
+                {"type": "fixed", "face_ids": [1]},
+                # Sıfır olmayan bir gerilme olsun diye bir yük gerekli —
+                # sadece Fixed (yüksüz) ile max_von_mises=0 çıkar, bu da
+                # safety_factor'ün (doğru şekilde) None dönmesine sebep
+                # olur (sıfır gerilmede SF tanımsızdır).
+                {"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -50000.0},
+            ],
+        },
+    )
+    if response.status_code != 200 or not response.json().get("solver_ran"):
+        pytest.skip("ccx kurulu değil ya da çözüm başarısız — bu ortamda test edilemiyor.")
+
+    scalars = response.json()["scalars"]
+    max_vm = scalars["max_von_mises"]
+    sf = scalars["safety_factor"]
+
+    # KRİTİK doğrulama: SF, yield_strength'in Pa->MPa dönüştürülmüş haliyle
+    # hesaplanmalı — Pa'dan MPa'ya dönüştürülmezse (eski hatalı davranış)
+    # sf, expected_sf'nin 1 milyon katı çıkardı.
+    expected_sf = (yield_pa / 1e6) / max_vm
+    assert sf == pytest.approx(expected_sf, rel=1e-6)
+    wrong_sf_if_unconverted = yield_pa / max_vm
+    assert abs(sf - wrong_sf_if_unconverted) > abs(sf) * 100  # kesinlikle dönüştürülmüş değer
+
+
+@requires_db
 def test_solve_rejects_bcs_without_any_constraint():
     """KRİTİK: sadece yük (Force/Gravity) BC'si olup Fixed/Displacement/
     Sliding gibi bir yer değiştirme kısıtı YOKSA, çözüme İZİN VERİLMEMELİ —
