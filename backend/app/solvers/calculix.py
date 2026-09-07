@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -80,9 +81,19 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
     node_coords: dict[int, tuple[float, ...]] = {}
     displacement: dict[int, tuple[float, ...]] = {}
     stress: dict[int, tuple[float, ...]] = {}
+    disp_increments: list[dict[int, tuple[float, ...]]] = []
+    current_disp: dict[int, tuple[float, ...]] = {}
 
     in_node_block = False
     current_result_type: str | None = None
+
+    def flush_disp() -> None:
+        nonlocal current_disp, displacement
+        if not current_disp:
+            return
+        disp_increments.append(current_disp)
+        displacement = current_disp
+        current_disp = {}
 
     for line in lines:
         stripped_start = line[:6] if len(line) >= 6 else line
@@ -92,11 +103,17 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             continue
         if line.startswith(" -4"):
             # örn: " -4  DISP        4    1" / " -4  STRESS      6    1"
+            if current_result_type == "DISP":
+                flush_disp()
             rest = line[4:].split()
             current_result_type = rest[0] if rest else None
             in_node_block = False
+            if current_result_type == "DISP":
+                current_disp = {}
             continue
         if line.startswith(" -3"):
+            if current_result_type == "DISP":
+                flush_disp()
             in_node_block = False
             current_result_type = None
             continue
@@ -114,14 +131,22 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             parsed = _frd_data_line(line)
             if parsed and len(parsed[1]) >= 3:
                 nid, vals = parsed
-                displacement[nid] = (vals[0], vals[1], vals[2])
+                current_disp[nid] = (vals[0], vals[1], vals[2])
         elif current_result_type == "STRESS":
             parsed = _frd_data_line(line)
             if parsed and len(parsed[1]) >= 6:
                 nid, vals = parsed
                 stress[nid] = tuple(vals[:6])
 
-    return {"node_coords": node_coords, "displacement": displacement, "stress": stress}
+    if current_result_type == "DISP":
+        flush_disp()
+
+    return {
+        "node_coords": node_coords,
+        "displacement": displacement,
+        "disp_increments": disp_increments,
+        "stress": stress,
+    }
 
 
 def _von_mises_stress(
@@ -139,11 +164,29 @@ def _von_mises_stress(
     )
 
 
+def _vendor_ccx_candidates() -> list[Path]:
+    vendor = Path(__file__).resolve().parent.parent.parent / "vendor" / "ccx"
+    return [
+        vendor / "ccx.exe",
+        vendor / "ccx_static.exe",
+        vendor / "ccx",
+    ]
+
+
 def _ccx_executable() -> str | None:
     env = os.environ.get("CCX_PATH")
-    if env and Path(env).exists():
-        return env
-    return shutil.which("ccx") or shutil.which("ccx.exe")
+    if env:
+        env_path = Path(env)
+        if env_path.exists():
+            return str(env_path)
+    for name in ("ccx", "ccx.exe", "ccx_static", "ccx_static.exe"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for candidate in _vendor_ccx_candidates():
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def _sanitize_name(name: str) -> str:
@@ -160,6 +203,9 @@ class CalculiXAdapter(SolverAdapter):
         - materials: list[{name, density, youngs_modulus, poisson_ratio, part_id}]
         - shell_thickness: float (dim=2)
         - bcs: list[dict]  fixed/cload/pressure/displacement/gravity/bearing
+        - analysis_type: "static" (varsayılan) | "modal"
+        - n_modes: int (modal; varsayılan 10)
+        - freq_min / freq_max: isteğe bağlı Hz aralığı (modal)
         """
         mesh_path = Path(params["mesh_path"])
         if not mesh_path.exists():
@@ -174,6 +220,7 @@ class CalculiXAdapter(SolverAdapter):
         materials = params.get("materials") or []
         shell_thickness = float(params.get("shell_thickness", 1.0))
         bcs = params.get("bcs") or []
+        analysis_type = str(params.get("analysis_type") or "static").lower()
 
         mesh_block, nsets, elsets = _mesh_to_inp_blocks(
             mesh_path, dimension, materials, shell_thickness
@@ -184,7 +231,20 @@ class CalculiXAdapter(SolverAdapter):
         # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
         # used within a STEP" hatasıyla durduğu doğrulandı).
         model_bc_block, step_bc_block = _bcs_inp_block(bcs, nsets, elsets, dimension)
-        step_block = _static_step_block(step_bc_block)
+        if analysis_type == "modal":
+            # Modal'da yükler (*CLOAD/*DLOAD) yazılmaz — özdeğer problemi
+            # mesnet + kütle/rijitlik ister, kuvvet değil.
+            step_block = _frequency_step_block(
+                n_modes=params.get("n_modes", 10),
+                freq_min=params.get("freq_min"),
+                freq_max=params.get("freq_max"),
+            )
+        elif analysis_type == "static":
+            step_block = _static_step_block(step_bc_block)
+        else:
+            raise SolverError(
+                f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
+            )
 
         inp_path.write_text(
             mesh_block + mat_block + model_bc_block + step_block,
@@ -275,15 +335,38 @@ class CalculiXAdapter(SolverAdapter):
         for nid, (sxx, syy, szz, sxy, syz, szx) in stress.items():
             von_mises[nid] = _von_mises_stress(sxx, syy, szz, sxy, syz, szx)
 
-        disp_mag_array = [disp_mag.get(nid, 0.0) for nid in node_order]
         von_mises_array = [von_mises.get(nid, 0.0) for nid in node_order]
-        # Deforme şekil (deformed shape) görselleştirmesi için — sadece
-        # büyüklük değil, gerçek vektör (dx,dy,dz) gerekiyor.
-        disp_vector_array = [
-            list(displacement.get(nid, (0.0, 0.0, 0.0))) for nid in node_order
-        ]
 
-        max_disp = max(disp_mag_array, default=0.0)
+        dat_path = job.work_dir / f"{job.artifact.path.stem}.dat"
+        frequencies = _parse_dat_frequencies(dat_path)
+        increments = parsed.get("disp_increments") or (
+            [displacement] if displacement else []
+        )
+        modes: list[dict[str, Any]] = []
+        for i, inc in enumerate(increments):
+            vecs = [list(inc.get(nid, (0.0, 0.0, 0.0))) for nid in node_order]
+            mags = [math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) for v in vecs]
+            modes.append(
+                {
+                    "index": i + 1,
+                    "frequency_hz": frequencies[i] if i < len(frequencies) else None,
+                    "displacement_vectors": vecs,
+                    "displacement_magnitude": mags,
+                    "max_displacement": max(mags, default=0.0),
+                }
+            )
+
+        # Varsayılan görüntü: ilk increment (modal'da 1. mod).
+        if modes:
+            disp_mag_array = modes[0]["displacement_magnitude"]
+            disp_vector_array = modes[0]["displacement_vectors"]
+            max_disp = float(modes[0]["max_displacement"])
+        else:
+            disp_mag_array = [disp_mag.get(nid, 0.0) for nid in node_order]
+            disp_vector_array = [
+                list(displacement.get(nid, (0.0, 0.0, 0.0))) for nid in node_order
+            ]
+            max_disp = max(disp_mag_array, default=0.0)
         max_vm = max(von_mises_array, default=0.0)
         # Kritik node: maksimum von Mises'e sahip düğümün gerçek CalculiX
         # node ID'si (frontend'de "CRITICAL NODE: #8421" gibi göstermek
@@ -304,6 +387,7 @@ class CalculiXAdapter(SolverAdapter):
                     "max_displacement": max_disp,
                     "max_von_mises": max_vm,
                     "critical_node_id": critical_node_id,
+                    "modes": modes,
                 },
                 separators=(",", ":"),
             ),
@@ -318,6 +402,14 @@ class CalculiXAdapter(SolverAdapter):
             max_vm,
         )
 
+        freq_scalars = {
+            f"freq_{i}": f_hz for i, f_hz in enumerate(frequencies, start=1)
+        }
+        if frequencies:
+            freq_scalars["n_frequencies"] = float(len(frequencies))
+            freq_scalars["freq_min"] = frequencies[0]
+            freq_scalars["freq_max"] = frequencies[-1]
+
         return ResultSet(
             scalars={
                 "frd_bytes": float(frd.stat().st_size),
@@ -329,10 +421,56 @@ class CalculiXAdapter(SolverAdapter):
                     if critical_node_id is not None
                     else {}
                 ),
+                **freq_scalars,
             },
+            curves={"frequencies": frequencies} if frequencies else {},
             raw_result_path=frd,
             results_preview_path=results_preview_path,
         )
+
+
+def _parse_dat_frequencies(dat_path: Path) -> list[float]:
+    """CalculiX .dat içinden doğal frekansları (cycles/time = Hz) okur."""
+    if not dat_path.exists():
+        return []
+    text = dat_path.read_text(encoding="utf-8", errors="replace")
+    found = [
+        float(m.group(1))
+        for m in re.finditer(
+            r"FREQUENCY\s*\(\s*CYCLES/TIME\s*\)\s+([+-]?(?:\d+\.?\d*|\.\d+)(?:[Ee][+-]?\d+)?)",
+            text,
+            flags=re.IGNORECASE,
+        )
+    ]
+    if found:
+        return found
+    rows: list[float] = []
+    in_table = False
+    for line in text.splitlines():
+        upper = line.upper()
+        if "E I G E N V A L U E" in upper or (
+            "MODE NO" in upper and "EIGENVALUE" in upper
+        ):
+            in_table = True
+            continue
+        if in_table and (
+            "P A R T I C I P A T I O N" in upper or "PARTICIPATION FACTOR" in upper
+        ):
+            break
+        if not in_table:
+            continue
+        parts = line.split()
+        # MODE  EIGENVALUE  ω(rad)  f(cycles/time)  imag
+        if len(parts) < 4:
+            continue
+        try:
+            mode_no = int(float(parts[0]))
+            freq_hz = float(parts[3] if len(parts) >= 4 else parts[-1])
+        except ValueError:
+            continue
+        if mode_no >= 1:
+            rows.append(freq_hz)
+    return rows
 
 
 def _mesh_to_inp_blocks(
@@ -450,6 +588,13 @@ def _mesh_to_inp_blocks(
         for _d, ctag in gmsh.model.getEntities(1):
             nset = f"EDGE_{ctag}"
             nt, _, _ = gmsh.model.mesh.getNodes(1, ctag)
+            ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+            if ids:
+                nsets[nset] = ids
+
+        for _d, ptag in gmsh.model.getEntities(0):
+            nset = f"POINT_{ptag}"
+            nt, _, _ = gmsh.model.mesh.getNodes(0, ptag)
             ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
             if ids:
                 nsets[nset] = ids
@@ -725,6 +870,28 @@ def _bcs_inp_block(
                         step_lines.append(f"{nid}, 2, {f * ay:.6g}")
                     if abs(az) > 0:
                         step_lines.append(f"{nid}, 3, {f * az:.6g}")
+        elif btype == "rigid_body":
+            ref = bc.get("ref_node_id")
+            if ref is None:
+                model_lines.append("** rigid_body skipped: ref_node_id yok")
+                continue
+            raw_ref = int(ref)
+            point_set = nsets.get(f"POINT_{raw_ref}") or []
+            ref_id = point_set[0] if point_set else raw_ref
+            slave: list[int] = []
+            for fid in bc.get("face_ids") or []:
+                slave.extend(nsets.get(f"FACE_{int(fid)}") or [])
+            for eid in bc.get("edge_ids") or []:
+                slave.extend(nsets.get(f"EDGE_{int(eid)}") or [])
+            for nid in bc.get("node_ids") or []:
+                slave.append(int(nid))
+            slave = [n for n in dict.fromkeys(slave) if n != ref_id]
+            if not slave:
+                continue
+            nset = f"RB_{ref_id}"
+            model_lines.append(f"*NSET, NSET={nset}")
+            model_lines.extend(_chunk_csv(slave))
+            model_lines.append(f"*RIGID BODY, NSET={nset}, REF NODE={ref_id}")
         else:
             model_lines.append(f"** unknown bc type: {btype}")
 
@@ -743,6 +910,43 @@ def _static_step_block(step_bc_lines: str = "") -> str:
         "U\n"
         "*EL FILE\n"
         "S\n"
+        "*END STEP\n"
+    )
+
+
+def _frequency_step_block(
+    n_modes: Any = 10,
+    freq_min: Any = None,
+    freq_max: Any = None,
+) -> str:
+    """CalculiX Lanczos özdeğer adımı — `*FREQUENCY` (modal).
+
+    STORAGE=YES: mod şekilleri .frd'ye yazılır. Yük kartı yoktur.
+    """
+    try:
+        n = int(n_modes)
+    except (TypeError, ValueError) as exc:
+        raise SolverError("n_modes tam sayı olmalı.") from exc
+    if n < 1 or n > 200:
+        raise SolverError("n_modes 1 ile 200 arasında olmalı.")
+
+    data_line = str(n)
+    if freq_min is not None and freq_max is not None:
+        try:
+            lo = float(freq_min)
+            hi = float(freq_max)
+        except (TypeError, ValueError) as exc:
+            raise SolverError("freq_min / freq_max sayı olmalı.") from exc
+        if not (hi > lo >= 0):
+            raise SolverError("freq_max, freq_min'den büyük olmalı (Hz).")
+        data_line = f"{n}, {lo:.6g}, {hi:.6g}"
+
+    return (
+        "*STEP\n"
+        "*FREQUENCY, STORAGE=YES\n"
+        f"{data_line}\n"
+        "*NODE FILE\n"
+        "U\n"
         "*END STEP\n"
     )
 

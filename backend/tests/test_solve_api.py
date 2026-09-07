@@ -4,7 +4,6 @@ Not: Bu testler gerçek bir PostgreSQL bağlantısı gerektiriyor — bkz.
 test_geometry_upload.py'deki `requires_db` deseni.
 """
 
-import shutil
 from pathlib import Path
 
 import pytest
@@ -13,8 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.api.geometry import MESH_DIR, UPLOAD_DIR
+from app.api.solve import RUNS_DIR
 from app.db.session import SessionLocal
 from app.main import app
+from tests.db_guard import safe_cleanup
 
 client = TestClient(app)
 
@@ -41,18 +42,13 @@ requires_db = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def _clean_state():
     yield
-    if UPLOAD_DIR.exists():
-        shutil.rmtree(UPLOAD_DIR)
-    if _db_available():
-        db = SessionLocal()
-        db.execute(
-            text(
-                "TRUNCATE analysis_runs, material_assignments, physical_groups, "
-                "geometries RESTART IDENTITY CASCADE"
-            )
-        )
-        db.commit()
-        db.close()
+    if not _db_available():
+        return
+    safe_cleanup(
+        UPLOAD_DIR,
+        "TRUNCATE analysis_runs, material_assignments, physical_groups, "
+        "geometries RESTART IDENTITY CASCADE",
+    )
 
 
 def _upload_and_mesh_box() -> int:
@@ -102,13 +98,11 @@ def test_solve_creates_analysis_run_record():
     assert body["run_id"] is not None
 
     # Geçmiş listesinde görünmeli
-    runs_response = client.get("/geometry/runs")
-    assert runs_response.status_code == 200
-    runs_body = runs_response.json()
-    assert runs_body["count"] == 1
-    assert runs_body["runs"][0]["id"] == body["run_id"]
-    assert runs_body["runs"][0]["name"] == "Test Case 1"
-    assert runs_body["runs"][0]["geometry_id"] == geometry_id
+    runs_body = client.get("/geometry/runs").json()
+    geo_runs = [r for r in runs_body["runs"] if r["geometry_id"] == geometry_id]
+    assert len(geo_runs) == 1
+    assert geo_runs[0]["id"] == body["run_id"]
+    assert geo_runs[0]["name"] == "Test Case 1"
 
 
 @requires_db
@@ -146,14 +140,48 @@ def test_two_solves_on_same_geometry_do_not_overwrite_each_other():
     assert Path(second["inp_path"]).exists()
 
     runs_body = client.get("/geometry/runs").json()
-    assert runs_body["count"] == 2
-    names = {r["name"] for r in runs_body["runs"]}
+    geo_runs = [r for r in runs_body["runs"] if r["geometry_id"] == geometry_id]
+    assert len(geo_runs) == 2
+    names = {r["name"] for r in geo_runs}
     assert names == {"Case A", "Case B"}
 
 
 @requires_db
 def test_get_run_detail_returns_404_for_unknown_id():
     response = client.get("/geometry/runs/999999")
+    assert response.status_code == 404
+
+
+@requires_db
+def test_delete_run_removes_row_and_files():
+    """Kullanıcı bir geçmiş kaydını sildiğinde DB satırı ve run klasörü gitmeli."""
+    geometry_id = _upload_and_mesh_box()
+    solve_body = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": False,
+            "name": "Silinecek",
+            "bcs": [{"type": "fixed", "face_ids": [1]}],
+        },
+    ).json()
+    run_id = solve_body["run_id"]
+    run_dir = RUNS_DIR / str(run_id)
+    assert run_dir.exists()
+
+    response = client.delete(f"/geometry/runs/{run_id}")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True, "run_id": run_id}
+    assert not run_dir.exists()
+
+    runs_body = client.get("/geometry/runs").json()
+    assert all(r["id"] != run_id for r in runs_body["runs"])
+    assert client.get(f"/geometry/runs/{run_id}").status_code == 404
+
+
+@requires_db
+def test_delete_run_returns_404_for_unknown_id():
+    response = client.delete("/geometry/runs/999999")
     assert response.status_code == 404
 
 
@@ -331,9 +359,7 @@ def test_solve_rejects_bcs_without_any_constraint():
     assert "kısıt" in response.json()["detail"].lower() or "rijit" in response.json()["detail"].lower()
 
     runs_body = client.get("/geometry/runs").json()
-    assert runs_body["count"] == 0
-
-    # Fixed eklenince kabul edilmeli (en azından .inp üretim aşamasına geçmeli).
+    assert all(r["geometry_id"] != geometry_id for r in runs_body["runs"])
     response2 = client.post(
         f"/geometry/{geometry_id}/solve",
         json={
@@ -372,4 +398,56 @@ def test_solve_without_materials_does_not_create_orphan_run():
     assert response.status_code == 422
 
     runs_body = client.get("/geometry/runs").json()
-    assert runs_body["count"] == 0
+    assert all(r["geometry_id"] != geometry_id for r in runs_body["runs"])
+
+
+@requires_db
+def test_solve_modal_writes_frequency_inp_without_loads():
+    geometry_id = _upload_and_mesh_box()
+    response = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": False,
+            "analysis_type": "modal",
+            "n_modes": 8,
+            "bcs": [
+                {"type": "fixed", "face_ids": [1]},
+                {"type": "gravity", "gx": 0.0, "gy": 0.0, "gz": -9810.0},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["analysis_type"] == "modal"
+    assert body["n_modes"] == 8
+    inp = Path(body["inp_path"])
+    assert inp.exists()
+    text = inp.read_text(encoding="utf-8")
+    assert "*FREQUENCY, STORAGE=YES" in text
+    assert "\n8\n" in text
+    assert "*STATIC" not in text
+    assert "GRAV" not in text
+
+
+@requires_db
+def test_solve_wait_false_returns_pending_when_running_solver():
+    geometry_id = _upload_and_mesh_box()
+    response = client.post(
+        f"/geometry/{geometry_id}/solve",
+        json={
+            "dimension": 3,
+            "run_solver": True,
+            "wait": False,
+            "bcs": [{"type": "fixed", "face_ids": [1]}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] in ("pending", "failed", "solved")
+    if body["status"] == "pending":
+        assert body["solver_ran"] is False
+        detail = client.get(f"/geometry/runs/{body['run_id']}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] in ("pending", "solved", "failed")
+

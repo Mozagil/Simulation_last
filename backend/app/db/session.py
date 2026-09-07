@@ -14,7 +14,11 @@ DATABASE_URL = os.environ.get(
     "postgresql+psycopg2://postgres:postgres@localhost:5432/cae_dev",
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"connect_timeout": 5},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

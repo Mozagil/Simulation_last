@@ -9,6 +9,9 @@ venv/
 # Env
 .env
 
+# Yerel solver ikilileri (CalculiX ccx.exe ~40MB)
+backend/vendor/
+
 # Node / frontend (ileride eklenecek)
 node_modules/
 dist/

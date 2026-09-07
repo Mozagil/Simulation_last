@@ -49,7 +49,7 @@ interface GeometryViewerProps {
   /** Sonuç nokta bulutu görünür mü. */
   showResults: boolean;
   /** Hangi alan renklendirilecek. */
-  resultsField: "von_mises" | "displacement_magnitude";
+  resultsField: "von_mises" | "displacement_magnitude" | "safety_factor";
   /** Deformasyon büyütme çarpanı (0 = deforme etme). */
   resultsDeformScale: number;
   /** Elle girilen renk skalası — null ise otomatik (0..max). */
@@ -78,9 +78,36 @@ interface GeometryViewerProps {
   onCameraChange?: (state: CameraState) => void;
   /** Mesh elemanına tıklanınca. Ctrl ile çoklu; düz tık tekile indirger. */
   onMeshPicks?: (picks: MeshPickInfo[], keepGrow: boolean) => void;
+  /** CAD katısını göster (karşılaştırma: geometri gizle/göster). */
+  showCad?: boolean;
+  /** Tıklanınca en yakın sonuç düğümünü oku (probe). */
+  probeEnabled?: boolean;
+  onResultProbe?: (probe: ResultProbeHit) => void;
+  /** Eleman id → kalite değeri (triangle_to_element ile). */
+  meshQualityValues?: number[] | null;
+  /** true: düşük değer kötü (Jacobian). false: yüksek değer kötü (skew/warp). */
+  meshQualityInvert?: boolean;
+  freeEdgeSegments?: { p0: number[]; p1: number[] }[] | null;
+}
+
+export interface ResultProbeHit {
+  nodeId: number;
+  x: number;
+  y: number;
+  z: number;
+  vonMises: number;
+  displacement: number;
 }
 
 const MESH_FACE_COLOR = "#6aa84f";
+const JET = (t: number) => {
+  const x = Math.min(1, Math.max(0, t));
+  return new THREE.Color(
+    Math.min(1, Math.max(0, 1.5 - Math.abs(4 * x - 3))),
+    Math.min(1, Math.max(0, 1.5 - Math.abs(4 * x - 2))),
+    Math.min(1, Math.max(0, 1.5 - Math.abs(4 * x - 1))),
+  );
+};
 const MESH_FACE_THREE = new THREE.Color(MESH_FACE_COLOR);
 const MESH_EDGE_COLOR = "#1a1a1a";
 
@@ -281,6 +308,12 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   onSelectionChange,
   onMeshPicks,
   onCameraChange,
+  showCad = true,
+  probeEnabled = false,
+  onResultProbe,
+  meshQualityValues = null,
+  meshQualityInvert = true,
+  freeEdgeSegments = null,
 }: GeometryViewerProps,
   ref: ForwardedRef<GeometryViewerHandle>,
 ) {
@@ -299,6 +332,30 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshWireframeRef.current = meshWireframe;
   const cadOpacityRef = useRef(cadOpacity);
   cadOpacityRef.current = cadOpacity;
+  const resultsPreviewRef = useRef(resultsPreview);
+  resultsPreviewRef.current = resultsPreview;
+  const showResultsRef = useRef(showResults);
+  showResultsRef.current = showResults;
+  const resultsFieldRef = useRef(resultsField);
+  resultsFieldRef.current = resultsField;
+  const resultsDeformScaleRef = useRef(resultsDeformScale);
+  resultsDeformScaleRef.current = resultsDeformScale;
+  const resultsScaleMinRef = useRef(resultsScaleMin);
+  resultsScaleMinRef.current = resultsScaleMin;
+  const resultsScaleMaxRef = useRef(resultsScaleMax);
+  resultsScaleMaxRef.current = resultsScaleMax;
+  const meshQualityValuesRef = useRef(meshQualityValues);
+  meshQualityValuesRef.current = meshQualityValues;
+  const meshQualityInvertRef = useRef(meshQualityInvert);
+  meshQualityInvertRef.current = meshQualityInvert;
+  const freeEdgeSegmentsRef = useRef(freeEdgeSegments);
+  freeEdgeSegmentsRef.current = freeEdgeSegments;
+  const showCadRef = useRef(showCad);
+  showCadRef.current = showCad;
+  const probeEnabledRef = useRef(probeEnabled);
+  probeEnabledRef.current = probeEnabled;
+  const onResultProbeRef = useRef(onResultProbe);
+  onResultProbeRef.current = onResultProbe;
   const onCameraChangeRef = useRef(onCameraChange);
   onCameraChangeRef.current = onCameraChange;
   // setCameraState ile programatik kamera değişimi sırasında true olur —
@@ -475,7 +532,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   function applyResultsOverlay(
     preview: ResultsPreviewData | null,
     visible: boolean,
-    field: "von_mises" | "displacement_magnitude",
+    field: "von_mises" | "displacement_magnitude" | "safety_factor",
     deformScale: number,
     scaleMin: number | null,
     scaleMax: number | null,
@@ -484,8 +541,19 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     disposeResultsOverlay();
     if (!preview || !visible || !refs.modelGroup || preview.nodes.length === 0) return;
 
-    const values = field === "von_mises" ? preview.von_mises : preview.displacement_magnitude;
-    const autoMax = field === "von_mises" ? preview.max_von_mises : preview.max_displacement;
+    const sfArr = preview.safety_factor;
+    const values =
+      field === "von_mises"
+        ? preview.von_mises
+        : field === "safety_factor"
+          ? (sfArr ?? []).map((v) => (v == null ? 0 : v))
+          : preview.displacement_magnitude;
+    const autoMax =
+      field === "von_mises"
+        ? preview.max_von_mises
+        : field === "safety_factor"
+          ? Math.max(1, ...values)
+          : preview.max_displacement;
     const lo = scaleMin ?? 0;
     const hi = scaleMax ?? (autoMax > 1e-30 ? autoMax : 1);
     const safeRange = hi - lo > 1e-30 ? hi - lo : 1;
@@ -502,7 +570,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       const [x, y, z] = preview.nodes[i];
       const dv = vectors && vectors[i] ? vectors[i] : [0, 0, 0];
       const t01 = Math.min(1, Math.max(0, ((values[i] ?? 0) - lo) / safeRange));
-      const color = jetColor(t01);
+      const sf = sfArr?.[i];
+      const critical = sf != null && sf < 1;
+      const color = critical ? new THREE.Color("#d90429") : jetColor(t01);
       const mat = new THREE.MeshBasicMaterial({ color });
       const sphere = new THREE.Mesh(sphereGeom, mat);
       sphere.position.set(
@@ -537,7 +607,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshPreviewData: MeshPreviewData | null,
     resultsPreviewData: ResultsPreviewData | null,
     visible: boolean,
-    field: "von_mises" | "displacement_magnitude",
+    field: "von_mises" | "displacement_magnitude" | "safety_factor",
     deformScale: number,
     scaleMin: number | null,
     scaleMax: number | null,
@@ -558,10 +628,19 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     const faces = meshPreviewData.faces ?? [];
     if (faces.length < 3) return false;
 
+    const sfArr = resultsPreviewData.safety_factor;
     const values =
-      field === "von_mises" ? resultsPreviewData.von_mises : resultsPreviewData.displacement_magnitude;
+      field === "von_mises"
+        ? resultsPreviewData.von_mises
+        : field === "safety_factor"
+          ? (sfArr ?? []).map((v) => (v == null ? 0 : v))
+          : resultsPreviewData.displacement_magnitude;
     const autoMax =
-      field === "von_mises" ? resultsPreviewData.max_von_mises : resultsPreviewData.max_displacement;
+      field === "von_mises"
+        ? resultsPreviewData.max_von_mises
+        : field === "safety_factor"
+          ? Math.max(1, ...(sfArr ?? []).filter((v): v is number => v != null && v < 1e6))
+          : resultsPreviewData.max_displacement;
     const lo = scaleMin ?? 0;
     const hi = scaleMax ?? (autoMax > 1e-30 ? autoMax : 1);
     const safeRange = hi - lo > 1e-30 ? hi - lo : 1;
@@ -589,7 +668,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         positions[dst + 2] = nodePos[ni * 3 + 2];
 
         const t01 = Math.min(1, Math.max(0, ((values[ni] ?? 0) - lo) / safeRange));
-        const color = jetColor(t01);
+        const sf = sfArr?.[ni];
+        const critical = sf != null && sf < 1;
+        const color = critical ? new THREE.Color("#d90429") : jetColor(field === "safety_factor" ? 1 - t01 : t01);
         colors[dst] = color.r;
         colors[dst + 1] = color.g;
         colors[dst + 2] = color.b;
@@ -616,6 +697,32 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     return true;
   }
 
+  function applyResultsFromRefs() {
+    const usedSmoothSurface = applyResultsColoredSurface(
+      meshPreviewRef.current,
+      resultsPreviewRef.current,
+      showResultsRef.current,
+      resultsFieldRef.current,
+      resultsDeformScaleRef.current,
+      resultsScaleMinRef.current,
+      resultsScaleMaxRef.current,
+    );
+    if (!usedSmoothSurface) {
+      applyResultsOverlay(
+        resultsPreviewRef.current,
+        showResultsRef.current,
+        resultsFieldRef.current,
+        resultsDeformScaleRef.current,
+        resultsScaleMinRef.current,
+        resultsScaleMaxRef.current,
+      );
+    }
+  }
+
+  function applyCadVisibility() {
+    applyCadOpacity();
+  }
+
   function trisForGrow(picks: MeshPickInfo[], grow: MeshGrowMode): number[] {
     const refs = sceneRefs.current;
     if (picks.length === 0) return [];
@@ -636,15 +743,44 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     return [...tris];
   }
 
+  function fillQualityBase(arr: Float32Array) {
+    const refs = sceneRefs.current;
+    const values = meshQualityValuesRef.current;
+    const invert = meshQualityInvertRef.current;
+    const tElem = refs.triangleToElement;
+    if (!values || values.length === 0 || !tElem) {
+      for (let i = 0; i < arr.length; i += 3) {
+        arr[i] = MESH_FACE_THREE.r;
+        arr[i + 1] = MESH_FACE_THREE.g;
+        arr[i + 2] = MESH_FACE_THREE.b;
+      }
+      return;
+    }
+    const finite = values.filter((v) => Number.isFinite(v));
+    const lo = finite.length ? Math.min(...finite) : 0;
+    const hi = finite.length ? Math.max(...finite) : 1;
+    const range = hi - lo > 1e-30 ? hi - lo : 1;
+    const triCount = refs.overlayTriCount ?? 0;
+    for (let t = 0; t < triCount; t++) {
+      const eid = tElem[t] ?? t;
+      const raw = values[eid] ?? lo;
+      let u = (raw - lo) / range;
+      if (invert) u = 1 - u;
+      const c = JET(u);
+      for (let v = 0; v < 3; v++) {
+        const o = (t * 3 + v) * 3;
+        arr[o] = c.r;
+        arr[o + 1] = c.g;
+        arr[o + 2] = c.b;
+      }
+    }
+  }
+
   function paintMeshGrow(picks: MeshPickInfo[], grow: MeshGrowMode) {
     const attr = sceneRefs.current.overlayColorAttr;
     if (!attr) return;
     const arr = attr.array as Float32Array;
-    for (let i = 0; i < arr.length; i += 3) {
-      arr[i] = MESH_FACE_THREE.r;
-      arr[i + 1] = MESH_FACE_THREE.g;
-      arr[i + 2] = MESH_FACE_THREE.b;
-    }
+    fillQualityBase(arr);
     for (const ti of trisForGrow(picks, grow)) {
       for (let v = 0; v < 3; v++) {
         const o = (ti * 3 + v) * 3;
@@ -661,7 +797,8 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     const opacity = Math.min(1, Math.max(0, cadOpacityRef.current));
     const transparent = opacity < 0.999;
     for (const entry of refs.partMeshes) {
-      entry.mesh.visible = opacity > 0.005 && !entry.mesh.userData._hiddenByUser;
+      entry.mesh.visible =
+        showCadRef.current && opacity > 0.005 && !entry.mesh.userData._hiddenByUser;
       const mat = entry.mesh.material as THREE.MeshStandardMaterial;
       mat.transparent = transparent;
       mat.opacity = opacity;
@@ -674,7 +811,10 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     const refs = sceneRefs.current;
     for (const entry of refs.partMeshes) {
       entry.mesh.visible =
-        visible && cadOpacityRef.current > 0.005 && !entry.mesh.userData._hiddenByUser;
+        visible &&
+        showCadRef.current &&
+        cadOpacityRef.current > 0.005 &&
+        !entry.mesh.userData._hiddenByUser;
     }
     if (visible) applyCadOpacity();
   }
@@ -764,6 +904,29 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       edgeGeom.setIndex(new THREE.BufferAttribute(new Uint32Array(linesIdx), 1));
       const edgeMat = new THREE.LineBasicMaterial({ color: MESH_EDGE_COLOR });
       group.add(new THREE.LineSegments(edgeGeom, edgeMat));
+    }
+
+    const free = freeEdgeSegmentsRef.current;
+    if (free && free.length > 0) {
+      const pts = new Float32Array(free.length * 6);
+      for (let i = 0; i < free.length; i++) {
+        const a = free[i].p0;
+        const b = free[i].p1;
+        pts[i * 6] = a[0];
+        pts[i * 6 + 1] = a[1];
+        pts[i * 6 + 2] = a[2];
+        pts[i * 6 + 3] = b[0];
+        pts[i * 6 + 4] = b[1];
+        pts[i * 6 + 5] = b[2];
+      }
+      const feGeom = new THREE.BufferGeometry();
+      feGeom.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+      group.add(
+        new THREE.LineSegments(
+          feGeom,
+          new THREE.LineBasicMaterial({ color: "#d90429", linewidth: 2 }),
+        ),
+      );
     }
 
     refs.modelGroup.add(group);
@@ -1103,6 +1266,46 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
       const refs = sceneRefs.current;
       const currentMode = modeRef.current;
+
+      if (probeEnabledRef.current && resultsPreviewRef.current) {
+        const preview = resultsPreviewRef.current;
+        const targets: THREE.Object3D[] = [];
+        if (refs.resultsOverlay) targets.push(refs.resultsOverlay);
+        for (const entry of refs.partMeshes) {
+          if (entry.mesh.visible) targets.push(entry.mesh);
+        }
+        const hits = targets.length > 0 ? raycaster.intersectObjects(targets, true) : [];
+        if (hits.length > 0) {
+          const cad = hits[0].point.clone().add(refs.modelCenter);
+          const scale = resultsDeformScaleRef.current;
+          const vectors = preview.displacement_vectors;
+          let best = 0;
+          let bestD = Infinity;
+          for (let i = 0; i < preview.nodes.length; i++) {
+            const n = preview.nodes[i];
+            const dv = vectors && vectors[i] ? vectors[i] : [0, 0, 0];
+            const dx = cad.x - (n[0] + dv[0] * scale);
+            const dy = cad.y - (n[1] + dv[1] * scale);
+            const dz = cad.z - (n[2] + dv[2] * scale);
+            const d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < bestD) {
+              bestD = d2;
+              best = i;
+            }
+          }
+          const n = preview.nodes[best];
+          onResultProbeRef.current?.({
+            nodeId: preview.node_ids[best] ?? best,
+            x: n[0],
+            y: n[1],
+            z: n[2],
+            vonMises: preview.von_mises[best] ?? 0,
+            displacement: preview.displacement_magnitude[best] ?? 0,
+          });
+          return;
+        }
+      }
+
       const overlayVisible =
         Boolean(showMeshRef.current && meshPreviewRef.current) &&
         refs.overlayMesh !== null;
@@ -1387,6 +1590,8 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
         applyHighlightFromAppState();
         applyMeshPreview(meshPreviewRef.current, showMeshRef.current);
+        applyResultsFromRefs();
+        applyCadVisibility();
         applyCadOpacity();
       },
       undefined,
@@ -1502,30 +1707,12 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   useEffect(() => {
     applyMeshPreview(meshPreview, showMesh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meshPreview, showMesh]);
+  }, [meshPreview, showMesh, meshQualityValues, meshQualityInvert, freeEdgeSegments]);
 
   // Sonuç görselleştirme: 3D solid'de düzgün gölgeli kontur (mesh-hizalı),
   // 2D shell'de ya da hizalama tutmazsa nokta bulutuna düşülür.
   useEffect(() => {
-    const usedSmoothSurface = applyResultsColoredSurface(
-      meshPreview,
-      resultsPreview,
-      showResults,
-      resultsField,
-      resultsDeformScale,
-      resultsScaleMin,
-      resultsScaleMax,
-    );
-    if (!usedSmoothSurface) {
-      applyResultsOverlay(
-        resultsPreview,
-        showResults,
-        resultsField,
-        resultsDeformScale,
-        resultsScaleMin,
-        resultsScaleMax,
-      );
-    }
+    applyResultsFromRefs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     meshPreview,
@@ -1561,6 +1748,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  useEffect(() => {
+    showCadRef.current = showCad;
+    applyCadVisibility();
+  }, [showCad]);
 
   // hiddenParts değişimi: sahneyi yeniden kurmadan sadece görünürlük.
   useEffect(() => {

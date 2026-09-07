@@ -1345,7 +1345,8 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 idxs = [tag_to_idx[int(conn[e * 4 + k])] for k in range(4)]
                 volume_tets.append((0, idxs))
 
-        for part_id, idxs in volume_tets:
+        face_tet: dict[tuple[int, int, int], int] = {}
+        for tet_index, (part_id, idxs) in enumerate(volume_tets):
             for a, b, c in tet_faces:
                 tri = (idxs[a], idxs[b], idxs[c])
                 key = tuple(sorted(tri))
@@ -1353,11 +1354,16 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 face_orient[key] = tri
                 if key not in face_part:
                     face_part[key] = part_id
+                    face_tet[key] = tet_index
         for key, count in face_count.items():
             if count != 1:
                 continue
             i0, i1, i2 = face_orient[key]
-            _add_triangle_element(i0, i1, i2, face_part.get(key, 0), 0)
+            tet_id = face_tet.get(key, 0)
+            _add_tri_face(i0, i1, i2, face_part.get(key, 0), 0, tet_id)
+            _add_edge(i0, i1)
+            _add_edge(i1, i2)
+            _add_edge(i2, i0)
 
     lines: list[int] = []
     for a, b in edge_set:
@@ -1408,7 +1414,11 @@ class GmshMesherAdapter(MesherAdapter):
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
         model_name = cad_file.stem
 
-        _gmsh_lock.acquire()
+        if not _gmsh_lock.acquire(timeout=180):
+            raise GmshImportError(
+                "Gmsh kilidi alınamadı (önceki import takılı kalmış olabilir). "
+                "Backend sürecini yeniden başlatın."
+            )
         gmsh.initialize(interruptible=False)
         try:
             gmsh.model.add(model_name)
@@ -2189,6 +2199,8 @@ class GmshMesherAdapter(MesherAdapter):
 
         Gmsh native `getElementQualities` kullanır. Geometri STEP'ine dokunmaz.
         """
+        from app.mesh.quality import element_skewness, element_warpage
+
         if dimension not in (2, 3):
             raise MeshError("dimension 2 veya 3 olmalı.")
         if not mesh_path.exists():
@@ -2200,32 +2212,60 @@ class GmshMesherAdapter(MesherAdapter):
             gmsh.option.setNumber("General.Terminal", 0)
             gmsh.open(str(mesh_path))
 
-            _types, tag_lists, _node_lists = gmsh.model.mesh.getElements(dim=dimension)
+            node_tags, coords, _ = gmsh.model.mesh.getNodes()
+            tag_to_xyz: dict[int, tuple[float, float, float]] = {}
+            for i, tag in enumerate(node_tags):
+                tag_to_xyz[int(tag)] = (
+                    float(coords[3 * i]),
+                    float(coords[3 * i + 1]),
+                    float(coords[3 * i + 2]),
+                )
+
             element_tags: list[int] = []
-            for tags in tag_lists:
-                element_tags.extend(int(t) for t in tags)
+            connectivities: list[list[tuple[float, float, float]]] = []
+            gmsh_types: list[int] = []
+            entities = gmsh.model.getEntities(dimension)
+            if not entities:
+                entities = [(-1, -1)]
+            for edim, etag in entities:
+                kwargs: dict[str, Any] = {"dim": dimension}
+                if etag != -1:
+                    kwargs["tag"] = etag
+                etypes, tag_lists, node_lists = gmsh.model.mesh.getElements(**kwargs)
+                for etype, tags, enodes in zip(etypes, tag_lists, node_lists):
+                    n_per = len(enodes) // max(len(tags), 1) if len(tags) else 0
+                    if n_per < 3:
+                        continue
+                    for ei, etag_i in enumerate(tags):
+                        conn_tags = [int(enodes[ei * n_per + k]) for k in range(n_per)]
+                        pts = [tag_to_xyz[t] for t in conn_tags if t in tag_to_xyz]
+                        if len(pts) < 3:
+                            continue
+                        element_tags.append(int(etag_i))
+                        connectivities.append(pts)
+                        gmsh_types.append(int(etype))
 
             if not element_tags:
                 raise MeshError(
-                    f"Mesh'te dimension={dimension} eleman yok "
-                    f"({mesh_path.name})."
+                    f"Mesh'te dimension={dimension} eleman yok ({mesh_path.name})."
                 )
 
-            jac_vals = list(
-                gmsh.model.mesh.getElementQualities(element_tags, "minSJ")
-            )
-            min_edges = list(
-                gmsh.model.mesh.getElementQualities(element_tags, "minEdge")
-            )
-            max_edges = list(
-                gmsh.model.mesh.getElementQualities(element_tags, "maxEdge")
-            )
+            jac_vals = list(gmsh.model.mesh.getElementQualities(element_tags, "minSJ"))
+            min_edges = list(gmsh.model.mesh.getElementQualities(element_tags, "minEdge"))
+            max_edges = list(gmsh.model.mesh.getElementQualities(element_tags, "maxEdge"))
             aspect_vals: list[float] = []
             for mn, mx in zip(min_edges, max_edges):
                 if mn is None or mx is None or mn <= 1e-30:
                     aspect_vals.append(float("inf"))
                 else:
                     aspect_vals.append(float(mx) / float(mn))
+
+            skew_vals = [element_skewness(pts) for pts in connectivities]
+            # Gmsh: 2=tri, 3=quad, 4=tet, 5=hex. Tet (4 düğüm) quad sanılmasın.
+            warp_vals = [
+                element_warpage(pts, solid=(gt == 4))
+                for pts, gt in zip(connectivities, gmsh_types)
+            ]
 
             def _metric(name: str, values: list[float]) -> MeshQualityMetric:
                 finite = [v for v in values if v == v and abs(v) != float("inf")]
@@ -2246,11 +2286,178 @@ class GmshMesherAdapter(MesherAdapter):
                 element_tags=element_tags,
                 jacobian=_metric("minSJ", jac_vals),
                 aspect_ratio=_metric("aspect_ratio", aspect_vals),
+                skewness=_metric("skewness", skew_vals),
+                warpage=_metric("warpage", warp_vals),
             )
         except MeshError:
             raise
         except Exception as exc:
             raise MeshError(f"Mesh kalite hesaplanamadı: {exc}") from exc
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+    def find_free_edges(self, mesh_path: Path, dimension: int) -> dict[str, Any]:
+        """2D: kabuk eleman kenarları. 3D: dış yüzey üçgen kenarları."""
+        from app.mesh.free_edge import free_edges_from_connectivity
+
+        if not mesh_path.exists():
+            raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+        _gmsh_lock.acquire()
+        gmsh.initialize(interruptible=False)
+        try:
+            gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.open(str(mesh_path))
+            preview = _extract_mesh_wireframe_preview(2 if dimension == 2 else 3)
+            node_tags, _c, _ = gmsh.model.mesh.getNodes()
+            tag_to_idx = {int(t): i for i, t in enumerate(node_tags)}
+            elements: list[list[int]] = []
+            if dimension == 2:
+                etypes, tag_lists, node_lists = gmsh.model.mesh.getElements(dim=2)
+                for etype, tags, enodes in zip(etypes, tag_lists, node_lists):
+                    n_per = len(enodes) // max(len(tags), 1) if len(tags) else 0
+                    if n_per < 3:
+                        continue
+                    for ei in range(len(tags)):
+                        conn = [
+                            tag_to_idx[int(enodes[ei * n_per + k])]
+                            for k in range(n_per)
+                            if int(enodes[ei * n_per + k]) in tag_to_idx
+                        ]
+                        if len(conn) >= 3:
+                            elements.append(conn)
+            else:
+                faces = preview["faces"]
+                for t in range(len(faces) // 3):
+                    elements.append([faces[t * 3], faces[t * 3 + 1], faces[t * 3 + 2]])
+            edges = free_edges_from_connectivity(elements)
+            nodes = preview["nodes"]
+            segments = [
+                {"n0": a, "n1": b, "p0": nodes[a], "p1": nodes[b]}
+                for a, b in edges
+                if a < len(nodes) and b < len(nodes)
+            ]
+            return {"count": len(segments), "edges": segments}
+        except Exception as exc:
+            raise MeshError(f"Free edge hesaplanamadı: {exc}") from exc
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+    def find_duplicate_nodes(
+        self, mesh_path: Path, tolerance: float
+    ) -> dict[str, Any]:
+        if not mesh_path.exists():
+            raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+        _gmsh_lock.acquire()
+        gmsh.initialize(interruptible=False)
+        try:
+            gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.option.setNumber("Geometry.Tolerance", max(float(tolerance), 1e-12))
+            gmsh.open(str(mesh_path))
+            tags = []
+            try:
+                tags = list(gmsh.model.mesh.getDuplicateNodes())
+            except TypeError:
+                tags = list(gmsh.model.mesh.getDuplicateNodes([]))
+            node_tags, coords, _ = gmsh.model.mesh.getNodes()
+            tag_to_xyz = {
+                int(t): [float(coords[3 * i]), float(coords[3 * i + 1]), float(coords[3 * i + 2])]
+                for i, t in enumerate(node_tags)
+            }
+            return {
+                "count": len(tags),
+                "node_tags": [int(t) for t in tags],
+                "coordinates": [tag_to_xyz[int(t)] for t in tags if int(t) in tag_to_xyz],
+                "tolerance": tolerance,
+                "node_count": len(node_tags),
+            }
+        except Exception as exc:
+            raise MeshError(f"Çakışan düğümler bulunamadı: {exc}") from exc
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+    def merge_duplicate_nodes(
+        self, mesh_path: Path, dimension: int, tolerance: float
+    ) -> dict[str, Any]:
+        if not mesh_path.exists():
+            raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+        _gmsh_lock.acquire()
+        gmsh.initialize(interruptible=False)
+        try:
+            gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.option.setNumber("Geometry.Tolerance", max(float(tolerance), 1e-12))
+            gmsh.open(str(mesh_path))
+            before = len(gmsh.model.mesh.getNodes()[0])
+            gmsh.model.mesh.removeDuplicateNodes()
+            after = len(gmsh.model.mesh.getNodes()[0])
+            gmsh.write(str(mesh_path))
+            preview = _extract_mesh_wireframe_preview(dimension)
+            preview_path = mesh_path.with_suffix(".preview.json")
+            # uploads/meshes/{stem}_d{n}.msh → {stem}_d{n}.preview.json
+            preview_path = mesh_path.parent / f"{mesh_path.stem}.preview.json"
+            preview_path.write_text(json.dumps(preview, separators=(",", ":")), encoding="utf-8")
+            return {
+                "node_count_before": before,
+                "node_count_after": after,
+                "merged": before - after,
+                "preview_url": f"/files/meshes/{preview_path.name}",
+            }
+        except Exception as exc:
+            raise MeshError(f"Düğüm birleştirme başarısız: {exc}") from exc
+        finally:
+            gmsh.finalize()
+            _gmsh_lock.release()
+
+    def list_selection_nsets(
+        self,
+        mesh_path: Path,
+        dimension: int,
+        face_ids: list[int] | None = None,
+        edge_ids: list[int] | None = None,
+        node_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """Seçilen yüzey/kenar/düğümlerin CalculiX ile aynı 1-based node listesi."""
+        if not mesh_path.exists():
+            raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+        _gmsh_lock.acquire()
+        gmsh.initialize(interruptible=False)
+        try:
+            gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.open(str(mesh_path))
+            node_tags, _coords, _ = gmsh.model.mesh.getNodes()
+            tag_to_idx = {int(t): i + 1 for i, t in enumerate(node_tags)}
+            sets: list[dict[str, Any]] = []
+            for fid in face_ids or []:
+                nt, _, _ = gmsh.model.mesh.getNodes(2, int(fid))
+                ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+                sets.append({"name": f"FACE_{int(fid)}", "kind": "face", "id": int(fid), "node_ids": ids})
+            for eid in edge_ids or []:
+                nt, _, _ = gmsh.model.mesh.getNodes(1, int(eid))
+                ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+                sets.append({"name": f"EDGE_{int(eid)}", "kind": "edge", "id": int(eid), "node_ids": ids})
+            if node_ids:
+                for nid in node_ids:
+                    nt, _, _ = gmsh.model.mesh.getNodes(0, int(nid))
+                    ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+                    if not ids:
+                        ids = [int(nid)] if int(nid) in tag_to_idx.values() else []
+                    sets.append(
+                        {
+                            "name": f"POINT_{int(nid)}",
+                            "kind": "point",
+                            "id": int(nid),
+                            "node_ids": ids,
+                        }
+                    )
+            return {
+                "dimension": dimension,
+                "sets": sets,
+                "node_count": sum(len(s["node_ids"]) for s in sets),
+            }
+        except Exception as exc:
+            raise MeshError(f"NSET listesi alınamadı: {exc}") from exc
         finally:
             gmsh.finalize()
             _gmsh_lock.release()

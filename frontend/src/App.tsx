@@ -18,15 +18,21 @@ import {
   generateMesh,
   fetchMeshPreview,
   fetchMeshQuality,
+  fetchMeshFreeEdges,
+  fetchMeshDuplicates,
+  mergeMeshDuplicates,
+  fetchMeshNsets,
   healGeometry,
   undoLastMutation,
   resolveTessellationUrl,
   fetchResultsPreview,
+  fetchTessellationMaps,
   type ResultsPreviewData,
   uploadGeometry,
   type MeshElementScheme,
   type MeshPreviewData,
   type MeshQualityResponse,
+  type MeshFreeEdgeSegment,
 } from "./api/geometry";
 import {
   assignMaterial,
@@ -42,9 +48,14 @@ import {
   type SolveBC,
   type SolveResponse,
 } from "./api/materials";
-import { fetchRuns, type RunSummary } from "./api/runs";
+import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
-import { ResultsHistogram, ResultsStatsTable } from "./components/ResultsCharts";
+import {
+  FrequencyLinePlot,
+  ModeShapeThumb,
+  ResultsHistogram,
+  ResultsStatsTable,
+} from "./components/ResultsCharts";
 import { useTheme } from "./useTheme";
 import { ThemeToggle } from "./ThemeToggle";
 import {
@@ -90,7 +101,8 @@ type BcKind =
   | "displacement"
   | "sliding"
   | "bearing"
-  | "gravity";
+  | "gravity"
+  | "rigid_body";
 
 interface BcListItem {
   id: string;
@@ -107,6 +119,7 @@ const BC_KIND_LABELS: Record<BcKind, string> = {
   sliding: "Sliding",
   bearing: "Bearing",
   gravity: "Gravity",
+  rigid_body: "Rigid body",
 };
 
 const BC_KIND_HINTS: Record<BcKind, string> = {
@@ -117,7 +130,58 @@ const BC_KIND_HINTS: Record<BcKind, string> = {
   sliding: "Seçim: mesh veya CAD yüzeyi/kenarı. Kayma düzlemi normali.",
   bearing: "Seçim: mesh veya CAD yüzeyi. Büyüklük + eksen.",
   gravity: "Seçim gerekmez. gx/gy/gz (mm/s², varsayılan −9810).",
+  rigid_body: "Seçim: yüzey (köle düğümler) + CAD nokta (REF NODE). Nokta yüzeyde olmamalı.",
 };
+
+function isBcKind(value: string): value is BcKind {
+  return Object.prototype.hasOwnProperty.call(BC_KIND_LABELS, value);
+}
+
+function summarizeStoredBc(payload: SolveBC): string {
+  const faces = payload.face_ids?.length ? `yüzey ${payload.face_ids.join(",")}` : "";
+  const edgeSel = payload.edge_ids?.length ? `kenar ${payload.edge_ids.join(",")}` : "";
+  const nodes = payload.node_ids?.length ? `nokta ${payload.node_ids.join(",")}` : "";
+  const sel = [faces, edgeSel, nodes].filter(Boolean).join(" · ");
+  const kind = payload.type;
+  if (kind === "fixed") return `Fixed · ${sel || "seçim yok"}`;
+  if (kind === "cload") {
+    return `F=(${payload.fx ?? 0},${payload.fy ?? 0},${payload.fz ?? 0}) · ${sel}`;
+  }
+  if (kind === "pressure") return `Pressure ${payload.magnitude ?? "?"} · ${sel}`;
+  if (kind === "displacement") {
+    const d = payload.dofs ?? {};
+    return `U=(${d["1"] ?? 0},${d["2"] ?? 0},${d["3"] ?? 0}) · ${sel}`;
+  }
+  if (kind === "sliding") {
+    const n = payload.normal ?? [];
+    return `Sliding n=(${n[0] ?? 0},${n[1] ?? 0},${n[2] ?? 0}) · ${sel}`;
+  }
+  if (kind === "bearing") return `Bearing ${payload.magnitude ?? "?"} · ${sel}`;
+  if (kind === "gravity") {
+    return `Gravity (${payload.gx ?? 0},${payload.gy ?? 0},${payload.gz ?? 0})`;
+  }
+  if (kind === "rigid_body") {
+    return `Rigid body ref=${payload.ref_node_id ?? "?"} · ${sel}`;
+  }
+  return `${kind}${sel ? ` · ${sel}` : ""}`;
+}
+
+function bcItemsFromSnapshot(bcs: unknown[]): BcListItem[] {
+  return bcs.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object") return [];
+    const payload = raw as SolveBC;
+    if (typeof payload.type !== "string") return [];
+    const kind: BcKind = isBcKind(payload.type) ? payload.type : "fixed";
+    return [
+      {
+        id: `run-bc-${index}-${payload.type}`,
+        kind,
+        summary: summarizeStoredBc(payload),
+        payload,
+      },
+    ];
+  });
+}
 
 function uniquePartIdsFromPreview(preview: MeshPreviewData | null): number[] {
   const parts = new Set<number>(preview?.triangle_to_part ?? [0]);
@@ -195,7 +259,7 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "results";
+  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "modal" | "results";
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -276,6 +340,15 @@ function App() {
   const [cadOpacityPct, setCadOpacityPct] = useState(100);
   const [viewerBackground, setViewerBackground] = useState<"white" | "black">("white");
   const [meshQuality, setMeshQuality] = useState<MeshQualityResponse | null>(null);
+  const [meshQualityMetric, setMeshQualityMetric] = useState<
+    "jacobian" | "aspect_ratio" | "skewness" | "warpage"
+  >("jacobian");
+  const [freeEdges, setFreeEdges] = useState<MeshFreeEdgeSegment[]>([]);
+  const [nsetReport, setNsetReport] = useState<string | null>(null);
+  const [rigidSlave, setRigidSlave] = useState<{ faces: number[]; edges: number[] }>({
+    faces: [],
+    edges: [],
+  });
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null);
   const [materialAssignments, setMaterialAssignments] = useState<MaterialAssignment[]>([]);
@@ -291,18 +364,31 @@ function App() {
   const [solveResult, setSolveResult] = useState<SolveResponse | null>(null);
   const [resultsPreview, setResultsPreview] = useState<ResultsPreviewData | null>(null);
   const [showResults, setShowResults] = useState(false);
-  const [resultsField, setResultsField] = useState<"von_mises" | "displacement_magnitude">(
-    "von_mises",
-  );
+  const [resultsField, setResultsField] = useState<
+    "von_mises" | "displacement_magnitude" | "safety_factor"
+  >("von_mises");
   const [resultsDeformScale, setResultsDeformScale] = useState(0);
   const [resultsAnimating, setResultsAnimating] = useState(false);
   const [resultsScaleMinInput, setResultsScaleMinInput] = useState("");
   const [resultsScaleMaxInput, setResultsScaleMaxInput] = useState("");
+  const [selectedModalMode, setSelectedModalMode] = useState(0);
+  const displayResultsPreview = useMemo(() => {
+    if (!resultsPreview?.modes?.length) return resultsPreview;
+    const mode = resultsPreview.modes[selectedModalMode] ?? resultsPreview.modes[0];
+    if (!mode) return resultsPreview;
+    return {
+      ...resultsPreview,
+      displacement_vectors: mode.displacement_vectors,
+      displacement_magnitude: mode.displacement_magnitude,
+      max_displacement: mode.max_displacement,
+    };
+  }, [resultsPreview, selectedModalMode]);
   // Analiz geçmişi (AnalysisRun) — ROADMAP.md "7. Veritabanına kayıt +
-  // geçmiş". DB'de kalıcı, hiçbir zaman silinmez.
+  // geçmiş". DB'de kalıcı; kullanıcı Sil ile kaldırabilir.
   const [runsHistory, setRunsHistory] = useState<RunSummary[]>([]);
   const [compareSelection, setCompareSelection] = useState<number[]>([]);
-  const [viewMode, setViewMode] = useState<"edit" | "compare">("edit");
+  const [reviewRunId, setReviewRunId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"edit" | "compare" | "review">("edit");
   const [caseNameInput, setCaseNameInput] = useState("");
 
   /** Geometri ya da mesh mutasyona uğradığında (heal, defeature, offset,
@@ -341,6 +427,222 @@ function App() {
       return [...prev, runId];
     });
   }
+
+  async function handleDeleteRun(runId: number, label?: string) {
+    const name = label ?? `Run #${runId}`;
+    if (
+      !window.confirm(
+        `“${name}” silinsin mi? Bu analizin geçmiş kaydı ve dosyaları kalıcı olarak gider.`,
+      )
+    ) {
+      return;
+    }
+    setBusyAction("delete-run");
+    setErrorMessage(null);
+    try {
+      await deleteRun(runId);
+      setCompareSelection((prev) => prev.filter((id) => id !== runId));
+      if (reviewRunId === runId) {
+        setReviewRunId(null);
+        setViewMode("edit");
+      }
+      await refreshHistory();
+      setInfoMessage(`${name} silindi.`);
+    } catch (err) {
+      const message =
+        err instanceof RunFetchError ? err.message : "Analiz silinemedi.";
+      setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleOpenRunForEdit(runId: number) {
+    setViewMode("edit");
+    setReviewRunId(null);
+    setBusyAction("load-run");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const detail = await fetchRunDetail(runId);
+      const geoId = detail.geometry_id;
+      if (!geoId) {
+        throw new RunFetchError("Bu analize bağlı geometri bulunamadı.");
+      }
+
+      activeGeometryIdRef.current = geoId;
+      const dim = detail.dimension === 3 ? 3 : 2;
+      const scheme: MeshElementScheme =
+        detail.element_scheme === "tet" ||
+        detail.element_scheme === "quad" ||
+        detail.element_scheme === "mix"
+          ? detail.element_scheme
+          : dim === 2
+            ? "quad"
+            : "tet";
+
+      const maps = await fetchTessellationMaps(geoId);
+      const [edgeList, pointList, groupList, assignments] = await Promise.all([
+        fetchEdges(geoId),
+        fetchPoints(geoId),
+        fetchPhysicalGroups(geoId),
+        fetchMaterialAssignments(geoId),
+      ]);
+      if (activeGeometryIdRef.current !== geoId) return;
+
+      setGeometryId(geoId);
+      setFileName(detail.geometry_filename);
+      setStlUrl(resolveTessellationUrl(`/files/tessellations/${geoId}.stl`));
+      setTriangleToFace(maps.triangle_to_face);
+      setTriangleToPart(maps.triangle_to_part);
+      setVolumePartIds([...new Set(maps.triangle_to_part)].sort((a, b) => a - b));
+      setFaceCount(new Set(maps.triangle_to_face).size || null);
+      setPartCount(new Set(maps.triangle_to_part).size || null);
+      setEdges(edgeList);
+      setPoints(pointList);
+      setPhysicalGroups(groupList);
+      setMaterialAssignments(assignments);
+      setSelection(EMPTY_SELECTION);
+      setMode("surface");
+      setHiddenParts(new Set());
+      setActiveGroupId(null);
+      setCanUndo(false);
+      setMeshPicks([]);
+      setMeshGrow("element");
+      setMeshQuality(null);
+      setMeshDimension(dim);
+      setMeshScheme(scheme);
+      if (detail.element_size != null && detail.element_size > 0) {
+        setMeshElementSize(String(detail.element_size));
+      }
+      if (detail.shell_thickness != null && detail.shell_thickness > 0) {
+        setShellThickness(String(detail.shell_thickness));
+      }
+      setCaseNameInput(detail.name ?? "");
+      const restoredFreqs: number[] = [];
+      for (let i = 1; i <= 200; i++) {
+        const v = detail.scalars[`freq_${i}`];
+        if (v === undefined) break;
+        restoredFreqs.push(v);
+      }
+      setModalFrequencies(restoredFreqs);
+      setSelectedModalMode(0);
+      setBcList(bcItemsFromSnapshot(detail.bcs));
+      setPropertyKind(dim === 2 ? "shell" : "solid");
+      setExpandedSteps(new Set(["geometry", "mesh", "material", "bc", "modal", "results"]));
+      setStatus("success");
+
+      let liveMesh: MeshPreviewData | null = null;
+      const livePreviewUrl = `/files/meshes/${geoId}_d${dim}.preview.json`;
+      try {
+        liveMesh = await fetchMeshPreview(livePreviewUrl);
+      } catch {
+        liveMesh = null;
+      }
+      if (activeGeometryIdRef.current !== geoId) return;
+
+      const snapshotMesh =
+        !liveMesh && detail.mesh_preview_url
+          ? await fetchMeshPreview(detail.mesh_preview_url).catch(() => null)
+          : null;
+      const preview = liveMesh ?? snapshotMesh;
+      setMeshPreview(preview);
+      setShowMesh(preview !== null);
+      setMeshQuality(null);
+      setFreeEdges([]);
+      setNsetReport(null);
+      if (preview) {
+        const elementCount = preview.triangle_to_element
+          ? new Set(preview.triangle_to_element).size
+          : Math.floor(preview.faces.length / 3);
+        setMeshResult({
+          geometry_id: geoId,
+          element_size:
+            detail.element_size != null && detail.element_size > 0
+              ? detail.element_size
+              : 5,
+          dimension: dim,
+          element_scheme: scheme,
+          node_count: preview.nodes.length,
+          element_count: elementCount,
+          element_type_counts: {},
+          mesh_path: `uploads/meshes/${geoId}_d${dim}.msh`,
+          mesh_url: `/files/meshes/${geoId}_d${dim}.msh`,
+          preview_url: liveMesh ? livePreviewUrl : detail.mesh_preview_url,
+        });
+      } else {
+        setMeshResult(null);
+      }
+
+      try {
+        const tree = await fetchProductTree(geoId, 0);
+        if (activeGeometryIdRef.current === geoId) setProductTree(tree);
+      } catch {
+        if (activeGeometryIdRef.current === geoId) setProductTree(null);
+      }
+
+      let results: ResultsPreviewData | null = null;
+      if (detail.results_preview_url) {
+        results = await fetchResultsPreview(detail.results_preview_url).catch(() => null);
+      }
+      if (activeGeometryIdRef.current !== geoId) return;
+
+      const meshNodes = preview?.nodes.length ?? 0;
+      const resultNodes = results?.nodes.length ?? 0;
+      const resultsMatch = results !== null && meshNodes > 0 && meshNodes === resultNodes;
+      setResultsPreview(resultsMatch ? results : null);
+      setShowResults(resultsMatch);
+      setResultsDeformScale(0);
+      setResultsAnimating(false);
+      const modeFreqs = (results?.modes ?? [])
+        .map((m) => m.frequency_hz)
+        .filter((f): f is number => f != null);
+      if (modeFreqs.length > 0) {
+        setModalFrequencies(modeFreqs);
+      }
+      const isModalRun =
+        restoredFreqs.length > 0 ||
+        modeFreqs.length > 0 ||
+        (detail.name ?? "").toLowerCase().includes("modal");
+      if (isModalRun) {
+        setResultsField("displacement_magnitude");
+      }
+      setSolveResult({
+        geometry_id: geoId,
+        run_id: detail.id,
+        dimension: dim,
+        inp_path: "",
+        inp_url: detail.inp_url ?? "",
+        ccx_available: true,
+        cards: {},
+        solver_ran: detail.status === "solved",
+        job_id: null,
+        frd_path: null,
+        message: detail.message ?? "Geçmiş analiz yüklendi.",
+        scalars: detail.scalars,
+        results_preview_url: detail.results_preview_url,
+        analysis_type: isModalRun ? "modal" : "static",
+        frequencies: modeFreqs.length ? modeFreqs : restoredFreqs,
+      });
+
+      const extra =
+        !liveMesh && preview
+          ? " Canlı mesh yok; çözmeden önce Mesh adımında yeniden üretin."
+          : "";
+      setInfoMessage(
+        `Run #${detail.id} düzenlemeye yüklendi. Tüm adımlar açık; yeniden çözünce yeni bir geçmiş kaydı oluşur.${extra}`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof RunFetchError || err instanceof GeometryUploadError
+          ? err.message
+          : "Analiz düzenlemeye yüklenemedi.";
+      setErrorMessage(message);
+      setStatus("error");
+    } finally {
+      setBusyAction(null);
+    }
+  }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
@@ -361,6 +663,10 @@ function App() {
   const [bcGz, setBcGz] = useState("-9810");
   const [shellThickness, setShellThickness] = useState("3");
   const [runCcx, setRunCcx] = useState(false);
+  const [modalNModes, setModalNModes] = useState("10");
+  const [modalFreqMin, setModalFreqMin] = useState("");
+  const [modalFreqMax, setModalFreqMax] = useState("");
+  const [modalFrequencies, setModalFrequencies] = useState<number[]>([]);
   const [meshPicks, setMeshPicks] = useState<MeshPickInfo[]>([]);
   const [meshGrow, setMeshGrow] = useState<MeshGrowMode>("element");
   const [productTree, setProductTree] = useState<ProductTree | null>(null);
@@ -420,19 +726,22 @@ function App() {
     if (!resultsAnimating) return;
     let raf = 0;
     let t = 0;
-    const maxDispVal = resultsPreview?.max_displacement ?? 0;
+    const maxDispVal = displayResultsPreview?.max_displacement ?? 0;
     const autoTarget = maxDispVal > 1e-30 ? (0.3 * modelBBoxSize) / maxDispVal : 1;
-    const target = resultsDeformScale > 0 ? resultsDeformScale : autoTarget;
+    const target = Math.abs(resultsDeformScale) > 0 ? Math.abs(resultsDeformScale) : autoTarget;
+    const modalOscillate = Boolean(
+      resultsPreview?.modes?.some((m) => m.frequency_hz != null),
+    );
     const step = () => {
       t += 0.018;
-      const ease = 0.5 - 0.5 * Math.cos(t);
+      const ease = modalOscillate ? Math.sin(t) : 0.5 - 0.5 * Math.cos(t);
       setResultsDeformScale(target * ease);
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultsAnimating]);
+  }, [resultsAnimating, selectedModalMode]);
 
   async function handleFileSelected(file: File) {
     setStatus("uploading");
@@ -560,6 +869,12 @@ function App() {
     setResultsScaleMinInput("");
     setResultsScaleMaxInput("");
     setCaseNameInput("");
+    setModalNModes("10");
+    setModalFreqMin("");
+    setModalFreqMax("");
+    setModalFrequencies([]);
+    setSelectedModalMode(0);
+    setBcList([]);
     setMeshPicks([]);
     setMeshGrow("element");
     setProductTree(null);
@@ -898,6 +1213,8 @@ function App() {
     setInfoMessage(null);
     setMeshPreview(null);
     setMeshQuality(null);
+    setFreeEdges([]);
+    setNsetReport(null);
     setMeshPicks([]);
     setMeshGrow("element");
     try {
@@ -964,16 +1281,94 @@ function App() {
     try {
       const quality = await fetchMeshQuality(geometryId, dim);
       setMeshQuality(quality);
+      setShowMesh(true);
       setInfoMessage(
         `Kalite (dim ${dim}): Jacobian min=${quality.jacobian.min.toFixed(4)} ` +
-          `mean=${quality.jacobian.mean.toFixed(4)} max=${quality.jacobian.max.toFixed(4)}; ` +
-          `aspect min=${quality.aspect_ratio.min.toFixed(3)} ` +
-          `mean=${quality.aspect_ratio.mean.toFixed(3)} max=${quality.aspect_ratio.max.toFixed(3)}.`,
+          `mean=${quality.jacobian.mean.toFixed(4)}; ` +
+          `skew ${quality.skewness?.max.toFixed(3) ?? "—"} / warp ${quality.warpage?.max.toFixed(2) ?? "—"}°.`,
       );
     } catch (err) {
       const message =
         err instanceof GeometryUploadError ? err.message : "Mesh kalite alınamadı.";
       setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleFreeEdges() {
+    if (!geometryId || !meshResult) return;
+    const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
+    setBusyAction("free-edge");
+    setErrorMessage(null);
+    try {
+      const data = await fetchMeshFreeEdges(geometryId, dim);
+      setFreeEdges(data.edges);
+      setShowMesh(true);
+      setInfoMessage(`Free edge: ${data.count} kenar.`);
+    } catch (err) {
+      setErrorMessage(err instanceof GeometryUploadError ? err.message : "Free edge alınamadı.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleEquivalence(merge: boolean) {
+    if (!geometryId || !meshResult) return;
+    const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
+    setBusyAction("equivalence");
+    setErrorMessage(null);
+    try {
+      if (!merge) {
+        const data = await fetchMeshDuplicates(geometryId, dim);
+        setInfoMessage(
+          `Equivalence: ${data.count} çakışan düğüm (toplam ${data.node_count}). Birleştirmek için onaylayın.`,
+        );
+        if (data.count > 0 && window.confirm(`${data.count} çakışan düğüm birleştirilsin mi?`)) {
+          await handleEquivalence(true);
+        }
+        return;
+      }
+      const data = await mergeMeshDuplicates(geometryId, dim);
+      if (data.preview_url) {
+        const preview = await fetchMeshPreview(data.preview_url);
+        setMeshPreview(preview);
+      }
+      setInfoMessage(
+        `Equivalence birleştirdi: ${data.node_count_before} → ${data.node_count_after} (${data.merged} düğüm).`,
+      );
+    } catch (err) {
+      setErrorMessage(err instanceof GeometryUploadError ? err.message : "Equivalence başarısız.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleNsetReport() {
+    if (!geometryId || !meshResult) return;
+    const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
+    const faceIds = mode === "surface" ? [...selection.ids] : [];
+    const edgeIds = mode === "edge" ? [...selection.ids] : [];
+    const nodeIds = mode === "point" ? [...selection.ids] : [];
+    if (faceIds.length + edgeIds.length + nodeIds.length === 0) {
+      setErrorMessage("NSET raporu için yüzey, kenar veya nokta seçin.");
+      return;
+    }
+    setBusyAction("nset");
+    try {
+      const data = await fetchMeshNsets(geometryId, {
+        dimension: dim,
+        face_ids: faceIds,
+        edge_ids: edgeIds,
+        node_ids: nodeIds,
+      });
+      const lines = data.sets.map(
+        (s) => `${s.name}: ${s.node_ids.length} düğüm [${s.node_ids.slice(0, 12).join(", ")}${s.node_ids.length > 12 ? ", …" : ""}]`,
+      );
+      setNsetReport(lines.join("\n"));
+      setInfoMessage(`NSET: ${data.node_count} düğüm, ${data.sets.length} set.`);
+    } catch (err) {
+      setErrorMessage(err instanceof GeometryUploadError ? err.message : "NSET raporu alınamadı.");
     } finally {
       setBusyAction(null);
     }
@@ -1467,6 +1862,26 @@ function App() {
         ],
       };
       summary = `Bearing ${magnitude} · ${meshTag} ${faceIds.join(",")}`;
+    } else if (kind === "rigid_body") {
+      const ref =
+        mode === "point" && selection.ids.length > 0 ? selection.ids[0] : undefined;
+      const slaveFaces = faceIds.length ? faceIds : rigidSlave.faces;
+      const slaveEdges = edgeIds.length ? edgeIds : rigidSlave.edges;
+      if (slaveFaces.length === 0 && slaveEdges.length === 0) {
+        setErrorMessage("Rigid body için köle yüzey/kenar seçin (Rigid body butonuna basmadan önce).");
+        return;
+      }
+      if (ref == null) {
+        setErrorMessage("Rigid body için REF NODE olarak bir CAD nokta seçin (Point modu).");
+        return;
+      }
+      payload = {
+        type: "rigid_body",
+        ...(slaveFaces.length ? { face_ids: slaveFaces } : {}),
+        ...(slaveEdges.length ? { edge_ids: slaveEdges } : {}),
+        ref_node_id: ref,
+      };
+      summary = `Rigid body ref=${ref} · ${slaveFaces.length ? `${meshTag} ${slaveFaces.join(",")}` : `kenar ${slaveEdges.join(",")}`}`;
     } else {
       const gx = parseFloat(bcGx);
       const gy = parseFloat(bcGy);
@@ -1486,6 +1901,16 @@ function App() {
 
   function handleRemoveBc(id: string) {
     setBcList((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  async function pollRunUntilDone(runId: number) {
+    for (let i = 0; i < 400; i++) {
+      const d = await fetchRunDetail(runId);
+      if (d.status !== "pending") return d;
+      setInfoMessage(d.message ?? "ccx çalışıyor…");
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new Error("Çözüm zaman aşımı (polling).");
   }
 
   async function handleSolve() {
@@ -1513,17 +1938,37 @@ function App() {
         dimension: dim,
         shell_thickness: thickness,
         run_solver: runCcx,
+        wait: runCcx ? false : true,
         bcs,
         name: caseNameInput.trim() || undefined,
+        element_size: meshResult.element_size,
+        element_scheme: meshResult.element_scheme,
       });
-      setSolveResult(result);
+      let finalResult = result;
+      if (result.status === "pending") {
+        const d = await pollRunUntilDone(result.run_id);
+        if (d.status === "failed") {
+          throw new Error(d.message ?? "ccx başarısız.");
+        }
+        finalResult = {
+          ...result,
+          status: d.status,
+          message: d.message ?? result.message,
+          solver_ran: d.status === "solved",
+          scalars: d.scalars,
+          results_preview_url: d.results_preview_url,
+          inp_url: d.inp_url ?? result.inp_url,
+        };
+      }
+      setSolveResult(finalResult);
+      setSelectedModalMode(0);
       ensureStepExpanded("results");
-      setInfoMessage(result.message);
+      setInfoMessage(finalResult.message);
       void refreshHistory();
 
-      if (result.results_preview_url) {
+      if (finalResult.results_preview_url) {
         try {
-          const preview = await fetchResultsPreview(result.results_preview_url);
+          const preview = await fetchResultsPreview(finalResult.results_preview_url);
           setResultsPreview(preview);
           setShowResults(true);
         } catch (previewErr) {
@@ -1538,6 +1983,128 @@ function App() {
     } finally {
       setBusyAction(null);
     }
+  }
+
+  async function handleModalSolve() {
+    if (!geometryId || !meshResult) {
+      setErrorMessage("Önce mesh üretin ve malzeme atayın.");
+      return;
+    }
+    const constraints = bcList.filter(
+      (b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding",
+    );
+    if (constraints.length === 0) {
+      setErrorMessage("Modal için en az bir Fixed / Displacement / Sliding mesnet gerekli.");
+      return;
+    }
+    const nModes = parseInt(modalNModes, 10);
+    if (!Number.isInteger(nModes) || nModes < 1 || nModes > 200) {
+      setErrorMessage("Mod sayısı 1–200 arasında tam sayı olmalı.");
+      return;
+    }
+    const fMin = modalFreqMin.trim() === "" ? undefined : parseFloat(modalFreqMin);
+    const fMax = modalFreqMax.trim() === "" ? undefined : parseFloat(modalFreqMax);
+    if (fMin !== undefined && (!Number.isFinite(fMin) || fMin < 0)) {
+      setErrorMessage("f min geçerli bir Hz değeri olmalı.");
+      return;
+    }
+    if (fMax !== undefined && (!Number.isFinite(fMax) || fMax < 0)) {
+      setErrorMessage("f max geçerli bir Hz değeri olmalı.");
+      return;
+    }
+    if (fMin !== undefined && fMax !== undefined && !(fMax > fMin)) {
+      setErrorMessage("f max, f min'den büyük olmalı.");
+      return;
+    }
+
+    const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
+    const treeThickness = productTree?.items.find(
+      (i) => i.thickness != null && Number(i.thickness) > 0,
+    )?.thickness;
+    const thickness =
+      treeThickness ??
+      (Number.isFinite(parseFloat(shellThickness)) ? parseFloat(shellThickness) : 3);
+
+    setBusyAction("modal");
+    setErrorMessage(null);
+    try {
+      const result = await solveGeometry(geometryId, {
+        dimension: dim,
+        shell_thickness: thickness,
+        run_solver: runCcx,
+        wait: runCcx ? false : true,
+        bcs: constraints.map((b) => b.payload),
+        name: caseNameInput.trim() || undefined,
+        element_size: meshResult.element_size,
+        element_scheme: meshResult.element_scheme,
+        analysis_type: "modal",
+        n_modes: nModes,
+        freq_min: fMin,
+        freq_max: fMax,
+      });
+      let finalResult = result;
+      if (result.status === "pending") {
+        const d = await pollRunUntilDone(result.run_id);
+        if (d.status === "failed") {
+          throw new Error(d.message ?? "ccx başarısız.");
+        }
+        finalResult = {
+          ...result,
+          status: d.status,
+          message: d.message ?? result.message,
+          solver_ran: d.status === "solved",
+          scalars: d.scalars,
+          results_preview_url: d.results_preview_url,
+          inp_url: d.inp_url ?? result.inp_url,
+        };
+      }
+      setSolveResult(finalResult);
+      setSelectedModalMode(0);
+      setResultsField("displacement_magnitude");
+      ensureStepExpanded("modal");
+      setInfoMessage(finalResult.message);
+      void refreshHistory();
+
+      if (finalResult.results_preview_url) {
+        try {
+          const preview = await fetchResultsPreview(finalResult.results_preview_url);
+          setResultsPreview(preview);
+          setShowResults(true);
+          const fromModes = (preview.modes ?? [])
+            .map((m) => m.frequency_hz)
+            .filter((f): f is number => f != null);
+          setModalFrequencies(fromModes.length ? fromModes : (finalResult.frequencies ?? []));
+        } catch (previewErr) {
+          console.error("Modal sonuç önizlemesi alınamadı:", previewErr);
+          setResultsPreview(null);
+          setModalFrequencies(finalResult.frequencies ?? []);
+        }
+      } else {
+        setResultsPreview(null);
+        setModalFrequencies(finalResult.frequencies ?? []);
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Modal çözüm başarısız.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function showModalMode(index: number) {
+    setSelectedModalMode(index);
+    setResultsAnimating(false);
+    setShowResults(true);
+    const mode = resultsPreview?.modes?.[index];
+    const maxU = mode?.max_displacement ?? 0;
+    if (maxU > 1e-30) {
+      setResultsDeformScale((0.3 * modelBBoxSize) / maxU);
+    }
+  }
+
+  function playModalMode(index: number) {
+    setSelectedModalMode(index);
+    setShowResults(true);
+    setResultsAnimating(true);
   }
 
   function describeSelection(sel: MultiSelectionInfo): string {
@@ -1587,6 +2154,28 @@ function App() {
     );
   }
 
+  if (viewMode === "review" && reviewRunId !== null) {
+    return (
+      <>
+        <div className="theme-toggle-fixed">
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
+        <ComparisonView
+          runIdA={reviewRunId}
+          onBack={() => {
+            setViewMode("edit");
+            setReviewRunId(null);
+          }}
+          onEdit={() => void handleOpenRunForEdit(reviewRunId)}
+          onDelete={() => {
+            const row = runsHistory.find((r) => r.id === reviewRunId);
+            void handleDeleteRun(reviewRunId, row?.name ?? `Run #${reviewRunId}`);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <main className="page" data-collapsed={sidebarCollapsed ? "" : undefined}>
       <div className="toolbar">
@@ -1602,17 +2191,17 @@ function App() {
           <span className="toolbar-status">
             <span
               className={
-                busyAction === "solve"
+                busyAction === "solve" || busyAction === "modal"
                   ? "toolbar-status-dot toolbar-status-dot-busy"
                   : solveResult
                     ? "toolbar-status-dot toolbar-status-dot-ok"
                     : "toolbar-status-dot"
               }
             />
-            {busyAction === "solve"
-              ? "çözülüyor…"
+            {busyAction === "solve" || busyAction === "modal"
+              ? "çalışıyor…"
               : solveResult
-                ? `çözüldü · ${solveResult.solver_ran ? "ccx" : "inp"}`
+                ? `bitti · ${solveResult.status === "solved" ? (solveResult.solver_ran ? "ccx" : "inp") : solveResult.status}`
                 : "solver hazır"}
           </span>
           <button
@@ -1631,7 +2220,7 @@ function App() {
                 : "Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
             }
           >
-            ▶ {busyAction === "solve" ? "ÜRETİLİYOR…" : "RUN SIMULATION"}
+            ▶ {busyAction === "solve" || busyAction === "modal" ? "ÇALIŞIYOR…" : "RUN SIMULATION"}
           </button>
           {status === "success" && (
             <div className="toolbar-geo-tools">
@@ -1943,7 +2532,7 @@ function App() {
           <button type="button" className="reset-button" onClick={handleReset}>
             🔄 Yeni Case Başlat
           </button>
-          <span className="new-case-hint">Önceki analiz Geçmiş'te kalır, silinmez.</span>
+          <span className="new-case-hint">Önceki analiz Geçmiş'te kalır; Sil ile kaldırabilirsiniz.</span>
         </div>
       )}
 
@@ -1951,7 +2540,8 @@ function App() {
         <span className="eyebrow">Faz 0 · Geçmiş</span>
         <h1>Analiz Geçmişi ({runsHistory.length})</h1>
         <p className="lead">
-          Her çözüm kalıcı kaydedilir, silinmez. Karşılaştırmak için 2 run seçin.
+          Satıra tıklayınca incelersiniz. Düzenle tüm adımları geri yükler; Sil kaydı kaldırır.
+          Karşılaştırmak için soldan 2 run işaretleyin.
         </p>
         {runsHistory.length === 0 ? (
           <p className="material-assign-hint">Henüz kayıtlı analiz yok.</p>
@@ -1966,7 +2556,14 @@ function App() {
                     onChange={() => toggleCompareSelection(r.id)}
                   />
                 </label>
-                <div className="history-item-body">
+                <button
+                  type="button"
+                  className="history-item-body"
+                  onClick={() => {
+                    setReviewRunId(r.id);
+                    setViewMode("review");
+                  }}
+                >
                   <div className="history-item-title">
                     {r.name ?? `Run #${r.id}`}{" "}
                     <span className={`history-status history-status-${r.status}`}>
@@ -1983,6 +2580,30 @@ function App() {
                       {r.scalars.max_displacement?.toExponential(2) ?? "—"}
                     </div>
                   )}
+                </button>
+                <div className="history-item-actions">
+                  <button
+                    type="button"
+                    className="history-action-button"
+                    disabled={busyAction !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleOpenRunForEdit(r.id);
+                    }}
+                  >
+                    {busyAction === "load-run" ? "Yükleniyor…" : "Düzenle"}
+                  </button>
+                  <button
+                    type="button"
+                    className="history-action-button history-action-button-danger"
+                    disabled={busyAction !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteRun(r.id, r.name ?? `Run #${r.id}`);
+                    }}
+                  >
+                    Sil
+                  </button>
                 </div>
               </li>
             ))}
@@ -2077,14 +2698,49 @@ function App() {
           >
             {busyAction === "mesh-quality" ? "Hesaplanıyor…" : "Kalite"}
           </button>
-          <button type="button" disabled title="Sonraki adım">
-            Free edge
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleFreeEdges()}
+          >
+            {busyAction === "free-edge" ? "…" : "Free edge"}
           </button>
-          <button type="button" disabled title="Sonraki adım">
-            Equivalence
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleEquivalence(false)}
+          >
+            {busyAction === "equivalence" ? "…" : "Equivalence"}
           </button>
-          <button type="button" disabled title="Sonraki adım">
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => {
+              const meshFaceIds =
+                showMesh && meshPicks.length > 0
+                  ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
+                  : [];
+              const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
+              const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
+              setRigidSlave({
+                faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
+                edges: cadEdgeIds,
+              });
+              setBcDraftKind("rigid_body");
+              ensureStepExpanded("bc");
+              setInfoMessage(
+                "Rigid body: köle yüzey kilitlendi. Point modunda REF nokta seçip BC ekleyin.",
+              );
+            }}
+          >
             Rigid body
+          </button>
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleNsetReport()}
+          >
+            {busyAction === "nset" ? "…" : "NSET"}
           </button>
         </div>
         {meshResult && (
@@ -2118,8 +2774,57 @@ function App() {
               {meshQuality.aspect_ratio.mean.toFixed(3)} /{" "}
               {meshQuality.aspect_ratio.max.toFixed(3)}
             </p>
-            <p className="mesh-quality-hint">min / mean / max</p>
+            {meshQuality.skewness && (
+              <p>
+                Skewness: {meshQuality.skewness.min.toFixed(3)} /{" "}
+                {meshQuality.skewness.mean.toFixed(3)} /{" "}
+                {meshQuality.skewness.max.toFixed(3)}
+              </p>
+            )}
+            {meshQuality.warpage && (
+              <p>
+                Warpage (°): {meshQuality.warpage.min.toFixed(2)} /{" "}
+                {meshQuality.warpage.mean.toFixed(2)} /{" "}
+                {meshQuality.warpage.max.toFixed(2)}
+              </p>
+            )}
+            <label className="mesh-field">
+              <span>Renk metriği</span>
+              <select
+                value={meshQualityMetric}
+                onChange={(e) =>
+                  setMeshQualityMetric(
+                    e.target.value as "jacobian" | "aspect_ratio" | "skewness" | "warpage",
+                  )
+                }
+              >
+                <option value="jacobian">Jacobian (minSJ)</option>
+                <option value="aspect_ratio">Aspect</option>
+                <option value="skewness">Skewness</option>
+                <option value="warpage">Warpage</option>
+              </select>
+            </label>
+            <ResultsHistogram
+              label={`${meshQualityMetric} dağılımı`}
+              values={
+                (meshQualityMetric === "jacobian"
+                  ? meshQuality.jacobian
+                  : meshQualityMetric === "aspect_ratio"
+                    ? meshQuality.aspect_ratio
+                    : meshQualityMetric === "skewness"
+                      ? meshQuality.skewness
+                      : meshQuality.warpage
+                )?.values ?? []
+              }
+              color="#c45c26"
+            />
+            <p className="mesh-quality-hint">min / mean / max · kırmızı = kötü eleman</p>
           </div>
+        )}
+        {nsetReport && (
+          <pre className="mesh-result" style={{ whiteSpace: "pre-wrap", fontSize: 11 }}>
+            {nsetReport}
+          </pre>
         )}
       </div>
       )}
@@ -2418,6 +3123,7 @@ function App() {
                 "sliding",
                 "bearing",
                 "gravity",
+                "rigid_body",
               ] as BcKind[]
             ).map((kind) => (
               <button
@@ -2425,7 +3131,21 @@ function App() {
                 type="button"
                 className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
                 disabled={busyAction !== null}
-                onClick={() => setBcDraftKind(kind)}
+                onClick={() => {
+                  if (kind === "rigid_body") {
+                    const meshFaceIds =
+                      showMesh && meshPicks.length > 0
+                        ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
+                        : [];
+                    const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
+                    const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
+                    setRigidSlave({
+                      faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
+                      edges: cadEdgeIds,
+                    });
+                  }
+                  setBcDraftKind(kind);
+                }}
               >
                 {BC_KIND_LABELS[kind]}
               </button>
@@ -2616,10 +3336,158 @@ function App() {
 
       <button
         type="button"
+        className={expandedSteps.has("modal") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("modal")}
+      >
+        5 · MODAL
+      </button>
+      {expandedSteps.has("modal") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · CalculiX</span>
+        <h1>Modal</h1>
+        <p className="lead material-lead">
+          Aynı mesh, malzeme ve mesnetler kullanılır. Yükler (Force / Pressure /
+          Gravity) modal step’e yazılmaz. Sonuç: doğal frekans listesi + son
+          modun şekli viewer’da.
+        </p>
+        <div className="bc-mesh-summary">
+          <p>
+            <span>mesnet</span>
+            {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length}
+          </p>
+          <p>
+            <span>mesh</span>
+            {meshResult ? `${meshResult.dimension === 2 ? "2D" : "3D"}` : "yok"}
+          </p>
+        </div>
+        <label className="mesh-field">
+          <span>Mod sayısı</span>
+          <input
+            type="number"
+            min={1}
+            max={200}
+            step={1}
+            value={modalNModes}
+            onChange={(e) => setModalNModes(e.target.value)}
+            disabled={busyAction !== null}
+          />
+        </label>
+        <div className="bc-fields">
+          <label className="mesh-field">
+            <span>f min (Hz, opsiyonel)</span>
+            <input
+              value={modalFreqMin}
+              onChange={(e) => setModalFreqMin(e.target.value)}
+              disabled={busyAction !== null}
+              placeholder="—"
+            />
+          </label>
+          <label className="mesh-field">
+            <span>f max (Hz, opsiyonel)</span>
+            <input
+              value={modalFreqMax}
+              onChange={(e) => setModalFreqMax(e.target.value)}
+              disabled={busyAction !== null}
+              placeholder="—"
+            />
+          </label>
+        </div>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={runCcx}
+            onChange={(e) => setRunCcx(e.target.checked)}
+          />
+          ccx çalıştır (kuruluysa)
+        </label>
+        <button
+          type="button"
+          className="material-assign-button"
+          disabled={
+            busyAction !== null ||
+            geometryId === null ||
+            meshResult === null ||
+            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+          }
+          onClick={() => void handleModalSolve()}
+        >
+          {busyAction === "modal" ? "Üretiliyor…" : "Modal çöz"}
+        </button>
+        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
+          <p className="material-assign-hint">
+            ⚠ Önce 4 · BOUNDARY CONDITIONS’dan en az bir mesnet ekleyin.
+          </p>
+        )}
+        {modalFrequencies.length > 0 && <FrequencyLinePlot frequencies={modalFrequencies} />}
+        {(resultsPreview?.modes?.length ?? 0) > 0 && (
+          <div className="material-assignments">
+            <p className="material-assignments-title">
+              Mod şekilleri ({resultsPreview?.modes?.length})
+            </p>
+            <p className="material-assign-hint">
+              Her kart bir doğal mod. Göster: 3B kontur. Animasyon: ± salınım.
+            </p>
+            <div className="mode-card-grid">
+              {resultsPreview?.modes?.map((mode, i) => (
+                <div
+                  key={`mode-${mode.index}`}
+                  className={
+                    i === selectedModalMode ? "mode-card mode-card-active" : "mode-card"
+                  }
+                >
+                  <ModeShapeThumb
+                    nodes={resultsPreview.nodes}
+                    vectors={mode.displacement_vectors}
+                  />
+                  <div className="mode-card-meta">
+                    <strong>Mode {mode.index}</strong>
+                    <span>
+                      {mode.frequency_hz != null
+                        ? `${mode.frequency_hz.toPrecision(5)} Hz`
+                        : "f —"}
+                    </span>
+                  </div>
+                  <div className="mode-card-actions">
+                    <button type="button" className="vf-btn" onClick={() => showModalMode(i)}>
+                      Göster
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        resultsAnimating && selectedModalMode === i
+                          ? "vf-btn vf-active"
+                          : "vf-btn"
+                      }
+                      onClick={() =>
+                        resultsAnimating && selectedModalMode === i
+                          ? setResultsAnimating(false)
+                          : playModalMode(i)
+                      }
+                    >
+                      {resultsAnimating && selectedModalMode === i ? "Durdur" : "Animasyon"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {solveResult?.analysis_type === "modal" && modalFrequencies.length === 0 && (
+          <p className="material-assign-hint">
+            {solveResult.solver_ran
+              ? "Frekans tablosu .dat’dan okunamadı; .inp / log’a bakın."
+              : "inp üretildi. Frekans listesi için ccx’i işaretleyip tekrar çözün."}
+          </p>
+        )}
+      </div>
+      )}
+
+      <button
+        type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
         onClick={() => toggleStep("results")}
       >
-        5 · RESULTS
+        6 · RESULTS
       </button>
       {expandedSteps.has("results") && (
       <div className="panel material-panel">
@@ -2627,9 +3495,9 @@ function App() {
         <h1>Results</h1>
         {!solveResult && (
           <p className="lead material-lead">
-            Henüz çözüm yok — önce "4 · BOUNDARY CONDITIONS" adımından BC ekleyip
-            ".inp üret / çöz" butonuna basın. Sonuç görselleştirmesi (renk skalası,
-            deformasyon) 3B görünümün üzerinde (sağ üst/alt köşelerde) belirir.
+            Henüz çözüm yok — statik için "4 · BOUNDARY CONDITIONS", modal için
+            "5 · MODAL" adımından çözün. Sonuç görselleştirmesi 3B görünümün
+            üzerindeki panellerde belirir.
           </p>
         )}
         {solveResult && (
@@ -2646,7 +3514,7 @@ function App() {
               .inp indir
             </a>
 
-            {resultsPreview && (
+            {resultsPreview && solveResult.analysis_type !== "modal" && (
               <>
                 <ResultsStatsTable
                   label="Von Mises (MPa)"
@@ -2664,6 +3532,26 @@ function App() {
                 <ResultsHistogram
                   label="Deplasman dağılımı"
                   values={resultsPreview.displacement_magnitude}
+                  color="#2f7fd1"
+                />
+              </>
+            )}
+            {resultsPreview && solveResult.analysis_type === "modal" && displayResultsPreview && (
+              <>
+                <p className="material-assign-hint">
+                  Seçili mod {selectedModalMode + 1}
+                  {resultsPreview.modes?.[selectedModalMode]?.frequency_hz != null
+                    ? ` · ${resultsPreview.modes[selectedModalMode].frequency_hz.toPrecision(5)} Hz`
+                    : ""}
+                  . Görseller ve animasyon: 5 · MODAL.
+                </p>
+                <ResultsStatsTable
+                  label="Mod şekli |U| (mm)"
+                  values={displayResultsPreview.displacement_magnitude}
+                />
+                <ResultsHistogram
+                  label="Mod şekli dağılımı"
+                  values={displayResultsPreview.displacement_magnitude}
                   color="#2f7fd1"
                 />
               </>
@@ -2807,11 +3695,20 @@ function App() {
                       </label>
                     </div>
 
-                    {showResults && (() => {
+                    {showResults && displayResultsPreview && (() => {
+                      const isModalView = solveResult?.analysis_type === "modal";
+                      const field = isModalView ? "displacement_magnitude" : resultsField;
                       const autoMax =
-                        resultsField === "von_mises"
-                          ? resultsPreview.max_von_mises
-                          : resultsPreview.max_displacement;
+                        field === "von_mises"
+                          ? displayResultsPreview.max_von_mises
+                          : field === "safety_factor"
+                            ? Math.max(
+                                1,
+                                ...((displayResultsPreview.safety_factor ?? []).filter(
+                                  (v): v is number => v != null,
+                                )),
+                              )
+                            : displayResultsPreview.max_displacement;
                       const parsedMin = parseFloat(resultsScaleMinInput);
                       const parsedMax = parseFloat(resultsScaleMaxInput);
                       const effMin = Number.isFinite(parsedMin) ? parsedMin : 0;
@@ -2832,7 +3729,7 @@ function App() {
                         // (üstte max, altta min) tutarlı.
                         return `${jetRgb(t)} ${t * 100}%`;
                       }).join(", ");
-                      const maxDispVal = resultsPreview.max_displacement;
+                      const maxDispVal = displayResultsPreview.max_displacement;
                       const adaptiveMax =
                         maxDispVal > 1e-30 ? (0.3 * modelBBoxSize) / maxDispVal : 200;
 
@@ -2841,12 +3738,19 @@ function App() {
                           {/* Sağ üst: renk skalası (demo'daki colorbar-panel gibi) */}
                           <div className="viewer-panel-float viewer-colorbar-panel">
                             <div className="viewer-colorbar-title">
-                              {resultsField === "von_mises" ? "VON MISES" : "DEPLASMAN"}
+                              {isModalView
+                                ? `MODE ${selectedModalMode + 1}`
+                                : field === "von_mises"
+                                  ? "VON MISES"
+                                  : field === "safety_factor"
+                                    ? "SAFETY FACTOR"
+                                    : "DEPLASMAN"}
                             </div>
+                            {!isModalView && (
                             <div className="viewer-field-toggle">
                               <button
                                 type="button"
-                                className={resultsField === "von_mises" ? "vf-btn vf-active" : "vf-btn"}
+                                className={field === "von_mises" ? "vf-btn vf-active" : "vf-btn"}
                                 onClick={() => setResultsField("von_mises")}
                               >
                                 Von Mises
@@ -2854,13 +3758,21 @@ function App() {
                               <button
                                 type="button"
                                 className={
-                                  resultsField === "displacement_magnitude" ? "vf-btn vf-active" : "vf-btn"
+                                  field === "displacement_magnitude" ? "vf-btn vf-active" : "vf-btn"
                                 }
                                 onClick={() => setResultsField("displacement_magnitude")}
                               >
                                 Deplasman
                               </button>
+                              <button
+                                type="button"
+                                className={field === "safety_factor" ? "vf-btn vf-active" : "vf-btn"}
+                                onClick={() => setResultsField("safety_factor")}
+                              >
+                                SF
+                              </button>
                             </div>
+                            )}
                             <div className="viewer-colorbar-row">
                               <div
                                 className="viewer-colorbar-track"
@@ -2893,9 +3805,9 @@ function App() {
                               </label>
                             </div>
                             <div className="viewer-max-hint">
-                              {resultsField === "von_mises"
-                                ? `Max: ${resultsPreview.max_von_mises.toExponential(3)}`
-                                : `Max: ${resultsPreview.max_displacement.toExponential(3)}`}
+                              {field === "von_mises"
+                                ? `Max: ${displayResultsPreview.max_von_mises.toExponential(3)}`
+                                : `Max: ${displayResultsPreview.max_displacement.toExponential(3)}`}
                             </div>
                           </div>
 
@@ -2944,9 +3856,26 @@ function App() {
                   meshPreview={meshPreview}
                   showMesh={showMesh}
                   meshWireframe={meshWireframe}
-                  resultsPreview={resultsPreview}
+                  meshQualityValues={
+                    meshQuality
+                      ? meshQualityMetric === "jacobian"
+                        ? meshQuality.jacobian.values
+                        : meshQualityMetric === "aspect_ratio"
+                          ? meshQuality.aspect_ratio.values
+                          : meshQualityMetric === "skewness"
+                            ? meshQuality.skewness?.values ?? null
+                            : meshQuality.warpage?.values ?? null
+                      : null
+                  }
+                  meshQualityInvert={meshQualityMetric === "jacobian"}
+                  freeEdgeSegments={freeEdges}
+                  resultsPreview={displayResultsPreview}
                   showResults={showResults}
-                  resultsField={resultsField}
+                  resultsField={
+                    solveResult?.analysis_type === "modal"
+                      ? "displacement_magnitude"
+                      : resultsField
+                  }
                   resultsDeformScale={resultsDeformScale}
                   resultsScaleMin={
                     Number.isFinite(parseFloat(resultsScaleMinInput))

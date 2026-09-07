@@ -2,9 +2,10 @@
 
 ROADMAP.md "7. Veritabanına kayıt + geçmiş" — her `/solve` çağrısı, başarılı
 ya da başarısız, kalıcı bir `AnalysisRun` satırı olarak kaydedilir. Bu
-kayıtlar ASLA silinmez (mevcut geometri mutasyon davranışının aksine) —
+kayıtlar otomatik silinmez (mevcut geometri mutasyon davranışının aksine) —
 Faz 4'teki surrogate model için eğitim verisi kaynağı olacak, ve kullanıcının
-farklı senaryoları (case) karşılaştırabilmesi için gerekli.
+farklı senaryoları (case) karşılaştırabilmesi için gerekli. Kullanıcı
+geçmişten bilinçli olarak silebilir.
 
 Dosya adlandırması: eskiden `geo{geometry_id}_d{dimension}` idi — aynı
 geometride ikinci kez çözünce ESKİ .inp/.frd/sonuç dosyalarının üzerine
@@ -53,7 +54,8 @@ class AnalysisRun(Base):
     # surrogate model için hedef (target) değerler olarak kullanılacak.
     scalars: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
-    # Dosya yolları (RUNS_DIR köküne göre değil, tam yol) — hiçbiri silinmez.
+    # Dosya yolları (RUNS_DIR köküne göre değil, tam yol). Run silinince
+    # `uploads/runs/{id}/` klasörü de kaldırılır.
     inp_path: Mapped[str | None] = mapped_column(String, nullable=True)
     frd_path: Mapped[str | None] = mapped_column(String, nullable=True)
     results_preview_path: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -6,11 +6,18 @@ import pytest
 
 from app.mesh.base import MeshParams
 from app.mesh.gmsh_adapter import GmshMesherAdapter
-from app.solvers.calculix import CalculiXAdapter
+from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 from app.solvers.base import SolverError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BOX = FIXTURES / "box.step"
+
+
+def test_ccx_executable_uses_ccx_path(tmp_path, monkeypatch):
+    fake = tmp_path / "ccx.exe"
+    fake.write_bytes(b"x")
+    monkeypatch.setenv("CCX_PATH", str(fake))
+    assert _ccx_executable() == str(fake)
 
 
 def test_materials_inp_block_converts_si_to_consistent_mm_units():
@@ -99,6 +106,8 @@ def test_calculix_build_input_writes_material_and_section(tmp_path):
     assert "*BOUNDARY" in text
     assert "*CLOAD" in text
     assert "*STEP" in text
+    assert "*STATIC" in text
+    assert "*FREQUENCY" not in text
     assert "GRAV" in text
 
 
@@ -236,6 +245,89 @@ def test_parse_frd_extracts_node_coords_displacement_and_stress(tmp_path):
 
     assert result["stress"][10] == pytest.approx((100.0, 0.0, 0.0, 0.0, 0.0, 0.0))
     assert result["stress"][12] == pytest.approx((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    assert len(result["disp_increments"]) == 1
+
+
+def test_parse_frd_keeps_each_disp_increment_as_a_mode(tmp_path):
+    """Modal .frd'de her 1PSTEP bir DISP bloğu — sonuncusu öncekinin üzerine
+    yazılmamalı, aksi halde yalnızca son mod kalır.
+    """
+    from app.solvers.calculix import _parse_frd
+
+    content = """    1C
+    2C                             2                                     1
+ -1        10 0.00000E+00 0.00000E+00 0.00000E+00
+ -1        12 1.00000E+00 0.00000E+00 0.00000E+00
+ -3
+    1PSTEP                         1           1           1
+  100CL  101 1.000000000           2                     0    1           1
+ -4  DISP        4    1
+ -1        10 1.00000E-01 0.00000E+00 0.00000E+00
+ -1        12 2.00000E-01 0.00000E+00 0.00000E+00
+ -3
+    1PSTEP                         2           1           1
+  100CL  101 1.000000000           2                     0    1           1
+ -4  DISP        4    1
+ -1        10 0.00000E+00 3.00000E-01 0.00000E+00
+ -1        12 0.00000E+00 4.00000E-01 0.00000E+00
+ -3
+ 9999
+"""
+    frd_path = tmp_path / "modes.frd"
+    frd_path.write_text(content, encoding="utf-8")
+    result = _parse_frd(frd_path)
+    assert len(result["disp_increments"]) == 2
+    assert result["disp_increments"][0][10] == pytest.approx((0.1, 0.0, 0.0))
+    assert result["disp_increments"][1][12] == pytest.approx((0.0, 0.4, 0.0))
+    # Geriye dönük: displacement son increment
+    assert result["displacement"][10] == pytest.approx((0.0, 0.3, 0.0))
+
+
+def test_parse_results_writes_one_mode_per_disp_increment(tmp_path):
+    import json
+
+    from app.solvers.base import InputArtifact, JobHandle
+
+    frd = tmp_path / "modaljob.frd"
+    frd.write_text(
+        """    1C
+    2C                             2                                     1
+ -1        10 0.00000E+00 0.00000E+00 0.00000E+00
+ -1        12 1.00000E+00 0.00000E+00 0.00000E+00
+ -3
+    1PSTEP                         1           1           1
+ -4  DISP        4    1
+ -1        10 1.00000E-01 0.00000E+00 0.00000E+00
+ -1        12 2.00000E-01 0.00000E+00 0.00000E+00
+ -3
+    1PSTEP                         2           1           1
+ -4  DISP        4    1
+ -1        10 0.00000E+00 3.00000E-01 0.00000E+00
+ -1        12 0.00000E+00 4.00000E+00 0.00000E+00
+ -3
+ 9999
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "modaljob.dat").write_text(
+        "        FREQUENCY (CYCLES/TIME)   1.250000E+01\n"
+        "        FREQUENCY (CYCLES/TIME)   3.400000E+01\n",
+        encoding="utf-8",
+    )
+    adapter = CalculiXAdapter()
+    result_set = adapter.parse_results(
+        JobHandle(
+            job_id="m",
+            work_dir=tmp_path,
+            artifact=InputArtifact(path=tmp_path / "modaljob.inp"),
+        )
+    )
+    preview = json.loads(result_set.results_preview_path.read_text())
+    assert len(preview["modes"]) == 2
+    assert preview["modes"][0]["frequency_hz"] == pytest.approx(12.5)
+    assert preview["modes"][1]["frequency_hz"] == pytest.approx(34.0)
+    assert preview["modes"][0]["displacement_vectors"][0] == pytest.approx([0.1, 0.0, 0.0])
+    assert preview["max_displacement"] == pytest.approx(0.2)
 
 
 def test_von_mises_stress_uniaxial_case():
@@ -282,13 +374,16 @@ def test_parse_results_writes_results_preview_json_aligned_with_node_order(tmp_p
     # Kritik node: von_mises'in en yüksek olduğu node_id (10, index 0 — 100.0)
     assert preview["critical_node_id"] == 10
     assert preview["max_von_mises"] == pytest.approx(100.0)
+    assert len(preview["modes"]) == 1
+    assert preview["modes"][0]["index"] == 1
+    assert preview["modes"][0]["displacement_vectors"][0] == pytest.approx([0.01, 0.02, 0.03])
 
     assert result_set.scalars["max_von_mises"] == pytest.approx(100.0)
     assert result_set.scalars["node_count"] == 2.0
 
 
 @pytest.mark.skipif(
-    __import__("shutil").which("ccx") is None,
+    __import__("app.solvers.calculix", fromlist=["_ccx_executable"])._ccx_executable() is None,
     reason="CalculiX (ccx) kurulu değil - gerçek çözüm testi atlanıyor",
 )
 def test_end_to_end_solve_produces_nonzero_results(tmp_path):
@@ -346,3 +441,168 @@ def test_end_to_end_solve_produces_nonzero_results(tmp_path):
     assert result_set.scalars["max_von_mises"] > 0.0
     assert result_set.results_preview_path is not None
     assert result_set.results_preview_path.exists()
+
+
+def test_parse_dat_frequencies_reads_cycles_per_time(tmp_path):
+    from app.solvers.calculix import _parse_dat_frequencies
+
+    dat = tmp_path / "job.dat"
+    dat.write_text(
+        "        FREQUENCY (CYCLES/TIME)   1.250000E+01\n"
+        "        FREQUENCY (CYCLES/TIME)   3.400000E+01\n",
+        encoding="utf-8",
+    )
+    assert _parse_dat_frequencies(dat) == pytest.approx([12.5, 34.0])
+
+    table = tmp_path / "ccx.dat"
+    table.write_text(
+        """     E I G E N V A L U E   O U T P U T
+
+ MODE NO    EIGENVALUE                       FREQUENCY
+                                     REAL PART            IMAGINARY PART
+                           (RAD/TIME)      (CYCLES/TIME     (RAD/TIME)
+
+      1   0.1042919E-04   0.3229425E-02   0.5139790E-03   0.0000000E+00
+      2   0.2089778E-03   0.1445606E-01   0.2300754E-02   0.0000000E+00
+
+     P A R T I C I P A T I O N   F A C T O R S
+""",
+        encoding="utf-8",
+    )
+    assert _parse_dat_frequencies(table) == pytest.approx([0.5139790e-03, 0.2300754e-02])
+
+
+def test_frequency_step_block_default_and_range():
+    from app.solvers.calculix import _frequency_step_block
+
+    text = _frequency_step_block(n_modes=8)
+    assert "*FREQUENCY, STORAGE=YES" in text
+    assert "\n8\n" in text
+    assert "*STATIC" not in text
+    assert "*CLOAD" not in text
+    assert "*NODE FILE" in text
+
+    ranged = _frequency_step_block(n_modes=5, freq_min=10, freq_max=250)
+    assert "5, 10, 250" in ranged
+
+
+def test_frequency_step_block_rejects_bad_n_modes():
+    from app.solvers.calculix import _frequency_step_block
+
+    with pytest.raises(SolverError, match="n_modes"):
+        _frequency_step_block(n_modes=0)
+    with pytest.raises(SolverError, match="n_modes"):
+        _frequency_step_block(n_modes=201)
+    with pytest.raises(SolverError, match="freq_max"):
+        _frequency_step_block(n_modes=4, freq_min=100, freq_max=10)
+
+
+def test_modal_build_input_omits_loads_and_static(tmp_path):
+    """Modal .inp: *FREQUENCY + mesnetler var, *STATIC ve yük kartları yok."""
+    step = tmp_path / "box.step"
+    step.write_bytes(BOX.read_bytes())
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(step)
+    mesh = adapter.generate_mesh(
+        geom, MeshParams(element_size=8.0, dimension=3, element_scheme="tet")
+    )
+
+    ccx = CalculiXAdapter()
+    artifact = ccx.build_input(
+        {
+            "mesh_path": mesh.mesh_path,
+            "dimension": 3,
+            "output_dir": tmp_path / "modal",
+            "job_name": "modaljob",
+            "analysis_type": "modal",
+            "n_modes": 6,
+            "materials": [
+                {
+                    "part_id": 0,
+                    "name": "S355",
+                    "youngs_modulus": 210e9,
+                    "poisson_ratio": 0.3,
+                    "density": 7850.0,
+                }
+            ],
+            "bcs": [
+                {"type": "fixed", "face_ids": [1]},
+                {"type": "cload", "face_ids": [2], "fx": 0, "fy": 0, "fz": -1000},
+                {"type": "gravity", "gx": 0, "gy": 0, "gz": -9810},
+            ],
+        }
+    )
+    text = artifact.path.read_text(encoding="utf-8")
+    assert "*FREQUENCY, STORAGE=YES" in text
+    assert "\n6\n" in text
+    assert "*DENSITY" in text
+    assert "*BOUNDARY" in text
+    assert "*STATIC" not in text
+    assert "*CLOAD" not in text
+    assert "GRAV" not in text
+
+
+def test_build_input_rejects_unknown_analysis_type(tmp_path):
+    step = tmp_path / "box.step"
+    step.write_bytes(BOX.read_bytes())
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(step)
+    mesh = adapter.generate_mesh(
+        geom, MeshParams(element_size=8.0, dimension=3, element_scheme="tet")
+    )
+    ccx = CalculiXAdapter()
+    with pytest.raises(SolverError, match="analysis_type"):
+        ccx.build_input(
+            {
+                "mesh_path": mesh.mesh_path,
+                "dimension": 3,
+                "output_dir": tmp_path / "bad",
+                "job_name": "bad",
+                "analysis_type": "crash",
+                "materials": [
+                    {
+                        "part_id": 0,
+                        "name": "S355",
+                        "youngs_modulus": 210e9,
+                        "poisson_ratio": 0.3,
+                        "density": 7850.0,
+                    }
+                ],
+                "bcs": [{"type": "fixed", "face_ids": [1]}],
+            }
+        )
+
+
+def test_rigid_body_bc_writes_calculix_card(tmp_path):
+    step = tmp_path / "box.step"
+    step.write_bytes(BOX.read_bytes())
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(step)
+    mesh = adapter.generate_mesh(
+        geom, MeshParams(element_size=8.0, dimension=3, element_scheme="tet")
+    )
+    ccx = CalculiXAdapter()
+    artifact = ccx.build_input(
+        {
+            "mesh_path": mesh.mesh_path,
+            "dimension": 3,
+            "output_dir": tmp_path / "rb",
+            "job_name": "rbjob",
+            "materials": [
+                {
+                    "part_id": 0,
+                    "name": "S355",
+                    "youngs_modulus": 210e9,
+                    "poisson_ratio": 0.3,
+                    "density": 7850.0,
+                }
+            ],
+            "bcs": [
+                {"type": "fixed", "face_ids": [1]},
+                {"type": "rigid_body", "face_ids": [2], "ref_node_id": 1},
+            ],
+        }
+    )
+    text = artifact.path.read_text(encoding="utf-8")
+    assert "*RIGID BODY" in text
+    assert "REF NODE=1" in text

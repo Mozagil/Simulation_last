@@ -70,19 +70,19 @@ Her biri ayrı onay noktası — sırayla, birbirinin üstüne inşa edilir.
 
 - [x] Mesh kalite hesaplama: Jacobian + aspect ratio (native metriklerle) →
       `GET /geometry/{id}/mesh/quality?dimension=` minSJ + maxEdge/minEdge;
-      mesh bar **Kalite** butonu (Free edge / Equivalence / Rigid body yer tutucu)
-- [ ] Mesh kalite hesaplama: skewness + warpage (custom) → aynı endpoint'e eklenir,
+      mesh bar **Kalite** butonu
+- [x] Mesh kalite hesaplama: skewness + warpage (custom) → aynı endpoint'e eklenir,
       bilinen kötü bir test mesh'inde (bilerek çarpık üretilmiş) yüksek değer çıktığı
       doğrulanır
-- [ ] Frontend'de kalite görselleştirme: kötü elemanları renkli vurgulama + histogram →
+- [x] Frontend'de kalite görselleştirme: kötü elemanları renkli vurgulama + histogram →
       viewer'da düşük kaliteli elemanlar kırmızı görünür, yanında bir histogram grafiği.
       Yazılım burada bir yorum/öneri üretmez — sayıyı ve görseli gösterir, karar mühendisin
-- [ ] Free edge kontrolü → shell mesh'te bilerek bir boşluk bırakılmış test parçasında,
+- [x] Free edge kontrolü → shell mesh'te bilerek bir boşluk bırakılmış test parçasında,
       o boşluğun kenarları viewer'da vurgulanır
-- [ ] Node-to-node equivalence (tespit + birleştirme) → iki ayrı meshlenmiş parça birleşim
+- [x] Node-to-node equivalence (tespit + birleştirme) → iki ayrı meshlenmiş parça birleşim
       yüzeyinde çakışan düğüm sayısı önce raporlanır, onaylanınca birleştirilip düğüm
       sayısındaki azalma terminalde görülür
-- [ ] Rigid body ataması (solver-özel, mesh'ten sonra): bir yüzey/delik + referans node
+- [x] Rigid body ataması (solver-özel, mesh'ten sonra): bir yüzey/delik + referans node
       seçilip "rigid body" olarak işaretlenir → üretilen `.inp`/`.rad` dosyasında ilgili
       kart (`*RIGID BODY` / `/RBODY`) göze görünür şekilde oluşur
 
@@ -108,37 +108,39 @@ Her biri ayrı onay noktası — sırayla, birbirinin üstüne inşa edilir.
       (2D: `*DLOAD P` / 3D: dağıtılmış CLOAD), displacement, sliding (`*TRANSFORM` +
       local normal fix), bearing (kosinüs), gravity (`*DLOAD GRAV`)
 - [x] Frontend Solver paneli: tüm BC butonları (Fixed / CLOAD / Pressure /
-      Displacement / Sliding / Bearing / Gravity) + parametre alanları + BC listesi +
+      Displacement / Sliding / Bearing / Gravity / Rigid body) + parametre alanları + BC listesi +
       shell kalınlık + .inp üret/çöz
 - [x] Parametrelerin forma bağlanması (Fx/Fy/Fz, |P|, U, normal, bearing ekseni, g)
-- [ ] Nokta/kenar/yüzey → node listesi ayrı rapor endpoint'i (şimdilik solve içinde
-      NSET üretiliyor)
+- [x] Nokta/kenar/yüzey → node listesi ayrı rapor endpoint'i (`POST /geometry/{id}/mesh/nsets`).
+      Solve içindeki NSET yazımı aynı; bu endpoint seçimi çözmeden raporlar.
 
 ### 4. Sonuçlar (deformation, von Mises, safety factor, modal)
-- [ ] Deformation okuma (`.frd`'den `U`) → terminalde maksimum deplasman değeri görülür
-- [ ] Von Mises stress hesaplama (gerilme tensöründen) → terminalde maksimum von Mises
+- [x] Deformation okuma (`.frd`'den `U`) → terminalde maksimum deplasman değeri görülür
+- [x] Von Mises stress hesaplama (gerilme tensöründen) → terminalde maksimum von Mises
       değeri görülür, viewer'da renk skalası ile gösterilir
-- [ ] Safety factor hesaplama (malzeme akma değeri girişiyle) → aynı akışa bir sayı daha
+- [x] Safety factor hesaplama (malzeme akma değeri girişiyle) → aynı akışa bir sayı daha
       eklenir, kritik (SF<1) bölgeler viewer'da vurgulanır
-- [ ] Modal analiz (`*FREQUENCY` step'i, ayrı bir analiz tipi seçeneği) → kullanıcı
+- [x] Modal analiz (`*FREQUENCY` step'i, ayrı bir analiz tipi seçeneği) → kullanıcı
       "modal" seçtiğinde farklı bir step üretilir, sonuçta doğal frekanslar listesi +
       seçilen moda ait şekil viewer'da animasyonlu/statik gösterilir
 
 ### 5. Job kuyruğu + durum takibi
-- [ ] Senkron çağrıyı asenkron job'a çevirme (basit runner, henüz Celery değil) →
-      `POST /runs` hemen `job_id` döner, `GET /runs/{id}` durumu gösterir
-- [ ] Frontend'de "çalışıyor... / bitti" durum göstergesi (polling) → sayfa job bitene
+- [x] Senkron çağrıyı asenkron job'a çevirme (basit runner, henüz Celery değil) →
+      `POST /solve` `wait: false` ile hemen `run_id` + `pending` döner, `GET /runs/{id}`
+      durumu gösterir. Testler `wait: true` (varsayılan) ile senkron kalır.
+- [x] Frontend'de "çalışıyor... / bitti" durum göstergesi (polling) → sayfa job bitene
       kadar durumu günceller
 
 ### 6. Post-process (fatigue)
-- [ ] pyLife ile yorulma ömrü hesaplama (Adım 4'te üretilen gerilme verisinden) → akış
-      bir "cycles" sayısı üretir, terminalde görülür
-- [ ] Frontend'de sonuç grafiği (basit bir bar/line chart) → tarayıcıda sayısal sonuç ve
+- [x] pyLife ile yorulma ömrü hesaplama (Adım 4'te üretilen gerilme verisinden) → akış
+      bir "cycles" sayısı üretir. Statik tek yükte sentetik tam çevrim rainflow + S-N
+      log-log interpolasyon (zaman serisi yok).
+- [x] Frontend'de sonuç grafiği (basit bir bar/line chart) → tarayıcıda sayısal sonuç ve
       grafik görülür
 
 ### 7. Veritabanına kayıt + geçmiş
-- [ ] Her run'ın (girdi + sonuç) veritabanına yazılması → `psql` ile satır görülür
-- [ ] Frontend'de geçmiş analizler listesi → tarayıcıda önceki run'lar listelenir, birine
+- [x] Her run'ın (girdi + sonuç) veritabanına yazılması → `psql` ile satır görülür
+- [x] Frontend'de geçmiş analizler listesi → tarayıcıda önceki run'lar listelenir, birine
       tıklanınca sonucu tekrar gösterir
 
 Çıkış kriteri: yukarıdaki tüm adımlar tek tek onaylanmış olacak ve bir kullanıcı tamamen

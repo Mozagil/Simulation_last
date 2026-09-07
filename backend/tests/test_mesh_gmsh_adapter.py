@@ -1006,5 +1006,9 @@ def test_compute_mesh_quality_jacobian_and_aspect_on_3d(tmp_path):
     assert quality.jacobian.min <= quality.jacobian.mean <= quality.jacobian.max
     assert quality.aspect_ratio.min >= 1.0 - 1e-6
     assert quality.aspect_ratio.min <= quality.aspect_ratio.mean <= quality.aspect_ratio.max
+    assert quality.skewness is not None
+    assert 0.0 <= quality.skewness.min <= quality.skewness.max
+    assert quality.warpage is not None
+    assert quality.warpage.min >= 0.0
     assert len(quality.jacobian.values) == quality.element_count
     assert len(quality.aspect_ratio.values) == quality.element_count

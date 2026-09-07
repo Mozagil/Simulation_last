@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, TESSELLATION_DIR, UPLOAD_DIR, _get_geometry_or_404
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
 from app.postprocess.fatigue import compute_safety_factor, estimate_fatigue_life
 from app.postprocess.report import build_run_report_pdf
-from app.solvers.base import SolverError
+from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,95 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/geometry", tags=["solve"])
 
 RUNS_DIR = Path("uploads") / "runs"
+
+
+def _attach_fatigue_and_sf(
+    scalars: dict[str, Any],
+    assignments: list[Any],
+    analysis_type: str,
+    results_preview_path: Path | None,
+) -> tuple[dict[str, Any], str | None, bool]:
+    fatigue_note = None
+    fatigue_runout = False
+    max_vm = scalars.get("max_von_mises")
+    if analysis_type == "modal" or max_vm is None or not assignments:
+        return scalars, fatigue_note, fatigue_runout
+    worst = min(assignments, key=lambda a: a.material.yield_strength)
+    yield_mpa = worst.material.yield_strength / 1e6
+    sf = compute_safety_factor(max_vm, yield_mpa)
+    if sf is not None:
+        scalars["safety_factor"] = sf
+    sn_curve = worst.material.sn_curve
+    if sn_curve and sn_curve.get("points"):
+        points_mpa = [
+            {"N": p["N"], "sigma": p["sigma"] / 1e6} for p in sn_curve["points"]
+        ]
+        fatigue = estimate_fatigue_life(max_vm, points_mpa)
+        if fatigue.get("cycles") is not None:
+            scalars["fatigue_life_cycles"] = fatigue["cycles"]
+            fatigue_note = fatigue.get("note")
+            fatigue_runout = bool(fatigue.get("runout", False))
+    if results_preview_path and results_preview_path.exists():
+        data = json.loads(results_preview_path.read_text(encoding="utf-8"))
+        vm = data.get("von_mises") or []
+        data["yield_mpa"] = yield_mpa
+        data["safety_factor"] = [
+            (yield_mpa / v) if v is not None and v > 1e-30 else None for v in vm
+        ]
+        results_preview_path.write_text(
+            json.dumps(data, separators=(",", ":")), encoding="utf-8"
+        )
+    return scalars, fatigue_note, fatigue_runout
+
+
+def _complete_ccx_job(run_id: int) -> None:
+    db = SessionLocal()
+    run = None
+    try:
+        run = db.get(AnalysisRun, run_id)
+        if run is None or not run.inp_path:
+            return
+        analysis_type = str((run.scalars or {}).get("_analysis_type") or "static")
+        adapter = CalculiXAdapter()
+        handle = adapter.submit(InputArtifact(path=Path(run.inp_path)))
+        status = adapter.poll_status(handle)
+        parsed = adapter.parse_results(handle)
+        assignments = (
+            db.query(MaterialAssignment)
+            .options(joinedload(MaterialAssignment.material))
+            .filter(MaterialAssignment.geometry_id == run.geometry_id)
+            .all()
+        )
+        scalars = dict(parsed.scalars or {})
+        scalars["_analysis_type"] = analysis_type
+        scalars, _note, _runout = _attach_fatigue_and_sf(
+            scalars,
+            assignments,
+            analysis_type,
+            parsed.results_preview_path,
+        )
+        run.status = "solved"
+        run.message = f"ccx bitti ({status.state})"
+        run.scalars = scalars
+        run.frd_path = (
+            str(parsed.raw_result_path).replace("\\", "/")
+            if parsed.raw_result_path
+            else None
+        )
+        run.results_preview_path = (
+            str(parsed.results_preview_path).replace("\\", "/")
+            if parsed.results_preview_path
+            else None
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
+        logger.warning("ccx job başarısız run_id=%s: %s", run_id, exc)
+        if run is not None:
+            run.status = "failed"
+            run.message = str(exc)
+            db.commit()
+    finally:
+        db.close()
 
 
 class SolveBC(BaseModel):
@@ -45,6 +136,7 @@ class SolveBC(BaseModel):
     dofs: dict[str, float] | None = None
     axis: list[float] | None = None
     normal: list[float] | None = None
+    ref_node_id: int | None = None
 
 
 class SolveRequest(BaseModel):
@@ -57,11 +149,25 @@ class SolveRequest(BaseModel):
     bcs: list[SolveBC] = Field(default_factory=list)
     # Kullanıcının bu çözüme verdiği isteğe bağlı etiket (history'de görünür).
     name: str | None = Field(default=None)
+    # Düzenle akışında geri yüklemek için — yoksa DB'de null kalır.
+    element_size: float | None = Field(default=None)
+    element_scheme: str | None = Field(default=None)
+    analysis_type: str = Field(default="static", description="static | modal")
+    n_modes: int | None = Field(default=None, ge=1, le=200)
+    freq_min: float | None = Field(default=None)
+    freq_max: float | None = Field(default=None)
+    wait: bool = Field(
+        default=True,
+        description="False ve run_solver ise ccx arka planda; yanıt hemen pending döner.",
+    )
 
 
 @router.post("/{geometry_id}/solve")
 def solve_geometry(
-    geometry_id: int, body: SolveRequest, db: Session = Depends(get_db)
+    geometry_id: int,
+    body: SolveRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Mesh + malzeme atamalarından CalculiX .inp üretir; isteğe bağlı ccx."""
     if body.dimension not in (2, 3):
@@ -141,11 +247,20 @@ def solve_geometry(
     # aynı geometride ikinci bir case çözünce öncekinin dosyalarının üzerine
     # yazıyordu; artık her run kendi klasöründe (`uploads/runs/{run_id}/`)
     # bağımsız yaşıyor.
+    analysis_type = (body.analysis_type or "static").lower()
+    if analysis_type not in ("static", "modal"):
+        raise HTTPException(status_code=400, detail="analysis_type static veya modal olmalı.")
+    n_modes = body.n_modes if body.n_modes is not None else 10
+    run_name = body.name
+    if analysis_type == "modal" and not (run_name and run_name.strip()):
+        run_name = f"Modal · {n_modes} mod"
+
     run = AnalysisRun(
         geometry_id=geometry_id,
-        name=body.name,
+        name=run_name,
         dimension=body.dimension,
-        element_scheme=None,
+        element_size=body.element_size,
+        element_scheme=body.element_scheme,
         shell_thickness=body.shell_thickness,
         bcs=bcs,
         materials_snapshot=materials,
@@ -192,6 +307,10 @@ def solve_geometry(
                 "materials": materials,
                 "shell_thickness": body.shell_thickness,
                 "bcs": bcs,
+                "analysis_type": analysis_type,
+                "n_modes": n_modes,
+                "freq_min": body.freq_min,
+                "freq_max": body.freq_max,
             }
         )
     except SolverError as exc:
@@ -211,13 +330,16 @@ def solve_geometry(
 
     run.inp_path = str(artifact.path).replace("\\", "/")
     run.status = "inp_only"
-    run.message = "inp üretildi"
+    run.message = "modal inp üretildi" if analysis_type == "modal" else "inp üretildi"
+    run.scalars = {"_analysis_type": analysis_type}
     db.commit()
 
     result: dict[str, Any] = {
         "geometry_id": geometry_id,
         "run_id": run.id,
         "dimension": body.dimension,
+        "analysis_type": analysis_type,
+        "n_modes": n_modes if analysis_type == "modal" else None,
         "inp_path": run.inp_path,
         "inp_url": f"/files/runs/{run.id}/{artifact.path.name}",
         "ccx_available": _ccx_executable() is not None,
@@ -225,80 +347,74 @@ def solve_geometry(
         "solver_ran": False,
         "job_id": None,
         "frd_path": None,
-        "message": "inp üretildi",
+        "frequencies": [],
+        "status": run.status,
+        "message": run.message,
         "mesh_preview_url": (
             f"/files/runs/{run.id}/mesh_preview.json" if mesh_preview_snapshot_path else None
         ),
     }
 
     if body.run_solver:
-        try:
-            handle = adapter.submit(artifact)
-            status = adapter.poll_status(handle)
-            parsed = adapter.parse_results(handle)
-            result["solver_ran"] = True
-            result["job_id"] = handle.job_id
-            result["frd_path"] = (
-                str(parsed.raw_result_path).replace("\\", "/")
-                if parsed.raw_result_path
-                else None
-            )
-            result["message"] = f"ccx bitti ({status.state})"
-            result["scalars"] = parsed.scalars
-            result["results_preview_url"] = (
-                f"/files/runs/{run.id}/{parsed.results_preview_path.name}"
-                if parsed.results_preview_path
-                else None
-            )
-
-            # Yorulma ömrü + statik güvenlik faktörü — ROADMAP.md "6.
-            # Post-process (fatigue)". Birden fazla malzeme atanmışsa EN
-            # DÜŞÜK akma dayanımına sahip olanı kullanıyoruz (muhafazakar,
-            # en kötü durum) — parça-bazlı ayrı SF şimdilik kapsam dışı.
-            #
-            # KRİTİK BİRİM DÖNÜŞÜMÜ: malzeme kütüphanesi yield_strength ve
-            # ultimate_strength'i Pa (SI) olarak saklıyor (E/density'de
-            # daha önce bulduğumuz AYNI desen) — ama max_von_mises bizim
-            # mm-tutarlı birim sistemimizde MPa (N/mm²) cinsinden. Pa'yı
-            # dönüştürmeden kullanmak safety_factor'ü 1 milyon kat yanlış
-            # veriyordu (gerçek bir testte kanıtlandı: 838145 yerine 0.838
-            # olmalıydı). E/density düzeltmesindeki AYNI ÷1e6 kuralı burada
-            # da geçerli.
-            max_vm = parsed.scalars.get("max_von_mises")
-            if max_vm is not None and assignments:
-                worst = min(assignments, key=lambda a: a.material.yield_strength)
-                yield_mpa = worst.material.yield_strength / 1e6
-                sf = compute_safety_factor(max_vm, yield_mpa)
-                if sf is not None:
-                    result["scalars"]["safety_factor"] = sf
-                sn_curve = worst.material.sn_curve
-                if sn_curve and sn_curve.get("points"):
-                    points_mpa = [
-                        {"N": p["N"], "sigma": p["sigma"] / 1e6} for p in sn_curve["points"]
-                    ]
-                    fatigue = estimate_fatigue_life(max_vm, points_mpa)
-                    if fatigue.get("cycles") is not None:
-                        result["scalars"]["fatigue_life_cycles"] = fatigue["cycles"]
-                        result["fatigue_note"] = fatigue.get("note")
-                        result["fatigue_runout"] = fatigue.get("runout", False)
-
-            run.status = "solved"
-            run.message = result["message"]
-            run.scalars = parsed.scalars
-            run.frd_path = result["frd_path"]
-            run.results_preview_path = (
-                str(parsed.results_preview_path).replace("\\", "/")
-                if parsed.results_preview_path
-                else None
-            )
+        if not body.wait:
+            run.status = "pending"
+            run.message = "ccx çalışıyor…"
             db.commit()
-        except SolverError as exc:
-            result["message"] = str(exc)
-            # .inp yine döner; 200 ile uyarı
-            logger.warning("ccx çalıştırılamadı: %s", exc)
-            run.status = "failed"
-            run.message = str(exc)
-            db.commit()
+            result["status"] = "pending"
+            result["message"] = run.message
+            background_tasks.add_task(_complete_ccx_job, run.id)
+        else:
+            try:
+                handle = adapter.submit(artifact)
+                status = adapter.poll_status(handle)
+                parsed = adapter.parse_results(handle)
+                result["solver_ran"] = True
+                result["job_id"] = handle.job_id
+                result["frd_path"] = (
+                    str(parsed.raw_result_path).replace("\\", "/")
+                    if parsed.raw_result_path
+                    else None
+                )
+                result["message"] = f"ccx bitti ({status.state})"
+                result["status"] = "solved"
+                scalars = dict(parsed.scalars or {})
+                scalars["_analysis_type"] = analysis_type
+                scalars, fatigue_note, fatigue_runout = _attach_fatigue_and_sf(
+                    scalars,
+                    assignments,
+                    analysis_type,
+                    parsed.results_preview_path,
+                )
+                result["scalars"] = scalars
+                if fatigue_note:
+                    result["fatigue_note"] = fatigue_note
+                    result["fatigue_runout"] = fatigue_runout
+                result["results_preview_url"] = (
+                    f"/files/runs/{run.id}/{parsed.results_preview_path.name}"
+                    if parsed.results_preview_path
+                    else None
+                )
+                freqs = parsed.curves.get("frequencies") or []
+                if freqs:
+                    result["frequencies"] = freqs
+
+                run.status = "solved"
+                run.message = result["message"]
+                run.scalars = scalars
+                run.frd_path = result["frd_path"]
+                run.results_preview_path = (
+                    str(parsed.results_preview_path).replace("\\", "/")
+                    if parsed.results_preview_path
+                    else None
+                )
+                db.commit()
+            except SolverError as exc:
+                result["message"] = str(exc)
+                result["status"] = "failed"
+                logger.warning("ccx çalıştırılamadı: %s", exc)
+                run.status = "failed"
+                run.message = str(exc)
+                db.commit()
 
     logger.info(
         "Solve: geometry_id=%d run_id=%d dim=%d inp=%s ran=%s",
@@ -313,10 +429,11 @@ def solve_geometry(
 
 @router.get("/runs")
 def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Tüm analiz geçmişini (silinmemiş, kalıcı) listeler — en yeni önce.
+    """Tüm analiz geçmişini listeler — en yeni önce.
 
     ROADMAP.md "7. Veritabanına kayıt + geçmiş" — frontend'de geçmiş
     analizler listesi ve Faz 4 surrogate model eğitim verisi kaynağı.
+    Kullanıcı tek tek silebilir; otomatik temizlik yoktur.
     """
     runs = (
         db.query(AnalysisRun)
@@ -360,6 +477,8 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         "name": run.name,
         "created_at": run.created_at.isoformat(),
         "dimension": run.dimension,
+        "element_size": run.element_size,
+        "element_scheme": run.element_scheme,
         "shell_thickness": run.shell_thickness,
         "bcs": run.bcs,
         "materials_snapshot": run.materials_snapshot,
@@ -383,6 +502,28 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         ),
         "inp_url": f"/files/runs/{run.id}/{Path(run.inp_path).name}" if run.inp_path else None,
     }
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Bir analiz kaydını ve `uploads/runs/{id}/` klasörünü siler.
+
+    Geometri, mesh ve diğer run'lar durur. Kullanıcı isteğiyle silinir;
+    otomatik temizlik yoktur.
+    """
+    run = db.get(AnalysisRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run bulunamadı: id={run_id}")
+
+    geometry_id = run.geometry_id
+    run_dir = RUNS_DIR / str(run.id)
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+
+    db.delete(run)
+    db.commit()
+    logger.info("Run silindi: run_id=%d geometry_id=%s", run_id, geometry_id)
+    return {"deleted": True, "run_id": run_id}
 
 
 @router.get("/runs/{run_id}/report.pdf")

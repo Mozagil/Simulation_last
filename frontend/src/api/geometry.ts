@@ -446,6 +446,88 @@ export interface MeshQualityResponse {
   mesh_path: string;
   jacobian: MeshQualityMetricSummary;
   aspect_ratio: MeshQualityMetricSummary;
+  skewness?: MeshQualityMetricSummary | null;
+  warpage?: MeshQualityMetricSummary | null;
+}
+
+export interface MeshFreeEdgeSegment {
+  n0: number;
+  n1: number;
+  p0: number[];
+  p1: number[];
+}
+
+export async function fetchMeshFreeEdges(
+  geometryId: number,
+  dimension: 2 | 3,
+): Promise<{ count: number; edges: MeshFreeEdgeSegment[] }> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/mesh/free-edges?dimension=${dimension}`,
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Free edge alınamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as { count: number; edges: MeshFreeEdgeSegment[] };
+}
+
+export async function fetchMeshDuplicates(
+  geometryId: number,
+  dimension: 2 | 3,
+  tolerance = 1e-6,
+): Promise<{ count: number; node_count: number; merged?: number }> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/mesh/duplicates?dimension=${dimension}&tolerance=${tolerance}`,
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Equivalence alınamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as { count: number; node_count: number };
+}
+
+export async function mergeMeshDuplicates(
+  geometryId: number,
+  dimension: 2 | 3,
+  tolerance = 1e-6,
+): Promise<{ node_count_before: number; node_count_after: number; merged: number; preview_url: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/geometry/${geometryId}/mesh/duplicates/merge?dimension=${dimension}&tolerance=${tolerance}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `Birleştirme başarısız (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as {
+    node_count_before: number;
+    node_count_after: number;
+    merged: number;
+    preview_url: string;
+  };
+}
+
+export async function fetchMeshNsets(
+  geometryId: number,
+  opts: { dimension: 2 | 3; face_ids?: number[]; edge_ids?: number[]; node_ids?: number[] },
+): Promise<{ sets: { name: string; kind: string; id: number; node_ids: number[] }[]; node_count: number }> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh/nsets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!response.ok) {
+    throw new GeometryUploadError(
+      await parseErrorDetail(response, `NSET raporu alınamadı (HTTP ${response.status}).`),
+    );
+  }
+  return (await response.json()) as {
+    sets: { name: string; kind: string; id: number; node_ids: number[] }[];
+    node_count: number;
+  };
 }
 
 /** Kayıtlı mesh için Jacobian (minSJ) + aspect ratio özeti. */
@@ -462,6 +544,20 @@ export async function fetchMeshQuality(
     );
   }
   return (await response.json()) as MeshQualityResponse;
+}
+
+/** Canlı tessellation üçgen eşlemeleri — düzenle akışında geometriyi geri yükler. */
+export async function fetchTessellationMaps(geometryId: number): Promise<{
+  triangle_to_face: number[];
+  triangle_to_part: number[];
+}> {
+  const [facesResp, partsResp] = await Promise.all([
+    fetch(`${API_BASE_URL}/files/tessellations/${geometryId}.faces.json?t=${Date.now()}`),
+    fetch(`${API_BASE_URL}/files/tessellations/${geometryId}.parts.json?t=${Date.now()}`),
+  ]);
+  const triangle_to_face: number[] = facesResp.ok ? await facesResp.json() : [];
+  const triangle_to_part: number[] = partsResp.ok ? await partsResp.json() : [];
+  return { triangle_to_face, triangle_to_part };
 }
 
 /** Mesh wireframe JSON'unu çeker (`/files/meshes/...preview.json`). */
@@ -486,6 +582,14 @@ export async function fetchMeshPreview(previewUrl: string): Promise<MeshPreviewD
  * (kalınlık dahil) koordinatlarıyla bağımsız bir nokta bulutu olarak
  * gösteriliyor.
  */
+export interface ModalModePreview {
+  index: number;
+  frequency_hz: number | null;
+  displacement_vectors: number[][];
+  displacement_magnitude: number[];
+  max_displacement: number;
+}
+
 export interface ResultsPreviewData {
   node_ids: number[];
   nodes: number[][];
@@ -495,6 +599,11 @@ export interface ResultsPreviewData {
   von_mises: number[];
   max_displacement: number;
   max_von_mises: number;
+  /** Düğüm bazlı SF (akma/von Mises). null = gerilme ~0. */
+  safety_factor?: Array<number | null>;
+  yield_mpa?: number;
+  /** Modal: her increment bir doğal mod. Yoksa statik tek increment. */
+  modes?: ModalModePreview[];
 }
 
 export async function fetchResultsPreview(previewUrl: string): Promise<ResultsPreviewData> {

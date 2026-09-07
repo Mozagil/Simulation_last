@@ -1559,6 +1559,17 @@ p {
 .history-item-body {
   flex: 1;
   min-width: 0;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.history-item-body:hover .history-item-title {
+  text-decoration: underline;
 }
 
 .history-item-title {
@@ -1606,6 +1617,47 @@ p {
   margin-top: 2px;
 }
 
+.history-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.history-action-button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.history-action-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.history-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.history-action-button-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+.history-action-button-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* ---- Karşılaştırma (split-screen) görünümü ---- */
 .compare-view {
   display: flex;
@@ -1633,6 +1685,12 @@ p {
   display: flex;
   gap: 12px;
   min-height: 0;
+}
+
+.compare-panels-single {
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .compare-panel {
@@ -1693,6 +1751,154 @@ p {
   justify-content: center;
   color: var(--muted);
   font-size: 12px;
+}
+
+.compare-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.compare-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.compare-tag-ref {
+  background: #dbe4ee;
+  color: #1d3557;
+}
+
+.compare-tag-down {
+  background: #d8f3dc;
+  color: #1b4332;
+}
+
+.compare-tag-up {
+  background: #fde2e4;
+  color: #9b2226;
+}
+
+.compare-tag-risk {
+  background: #9b2226;
+  color: #fff;
+}
+
+.compare-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.compare-metrics span {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.compare-metrics strong {
+  font-size: 13px;
+}
+
+.compare-toggles {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.compare-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compare-panel-footer {
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.compare-probes {
+  font-size: 11px;
+  min-width: 160px;
+}
+
+.compare-probes table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.compare-probes th,
+.compare-probes td {
+  text-align: left;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.compare-probe-clear {
+  margin-left: 8px;
+  font-size: 10px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.compare-shared-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.compare-shared-colorbar {
+  flex: 1;
+  min-width: 220px;
+}
+
+.compare-shared-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.compare-shared-track {
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.compare-shared-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.compare-shared-note {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 280px;
 }
 
 /* ---- 4 metrik kartı (Results ekranı, viewport altı) ---- */
@@ -1771,4 +1977,55 @@ p {
 
 .results-histogram {
   margin-top: 8px;
+}
+
+.mode-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mode-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  background: var(--surface);
+}
+
+.mode-card-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.mode-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mode-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  margin: 5px 2px 4px;
+  color: var(--ink);
+}
+
+.mode-card-meta span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.mode-card-actions .vf-btn {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--ink);
 }

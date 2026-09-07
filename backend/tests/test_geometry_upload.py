@@ -6,7 +6,6 @@ zarifçe skip edilir (bkz. `requires_db`, test_db_connection.py'deki desenle
 aynı).
 """
 
-import shutil
 from pathlib import Path
 
 import pytest
@@ -17,6 +16,7 @@ from sqlalchemy.exc import OperationalError
 from app.api.geometry import UPLOAD_DIR
 from app.db.session import SessionLocal
 from app.main import app
+from tests.db_guard import safe_cleanup
 
 client = TestClient(app)
 
@@ -43,20 +43,15 @@ requires_db = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _clean_state():
-    """Her testten önce/sonra hem dosya sistemini hem DB tablolarını temizle."""
+    """İzole test DB'sinde dosya + tablo temizliği. cae_dev'e dokunmaz."""
     yield
-    if UPLOAD_DIR.exists():
-        shutil.rmtree(UPLOAD_DIR)
-    if _db_available():
-        db = SessionLocal()
-        db.execute(
-            text(
-                "TRUNCATE material_assignments, physical_groups, geometries "
-                "RESTART IDENTITY CASCADE"
-            )
-        )
-        db.commit()
-        db.close()
+    if not _db_available():
+        return
+    safe_cleanup(
+        UPLOAD_DIR,
+        "TRUNCATE material_assignments, physical_groups, geometries "
+        "RESTART IDENTITY CASCADE",
+    )
 
 
 def _upload_box() -> dict:
@@ -128,6 +123,15 @@ def test_copied_surface_is_not_in_volume_part_ids():
     assert body["part_count"] == 2
     assert body["volume_part_ids"] == [0]
     assert body["face_count"] == 7
+
+
+def test_upload_endpoint_is_sync():
+    """async upload + senkron Gmsh olay döngüsünü kilitler; UI 'Yükleniyor'da donar."""
+    import inspect
+
+    from app.api.geometry import upload_geometry
+
+    assert not inspect.iscoroutinefunction(upload_geometry)
 
 
 def test_upload_rejects_unsupported_extension():
@@ -689,6 +693,29 @@ def test_mesh_quality_via_api_after_3d_mesh():
     assert body["jacobian"]["min"] <= body["jacobian"]["mean"] <= body["jacobian"]["max"]
     assert body["aspect_ratio"]["min"] <= body["aspect_ratio"]["mean"] <= body["aspect_ratio"]["max"]
     assert len(body["jacobian"]["values"]) == body["element_count"]
+    assert body["skewness"]["min"] >= 0.0
+    assert body["warpage"]["min"] >= 0.0
+
+    free = client.get(f"/geometry/{geometry_id}/mesh/free-edges", params={"dimension": 3})
+    assert free.status_code == 200
+    assert "count" in free.json()
+
+    nsets = client.post(
+        f"/geometry/{geometry_id}/mesh/nsets",
+        json={"dimension": 3, "face_ids": [1]},
+    )
+    assert nsets.status_code == 200
+    payload = nsets.json()
+    assert payload["sets"]
+    assert payload["sets"][0]["name"] == "FACE_1"
+    assert len(payload["sets"][0]["node_ids"]) > 0
+
+    dup = client.get(
+        f"/geometry/{geometry_id}/mesh/duplicates",
+        params={"dimension": 3, "tolerance": 1e-6},
+    )
+    assert dup.status_code == 200
+    assert "count" in dup.json()
 
 
 @requires_db

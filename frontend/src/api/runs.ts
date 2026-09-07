@@ -1,6 +1,6 @@
 /** Analiz geçmişi (AnalysisRun) API — ROADMAP.md "7. Veritabanına kayıt +
  * geçmiş". Backend'deki `analysis_runs` tablosuyla birebir eşleşir: her
- * /solve çağrısı kalıcı bir satır üretir, hiçbiri silinmez.
+ * /solve çağrısı kalıcı bir satır üretir. Kullanıcı geçmişten silebilir.
  */
 
 const API_BASE_URL: string =
@@ -21,6 +21,8 @@ export interface RunSummary {
 }
 
 export interface RunDetail extends RunSummary {
+  element_size: number | null;
+  element_scheme: "tet" | "quad" | "mix" | null;
   shell_thickness: number | null;
   bcs: unknown[];
   materials_snapshot: unknown[];
@@ -45,4 +47,13 @@ export async function fetchRunDetail(runId: number): Promise<RunDetail> {
     throw new RunFetchError(`Run detayı alınamadı (HTTP ${response.status}).`);
   }
   return (await response.json()) as RunDetail;
+}
+
+export async function deleteRun(runId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/geometry/runs/${runId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new RunFetchError(`Run silinemedi (HTTP ${response.status}).`);
+  }
 }

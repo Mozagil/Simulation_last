@@ -159,7 +159,7 @@ class MeshQualityMetric:
 
 @dataclass
 class MeshQualityResult:
-    """Mesh kalite raporu (Jacobian + aspect ratio)."""
+    """Mesh kalite raporu (Jacobian + aspect + skewness + warpage)."""
 
     mesh_path: Path
     dimension: int
@@ -167,6 +167,8 @@ class MeshQualityResult:
     element_tags: list[int]
     jacobian: MeshQualityMetric
     aspect_ratio: MeshQualityMetric
+    skewness: MeshQualityMetric | None = None
+    warpage: MeshQualityMetric | None = None
 
 
 class MeshError(Exception):

@@ -34,7 +34,37 @@ def estimate_fatigue_life(
     if stress_amplitude <= 0:
         return {"cycles": None, "note": "Gerilme sıfır/negatif — yorulma hesabı anlamsız."}
 
-    # Yüksek gerilme (kısa ömür) önce gelecek şekilde sırala.
+    # Rainflow: statik tek yük için tam çevrim sentetik sinyal [σ, −σ, σ].
+    # pyLife FourPointDetector varsa onu kullanır; yoksa genlik = |σ|.
+    rf_amp = _rainflow_amplitude(stress_amplitude)
+    interp = _interpolate_sn(stress_amplitude, sn_points)
+    if interp.get("cycles") is not None:
+        interp["rainflow_amplitude"] = rf_amp
+        interp["note"] = (
+            f"pyLife rainflow genlik={rf_amp:.4g} MPa; {interp.get('note', '')}"
+        ).strip()
+    return interp
+
+
+def _rainflow_amplitude(stress: float) -> float:
+    s = abs(float(stress))
+    try:
+        import pandas as pd
+        import pylife.stress.rainflow as rf
+
+        detector = rf.FourPointDetector(recorder=rf.LoopValueRecorder())
+        detector.process(pd.Series([s, -s, s, -s, s]))
+        collective = detector.recorder.collective
+        amps = getattr(collective, "amplitude", None)
+        if amps is None:
+            return s
+        values = list(amps) if not hasattr(amps, "to_numpy") else list(amps.to_numpy())
+        return float(max(values)) if values else s
+    except Exception:  # noqa: BLE001 — pyLife yoksa interpolasyona düş
+        return s
+
+
+def _interpolate_sn(stress_amplitude: float, sn_points: list[dict[str, float]]) -> dict[str, Any]:
     pts = sorted(sn_points, key=lambda p: p["sigma"], reverse=True)
 
     if stress_amplitude >= pts[0]["sigma"]:

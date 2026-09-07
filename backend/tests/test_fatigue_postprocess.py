@@ -27,6 +27,8 @@ def test_estimate_fatigue_life_interpolates_between_points():
     assert result["cycles"] is not None
     assert 1.0e3 < result["cycles"] < 1.0e6
     assert result["runout"] is False
+    assert result.get("rainflow_amplitude") is not None
+    assert abs(float(result["rainflow_amplitude"]) - 300.0) < 1.0
 
 
 def test_estimate_fatigue_life_below_fatigue_limit_is_runout():

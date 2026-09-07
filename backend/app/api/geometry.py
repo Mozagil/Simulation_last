@@ -125,9 +125,13 @@ def _tessellation_response_fields(geometry_id: int, result: TessellationResult) 
 
 
 @router.post("/upload")
-async def upload_geometry(file: UploadFile, db: Session = Depends(get_db)) -> dict[str, Any]:
+def upload_geometry(file: UploadFile, db: Session = Depends(get_db)) -> dict[str, Any]:
     """STEP/IGES dosyasını alır, kalıcı bir Geometry kaydı oluşturur, Gmsh ile
     web önizleme tessellation'ı + üçgen eşlemelerini üretir.
+
+    Sync tutulur (diğer geometri uçları gibi): uvicorn bunu thread pool'da
+    çalıştırır. `async def` + senkron Gmsh/DB, olay döngüsünü kilitler —
+    /health ve frontend "Yükleniyor"da donar.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Dosya adı boş olamaz.")
@@ -143,7 +147,8 @@ async def upload_geometry(file: UploadFile, db: Session = Depends(get_db)) -> di
         )
 
     _ensure_dirs()
-    contents = await file.read()
+    contents = file.file.read()
+    logger.info("Geometri yukleme basladi: dosya=%s, boyut=%d", file.filename, len(contents))
 
     # Önce DB kaydını oluştur (autoincrement id'yi al), sonra dosyayı bu id ile adlandır.
     db_geometry = Geometry(original_filename=file.filename, current_filename="")
@@ -937,4 +942,97 @@ def get_mesh_quality(
         "mesh_path": str(result.mesh_path).replace("\\", "/"),
         "jacobian": _quality_metric_payload(result.jacobian),
         "aspect_ratio": _quality_metric_payload(result.aspect_ratio),
+        "skewness": (
+            _quality_metric_payload(result.skewness) if result.skewness else None
+        ),
+        "warpage": _quality_metric_payload(result.warpage) if result.warpage else None,
     }
+
+
+class MeshNsetRequest(BaseModel):
+    dimension: int = 2
+    face_ids: list[int] = Field(default_factory=list)
+    edge_ids: list[int] = Field(default_factory=list)
+    node_ids: list[int] = Field(default_factory=list)
+
+
+@router.get("/{geometry_id}/mesh/free-edges")
+def get_mesh_free_edges(
+    geometry_id: int,
+    dimension: int = 2,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if dimension not in (2, 3):
+        raise HTTPException(status_code=400, detail="dimension 2 veya 3 olmalı.")
+    geo = _get_geometry_or_404(db, geometry_id)
+    mesh_path = _mesh_path_for_geometry(geo, dimension)
+    if not mesh_path.exists():
+        raise HTTPException(status_code=404, detail="Önce mesh üretin.")
+    adapter = GmshMesherAdapter()
+    try:
+        return {"geometry_id": geometry_id, "dimension": dimension, **adapter.find_free_edges(mesh_path, dimension)}
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{geometry_id}/mesh/duplicates")
+def get_mesh_duplicates(
+    geometry_id: int,
+    dimension: int = 2,
+    tolerance: float = 1e-6,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    geo = _get_geometry_or_404(db, geometry_id)
+    mesh_path = _mesh_path_for_geometry(geo, dimension)
+    if not mesh_path.exists():
+        raise HTTPException(status_code=404, detail="Önce mesh üretin.")
+    adapter = GmshMesherAdapter()
+    try:
+        return {"geometry_id": geometry_id, **adapter.find_duplicate_nodes(mesh_path, tolerance)}
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{geometry_id}/mesh/duplicates/merge")
+def merge_mesh_duplicates(
+    geometry_id: int,
+    dimension: int = 2,
+    tolerance: float = 1e-6,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    geo = _get_geometry_or_404(db, geometry_id)
+    mesh_path = _mesh_path_for_geometry(geo, dimension)
+    if not mesh_path.exists():
+        raise HTTPException(status_code=404, detail="Önce mesh üretin.")
+    adapter = GmshMesherAdapter()
+    try:
+        result = adapter.merge_duplicate_nodes(mesh_path, dimension, tolerance)
+        return {"geometry_id": geometry_id, **result}
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{geometry_id}/mesh/nsets")
+def report_mesh_nsets(
+    geometry_id: int,
+    body: MeshNsetRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if body.dimension not in (2, 3):
+        raise HTTPException(status_code=400, detail="dimension 2 veya 3 olmalı.")
+    geo = _get_geometry_or_404(db, geometry_id)
+    mesh_path = _mesh_path_for_geometry(geo, body.dimension)
+    if not mesh_path.exists():
+        raise HTTPException(status_code=404, detail="Önce mesh üretin.")
+    adapter = GmshMesherAdapter()
+    try:
+        payload = adapter.list_selection_nsets(
+            mesh_path,
+            body.dimension,
+            face_ids=body.face_ids,
+            edge_ids=body.edge_ids,
+            node_ids=body.node_ids,
+        )
+        return {"geometry_id": geometry_id, **payload}
+    except MeshError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

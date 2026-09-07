@@ -150,6 +150,10 @@ export interface SolveResponse {
   fatigue_note?: string | null;
   fatigue_runout?: boolean;
   results_preview_url?: string | null;
+  analysis_type?: "static" | "modal";
+  n_modes?: number | null;
+  frequencies?: number[];
+  status?: "pending" | "inp_only" | "solved" | "failed";
 }
 
 export type SolveBC = {
@@ -170,6 +174,7 @@ export type SolveBC = {
   dofs?: Record<string, number>;
   axis?: number[];
   normal?: number[];
+  ref_node_id?: number;
 };
 
 /** CalculiX .inp üret (+ isteğe bağlı ccx). */
@@ -181,6 +186,13 @@ export async function solveGeometry(
     run_solver?: boolean;
     bcs: SolveBC[];
     name?: string;
+    element_size?: number;
+    element_scheme?: string;
+    analysis_type?: "static" | "modal";
+    n_modes?: number;
+    freq_min?: number;
+    freq_max?: number;
+    wait?: boolean;
   },
 ): Promise<SolveResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/solve`, {
@@ -192,6 +204,13 @@ export async function solveGeometry(
       run_solver: opts.run_solver ?? false,
       bcs: opts.bcs,
       ...(opts.name ? { name: opts.name } : {}),
+      ...(opts.element_size != null ? { element_size: opts.element_size } : {}),
+      ...(opts.element_scheme ? { element_scheme: opts.element_scheme } : {}),
+      ...(opts.analysis_type ? { analysis_type: opts.analysis_type } : {}),
+      ...(opts.n_modes != null ? { n_modes: opts.n_modes } : {}),
+      ...(opts.freq_min != null ? { freq_min: opts.freq_min } : {}),
+      ...(opts.freq_max != null ? { freq_max: opts.freq_max } : {}),
+      ...(opts.wait === false ? { wait: false } : {}),
     }),
   });
   if (!response.ok) {
