@@ -965,7 +965,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     }
     const pointById = new Map(pointList.map((p) => [p.id, p.coordinate]));
     const selected = new Set(selectedIdsRef.current);
-    const showAll = edgeList.length <= 40 || modeRef.current === "edge";
+    // KRİTİK: eskiden "edgeList.length <= 40 || mode === 'edge'" idi — küçük
+    // geometrilerde (ör. 12 kenarlı bir kiriş) mod fark etmeksizin HER ZAMAN
+    // görünüyordu (gerçek bir ekran görüntüsünde tespit edildi: Parça
+    // modundayken bile kenar node sayısı çipleri görünüyordu). Bu kontroller
+    // sadece Kenar modunda anlamlı (mesh seeding — kenarı kaç eşit parçaya
+    // böleceğini seçmek), bu yüzden artık SADECE Kenar modunda gösteriliyor.
+    const showAll = modeRef.current === "edge";
     const width = layer.clientWidth;
     const height = layer.clientHeight;
     if (width < 2 || height < 2) return;
