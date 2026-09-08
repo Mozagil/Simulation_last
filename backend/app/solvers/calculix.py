@@ -41,6 +41,31 @@ _GMSH_TO_CCX_2D = {
     3: "S4",  # quad4 shell
 }
 
+# KRİTİK: Gmsh tet10 (tip 11) ile Abaqus/CalculiX C3D10 düğüm sıralaması
+# kenar-ortası düğümlerin SON İKİSİNDE farklıdır. Gmsh sıralaması
+# (dokümantasyondaki Tetrahedron10 şeması):
+#   4=orta(0,1)  5=orta(1,2)  6=orta(0,2)  7=orta(0,3)  8=orta(2,3)  9=orta(1,3)
+# CalculiX/Abaqus C3D10 sıralaması (1-based 5..10):
+#   5=orta(1,2)  6=orta(2,3)  7=orta(3,1)  8=orta(1,4)  9=orta(2,4)  10=orta(3,4)
+# 0-based karşılığı: 4=orta(0,1) 5=orta(1,2) 6=orta(0,2) 7=orta(0,3)
+#                    8=orta(1,3) 9=orta(2,3)
+# Yani Gmsh'in 8. ve 9. düğümleri YER DEĞİŞTİRMELİ. Bu yapılmazsa eleman
+# jakobyeni bozulur ve CalculiX ya hata verir ya da tamamen yanlış sonuç
+# üretir.
+_GMSH_TO_CCX_TET10_ORDER = (0, 1, 2, 3, 4, 5, 6, 7, 9, 8)
+
+
+def _reorder_connectivity(conn: list[int], gmsh_etype: int) -> list[int]:
+    """Gmsh eleman bağlantısını CalculiX'in beklediği sıraya çevirir.
+
+    Şimdilik yalnız tet10 (tip 11) yeniden sıralama gerektiriyor; diğer
+    desteklenen tipler (tet4, hex8, tri3, quad4) iki formatta da aynı
+    sıradadır.
+    """
+    if gmsh_etype == 11 and len(conn) == 10:
+        return [conn[i] for i in _GMSH_TO_CCX_TET10_ORDER]
+    return conn
+
 
 def _frd_data_line(line: str) -> tuple[int, list[float]] | None:
     """CalculiX .frd sabit-sütun-genişlikli veri satırını parse eder.
@@ -536,6 +561,7 @@ def _mesh_to_inp_blocks(
                         tag_to_idx[int(enodes[ei * n_per + k])]
                         for k in range(n_per)
                     ]
+                    conn = _reorder_connectivity(conn, int(etype))
                     lines.append(f"{elem_id}, " + ", ".join(str(c) for c in conn))
                     all_eids.append(elem_id)
                     elem_id += 1
@@ -571,6 +597,7 @@ def _mesh_to_inp_blocks(
                             tag_to_idx[int(enodes[ei * n_per + k])]
                             for k in range(n_per)
                         ]
+                        conn = _reorder_connectivity(conn, int(etype))
                         lines.append(f"{elem_id}, " + ", ".join(str(c) for c in conn))
                         part_eids.append(elem_id)
                         elem_id += 1
