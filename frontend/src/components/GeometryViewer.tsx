@@ -61,6 +61,12 @@ interface GeometryViewerProps {
   cadOpacity: number;
   /** Kenar başına düğüm sayısı (mesh tohumu). */
   edgeNodeCounts?: Record<number, number>;
+  /** Kenar node sayısı çipleri SADECE bu true iken görünür — kullanıcının
+   * kendi tanımı: "sadece 2D mesh oluştururken ortaya çıkacak, mesh
+   * oluşturulmuşsa bir daha görünmeyecek." Seçim modundan (Kenar modu
+   * dahil) TAMAMEN bağımsız — App.tsx bunu
+   * `meshDimension === 2 && meshResult === null` olarak hesaplıyor. */
+  showEdgeSeedControls?: boolean;
   onEdgeNodeCountChange?: (edgeId: number, next: number) => void;
   /** App state'teki seçim — turuncu vurgu bununla senkron (sahne rebuild sonrası da kalır). */
   selectedIds: number[];
@@ -301,6 +307,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   cadOpacity,
   edgeNodeCounts,
   onEdgeNodeCountChange,
+  showEdgeSeedControls,
   selectedIds,
   meshPicks,
   meshGrow,
@@ -371,6 +378,8 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   edgeNodeCountsRef.current = edgeNodeCounts;
   const onEdgeNodeCountChangeRef = useRef(onEdgeNodeCountChange);
   onEdgeNodeCountChangeRef.current = onEdgeNodeCountChange;
+  const showEdgeSeedControlsRef = useRef(showEdgeSeedControls);
+  showEdgeSeedControlsRef.current = showEdgeSeedControls;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
   const pointsRef = useRef(points);
@@ -965,13 +974,16 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     }
     const pointById = new Map(pointList.map((p) => [p.id, p.coordinate]));
     const selected = new Set(selectedIdsRef.current);
-    // KRİTİK: eskiden "edgeList.length <= 40 || mode === 'edge'" idi — küçük
-    // geometrilerde (ör. 12 kenarlı bir kiriş) mod fark etmeksizin HER ZAMAN
-    // görünüyordu (gerçek bir ekran görüntüsünde tespit edildi: Parça
-    // modundayken bile kenar node sayısı çipleri görünüyordu). Bu kontroller
-    // sadece Kenar modunda anlamlı (mesh seeding — kenarı kaç eşit parçaya
-    // böleceğini seçmek), bu yüzden artık SADECE Kenar modunda gösteriliyor.
-    const showAll = modeRef.current === "edge";
+    // KRİTİK — kullanıcının kesin tanımı: "kenar işaretliyken hep
+    // gözükmeyecek, sadece 2D mesh oluştururken ortaya çıkacak, mesh
+    // oluşturulmuşsa bir daha görünmeyecek." Seçim modundan (Kenar modu
+    // dahil) TAMAMEN bağımsız — sadece App.tsx'in hesapladığı
+    // showEdgeSeedControls (2D + henüz mesh yok) prop'una bağlı.
+    if (!showEdgeSeedControlsRef.current) {
+      layer.replaceChildren();
+      return;
+    }
+    const showAll = true;
     const width = layer.clientWidth;
     const height = layer.clientHeight;
     if (width < 2 || height < 2) return;
