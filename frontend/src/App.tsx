@@ -2653,6 +2653,10 @@ function App() {
             className={meshDimension === 2 ? "active" : undefined}
             disabled={busyAction === "mesh"}
             onClick={() => {
+              if (meshDimension !== 2) {
+                setMeshResult(null);
+                invalidateStaleResults();
+              }
               setMeshDimension(2);
               setMeshScheme("quad");
             }}
@@ -2664,6 +2668,10 @@ function App() {
             className={meshDimension === 3 ? "active" : undefined}
             disabled={busyAction === "mesh"}
             onClick={() => {
+              if (meshDimension !== 3) {
+                setMeshResult(null);
+                invalidateStaleResults();
+              }
               setMeshDimension(3);
               setMeshScheme("tet");
             }}
@@ -3965,6 +3973,7 @@ function App() {
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
                   edgeNodeCounts={edgeNodeCounts}
+                  showEdgeSeedControls={meshDimension === 2 && meshResult === null}
                   onEdgeNodeCountChange={(edgeId, next) => {
                     edgeSeedManualRef.current.add(edgeId);
                     setEdgeNodeCounts((prev) => ({ ...prev, [edgeId]: next }));
