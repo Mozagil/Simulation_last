@@ -39,6 +39,13 @@ from app.mesh.base import (
 # Gmsh eleman tipi kodu: 3 düğümlü üçgen (bkz. Gmsh dokümantasyonu, "elementType").
 _TRIANGLE_ELEMENT_TYPE = 2
 _TETRAHEDRON_ELEMENT_TYPE = 4
+# 2. mertebe (quadratic) tetrahedron — 4 köşe + 6 kenar-ortası düğüm.
+# ANSYS'in "Patch Conforming" varsayılanı (SOLID187) ile aynı eleman.
+# 1. mertebe tet (C3D4/CST) eğilmede aşırı rijittir (eleman içinde gerinim
+# sabit olduğu için eğilmenin lineer gerinim gradyanını temsil edemez) —
+# 50x10x500 ankastre kiriş testinde bu, ANSYS'e göre 2.45 kat düşük
+# deplasman (9.70mm yerine beklenen ~24mm) olarak ölçüldü.
+_TET10_ELEMENT_TYPE = 11
 
 # İnsan-okur Gmsh eleman tipi adları (getElementType name)
 _GMSH_ELEMENT_TYPE_NAMES = {
@@ -49,6 +56,7 @@ _GMSH_ELEMENT_TYPE_NAMES = {
     5: "Hexahedron",
     6: "Prism",
     7: "Pyramid",
+    11: "Tetrahedron10",
 }
 # Gmsh'in Python API'si süreç genelinde TEK bir global C++ durumu paylaşır
 # (gmsh.initialize/open/finalize hepsi aynı global context'i değiştirir).
@@ -1322,28 +1330,41 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
         else:
             _emit_surface_elements(-1, 0, 0)
     else:
-        _tags, conn = gmsh.model.mesh.getElementsByType(_TETRAHEDRON_ELEMENT_TYPE)
+        # tet4 (tip 4) ve tet10 (tip 11) birlikte desteklenir. tet10'da
+        # eleman başına 10 düğüm gelir ama YÜZEY ÖNİZLEMESİ için yalnız ilk
+        # 4'ü (köşeler) kullanılır — Gmsh sıralamasında ilk 4 düğüm daima
+        # köşelerdir. Kenar-ortası düğümler `nodes` dizisinde yine bulunur
+        # (getNodes hepsini döndürür), sadece yüzey üçgeninin köşesi olmazlar.
         face_count: dict[tuple[int, int, int], int] = {}
         face_orient: dict[tuple[int, int, int], tuple[int, int, int]] = {}
         face_part: dict[tuple[int, int, int], int] = {}
         tet_faces = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
         volumes = gmsh.model.getEntities(3)
         volume_tets: list[tuple[int, list[int]]] = []
+        _TET_NODES_PER = {_TETRAHEDRON_ELEMENT_TYPE: 4, _TET10_ELEMENT_TYPE: 10}
         if volumes:
             for part_id, (_dim, vtag) in enumerate(volumes):
                 etypes, etags_list, enodes_list = gmsh.model.mesh.getElements(
                     dim=3, tag=vtag
                 )
                 for etype, etags, enodes in zip(etypes, etags_list, enodes_list):
-                    if int(etype) != _TETRAHEDRON_ELEMENT_TYPE:
+                    n_per = _TET_NODES_PER.get(int(etype))
+                    if n_per is None:
                         continue
                     for e in range(len(etags)):
-                        idxs = [tag_to_idx[int(enodes[e * 4 + k])] for k in range(4)]
+                        idxs = [
+                            tag_to_idx[int(enodes[e * n_per + k])] for k in range(4)
+                        ]
                         volume_tets.append((part_id, idxs))
         else:
-            for e in range(len(_tags)):
-                idxs = [tag_to_idx[int(conn[e * 4 + k])] for k in range(4)]
-                volume_tets.append((0, idxs))
+            for tet_type, n_per in _TET_NODES_PER.items():
+                try:
+                    _tags, conn = gmsh.model.mesh.getElementsByType(tet_type)
+                except Exception:  # noqa: BLE001 — bu tip mesh'te yoksa atla
+                    continue
+                for e in range(len(_tags)):
+                    idxs = [tag_to_idx[int(conn[e * n_per + k])] for k in range(4)]
+                    volume_tets.append((0, idxs))
 
         face_tet: dict[tuple[int, int, int], int] = {}
         for tet_index, (part_id, idxs) in enumerate(volume_tets):
@@ -2107,6 +2128,17 @@ class GmshMesherAdapter(MesherAdapter):
                     gmsh.option.setNumber("Mesh.Recombine3DAll", 1)
                     gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
                 gmsh.model.mesh.generate(3)
+                if scheme != "quad":
+                    # 2. mertebe tet (tet10 / CalculiX C3D10). 1. mertebe tet
+                    # (C3D4) eğilmede aşırı rijittir — sabit gerinimli eleman
+                    # olduğu için eğilmenin lineer gerinim gradyanını
+                    # temsil edemez. 50x10x500 ankastre kiriş doğrulamasında
+                    # tet4 ile 9.70mm (ANSYS: 24.74mm, el hesabı: 23.81mm)
+                    # ölçüldü — 2.45 kat fazla rijit. tet10, ANSYS'in
+                    # varsayılan SOLID187 elemanıyla aynı mertebedir.
+                    # Hex (quad şeması) hariç tutuldu: setOrder(2) orada
+                    # hex20 üretir, .inp yazıcısında karşılığı henüz yok.
+                    gmsh.model.mesh.setOrder(2)
             else:
                 shell_faces = _orphan_shell_face_tags()
                 if not shell_faces:
@@ -2155,6 +2187,7 @@ class GmshMesherAdapter(MesherAdapter):
                     element_count += n
                 elif params.dimension == 3 and int(etype) in (
                     _TETRAHEDRON_ELEMENT_TYPE,
+                    _TET10_ELEMENT_TYPE,
                     5,
                     6,
                     7,
