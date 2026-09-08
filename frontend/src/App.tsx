@@ -260,6 +260,11 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
   type WizardStep = "geometry" | "mesh" | "material" | "bc" | "modal" | "results";
+  // Üst düzey analiz sekmesi — Durability (mevcut statik BC/sonuç akışı) ve
+  // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
+  // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
+  // sekmede de aynı).
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -3075,6 +3080,25 @@ function App() {
       </div>
       )}
 
+      <div className="analysis-tab-switch">
+        <button
+          type="button"
+          className={analysisTab === "durability" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => setAnalysisTab("durability")}
+        >
+          DURABILITY
+        </button>
+        <button
+          type="button"
+          className={analysisTab === "modal" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => setAnalysisTab("modal")}
+        >
+          MODAL
+        </button>
+      </div>
+
+      {analysisTab === "durability" && (
+      <>
       <button
         type="button"
         className={expandedSteps.has("bc") ? "step-nav-item active" : "step-nav-item"}
@@ -3333,7 +3357,11 @@ function App() {
         )}
       </div>
       )}
+      </>
+      )}
 
+      {analysisTab === "modal" && (
+      <>
       <button
         type="button"
         className={expandedSteps.has("modal") ? "step-nav-item active" : "step-nav-item"}
@@ -3360,6 +3388,47 @@ function App() {
             {meshResult ? `${meshResult.dimension === 2 ? "2D" : "3D"}` : "yok"}
           </p>
         </div>
+
+        <div className="bc-add-card">
+          <p className="material-assignments-title">MESNET EKLE</p>
+          <p className="material-assign-hint">
+            Modal analiz sadece kısıt (mesnet) kullanır — yük gerekmez. Mesh
+            elemanına tıklayın (Face = tüm yüzey), sonra ekleyin.
+          </p>
+          <button
+            type="button"
+            className="material-assign-button"
+            disabled={busyAction !== null}
+            onClick={() => handleAddBc("fixed")}
+          >
+            + Fixed Mesnet Ekle
+          </button>
+        </div>
+
+        {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length > 0 && (
+          <div className="material-assignments">
+            <div className="bc-list-header">
+              <p className="material-assignments-title">MESNETLER</p>
+            </div>
+            <ul className="bc-card-list">
+              {bcList
+                .filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+                .map((b) => (
+                  <li key={b.id} className="bc-card">
+                    <span>{b.summary}</span>
+                    <button
+                      type="button"
+                      className="bc-remove-button"
+                      onClick={() => handleRemoveBc(b.id)}
+                      title="Kaldır"
+                    >
+                      ⋯
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
         <label className="mesh-field">
           <span>Mod sayısı</span>
           <input
@@ -3480,6 +3549,8 @@ function App() {
           </p>
         )}
       </div>
+      )}
+      </>
       )}
 
       <button
