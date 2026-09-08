@@ -561,7 +561,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       const dv = vectors && vectors[i] ? vectors[i] : [0, 0, 0];
       const t01 = Math.min(1, Math.max(0, ((values[i] ?? 0) - lo) / safeRange));
       const sf = sfArr?.[i];
-      const critical = sf != null && sf < 1;
+      const critical = field === "safety_factor" && sf != null && sf < 1;
       const color = critical ? new THREE.Color("#d90429") : jetColor(t01);
       const mat = new THREE.MeshBasicMaterial({ color });
       const sphere = new THREE.Mesh(sphereGeom, mat);
@@ -659,7 +659,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
         const t01 = Math.min(1, Math.max(0, ((values[ni] ?? 0) - lo) / safeRange));
         const sf = sfArr?.[ni];
-        const critical = sf != null && sf < 1;
+        const critical = field === "safety_factor" && sf != null && sf < 1;
         const color = critical ? new THREE.Color("#d90429") : jetColor(field === "safety_factor" ? 1 - t01 : t01);
         colors[dst] = color.r;
         colors[dst + 1] = color.g;
