@@ -59,15 +59,6 @@ interface GeometryViewerProps {
   viewerBackground: "white" | "black";
   /** Katı (CAD) opaklığı 0–1; kullanıcı ayarlar, mesh açılınca otomatik düşmez. */
   cadOpacity: number;
-  /** Kenar başına düğüm sayısı (mesh tohumu). */
-  edgeNodeCounts?: Record<number, number>;
-  /** Kenar node sayısı çipleri SADECE bu true iken görünür — kullanıcının
-   * kendi tanımı: "sadece 2D mesh oluştururken ortaya çıkacak, mesh
-   * oluşturulmuşsa bir daha görünmeyecek." Seçim modundan (Kenar modu
-   * dahil) TAMAMEN bağımsız — App.tsx bunu
-   * `meshDimension === 2 && meshResult === null` olarak hesaplıyor. */
-  showEdgeSeedControls?: boolean;
-  onEdgeNodeCountChange?: (edgeId: number, next: number) => void;
   /** App state'teki seçim — turuncu vurgu bununla senkron (sahne rebuild sonrası da kalır). */
   selectedIds: number[];
   /** Mesh overlay: seçili eleman(lar) + Face/Attached büyüme. */
@@ -305,9 +296,6 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   resultsScaleMax,
   viewerBackground,
   cadOpacity,
-  edgeNodeCounts,
-  onEdgeNodeCountChange,
-  showEdgeSeedControls,
   selectedIds,
   meshPicks,
   meshGrow,
@@ -374,17 +362,10 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshPicksRef.current = meshPicks;
   const meshGrowRef = useRef(meshGrow);
   meshGrowRef.current = meshGrow;
-  const edgeNodeCountsRef = useRef(edgeNodeCounts);
-  edgeNodeCountsRef.current = edgeNodeCounts;
-  const onEdgeNodeCountChangeRef = useRef(onEdgeNodeCountChange);
-  onEdgeNodeCountChangeRef.current = onEdgeNodeCountChange;
-  const showEdgeSeedControlsRef = useRef(showEdgeSeedControls);
-  showEdgeSeedControlsRef.current = showEdgeSeedControls;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
   const pointsRef = useRef(points);
   pointsRef.current = points;
-  const edgeSeedLayerRef = useRef<HTMLDivElement>(null);
 
   const sceneRefs = useRef<{
     modelGroup: THREE.Group | null;
@@ -962,67 +943,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   }
 
   function updateEdgeSeedScreenPositions() {
-    const layer = edgeSeedLayerRef.current;
-    const camera = sceneRefs.current.camera;
-    if (!layer || !camera) return;
-    const counts = edgeNodeCountsRef.current ?? {};
-    const edgeList = edgesRef.current;
-    const pointList = pointsRef.current;
-    if (edgeList.length === 0) {
-      layer.replaceChildren();
-      return;
-    }
-    const pointById = new Map(pointList.map((p) => [p.id, p.coordinate]));
-    const selected = new Set(selectedIdsRef.current);
-    // KRİTİK — kullanıcının kesin tanımı: "kenar işaretliyken hep
-    // gözükmeyecek, sadece 2D mesh oluştururken ortaya çıkacak, mesh
-    // oluşturulmuşsa bir daha görünmeyecek." Seçim modundan (Kenar modu
-    // dahil) TAMAMEN bağımsız — sadece App.tsx'in hesapladığı
-    // showEdgeSeedControls (2D + henüz mesh yok) prop'una bağlı.
-    if (!showEdgeSeedControlsRef.current) {
-      layer.replaceChildren();
-      return;
-    }
-    const showAll = true;
-    const width = layer.clientWidth;
-    const height = layer.clientHeight;
-    if (width < 2 || height < 2) return;
-    const center = sceneRefs.current.modelCenter;
-    const visibleIds = new Set<number>();
-    const ndc = new THREE.Vector3();
-    for (const edge of edgeList) {
-      const n = counts[edge.id];
-      if (n == null) continue;
-      if (!showAll && !selected.has(edge.id)) continue;
-      const a = pointById.get(edge.start_point);
-      const b = pointById.get(edge.end_point);
-      if (!a || !b) continue;
-      ndc.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-      ndc.sub(center);
-      ndc.project(camera);
-      if (ndc.z < -1 || ndc.z > 1) continue;
-      visibleIds.add(edge.id);
-      let chip = layer.querySelector(`[data-edge-id="${edge.id}"]`) as HTMLDivElement | null;
-      if (!chip) {
-        chip = document.createElement("div");
-        chip.className = "edge-seed-chip";
-        chip.dataset.edgeId = String(edge.id);
-        chip.innerHTML =
-          '<button type="button" data-delta="-1" tabindex="-1">−</button>' +
-          '<span></span>' +
-          '<button type="button" data-delta="1" tabindex="-1">+</button>';
-        layer.appendChild(chip);
-      }
-      const span = chip.querySelector("span");
-      if (span) span.textContent = String(n);
-      const x = (ndc.x * 0.5 + 0.5) * width;
-      const y = (-ndc.y * 0.5 + 0.5) * height;
-      chip.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-    }
-    for (const child of [...layer.children]) {
-      const id = Number((child as HTMLElement).dataset.edgeId);
-      if (!visibleIds.has(id)) child.remove();
-    }
+    // Kenar node sayısı çip özelliği kaldırıldı (kullanıcı isteği) — bu
+    // fonksiyon artık bilinçli olarak no-op, sadece çağrı yerini bozmamak
+    // için bırakıldı.
   }
 
   // Ana sahne kurulumu — sadece geometri değiştiğinde.
@@ -1887,31 +1810,8 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     paintMeshGrow(meshPicks, meshGrow);
   }, [selectedIds, mode, externalHighlight, meshPicks, meshGrow]);
 
-  useEffect(() => {
-    const layer = edgeSeedLayerRef.current;
-    if (!layer) return;
-    const onPointerDown = (ev: PointerEvent) => {
-      ev.stopPropagation();
-      const target = ev.target as HTMLElement | null;
-      const btn = target?.closest("button[data-delta]") as HTMLButtonElement | null;
-      if (!btn) return;
-      const chip = btn.closest("[data-edge-id]") as HTMLElement | null;
-      if (!chip) return;
-      const edgeId = Number(chip.dataset.edgeId);
-      const delta = Number(btn.dataset.delta);
-      if (!Number.isFinite(edgeId) || !Number.isFinite(delta)) return;
-      const current = edgeNodeCountsRef.current?.[edgeId] ?? 2;
-      const next = Math.max(2, Math.min(500, current + delta));
-      onEdgeNodeCountChangeRef.current?.(edgeId, next);
-    };
-    layer.addEventListener("pointerdown", onPointerDown);
-    return () => layer.removeEventListener("pointerdown", onPointerDown);
-  }, []);
-
   return (
-    <div ref={containerRef} className="viewer-canvas">
-      <div ref={edgeSeedLayerRef} className="edge-seed-layer" />
-    </div>
+    <div ref={containerRef} className="viewer-canvas" />
   );
 });
 

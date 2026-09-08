@@ -189,11 +189,6 @@ function uniquePartIdsFromPreview(preview: MeshPreviewData | null): number[] {
   return [...parts].sort((a, b) => a - b);
 }
 
-function suggestedEdgeNodes(length: number, size: number): number {
-  if (!(size > 0) || !(length > 0)) return 2;
-  return Math.max(2, Math.round(length / size) + 1);
-}
-
 function ProductTreeRow({
   item,
   materials,
@@ -677,8 +672,6 @@ function App() {
   const [productTree, setProductTree] = useState<ProductTree | null>(null);
   const [componentName, setComponentName] = useState("");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("shell");
-  const [edgeNodeCounts, setEdgeNodeCounts] = useState<Record<number, number>>({});
-  const edgeSeedManualRef = useRef(new Set<number>());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -700,19 +693,6 @@ function App() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    const size = parseFloat(meshElementSize);
-    const elemSize = Number.isFinite(size) && size > 0 ? size : 5;
-    setEdgeNodeCounts((prev) => {
-      const next = { ...prev };
-      for (const e of edges) {
-        if (edgeSeedManualRef.current.has(e.id)) continue;
-        next[e.id] = suggestedEdgeNodes(e.length, elemSize);
-      }
-      return next;
-    });
-  }, [edges, meshElementSize]);
 
   // Mod değişince aktif grup vurgusu ve offset/defeature panelleri anlamsızlaşır, temizle.
   useEffect(() => {
@@ -776,8 +756,6 @@ function App() {
     setMeshGrow("element");
     setProductTree(null);
     setComponentName("");
-    setEdgeNodeCounts({});
-    edgeSeedManualRef.current = new Set();
 
     try {
       const result = await uploadGeometry(file);
@@ -884,8 +862,6 @@ function App() {
     setMeshGrow("element");
     setProductTree(null);
     setComponentName("");
-    setEdgeNodeCounts({});
-    edgeSeedManualRef.current = new Set();
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -1228,7 +1204,6 @@ function App() {
         size,
         meshDimension,
         meshScheme,
-        edgeNodeCounts,
       );
       setMeshResult(result);
       ensureStepExpanded("material");
@@ -3972,12 +3947,6 @@ function App() {
                   meshGrow={meshGrow}
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
-                  edgeNodeCounts={edgeNodeCounts}
-                  showEdgeSeedControls={meshDimension === 2 && meshResult === null}
-                  onEdgeNodeCountChange={(edgeId, next) => {
-                    edgeSeedManualRef.current.add(edgeId);
-                    setEdgeNodeCounts((prev) => ({ ...prev, [edgeId]: next }));
-                  }}
                   onSelectionChange={handleSelectionChange}
                   onMeshPicks={handleMeshPicks}
                 />

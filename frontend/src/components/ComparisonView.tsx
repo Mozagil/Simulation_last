@@ -7,13 +7,31 @@ import {
   fetchMeshPreview,
   fetchResultsPreview,
   resolveTessellationUrl,
+  type EdgeInfo,
   type MeshPreviewData,
+  type PointInfo,
   type ResultsPreviewData,
 } from "../api/geometry";
 import { fetchRunDetail, type RunDetail } from "../api/runs";
 
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
+
+// KRİTİK — DAHA ÖNCE DE YAŞANDI, TEKRARLANDI: GeometryViewer'ın sahne
+// kurulum useEffect'i `edges`/`points` prop'larına REFERANS bazlı bağımlı
+// ([stlUrl, edges, points, ...]). Burada inline `[]` literal geçirilirse,
+// resultsDeformScale gibi SIK değişen bir state her değiştiğinde (deform
+// slider sürüklenince) ComparisonPanel yeniden render olur, YENİ bir `[]`
+// referansı oluşur, TÜM 3B SAHNE (kamera dahil) sıfırdan kurulur — kamera
+// STL'in gerçek boyutu (maxDim) hesaplanmadan önce yanlış/varsayılan bir
+// değerle konumlanıp "aşırı yakınlaşmış" görünüyor (gerçek bir ekran
+// görüntüsünde tekrar tespit edildi). Sabit modül-seviyesi referanslar bu
+// gereksiz sahne yeniden kurulumunu tamamen önler.
+const EMPTY_EDGES: EdgeInfo[] = [];
+const EMPTY_POINTS: PointInfo[] = [];
+const EMPTY_NUMBER_ARRAY: number[] = [];
+const EMPTY_MESH_PICKS: never[] = [];
+const EMPTY_HIDDEN_PARTS: Set<number> = new Set();
 
 interface ComparisonViewProps {
   runIdA: number;
@@ -252,10 +270,10 @@ function ComparisonPanel({
           stlUrl={data.stlUrl}
           triangleToFace={data.triangleToFace}
           triangleToPart={data.triangleToPart}
-          edges={[]}
-          points={[]}
+          edges={EMPTY_EDGES}
+          points={EMPTY_POINTS}
           mode="part"
-          hiddenParts={new Set()}
+          hiddenParts={EMPTY_HIDDEN_PARTS}
           showEdges={true}
           meshPreview={data.meshPreview}
           showMesh={false}
@@ -276,8 +294,8 @@ function ComparisonPanel({
               return [...prev, hit];
             });
           }}
-          selectedIds={[]}
-          meshPicks={[]}
+          selectedIds={EMPTY_NUMBER_ARRAY}
+          meshPicks={EMPTY_MESH_PICKS}
           meshGrow="element"
           externalHighlight={null}
         />
