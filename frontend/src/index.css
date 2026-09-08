@@ -2029,3 +2029,37 @@ p {
   border-color: var(--border);
   color: var(--ink);
 }
+
+/* ---- Durability / Modal üst düzey sekme anahtarı ---- */
+.analysis-tab-switch {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.analysis-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-head);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.analysis-tab:hover {
+  color: var(--accent);
+}
+
+.analysis-tab.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
