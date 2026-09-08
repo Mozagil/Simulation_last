@@ -80,7 +80,13 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
 
     node_coords: dict[int, tuple[float, ...]] = {}
     displacement: dict[int, tuple[float, ...]] = {}
-    stress: dict[int, tuple[float, ...]] = {}
+    # STRESS, CalculiX'te *EL FILE ile elemana özgü (integration point'ten
+    # node'a extrapole edilmiş) çıkar: aynı node ID, çevresindeki her
+    # elemandan AYRI bir değerle birden fazla kez gelir. Node başına TEK
+    # değer değil, gelen tüm değerlerin toplamı+sayacı tutulur; sonda
+    # componentwise ortalama alınır (cgx/Abaqus'un yaptığı "nodal averaging").
+    stress_sum: dict[int, list[float]] = {}
+    stress_count: dict[int, int] = {}
     disp_increments: list[dict[int, tuple[float, ...]]] = []
     current_disp: dict[int, tuple[float, ...]] = {}
 
@@ -136,10 +142,17 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             parsed = _frd_data_line(line)
             if parsed and len(parsed[1]) >= 6:
                 nid, vals = parsed
-                stress[nid] = tuple(vals[:6])
+                acc = stress_sum.setdefault(nid, [0.0] * 6)
+                for i in range(6):
+                    acc[i] += vals[i]
+                stress_count[nid] = stress_count.get(nid, 0) + 1
 
     if current_result_type == "DISP":
         flush_disp()
+
+    stress: dict[int, tuple[float, ...]] = {
+        nid: tuple(v / stress_count[nid] for v in acc) for nid, acc in stress_sum.items()
+    }
 
     return {
         "node_coords": node_coords,
