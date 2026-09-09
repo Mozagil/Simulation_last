@@ -123,6 +123,11 @@ class SolveBC(BaseModel):
     face_ids: list[int] | None = None
     edge_ids: list[int] | None = None
     node_ids: list[int] | None = None
+    # CAD vertex (node_ids) ile mesh düğümü AYRI şeylerdir: node_ids
+    # geometrinin kalıcı köşe id'leridir ve remesh'i atlatır; mesh_node_ids
+    # ise kullanıcının mesh üzerinde tıkladığı ham düğüm numaralarıdır ve
+    # element size değişip mesh yeniden üretilirse anlamını yitirir.
+    mesh_node_ids: list[int] | None = None
     fx: float | None = None
     fy: float | None = None
     fz: float | None = None

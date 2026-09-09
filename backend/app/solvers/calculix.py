@@ -716,6 +716,45 @@ def _materials_inp_block(
     return "\n".join(lines) + "\n"
 
 
+def _resolve_bc_node_ids(
+    bc: dict[str, Any], nsets: dict[str, list[int]]
+) -> list[int]:
+    """Bir BC'nin hedeflediği MESH DÜĞÜM numaralarını döndürür.
+
+    İki ayrı kaynak vardır ve karıştırılmamalıdır:
+
+    * `node_ids` — CAD VERTEX (köşe) id'leri. Bunlar geometrinin kalıcı
+      tutamaklarıdır: mesh yeniden üretilince değişmezler. `POINT_{id}`
+      nset'i üzerinden gerçek mesh düğümlerine çevrilirler.
+    * `mesh_node_ids` — doğrudan MESH DÜĞÜM numaraları. Kullanıcı mesh
+      üzerinde bir düğüme tıklayıp seçtiğinde kullanılır. Bu numaralar o
+      mesh'e özgüdür; element size değişip mesh yeniden üretilirse
+      ANLAMINI YİTİRİR.
+
+    KRİTİK BUG DÜZELTMESİ: eskiden `node_ids` doğrudan mesh düğüm numarası
+    olarak yazılıyordu (`f"{int(nid)}, 1, 3"`). Frontend ise Nokta modunda
+    CAD vertex id gönderiyordu — yani CAD köşe #7 seçilince alakasız mesh
+    düğümü #7 sabitleniyordu. Aynı dosyadaki `rigid_body` bunu zaten DOĞRU
+    yapıyordu (`nsets.get(f"POINT_{raw_ref}")`), yani kod kendi içinde
+    tutarsızdı — bu bir tasarım tercihi değil, hataydı.
+
+    Geriye dönük uyum: `POINT_{id}` nset'i bulunamazsa (ör. mesh o vertex'e
+    düğüm düşürmemişse) ham id'ye düşülür — eski davranış korunur, ama
+    yalnızca son çare olarak.
+    """
+    resolved: list[int] = []
+    for nid in bc.get("node_ids") or []:
+        point_set = nsets.get(f"POINT_{int(nid)}") or []
+        if point_set:
+            resolved.extend(point_set)
+        else:
+            resolved.append(int(nid))
+    for nid in bc.get("mesh_node_ids") or []:
+        resolved.append(int(nid))
+    # Sıra korunarak tekilleştir
+    return list(dict.fromkeys(resolved))
+
+
 def _bcs_inp_block(
     bcs: list[dict[str, Any]],
     nsets: dict[str, list[int]],
@@ -749,23 +788,28 @@ def _bcs_inp_block(
                     continue
                 model_lines.append("*BOUNDARY")
                 model_lines.append(f"{nset}, 1, 3")
-            for nid in bc.get("node_ids") or []:
+            for nid in _resolve_bc_node_ids(bc, nsets):
                 model_lines.append("*BOUNDARY")
-                model_lines.append(f"{int(nid)}, 1, 3")
+                model_lines.append(f"{nid}, 1, 3")
         elif btype == "cload":
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
             fz = float(bc.get("fz", 0.0))
-            node_ids = bc.get("node_ids") or []
+            node_ids = _resolve_bc_node_ids(bc, nsets)
             if node_ids:
+                # Toplam kuvvet seçili düğümlere EŞİT bölünür — tıpkı
+                # kenar/yüzey yükünde olduğu gibi. Eskiden her düğüme TAM
+                # kuvvet yazılıyordu, yani 3 düğüm seçince model 3F yük
+                # görüyordu.
+                n = len(node_ids)
                 step_lines.append("*CLOAD")
                 for nid in node_ids:
                     if abs(fx) > 0:
-                        step_lines.append(f"{int(nid)}, 1, {fx:.6g}")
+                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
                     if abs(fy) > 0:
-                        step_lines.append(f"{int(nid)}, 2, {fy:.6g}")
+                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
                     if abs(fz) > 0:
-                        step_lines.append(f"{int(nid)}, 3, {fz:.6g}")
+                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
             for fid in bc.get("face_ids") or []:
                 nset = f"FACE_{int(fid)}"
                 ids = nsets.get(nset) or []
@@ -831,11 +875,11 @@ def _bcs_inp_block(
                 targets.append(f"EDGE_{int(eid)}")
             for fid in bc.get("face_ids") or []:
                 targets.append(f"FACE_{int(fid)}")
-            for nid in bc.get("node_ids") or []:
+            for nid in _resolve_bc_node_ids(bc, nsets):
                 model_lines.append("*BOUNDARY")
                 for dof, val in dofs.items():
                     model_lines.append(
-                        f"{int(nid)}, {int(dof)}, {int(dof)}, {float(val):.6g}"
+                        f"{nid}, {int(dof)}, {int(dof)}, {float(val):.6g}"
                     )
             for nset in targets:
                 if nset not in nsets:
@@ -923,8 +967,7 @@ def _bcs_inp_block(
                 slave.extend(nsets.get(f"FACE_{int(fid)}") or [])
             for eid in bc.get("edge_ids") or []:
                 slave.extend(nsets.get(f"EDGE_{int(eid)}") or [])
-            for nid in bc.get("node_ids") or []:
-                slave.append(int(nid))
+            slave.extend(_resolve_bc_node_ids(bc, nsets))
             slave = [n for n in dict.fromkeys(slave) if n != ref_id]
             if not slave:
                 continue
