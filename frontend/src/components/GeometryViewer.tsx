@@ -112,6 +112,27 @@ const BASE_COLOR = new THREE.Color("#5a8f73");
 /** Turuncu seçim vurgusu — yeşilden net ayrışır. */
 const HIGHLIGHT_COLOR = new THREE.Color("#e85d04");
 const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
+
+/** CAD nokta (vertex) işaretçilerinin yarıçapı.
+ *
+ * Eskiden yalnızca `maxDim * 0.008` kullanılıyordu — yani EN UZUN kenara
+ * göre ölçek. Uzun/ince parçalarda bu tamamen yanlış referans: 50x10x500
+ * bir plakada maxDim=500 olduğu için yarıçap 4mm, yani 8mm çaplı küre
+ * çıkıyordu — parçanın 10mm'lik kalınlığının neredeyse tamamı. Gerçek bir
+ * ekran görüntüsünde noktalar geometriyi yutuyordu.
+ *
+ * Çözüm: taban ölçek yine maxDim (kamera uzaklığı da maxDim ile
+ * ayarlandığı için görünürlüğü o belirliyor), ama EN KISA kenarın bir
+ * oranıyla TAVANLANIYOR — böylece işaretçi hiçbir zaman parçanın en ince
+ * boyutunu bastıramaz. Alt sınır, çok ince cidarlarda noktanın büsbütün
+ * kaybolmasını engeller.
+ */
+function computeVertexMarkerRadius(maxDim: number, minDim: number): number {
+  const base = maxDim * 0.008;
+  const cap = (minDim > 0 ? minDim : maxDim) * 0.12;
+  const floor = maxDim * 0.0015;
+  return Math.max(Math.min(base, cap), floor);
+}
 const EDGE_BASE_COLOR = "#1b1f1c";
 const CLICK_DRAG_THRESHOLD_PX = 6;
 
@@ -395,6 +416,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     selectedEdgeIds: Set<number>;
     selectedPointIds: Set<number>;
     maxDim: number;
+    /** Bounding box'ın EN KISA kenarı — nokta işaretçisi ölçeğinde tavan
+     * olarak kullanılır (bkz. computeVertexMarkerRadius). */
+    minDim: number;
     camera: THREE.PerspectiveCamera | null;
   }>({
     modelGroup: null,
@@ -424,6 +448,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     selectedEdgeIds: new Set(),
     selectedPointIds: new Set(),
     maxDim: 1,
+    minDim: 1,
     camera: null,
   });
 
@@ -1370,6 +1395,12 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         boundingBox.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         sceneRefs.current.maxDim = maxDim;
+        // Dejenere (sıfır kalınlıklı) eksenleri saymadan en kısa kenar —
+        // düz bir yüzey (shell) modelinde bir eksen 0 olur, o durumda
+        // tavan hesabı maxDim'e düşsün diye 0 filtreleniyor.
+        const nonZero = [size.x, size.y, size.z].filter((v) => v > 1e-9);
+        const minDim = nonZero.length > 0 ? Math.min(...nonZero) : maxDim;
+        sceneRefs.current.minDim = minDim;
 
         const positions = geometry.attributes.position.array as Float32Array;
         const normalsArr = geometry.attributes.normal.array as Float32Array;
@@ -1502,7 +1533,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
         const pointsGroup = new THREE.Group();
         const pointMeshById = new Map<number, THREE.Mesh>();
-        const pointRadius = Math.max(maxDim * 0.008, 0.04);
+        const pointRadius = computeVertexMarkerRadius(maxDim, minDim);
         const sphereGeometry = new THREE.SphereGeometry(pointRadius, 12, 12);
         for (const point of points) {
           const pointMaterial = new THREE.MeshBasicMaterial({ color: POINT_BASE_COLOR });
@@ -1631,6 +1662,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         selectedEdgeIds: new Set(),
         selectedPointIds: new Set(),
         maxDim: 1,
+        minDim: 1,
         camera: null,
       };
     };
