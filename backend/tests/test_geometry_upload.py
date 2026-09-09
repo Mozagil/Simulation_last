@@ -593,7 +593,10 @@ def test_generate_mesh_3d_via_api():
     assert body["dimension"] == 3
     assert body["node_count"] > 0
     assert body["element_count"] > 0
-    assert "Tetrahedron" in body["element_type_counts"]
+    # 3D tet mesh 2. mertebe (tet10 / C3D10) üretilir — bkz.
+    # feature/tet10-second-order. 1. mertebe tet (C3D4) eğilmede aşırı
+    # rijitti; ANSYS'in varsayılan SOLID187'si de tet10'dur.
+    assert "Tetrahedron10" in body["element_type_counts"]
     assert body["mesh_url"].startswith("/files/meshes/")
     assert body["preview_url"] is not None
     assert body["preview_url"].startswith("/files/meshes/")

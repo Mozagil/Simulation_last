@@ -805,7 +805,8 @@ def test_generate_mesh_3d_tet_on_box(tmp_path):
     assert result.dimension == 3
     assert result.node_count > 0
     assert result.element_count > 0
-    assert "Tetrahedron" in result.element_type_counts
+    # 2. mertebe tet (tet10) — bkz. feature/tet10-second-order
+    assert "Tetrahedron10" in result.element_type_counts
     assert result.mesh_path.exists()
     assert result.mesh_path.suffix == ".msh"
     assert result.preview_path is not None

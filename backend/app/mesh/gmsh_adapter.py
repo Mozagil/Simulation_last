@@ -56,7 +56,12 @@ _GMSH_ELEMENT_TYPE_NAMES = {
     5: "Hexahedron",
     6: "Prism",
     7: "Pyramid",
+    8: "Line3",
+    9: "Triangle6",
     11: "Tetrahedron10",
+    15: "Point",
+    16: "Quad8",
+    17: "Hexahedron20",
 }
 # Gmsh'in Python API'si süreç genelinde TEK bir global C++ durumu paylaşır
 # (gmsh.initialize/open/finalize hepsi aynı global context'i değiştirir).
@@ -2205,8 +2210,13 @@ class GmshMesherAdapter(MesherAdapter):
                     element_count += n
 
             if element_count == 0:
+                # Son çare: hacim/yüzey elemanı bulunamadıysa sınır
+                # elemanlarını (nokta, 1. ve 2. mertebe çizgi) saymadan topla.
+                _BOUNDARY_NAMES = {"Line", "Line3", "Point"}
                 element_count = sum(
-                    c for name, c in element_type_counts.items() if name != "Line"
+                    c
+                    for name, c in element_type_counts.items()
+                    if name not in _BOUNDARY_NAMES
                 )
 
             mesh_dir = geom.source_file.parent / "meshes"
