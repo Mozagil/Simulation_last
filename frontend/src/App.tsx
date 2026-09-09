@@ -50,6 +50,7 @@ import {
 } from "./api/materials";
 import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
+import ModalModeGrid, { type ModalPanel } from "./components/ModalModeGrid";
 import {
   FrequencyLinePlot,
   ModeShapeThumb,
@@ -73,6 +74,8 @@ import type { GeometryViewerHandle } from "./components/GeometryViewer";
 import {
   type MeshGrowMode,
   type MeshPickInfo,
+  type MeshSelectMode,
+  MESH_SELECT_MODES,
   type MultiSelectionInfo,
   SELECTION_MODES,
   type SelectionMode,
@@ -336,6 +339,26 @@ function App() {
     return Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
   }, [meshPreview]);
   const [showMesh, setShowMesh] = useState(true);
+  /** Mesh üzerinde eleman mı düğüm mü seçiliyor. null = CAD seçimi aktif.
+   * CAD seçim modlarıyla KARŞILIKLI DIŞLAYICI: tek bir tıklama iki farklı
+   * varlığı aynı anda seçemez. */
+  const [meshSelectMode, setMeshSelectMode] = useState<MeshSelectMode>(null);
+  /** Seçili mesh düğümlerinin GERÇEK CalculiX numaraları (preview'ın
+   * node_ids alanından; dizi index'i DEĞİL). */
+  const [meshNodePicks, setMeshNodePicks] = useState<number[]>([]);
+  /** Modal sonuçları tek sayfada ızgara olarak göster. */
+  const [modalGridOpen, setModalGridOpen] = useState(false);
+  /** Izgarada tek moda odak; null = hepsi. */
+  const [modalGridFocus, setModalGridFocus] = useState<number | null>(null);
+
+  // Mesh gizlenir ya da silinirse mesh seçim modu askıda kalmamalı —
+  // aksi halde hiçbir şeyin seçilemediği "ölü" bir mod oluşur.
+  useEffect(() => {
+    if ((meshPreview === null || !showMesh) && meshSelectMode !== null) {
+      setMeshSelectMode(null);
+      setMeshNodePicks([]);
+    }
+  }, [meshPreview, showMesh, meshSelectMode]);
   const [meshWireframe, setMeshWireframe] = useState(false);
   const [cadOpacityPct, setCadOpacityPct] = useState(100);
   const [viewerBackground, setViewerBackground] = useState<"white" | "black">("white");
@@ -1484,6 +1507,18 @@ function App() {
     resolvedSurfaceIdsForHide.length > 0 ? resolvedSurfaceIdsForHide : surfacePartIds;
   const canToggleHidePart = geometryId !== null && volumePartIds.length > 0;
   const canToggleHideSurfaces = geometryId !== null && surfacePartIds.length > 0;
+
+  // CAD seçim modları (Parça/Yüzey/Kenar/Nokta) yalnız GÖRÜNÜR bir CAD
+  // gövdesi varken anlamlıdır: tüm solid'ler ve yüzeyler gizliyse tıklanacak
+  // bir CAD varlığı kalmaz, butonlar pasifleşir.
+  const allCadPartIds = [...volumePartIds, ...surfacePartIds];
+  const cadSelectionAvailable =
+    geometryId !== null &&
+    allCadPartIds.length > 0 &&
+    allCadPartIds.some((id) => !hiddenParts.has(id));
+
+  // Mesh seçim modları yalnız mesh üretilmiş VE görünürken anlamlıdır.
+  const meshSelectionAvailable = meshPreview !== null && showMesh;
   const allSelectedPartsHidden =
     resolvedPartIdsForHide.length > 0 &&
     resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
@@ -1714,7 +1749,19 @@ function App() {
         : cadFaceIds;
     const usingMeshFaces = faceIds === meshFaceIds && meshFaceIds.length > 0;
     const edgeIds = usingMeshFaces ? [] : mode === "edge" ? [...selection.ids] : [];
-    const nodeIds = usingMeshFaces ? [] : mode === "point" ? [...selection.ids] : [];
+    // CAD vertex id'leri — yalnız CAD Nokta modunda ve mesh seçimi kapalıyken.
+    const nodeIds =
+      usingMeshFaces || meshSelectMode !== null
+        ? []
+        : mode === "point"
+          ? [...selection.ids]
+          : [];
+    // Ham mesh düğüm numaraları — yalnız "mesh düğüm" seçim modunda.
+    // node_ids (CAD vertex) ile AYRI tutulur: birincisi remesh'i atlatır,
+    // ikincisi o mesh'e özgüdür.
+    const meshNodeIds = meshSelectMode === "node" ? [...meshNodePicks] : [];
+    const hasAnyTarget =
+      faceIds.length + edgeIds.length + nodeIds.length + meshNodeIds.length > 0;
     const id = `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const meshTag = usingMeshFaces ? "mesh yüzey" : "yüzey";
 
@@ -1722,8 +1769,10 @@ function App() {
     let summary: string;
 
     if (kind === "fixed") {
-      if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Fixed için mesh yüzeyi (Face) veya CAD yüzey/kenar/nokta seçin.");
+      if (!hasAnyTarget) {
+        setErrorMessage(
+          "Fixed için mesh yüzeyi/düğümü veya CAD yüzey/kenar/nokta seçin.",
+        );
         return;
       }
       payload = {
@@ -1731,10 +1780,13 @@ function App() {
         ...(faceIds.length ? { face_ids: faceIds } : {}),
         ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
+        ...(meshNodeIds.length ? { mesh_node_ids: meshNodeIds } : {}),
       };
       summary = `Fixed · ${faceIds.length ? `${meshTag} ${faceIds.join(",")}` : ""}${
         edgeIds.length ? `kenar ${edgeIds.join(",")}` : ""
-      }${nodeIds.length ? `nokta ${nodeIds.join(",")}` : ""}`.trim();
+      }${nodeIds.length ? `nokta ${nodeIds.join(",")}` : ""}${
+        meshNodeIds.length ? `mesh düğüm ${meshNodeIds.join(",")}` : ""
+      }`.trim();
     } else if (kind === "cload") {
       const fx = parseFloat(bcFx);
       const fy = parseFloat(bcFy);
@@ -1743,8 +1795,10 @@ function App() {
         setErrorMessage("CLOAD için geçerli Fx/Fy/Fz girin.");
         return;
       }
-      if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Nokta/kenar/yüzey yük için mesh yüzeyi veya CAD yüzey/kenar/nokta seçin.");
+      if (!hasAnyTarget) {
+        setErrorMessage(
+          "Yük için mesh yüzeyi/düğümü veya CAD yüzey/kenar/nokta seçin.",
+        );
         return;
       }
       payload = {
@@ -1755,13 +1809,16 @@ function App() {
         ...(faceIds.length ? { face_ids: faceIds } : {}),
         ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
+        ...(meshNodeIds.length ? { mesh_node_ids: meshNodeIds } : {}),
       };
       summary = `CLOAD (${fx},${fy},${fz}) · ${
         faceIds.length
           ? `${meshTag} ${faceIds.join(",")}`
           : edgeIds.length
             ? `kenar ${edgeIds.join(",")}`
-            : `nokta ${nodeIds.join(",")}`
+            : meshNodeIds.length
+              ? `mesh düğüm ${meshNodeIds.join(",")}`
+              : `nokta ${nodeIds.join(",")}`
       }`;
     } else if (kind === "pressure") {
       const magnitude = parseFloat(bcMagnitude);
@@ -1789,8 +1846,10 @@ function App() {
         setErrorMessage("Displacement için Ux/Uy/Uz girin.");
         return;
       }
-      if (faceIds.length === 0 && edgeIds.length === 0 && nodeIds.length === 0) {
-        setErrorMessage("Displacement için mesh yüzeyi veya CAD yüzey/kenar/nokta seçin.");
+      if (!hasAnyTarget) {
+        setErrorMessage(
+          "Displacement için mesh yüzeyi/düğümü veya CAD yüzey/kenar/nokta seçin.",
+        );
         return;
       }
       payload = {
@@ -1799,8 +1858,14 @@ function App() {
         ...(faceIds.length ? { face_ids: faceIds } : {}),
         ...(edgeIds.length ? { edge_ids: edgeIds } : {}),
         ...(nodeIds.length ? { node_ids: nodeIds } : {}),
+        ...(meshNodeIds.length ? { mesh_node_ids: meshNodeIds } : {}),
       };
-      summary = `U=(${ux},${uy},${uz}) · seçim ${[...faceIds, ...edgeIds, ...nodeIds].join(",")}`;
+      summary = `U=(${ux},${uy},${uz}) · seçim ${[
+        ...faceIds,
+        ...edgeIds,
+        ...nodeIds,
+        ...meshNodeIds,
+      ].join(",")}`;
     } else if (kind === "sliding") {
       const nx = parseFloat(bcNx);
       const ny = parseFloat(bcNy);
@@ -2117,6 +2182,48 @@ function App() {
       case "point":
         return `${sel.ids.length} nokta seçili (#${idList})`;
     }
+  }
+
+  // Modal ızgara: tüm modlar tek sayfada. Ayrı bir tam-ekran görünüm
+  // olarak açılır çünkü N modu yan yana okunabilir büyüklükte göstermek
+  // için yan panelli düzenden çok daha fazla alan gerekiyor.
+  if (modalGridOpen && (resultsPreview?.modes?.length ?? 0) > 0 && resultsPreview) {
+    const panels: ModalPanel[] = resultsPreview.modes!.map((m) => ({
+      label: `Mod ${m.index}${
+        m.frequency_hz != null ? ` · ${m.frequency_hz.toPrecision(5)} Hz` : ""
+      }`,
+      mode: m,
+    }));
+    return (
+      <div className="modal-grid-page">
+        <div className="modal-grid-page-bar">
+          <button
+            type="button"
+            className="vf-btn"
+            onClick={() => {
+              setModalGridOpen(false);
+              setModalGridFocus(null);
+            }}
+          >
+            ← Geri
+          </button>
+          <strong>Mod şekilleri ({panels.length})</strong>
+          <span className="material-assign-hint">
+            Bir moda çift tıkla ya da alttaki etiketine bas — tek başına
+            görünür. Genlikler mod başına normalize edilmiştir; karşılaştırılan
+            şekil ve frekanstır, mutlak büyüklük değil.
+          </span>
+        </div>
+        <ModalModeGrid
+          nodes={resultsPreview.nodes}
+          faces={meshPreview?.faces ?? []}
+          panels={panels}
+          focusedIndex={modalGridFocus}
+          onFocusChange={setModalGridFocus}
+          background={viewerBackground}
+        />
+      </div>
+    );
   }
 
   if (viewMode === "compare" && compareSelection.length === 2) {
@@ -3479,6 +3586,17 @@ function App() {
             <p className="material-assign-hint">
               Her kart bir doğal mod. Göster: 3B kontur. Animasyon: ± salınım.
             </p>
+            <button
+              type="button"
+              className="vf-btn"
+              onClick={() => {
+                setModalGridOpen((prev) => !prev);
+                setModalGridFocus(null);
+              }}
+              title="Tüm modları tek sayfada yan yana göster"
+            >
+              {modalGridOpen ? "Izgarayı kapat" : `Tüm modları göster (${resultsPreview?.modes?.length})`}
+            </button>
             <div className="mode-card-grid">
               {resultsPreview?.modes?.map((mode, i) => (
                 <div
@@ -3680,14 +3798,23 @@ function App() {
                 <button
                   key={m}
                   type="button"
-                  className={mode === m ? "active" : undefined}
+                  className={meshSelectMode === null && mode === m ? "active" : undefined}
+                  disabled={!cadSelectionAvailable}
                   onClick={() => {
+                    // CAD moduna dönerken mesh seçimini kapat — ikisi
+                    // karşılıklı dışlayıcı.
+                    setMeshSelectMode(null);
+                    setMeshNodePicks([]);
                     setMode(m);
                     setSelection({ mode: m, ids: [] });
                     setMeshPicks([]);
                     setMeshGrow("element");
                   }}
-                  title={label}
+                  title={
+                    cadSelectionAvailable
+                      ? label
+                      : `${label} — geometri (solid/yüzey) gizli`
+                  }
                 >
                   {m === "part" && (
                     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
@@ -3700,6 +3827,34 @@ function App() {
                   )}
                   {m === "point" && (
                     <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5" /></svg>
+                  )}
+                </button>
+              ))}
+              <span className="viewer-ribbon-sep" />
+              {MESH_SELECT_MODES.map(({ mode: m, label }) => (
+                <button
+                  key={`mesh-${m}`}
+                  type="button"
+                  className={meshSelectMode === m ? "active" : undefined}
+                  disabled={!meshSelectionAvailable}
+                  onClick={() => {
+                    const next = meshSelectMode === m ? null : m;
+                    setMeshSelectMode(next);
+                    // Mesh seçimine geçerken CAD seçimini temizle.
+                    if (next !== null) setSelection({ mode, ids: [] });
+                    setMeshNodePicks([]);
+                    setMeshPicks([]);
+                    setMeshGrow("element");
+                  }}
+                  title={
+                    meshSelectionAvailable ? label : `${label} — mesh gizli`
+                  }
+                >
+                  {m === "element" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /></svg>
+                  )}
+                  {m === "node" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none" /></svg>
                   )}
                 </button>
               ))}
@@ -3944,6 +4099,9 @@ function App() {
                   cadOpacity={cadOpacityPct / 100}
                   viewerBackground={viewerBackground}
                   meshPicks={meshPicks}
+                  meshSelectMode={meshSelectMode}
+                  meshNodePicks={meshNodePicks}
+                  onMeshNodePicks={(ids) => setMeshNodePicks(ids)}
                   meshGrow={meshGrow}
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
