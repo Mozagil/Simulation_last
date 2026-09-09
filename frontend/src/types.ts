@@ -23,3 +23,14 @@ export interface MultiSelectionInfo {
   mode: SelectionMode;
   ids: number[];
 }
+
+/** Mesh üzerinde neyin seçildiği. CAD seçim modlarından (SelectionMode)
+ * BAĞIMSIZ ikinci bir eksen: CAD geometrisi ile mesh ayrı varlıklardır.
+ * null = mesh seçimi kapalı, CAD modu aktif.
+ */
+export type MeshSelectMode = "element" | "node" | null;
+
+export const MESH_SELECT_MODES: { mode: Exclude<MeshSelectMode, null>; label: string }[] = [
+  { mode: "element", label: "Mesh eleman" },
+  { mode: "node", label: "Mesh düğüm" },
+];
