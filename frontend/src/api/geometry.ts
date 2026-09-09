@@ -393,6 +393,11 @@ export type MeshElementScheme = "tet" | "quad" | "mix";
 /** Mesh önizleme: nodes + yüzey üçgenleri + kenar çiftleri (CAD koordinatı). */
 export interface MeshPreviewData {
   nodes: number[][];
+  /** Her önizleme düğümünün GERÇEK CalculiX .inp düğüm numarası (1-based).
+   * Mesh üzerinde düğüm seçip BC vermek için gerekli — seçilen düğümün
+   * solver'daki karşılığı budur. Eski önizleme dosyalarında bulunmayabilir;
+   * o durumda `index + 1` ile aynı sonucu verir. */
+  node_ids?: number[];
   /** Üçgen indeksleri [i0,i1,i2, ...] — shaded yüzey. */
   faces: number[];
   /** Kenar uç çiftleri [a,b, ...] — wireframe overlay. */

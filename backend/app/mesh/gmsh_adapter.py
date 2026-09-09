@@ -1393,6 +1393,16 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
 
     return {
         "nodes": nodes,
+        # Her önizleme düğümünün GERÇEK CalculiX .inp düğüm numarası.
+        #
+        # Bu alan, mesh üzerinde düğüm seçip BC vermenin ön şartıdır:
+        # frontend'in tıkladığı önizleme düğümünün solver'daki karşılığını
+        # bilmesi gerekir. İki taraf da `gmsh.model.mesh.getNodes()` çıktısını
+        # AYNI sırayla okuduğu için ilişki `preview_index + 1` (inp tarafı
+        # 1-based, bkz. calculix.py `tag_to_idx`). Bu örtük bağıntıya
+        # güvenmek yerine numarayı açıkça taşıyoruz — aksi halde iki taraftan
+        # birindeki sıralama değişikliği sessizce YANLIŞ düğüme BC uygular.
+        "node_ids": list(range(1, len(nodes) + 1)),
         "faces": faces,
         "lines": lines,
         "triangle_to_part": triangle_to_part,
