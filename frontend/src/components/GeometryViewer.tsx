@@ -70,10 +70,13 @@ interface GeometryViewerProps {
   /** Mesh overlay: seçili eleman(lar) + Face/Attached büyüme. */
   meshPicks: MeshPickInfo[];
   /** Mesh üzerinde hangi varlık seçiliyor: eleman mi düğüm mü. null =
-   * mesh seçimi kapalı (CAD seçim modları aktif). */
-  meshSelectMode: MeshSelectMode;
+   * mesh seçimi kapalı (CAD seçim modları aktif).
+   *
+   * Opsiyonel: ComparisonView gibi salt-okunur inceleme görünümlerinde
+   * mesh seçimi anlamsızdır, oralarda verilmez ve null'a düşer. */
+  meshSelectMode?: MeshSelectMode;
   /** Seçili mesh düğümlerinin GERÇEK CalculiX numaraları. */
-  meshNodePicks: number[];
+  meshNodePicks?: number[];
   meshGrow: MeshGrowMode;
   /** Tıklama dışında (örn. Physical Group) belirli yüzeyleri/kenarları vurgulamak için. */
   externalHighlight: { faceIds: number[] } | { edgeIds: number[] } | null;
@@ -125,6 +128,10 @@ const BASE_COLOR = new THREE.Color("#5a8f73");
 const HIGHLIGHT_COLOR = new THREE.Color("#e85d04");
 const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
 /** Mesh düğüm bulutu: seçilmemiş / seçili renkler. */
+/** Sabit boş dizi — destructure varsayılanında `[]` yazmak her render'da
+ * YENİ bir referans üretir ve meshNodePicks bağımlılıklı efekti sonsuz
+ * tetikler. */
+const NO_MESH_NODE_PICKS: number[] = [];
 const MESH_NODE_THREE = new THREE.Color("#1b3a5c");
 const MESH_NODE_SELECTED_THREE = new THREE.Color("#ff7a1a");
 
@@ -334,8 +341,8 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   cadOpacity,
   selectedIds,
   meshPicks,
-  meshSelectMode,
-  meshNodePicks,
+  meshSelectMode = null,
+  meshNodePicks = NO_MESH_NODE_PICKS,
   meshGrow,
   externalHighlight,
   onSelectionChange,
