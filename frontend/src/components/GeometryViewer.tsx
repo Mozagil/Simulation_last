@@ -4,7 +4,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { EdgeInfo, MeshPreviewData, PointInfo, ResultsPreviewData } from "../api/geometry";
-import type { MeshGrowMode, MeshPickInfo, MultiSelectionInfo, SelectionMode } from "../types";
+import type {
+  MeshGrowMode,
+  MeshPickInfo,
+  MeshSelectMode,
+  MultiSelectionInfo,
+  SelectionMode,
+} from "../types";
 
 /** Üst bileşenin (App.tsx) ref üzerinden çağırabileceği kamera komutları —
  * araç çubuğu ikonları (yakınlaştır, uzaklaştır, görünümü sıfırla) için. */
@@ -63,6 +69,11 @@ interface GeometryViewerProps {
   selectedIds: number[];
   /** Mesh overlay: seçili eleman(lar) + Face/Attached büyüme. */
   meshPicks: MeshPickInfo[];
+  /** Mesh üzerinde hangi varlık seçiliyor: eleman mi düğüm mü. null =
+   * mesh seçimi kapalı (CAD seçim modları aktif). */
+  meshSelectMode: MeshSelectMode;
+  /** Seçili mesh düğümlerinin GERÇEK CalculiX numaraları. */
+  meshNodePicks: number[];
   meshGrow: MeshGrowMode;
   /** Tıklama dışında (örn. Physical Group) belirli yüzeyleri/kenarları vurgulamak için. */
   externalHighlight: { faceIds: number[] } | { edgeIds: number[] } | null;
@@ -75,6 +86,7 @@ interface GeometryViewerProps {
   onCameraChange?: (state: CameraState) => void;
   /** Mesh elemanına tıklanınca. Ctrl ile çoklu; düz tık tekile indirger. */
   onMeshPicks?: (picks: MeshPickInfo[], keepGrow: boolean) => void;
+  onMeshNodePicks?: (nodeIds: number[]) => void;
   /** CAD katısını göster (karşılaştırma: geometri gizle/göster). */
   showCad?: boolean;
   /** Tıklanınca en yakın sonuç düğümünü oku (probe). */
@@ -112,6 +124,9 @@ const BASE_COLOR = new THREE.Color("#5a8f73");
 /** Turuncu seçim vurgusu — yeşilden net ayrışır. */
 const HIGHLIGHT_COLOR = new THREE.Color("#e85d04");
 const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
+/** Mesh düğüm bulutu: seçilmemiş / seçili renkler. */
+const MESH_NODE_THREE = new THREE.Color("#1b3a5c");
+const MESH_NODE_SELECTED_THREE = new THREE.Color("#ff7a1a");
 
 /** CAD nokta (vertex) işaretçilerinin yarıçapı.
  *
@@ -319,10 +334,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   cadOpacity,
   selectedIds,
   meshPicks,
+  meshSelectMode,
+  meshNodePicks,
   meshGrow,
   externalHighlight,
   onSelectionChange,
   onMeshPicks,
+  onMeshNodePicks,
   onCameraChange,
   showCad = true,
   probeEnabled = false,
@@ -381,6 +399,10 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
   const meshPicksRef = useRef(meshPicks);
   meshPicksRef.current = meshPicks;
+  const meshSelectModeRef = useRef(meshSelectMode);
+  meshSelectModeRef.current = meshSelectMode;
+  const meshNodePicksRef = useRef(meshNodePicks);
+  meshNodePicksRef.current = meshNodePicks;
   const meshGrowRef = useRef(meshGrow);
   meshGrowRef.current = meshGrow;
   const edgesRef = useRef(edges);
@@ -396,6 +418,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshOverlay: THREE.Group | null;
     resultsOverlay: THREE.Group | null;
     overlayMesh: THREE.Mesh | null;
+    /** Mesh düğümlerini gösteren nokta bulutu — "mesh node" seçim modunda
+     * görünür ve raycast hedefidir. */
+    meshNodePoints: THREE.Points | null;
+    /** meshNodePoints'in renk attribute'u — seçili düğümü boyamak için. */
+    meshNodeColorAttr: THREE.BufferAttribute | null;
+    /** Önizleme index -> gerçek CalculiX düğüm numarası. */
+    meshNodeIds: number[];
     overlayColorAttr: THREE.BufferAttribute | null;
     overlayTriCount: number;
     triangleToElement: number[];
@@ -428,6 +457,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshOverlay: null,
     resultsOverlay: null,
     overlayMesh: null,
+    meshNodePoints: null,
+    meshNodeColorAttr: null,
+    meshNodeIds: [],
     overlayColorAttr: null,
     overlayTriCount: 0,
     triangleToElement: [],
@@ -493,6 +525,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
   function clearOverlayMaps(refs: typeof sceneRefs.current) {
     refs.overlayMesh = null;
+    refs.meshNodePoints = null;
+    refs.meshNodeColorAttr = null;
+    refs.meshNodeIds = [];
     refs.overlayColorAttr = null;
     refs.overlayTriCount = 0;
     refs.triangleToElement = [];
@@ -921,6 +956,44 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       group.add(new THREE.LineSegments(edgeGeom, edgeMat));
     }
 
+    // --- Mesh düğüm bulutu (mesh node seçimi için) ---
+    // THREE.Points kullanılıyor, küre mesh'i değil: 7000+ düğümde ayrı ayrı
+    // SphereGeometry hem bellekte hem çizimde çok pahalı olurdu. Raycast
+    // hassasiyeti aşağıda Points.threshold ile ayarlanıyor.
+    {
+      const nodeCount = preview.nodes.length;
+      const npGeom = new THREE.BufferGeometry();
+      npGeom.setAttribute("position", new THREE.BufferAttribute(nodePos.slice(), 3));
+      const npColors = new Float32Array(nodeCount * 3);
+      for (let i = 0; i < nodeCount; i++) {
+        npColors[i * 3] = MESH_NODE_THREE.r;
+        npColors[i * 3 + 1] = MESH_NODE_THREE.g;
+        npColors[i * 3 + 2] = MESH_NODE_THREE.b;
+      }
+      const npColorAttr = new THREE.BufferAttribute(npColors, 3);
+      npGeom.setAttribute("color", npColorAttr);
+      const npMat = new THREE.PointsMaterial({
+        size: Math.max(refs.maxDim * 0.004, refs.minDim * 0.05),
+        vertexColors: true,
+        sizeAttenuation: true,
+        depthTest: true,
+      });
+      const pts = new THREE.Points(npGeom, npMat);
+      // Yalnız mesh node modunda görünür — diğer modlarda tıklamayı da
+      // engellememesi için tamamen gizlenir.
+      pts.visible = meshSelectModeRef.current === "node";
+      group.add(pts);
+      refs.meshNodePoints = pts;
+      refs.meshNodeColorAttr = npColorAttr;
+      // Önizleme düğüm index'inin GERÇEK CalculiX düğüm numarası. Backend
+      // artık bunu açıkça gönderiyor; eski önizleme dosyalarında yoksa
+      // index+1'e düşülür (iki taraf da getNodes() sırasını kullanır).
+      refs.meshNodeIds =
+        preview.node_ids && preview.node_ids.length === nodeCount
+          ? preview.node_ids.slice()
+          : Array.from({ length: nodeCount }, (_, i) => i + 1);
+    }
+
     const free = freeEdgeSegmentsRef.current;
     if (free && free.length > 0) {
       const pts = new Float32Array(free.length * 6);
@@ -947,8 +1020,29 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     refs.modelGroup.add(group);
     refs.meshOverlay = group;
     paintMeshGrow(meshPicksRef.current, meshGrowRef.current);
+    paintMeshNodes(meshNodePicksRef.current, meshSelectModeRef.current);
     setCadVisible(true);
     applyMeshWireframe(meshWireframeRef.current);
+  }
+
+  /** Mesh düğüm bulutunun görünürlüğünü ve seçili düğüm renklerini günceller. */
+  function paintMeshNodes(selectedIds: number[], selMode: MeshSelectMode) {
+    const refs = sceneRefs.current;
+    const pts = refs.meshNodePoints;
+    const attr = refs.meshNodeColorAttr;
+    if (!pts || !attr) return;
+    pts.visible = selMode === "node";
+    if (!pts.visible) return;
+    const selected = new Set(selectedIds);
+    const ids = refs.meshNodeIds;
+    const arr = attr.array as Float32Array;
+    for (let i = 0; i < ids.length; i++) {
+      const c = selected.has(ids[i]) ? MESH_NODE_SELECTED_THREE : MESH_NODE_THREE;
+      arr[i * 3] = c.r;
+      arr[i * 3 + 1] = c.g;
+      arr[i * 3 + 2] = c.b;
+    }
+    attr.needsUpdate = true;
   }
 
   function applyMeshWireframe(wire: boolean) {
@@ -1276,7 +1370,45 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         Boolean(showMeshRef.current && meshPreviewRef.current) &&
         refs.overlayMesh !== null;
 
-      if (overlayVisible && refs.overlayMesh) {
+      // --- Mesh DÜĞÜM seçimi ---
+      // Eleman seçiminden ÖNCE denenir: düğüm bulutu yüzeyin üstünde durur,
+      // önce eleman raycast'i çalışsaydı düğüme hiç ulaşılamazdı.
+      if (
+        overlayVisible &&
+        meshSelectModeRef.current === "node" &&
+        refs.meshNodePoints
+      ) {
+        // Points raycast'i eşiksiz çalışmaz — ekran uzayında değil model
+        // uzayında ölçtüğü için modele göre ölçeklenmiş bir eşik gerekir.
+        raycaster.params.Points = { threshold: refs.maxDim * 0.006 };
+        const nodeHits = raycaster.intersectObject(refs.meshNodePoints, false);
+        if (nodeHits.length > 0 && nodeHits[0].index !== undefined) {
+          const realId = refs.meshNodeIds[nodeHits[0].index as number];
+          if (realId !== undefined) {
+            const cur = meshNodePicksRef.current;
+            let next: number[];
+            if (ctrlPressed) {
+              next = cur.includes(realId)
+                ? cur.filter((n) => n !== realId)
+                : [...cur, realId];
+            } else {
+              next = cur.length === 1 && cur[0] === realId ? [] : [realId];
+            }
+            meshNodePicksRef.current = next;
+            paintMeshNodes(next, "node");
+            onMeshNodePicks?.(next);
+            return;
+          }
+        }
+        if (!ctrlPressed) {
+          meshNodePicksRef.current = [];
+          paintMeshNodes([], "node");
+          onMeshNodePicks?.([]);
+        }
+        return;
+      }
+
+      if (overlayVisible && refs.overlayMesh && meshSelectModeRef.current !== "node") {
         const overlayHits = raycaster.intersectObject(refs.overlayMesh, false);
         if (overlayHits.length > 0 && overlayHits[0].faceIndex !== undefined) {
           const triIndex = overlayHits[0].faceIndex as number;
@@ -1642,6 +1774,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         meshOverlay: null,
         resultsOverlay: null,
         overlayMesh: null,
+        meshNodePoints: null,
+        meshNodeColorAttr: null,
+        meshNodeIds: [],
         overlayColorAttr: null,
         overlayTriCount: 0,
         triangleToElement: [],
@@ -1840,7 +1975,16 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       }
     }
     paintMeshGrow(meshPicks, meshGrow);
-  }, [selectedIds, mode, externalHighlight, meshPicks, meshGrow]);
+    paintMeshNodes(meshNodePicks, meshSelectMode);
+  }, [
+    selectedIds,
+    mode,
+    externalHighlight,
+    meshPicks,
+    meshGrow,
+    meshNodePicks,
+    meshSelectMode,
+  ]);
 
   return (
     <div ref={containerRef} className="viewer-canvas" />

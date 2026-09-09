@@ -160,7 +160,12 @@ export type SolveBC = {
   type: string;
   face_ids?: number[];
   edge_ids?: number[];
+  /** CAD vertex (köşe) id'leri — backend POINT_ nset'i üzerinden mesh
+   * düğümüne çevirir. Remesh'i atlatır. */
   node_ids?: number[];
+  /** Ham CalculiX mesh düğüm numaraları — kullanıcı mesh üzerinde düğüm
+   * seçtiğinde. Mesh yeniden üretilirse ANLAMINI YİTİRİR. */
+  mesh_node_ids?: number[];
   fx?: number;
   fy?: number;
   fz?: number;
