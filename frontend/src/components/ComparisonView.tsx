@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import type { RefObject } from "react";
 import GeometryViewer from "./GeometryViewer";
 import type { CameraState, GeometryViewerHandle, ResultProbeHit } from "./GeometryViewer";
@@ -137,10 +137,17 @@ function ComparisonPanel({
   probeEnabled,
   isRef,
   refMaxStress,
+  onObservedMax,
 }: {
   runId: number;
   resultsField: "von_mises" | "displacement_magnitude";
   sharedScaleMax: number | null;
+  /** Panelin ÇİZDİĞİ veriden gözlenen maksimum. Colorbar skalası eskiden
+   * yalnız run'ın kayıtlı `scalars` alanından geliyordu; o alan boş ya da
+   * sıfırsa skala sessizce 0–1'e düşüyor ve kullanıcıya yanlış bir eksen
+   * gösteriyordu. Gerçek çizilen veri her zaman elimizde olduğu için
+   * skalayı ondan da besliyoruz. */
+  onObservedMax?: (runId: number, field: string, value: number) => void;
   viewerRef: RefObject<GeometryViewerHandle>;
   onCameraChange: (state: CameraState) => void;
   probeEnabled: boolean;
@@ -171,6 +178,30 @@ function ComparisonPanel({
       cancelled = true;
     };
   }, [runId]);
+
+  // Çizilen veriden gözlenen maksimumu yukarı bildir.
+  // Render sırasında değil EFEKTTE yapılır: render sırasında parent'ın
+  // state'ini güncellemek React'te "Cannot update a component while
+  // rendering a different component" uyarısı üretir.
+  const observedMax = useMemo(() => {
+    const arr =
+      data?.resultsPreview == null
+        ? null
+        : resultsField === "von_mises"
+          ? data.resultsPreview.von_mises
+          : data.resultsPreview.displacement_magnitude;
+    if (!arr || arr.length === 0) return null;
+    let m = 0;
+    for (const v of arr) if (v > m) m = v;
+    return m;
+  }, [data, resultsField]);
+
+  useEffect(() => {
+    if (observedMax != null) onObservedMax?.(runId, resultsField, observedMax);
+    // onObservedMax kimliği her render değişebilir; bağımlılığa alınırsa
+    // döngü olur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, resultsField, observedMax]);
 
   if (error) {
     return <div className="compare-panel-error">Hata: {error}</div>;
@@ -375,17 +406,46 @@ export default function ComparisonView({
   }, [runIdA, runIdB]);
 
   const key = resultsField === "von_mises" ? "max_von_mises" : "max_displacement";
-  const sharedScaleMax = single
-    ? (scalarsA?.[key] ?? 0) || null
-    : scalarsA && scalarsB
-      ? Math.max(scalarsA[key] ?? 0, scalarsB[key] ?? 0) || null
-      : null;
+
+  // Panellerin ÇİZDİĞİ veriden gözlenen maksimumlar. Skala eskiden yalnız
+  // run'ın kayıtlı `scalars` alanından geliyordu; o alan boş ya da sıfırsa
+  // `?? 1` devreye girip colorbar'ı sessizce 0–1 gösteriyordu — kullanıcı
+  // haklı olarak "colorbar sabit kalmış" diye bildirdi. Artık çizilen
+  // gerçek veri de skalayı besliyor.
+  const [observedMax, setObservedMax] = useState<Record<string, number>>({});
+  const handleObservedMax = useCallback(
+    (rid: number, field: string, value: number) => {
+      const k = `${rid}:${field}`;
+      setObservedMax((prev) =>
+        prev[k] === value ? prev : { ...prev, [k]: value },
+      );
+    },
+    [],
+  );
+
+  function scaleFor(rid: number | undefined): number {
+    if (rid === undefined) return 0;
+    const fromScalars =
+      rid === runIdA ? (scalarsA?.[key] ?? 0) : (scalarsB?.[key] ?? 0);
+    const fromData = observedMax[`${rid}:${resultsField}`] ?? 0;
+    return Math.max(fromScalars, fromData);
+  }
+
+  const rawScale = single
+    ? scaleFor(runIdA)
+    : Math.max(scaleFor(runIdA), scaleFor(runIdB));
+  const sharedScaleMax = rawScale > 0 ? rawScale : null;
+
+  // Alan başına birim — iki alanın aynı eksende okunduğu izlenimini
+  // önlemek için etikette gösterilir.
+  const fieldUnit = resultsField === "von_mises" ? "MPa" : "mm";
 
   const tickCount = 5;
-  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => {
-    const t = i / tickCount;
-    return (sharedScaleMax ?? 1) * t;
-  });
+  const ticks: (number | null)[] = Array.from(
+    { length: tickCount + 1 },
+    (_, i) =>
+      sharedScaleMax === null ? null : (sharedScaleMax * i) / tickCount,
+  );
   const gradientStops = Array.from({ length: 11 }, (_, i) => {
     const t = i / 10;
     return `${jetRgb(t)} ${t * 100}%`;
@@ -470,6 +530,7 @@ export default function ComparisonView({
           runId={runIdA}
           resultsField={resultsField}
           sharedScaleMax={sharedScaleMax}
+          onObservedMax={handleObservedMax}
           viewerRef={viewerRefA}
           probeEnabled={probeEnabled}
           isRef={!single}
@@ -482,6 +543,7 @@ export default function ComparisonView({
             runId={runIdB}
             resultsField={resultsField}
             sharedScaleMax={sharedScaleMax}
+            onObservedMax={handleObservedMax}
             viewerRef={viewerRefB}
             probeEnabled={probeEnabled}
             isRef={false}
@@ -494,21 +556,28 @@ export default function ComparisonView({
       </div>
       <div className="compare-shared-bar">
         <div className="compare-shared-colorbar">
-          <span className="compare-shared-label">{single ? "COLORBAR" : "ORTAK COLORBAR"}</span>
+          <span className="compare-shared-label">
+            {single ? "COLORBAR" : "ORTAK COLORBAR"} ·{" "}
+            {resultsField === "von_mises" ? "von Mises" : "deplasman"} ({fieldUnit})
+          </span>
           <div
             className="compare-shared-track"
             style={{ background: `linear-gradient(to right, ${gradientStops})` }}
           />
           <div className="compare-shared-ticks">
             {ticks.map((v, i) => (
-              <span key={i}>{fmtNum(v, 2)}</span>
+              <span key={i}>{v === null ? "—" : fmtNum(v, 2)}</span>
             ))}
           </div>
         </div>
         <div className="compare-shared-note">
-          {single
-            ? "Bu run’ın kayıtlı geometri / mesh / sonuç anlık görüntüsü. Probe açıkken kontura veya geometriye tıklayın."
-            : `İki panel aynı skalayı kullanır (max=${sharedScaleMax !== null ? fmtNum(sharedScaleMax) : "—"}). Probe açıkken kontura veya geometriye tıklayın.`}
+          {sharedScaleMax === null
+            ? `Bu run için ${
+                resultsField === "von_mises" ? "von Mises" : "deplasman"
+              } sonucu yok (skala belirlenemedi).`
+            : single
+              ? `Skala 0 – ${fmtNum(sharedScaleMax)} ${fieldUnit}. Bu run’ın kayıtlı anlık görüntüsü; probe açıkken kontura tıklayın.`
+              : `İki panel aynı skalayı kullanır (max=${fmtNum(sharedScaleMax)} ${fieldUnit}). Probe açıkken kontura tıklayın.`}
         </div>
       </div>
     </div>

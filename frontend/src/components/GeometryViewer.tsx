@@ -75,6 +75,9 @@ interface GeometryViewerProps {
    * Opsiyonel: ComparisonView gibi salt-okunur inceleme görünümlerinde
    * mesh seçimi anlamsızdır, oralarda verilmez ve null'a düşer. */
   meshSelectMode?: MeshSelectMode;
+  /** Kenar-ortası (2. mertebe) düğümleri de göster. Kapalıyken yalnız köşe
+   * düğümleri görünür ve yalnız onlar seçilebilir. */
+  showMidsideNodes?: boolean;
   /** Seçili mesh düğümlerinin GERÇEK CalculiX numaraları. */
   meshNodePicks?: number[];
   meshGrow: MeshGrowMode;
@@ -134,6 +137,9 @@ const POINT_BASE_COLOR = new THREE.Color("#1b1f1c");
 const NO_MESH_NODE_PICKS: number[] = [];
 const MESH_NODE_THREE = new THREE.Color("#1b3a5c");
 const MESH_NODE_SELECTED_THREE = new THREE.Color("#ff7a1a");
+/** Kenar-ortası (2. mertebe) düğüm — köşelerden ayırt edilsin diye daha
+ * soluk bir ton. */
+const MESH_NODE_MIDSIDE_THREE = new THREE.Color("#8aa6bd");
 
 /** CAD nokta (vertex) işaretçilerinin yarıçapı.
  *
@@ -342,6 +348,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   selectedIds,
   meshPicks,
   meshSelectMode = null,
+  showMidsideNodes = false,
   meshNodePicks = NO_MESH_NODE_PICKS,
   meshGrow,
   externalHighlight,
@@ -408,6 +415,10 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshPicksRef.current = meshPicks;
   const meshSelectModeRef = useRef(meshSelectMode);
   meshSelectModeRef.current = meshSelectMode;
+  const showMidsideRef = useRef(showMidsideNodes);
+  showMidsideRef.current = showMidsideNodes;
+  /** Önizleme index'i -> kenar-ortası düğüm mü. */
+  const midsideFlagRef = useRef<boolean[]>([]);
   const meshNodePicksRef = useRef(meshNodePicks);
   meshNodePicksRef.current = meshNodePicks;
   const meshGrowRef = useRef(meshGrow);
@@ -432,6 +443,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshNodeColorAttr: THREE.BufferAttribute | null;
     /** Önizleme index -> gerçek CalculiX düğüm numarası. */
     meshNodeIds: number[];
+    /** Düğüm bulutunun BOZULMAMIŞ konum kopyası — gizleme NaN yazdığı için
+     * geri açarken orijinal gerekir. */
+    meshNodeBasePos: Float32Array | null;
     overlayColorAttr: THREE.BufferAttribute | null;
     overlayTriCount: number;
     triangleToElement: number[];
@@ -467,6 +481,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshNodePoints: null,
     meshNodeColorAttr: null,
     meshNodeIds: [],
+    meshNodeBasePos: null,
     overlayColorAttr: null,
     overlayTriCount: 0,
     triangleToElement: [],
@@ -535,6 +550,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     refs.meshNodePoints = null;
     refs.meshNodeColorAttr = null;
     refs.meshNodeIds = [];
+    refs.meshNodeBasePos = null;
     refs.overlayColorAttr = null;
     refs.overlayTriCount = 0;
     refs.triangleToElement = [];
@@ -991,6 +1007,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       pts.visible = meshSelectModeRef.current === "node";
       group.add(pts);
       refs.meshNodePoints = pts;
+      refs.meshNodeBasePos = nodePos.slice();
       refs.meshNodeColorAttr = npColorAttr;
       // Önizleme düğüm index'inin GERÇEK CalculiX düğüm numarası. Backend
       // artık bunu açıkça gönderiyor; eski önizleme dosyalarında yoksa
@@ -999,6 +1016,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         preview.node_ids && preview.node_ids.length === nodeCount
           ? preview.node_ids.slice()
           : Array.from({ length: nodeCount }, (_, i) => i + 1);
+      const flags = new Array<boolean>(nodeCount).fill(false);
+      for (const i of preview.midside_node_indices ?? []) {
+        if (i >= 0 && i < nodeCount) flags[i] = true;
+      }
+      midsideFlagRef.current = flags;
     }
 
     const free = freeEdgeSegmentsRef.current;
@@ -1042,13 +1064,33 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     if (!pts.visible) return;
     const selected = new Set(selectedIds);
     const ids = refs.meshNodeIds;
+    const flags = midsideFlagRef.current;
+    const showMid = showMidsideRef.current;
     const arr = attr.array as Float32Array;
+    const posAttr = pts.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const basePos = refs.meshNodeBasePos;
     for (let i = 0; i < ids.length; i++) {
-      const c = selected.has(ids[i]) ? MESH_NODE_SELECTED_THREE : MESH_NODE_THREE;
+      const isMid = flags[i] === true;
+      // Gizlenen ara düğümü çizim dışı bırakmanın en ucuz yolu: konumunu
+      // NaN yapmak. Ayrı bir geometri kurup her toggle'da yeniden yüklemek
+      // 7000+ düğümde gereksiz maliyet olurdu. Raycast de NaN'ı ıskalar,
+      // yani gizli düğüm seçilemez — istenen davranış bu.
+      if (basePos) {
+        const hide = isMid && !showMid;
+        posAttr.array[i * 3] = hide ? NaN : basePos[i * 3];
+        posAttr.array[i * 3 + 1] = hide ? NaN : basePos[i * 3 + 1];
+        posAttr.array[i * 3 + 2] = hide ? NaN : basePos[i * 3 + 2];
+      }
+      const c = selected.has(ids[i])
+        ? MESH_NODE_SELECTED_THREE
+        : isMid
+          ? MESH_NODE_MIDSIDE_THREE
+          : MESH_NODE_THREE;
       arr[i * 3] = c.r;
       arr[i * 3 + 1] = c.g;
       arr[i * 3 + 2] = c.b;
     }
+    posAttr.needsUpdate = true;
     attr.needsUpdate = true;
   }
 
@@ -1784,6 +1826,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         meshNodePoints: null,
         meshNodeColorAttr: null,
         meshNodeIds: [],
+        meshNodeBasePos: null,
         overlayColorAttr: null,
         overlayTriCount: 0,
         triangleToElement: [],
@@ -1991,6 +2034,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshGrow,
     meshNodePicks,
     meshSelectMode,
+    showMidsideNodes,
   ]);
 
   return (

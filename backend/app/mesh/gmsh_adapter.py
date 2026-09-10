@@ -1325,6 +1325,12 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                     i3 = tag_to_idx[int(enodes[e * 4 + 3])]
                     _add_quad_element(i0, i1, i2, i3, part_id, face_id)
 
+    # 2. mertebe (kenar-ortası) düğüm indeksleri. Gmsh sıralamasında tet10'un
+    # İLK 4 düğümü daima köşe, kalan 6'sı kenar ortasıdır. Arayüz bunları
+    # ayrı gösterip gizleyebilsin diye işaretlenir — köşeler geometrinin
+    # gerçek noktalarıdır, ara düğümler yalnız eleman mertebesinin sonucudur
+    # ve seçim/BC için genelde istenmez. 2D ve 1. mertebe mesh'te boş kalır.
+    midside_idx: set[int] = set()
     if dimension == 2:
         face_to_part = _surface_parts_by_coincident_nodes()
         entities = gmsh.model.getEntities(2)
@@ -1361,6 +1367,8 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                             tag_to_idx[int(enodes[e * n_per + k])] for k in range(4)
                         ]
                         volume_tets.append((part_id, idxs))
+                        for k in range(4, n_per):
+                            midside_idx.add(tag_to_idx[int(enodes[e * n_per + k])])
         else:
             for tet_type, n_per in _TET_NODES_PER.items():
                 try:
@@ -1370,6 +1378,8 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 for e in range(len(_tags)):
                     idxs = [tag_to_idx[int(conn[e * n_per + k])] for k in range(4)]
                     volume_tets.append((0, idxs))
+                    for k in range(4, n_per):
+                        midside_idx.add(tag_to_idx[int(conn[e * n_per + k])])
 
         face_tet: dict[tuple[int, int, int], int] = {}
         for tet_index, (part_id, idxs) in enumerate(volume_tets):
@@ -1408,6 +1418,8 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
         # güvenmek yerine numarayı açıkça taşıyoruz — aksi halde iki taraftan
         # birindeki sıralama değişikliği sessizce YANLIŞ düğüme BC uygular.
         "node_ids": list(range(1, len(nodes) + 1)),
+        # Kenar-ortası (2. mertebe) düğümlerin `nodes` dizisindeki indeksleri.
+        "midside_node_indices": sorted(midside_idx),
         "faces": faces,
         "lines": lines,
         "triangle_to_part": triangle_to_part,

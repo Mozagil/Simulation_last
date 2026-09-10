@@ -2028,15 +2028,28 @@ p {
 .modal-grid-page-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border, #d9ddd6);
   flex: 0 0 auto;
 }
 
+/* Geri butonu içeriği kadar yer kaplasın — flex içinde varsayılan
+   olarak esneyip tüm satırı kaplıyordu. */
+.modal-grid-page-bar > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.modal-grid-page-bar > strong {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .modal-grid-page-bar .material-assign-hint {
   margin: 0;
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .modal-mode-grid {
@@ -2046,8 +2059,7 @@ p {
   min-height: 0;
 }
 
-/* Canvas'ın kendisi — min-height:0 olmadan flex çocuğu küçülmez ve
-   canvas taşar. */
+/* min-height:0 olmadan flex çocuğu küçülmez ve canvas taşar. */
 .modal-mode-grid-canvas {
   flex: 1 1 auto;
   min-height: 0;
@@ -2060,10 +2072,60 @@ p {
   height: 100%;
 }
 
+/* --- Colorbar --- */
+.modal-mode-colorbar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border, #d9ddd6);
+  border-radius: 6px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.modal-mode-colorbar-title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.modal-mode-colorbar-body {
+  display: flex;
+  gap: 8px;
+  height: 150px;
+}
+
+.modal-mode-colorbar-scale {
+  width: 16px;
+  height: 100%;
+  border: 1px solid var(--border, #d9ddd6);
+  border-radius: 2px;
+}
+
+.modal-mode-colorbar-ticks {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.modal-mode-colorbar-note {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* --- Alt şerit: animasyon, genlik, mod etiketleri --- */
 .modal-mode-grid-legend {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding: 8px 16px;
   border-top: 1px solid var(--border, #d9ddd6);
@@ -2077,10 +2139,35 @@ p {
   background: transparent;
   cursor: pointer;
   color: inherit;
+  white-space: nowrap;
 }
 
 .modal-mode-grid-legend button.active {
   background: var(--accent, #12a5b0);
   border-color: var(--accent, #12a5b0);
   color: #fff;
+}
+
+.modal-mode-grid-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border, #d9ddd6);
+  margin: 0 6px;
+}
+
+.modal-mode-amp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.modal-mode-amp input[type="range"] {
+  width: 110px;
+}
+
+.modal-mode-amp span {
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
 }
