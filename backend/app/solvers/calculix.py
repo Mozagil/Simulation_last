@@ -93,6 +93,164 @@ def _frd_data_line(line: str) -> tuple[int, list[float]] | None:
     return node_id, values
 
 
+def _read_inp_nodes(inp_path: Path) -> list[tuple[float, float, float]]:
+    """`.inp` içindeki `*NODE` bloğundan ORİJİNAL mesh düğüm koordinatları.
+
+    Bu dosyayı biz yazdığımız için içerik kesin: düğümler `getNodes()`
+    sırasında, 1-based ardışık numaralarla. Kabuk genişletmesini geri
+    katlarken referans olarak kullanılır — `parse_results`'a mesh yolu
+    ayrıca taşınmasın diye.
+    """
+    nodes: list[tuple[float, float, float]] = []
+    in_node = False
+    try:
+        with inp_path.open(encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith("*"):
+                    in_node = line.upper().startswith("*NODE") and "FILE" not in line.upper()
+                    continue
+                if not in_node:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) < 4:
+                    continue
+                try:
+                    nodes.append((float(parts[1]), float(parts[2]), float(parts[3])))
+                except ValueError:
+                    continue
+    except OSError:
+        return []
+    return nodes
+
+
+
+def _collapse_shell_expansion(
+    node_coords: dict[int, tuple[float, ...]],
+    displacement: dict[int, tuple[float, ...]],
+    stress: dict[int, tuple[float, ...]],
+    mesh_nodes: list[tuple[float, float, float]],
+) -> tuple[list[int], list[list[float]], dict[int, tuple[float, ...]], dict[int, tuple[float, ...]]] | None:
+    """Kabuk genişletmesini orta yüzeye geri katlar.
+
+    CalculiX kabuk elemanlarını içeride 3B hacme genişletir: her kabuk
+    düğümü üst/alt yüzey için ikiye katlanır ve `.frd` bu genişletilmiş
+    düğümleri yazar. Sonuç `.frd` düğüm sayısının mesh'in İKİ KATI olması,
+    ikisinin hizalanamaması ve arayüzün düzgün yüzey konturu yerine kaba
+    bir nokta bulutuna düşmesiydi.
+
+    Burada her genişletilmiş düğüm, koordinatça en yakın ORİJİNAL mesh
+    düğümüne atanır (üst/alt kopya orijinalin ±t/2 normal ötesindedir,
+    yani en yakın orijinal düğüm daima kendi orta yüzey düğümüdür).
+    Sonra her grup tek bir değere indirilir:
+
+      * von Mises  -> MAKSİMUM. Eğilmede gerilme kalınlık boyunca lineerdir
+        ve tasarımda aranan YÜZEY gerilmesidir; ortalama alınsaydı eğilme
+        bileşeni sıfırlanırdı (OUTPUT=2D denemesinde tam olarak bu oldu:
+        300 MPa yerine 79.8 MPa).
+      * deplasman  -> ORTALAMA. Kalınlık boyunca neredeyse sabittir; ortalama
+        orta yüzey değerini verir.
+
+    Genişletme yoksa (3D solid) veya eşleşme güvenilir değilse None döner
+    ve çağıran eski yola devam eder.
+    """
+    if not node_coords or not mesh_nodes:
+        return None
+    # Genişletme yoksa dokunma.
+    if len(node_coords) <= len(mesh_nodes):
+        return None
+
+    # Uzamsal ızgara — O(n*m) mesafe hesabından kaçınmak için.
+    xs = [p[0] for p in mesh_nodes]
+    ys = [p[1] for p in mesh_nodes]
+    zs = [p[2] for p in mesh_nodes]
+    span = max(
+        max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs), 1e-9
+    )
+    cell = span / 64.0 or 1.0
+
+    def key(x: float, y: float, z: float) -> tuple[int, int, int]:
+        return (int(x // cell), int(y // cell), int(z // cell))
+
+    grid: dict[tuple[int, int, int], list[int]] = {}
+    for i, (x, y, z) in enumerate(mesh_nodes):
+        grid.setdefault(key(x, y, z), []).append(i)
+
+    def nearest(x: float, y: float, z: float) -> int | None:
+        """Genişleyen halka araması.
+
+        Sabit ±1 komşuluk YETMEZ: genişletilmiş düğüm orta yüzeyden
+        ±kalınlık/2 kadar uzaktadır ve bu mesafe ızgara hücresinden büyük
+        olabilir (t=10 kabukta ofset 5mm iken hücre 1.6mm çıkıyordu —
+        eşleşme bulunamayıp katlama sessizce devre dışı kalıyordu).
+        Bu yüzden yarıçap, bir aday bulunana kadar büyütülür.
+        """
+        kx, ky, kz = key(x, y, z)
+        for r in range(1, 33):
+            best_i: int | None = None
+            best_d2 = float("inf")
+            for dx in range(-r, r + 1):
+                for dy in range(-r, r + 1):
+                    for dz in range(-r, r + 1):
+                        # Yalnız kabuğun yüzeyindeki yeni hücreler
+                        if max(abs(dx), abs(dy), abs(dz)) != r and r > 1:
+                            continue
+                        for i in grid.get((kx + dx, ky + dy, kz + dz), ()):
+                            mx, my, mz = mesh_nodes[i]
+                            d2 = (mx - x) ** 2 + (my - y) ** 2 + (mz - z) ** 2
+                            if d2 < best_d2:
+                                best_d2 = d2
+                                best_i = i
+            if best_i is not None:
+                return best_i
+        return None
+
+    groups: dict[int, list[int]] = {}
+    for nid, c in node_coords.items():
+        x, y, z = float(c[0]), float(c[1]), float(c[2])
+        best_i = nearest(x, y, z)
+        if best_i is None:
+            return None  # eşleşmeyen düğüm var — güvenli tarafta kal
+        groups.setdefault(best_i, []).append(nid)
+
+    # Her orijinal düğüme en az bir sonuç düşmeli.
+    if len(groups) != len(mesh_nodes):
+        return None
+
+    new_order: list[int] = []
+    new_nodes: list[list[float]] = []
+    new_disp: dict[int, tuple[float, ...]] = {}
+    new_stress: dict[int, tuple[float, ...]] = {}
+
+    for i in range(len(mesh_nodes)):
+        members = groups[i]
+        out_id = min(members)  # kararlı, tekrarlanabilir bir kimlik
+        new_order.append(out_id)
+        new_nodes.append([float(v) for v in mesh_nodes[i]])
+
+        dvals = [displacement[m] for m in members if m in displacement]
+        if dvals:
+            n = len(dvals)
+            new_disp[out_id] = tuple(
+                sum(d[k] for d in dvals) / n for k in range(3)
+            )
+
+        svals = [stress[m] for m in members if m in stress]
+        if svals:
+            # von Mises'i maksimize eden bileşen setini seç — ortalama
+            # almak eğilme bileşenini yok ederdi.
+            best = max(
+                svals,
+                key=lambda v: _von_mises_stress(v[0], v[1], v[2], v[3], v[4], v[5]),
+            )
+            new_stress[out_id] = best
+
+    return new_order, new_nodes, new_disp, new_stress
+
+
+
 def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
     """CalculiX .frd (ASCII) sonuç dosyasını parse eder.
 
@@ -276,9 +434,10 @@ class CalculiXAdapter(SolverAdapter):
                 n_modes=params.get("n_modes", 10),
                 freq_min=params.get("freq_min"),
                 freq_max=params.get("freq_max"),
+                dimension=dimension,
             )
         elif analysis_type == "static":
-            step_block = _static_step_block(step_bc_block)
+            step_block = _static_step_block(step_bc_block, dimension)
         else:
             raise SolverError(
                 f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
@@ -358,12 +517,39 @@ class CalculiXAdapter(SolverAdapter):
         displacement = parsed["displacement"]
         stress = parsed["stress"]
 
+        # KABUK GENİŞLETMESİNİ GERİ KATLA.
+        # CalculiX kabuk elemanlarını 3B hacme genişletir; .frd düğüm sayısı
+        # mesh'in iki katı olur ve arayüz hizalayamadığı için düzgün yüzey
+        # konturu yerine nokta bulutuna düşer. Aşağıdaki adım üst/alt yüzey
+        # çiftlerini orta yüzeye katlar (von Mises: maksimum = yüzey
+        # gerilmesi; deplasman: ortalama). 3D solid'de genişletme olmadığı
+        # için fonksiyon None döner ve hiçbir şey değişmez.
+        _mesh_nodes = _read_inp_nodes(job.artifact.path)
+        _collapsed = _collapse_shell_expansion(
+            node_coords, displacement, stress, _mesh_nodes
+        )
+        _forced_order: list[int] | None = None
+        _forced_nodes: list[list[float]] | None = None
+        if _collapsed is not None:
+            _forced_order, _forced_nodes, displacement, stress = _collapsed
+            logger.info(
+                "Kabuk genişletmesi katlandı: %d -> %d düğüm",
+                len(node_coords),
+                len(_forced_order),
+            )
+
         # Dosyadaki (2C bloğundaki) node sırası = mesh'in kanonik sırası —
         # aynı sıralama frontend'in mesh önizlemesindeki `nodes[]` dizisiyle
         # birebir eşleşir (ikisi de aynı Gmsh `getNodes()` çağrısından gelir).
-        node_order = list(node_coords.keys())
+        node_order = (
+            _forced_order if _forced_order is not None else list(node_coords.keys())
+        )
 
-        nodes_array = [list(node_coords[nid]) for nid in node_order]
+        nodes_array = (
+            _forced_nodes
+            if _forced_nodes is not None
+            else [list(node_coords[nid]) for nid in node_order]
+        )
 
         disp_mag: dict[int, float] = {}
         for nid, (dx, dy, dz) in displacement.items():
@@ -776,21 +962,37 @@ def _bcs_inp_block(
     for bc in bcs:
         btype = str(bc.get("type", "")).lower()
         if btype == "fixed":
+            # KRİTİK — SERBESTLİK DERECESİ ARALIĞI ELEMAN TİPİNE BAĞLI:
+            #
+            # 3D solid (C3D4/C3D10/C3D8): düğümde YALNIZ 3 öteleme DOF'u
+            #   vardır, 1..3 doğru aralıktır.
+            # 2D kabuk (S3/S4): düğümde 6 DOF vardır — 1..3 öteleme,
+            #   4..6 DÖNME. Sadece 1..3'ü sabitlemek ankastre mesnedi
+            #   TAM KISITLAMAZ: kısıtlanan düğümler bir doğru üzerindeyse
+            #   (plakanın ankastre kenarı) kabuk o kenar etrafında serbestçe
+            #   döner. Bu tam bir mekanizmadır — rijit cisim dönmesi.
+            #
+            # Gerçek bir testte doğrulandı: 50x10x500 midsurface kabukta
+            # kenar düğümlerine "fixed" verilip 500N uygulanınca maksimum
+            # deplasman 4.42e10 mm çıktı (aynı problem 3D solid'de 23.9 mm).
+            # Eskiden `dimension` parametresi bu fonksiyona geçiliyor ama
+            # `_ = dimension` ile ATILIYORDU.
+            fixed_dofs = "1, 6" if dimension == 2 else "1, 3"
             for fid in bc.get("face_ids") or []:
                 nset = f"FACE_{int(fid)}"
                 if nset not in nsets or not nsets[nset]:
                     continue
                 model_lines.append("*BOUNDARY")
-                model_lines.append(f"{nset}, 1, 3")
+                model_lines.append(f"{nset}, {fixed_dofs}")
             for eid in bc.get("edge_ids") or []:
                 nset = f"EDGE_{int(eid)}"
                 if nset not in nsets or not nsets[nset]:
                     continue
                 model_lines.append("*BOUNDARY")
-                model_lines.append(f"{nset}, 1, 3")
+                model_lines.append(f"{nset}, {fixed_dofs}")
             for nid in _resolve_bc_node_ids(bc, nsets):
                 model_lines.append("*BOUNDARY")
-                model_lines.append(f"{nid}, 1, 3")
+                model_lines.append(f"{nid}, {fixed_dofs}")
         elif btype == "cload":
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
@@ -978,20 +1180,56 @@ def _bcs_inp_block(
         else:
             model_lines.append(f"** unknown bc type: {btype}")
 
-    _ = dimension
     model_block = ("\n".join(model_lines) + "\n") if model_lines else ""
     step_block = ("\n".join(step_lines) + "\n") if step_lines else ""
     return model_block, step_block
 
 
-def _static_step_block(step_bc_lines: str = "") -> str:
+def _output_qualifier(dimension: int) -> str:
+    """`*NODE FILE` / `*EL FILE` için çıktı niteleyicisi.
+
+    KABUK (2D) İÇİN KRİTİK: CalculiX kabuk elemanlarını içeride 3B hacim
+    elemanlarına GENİŞLETİR — her kabuk düğümü üst/alt yüzey için ikiye
+    katlanır ve `.frd` varsayılan olarak bu genişletilmiş düğümleri yazar.
+    Sonuç: `.frd` düğüm sayısı mesh önizlemesinin İKİ KATI olur, ikisi
+    hizalanamaz ve arayüz düzgün yüzey konturu yerine nokta bulutuna
+    düşer (gerçek bir ekran görüntüsünde "node node" görünen kaba
+    küreler bu yüzdendi).
+
+    `OUTPUT=2D` bunu kapatır: sonuçlar ORİJİNAL kabuk düğüm numaralarıyla
+    yazılır. Böylece düğüm sayısı mesh ile birebir eşleşir ve düzgün
+    (smooth) kontur çizilebilir. von Mises bir invaryant olduğu için
+    kabuk yerel eksen dönüşümünden etkilenmez.
+
+    3D solid'de genişletme yoktur; niteleyici yazılmaz.
+    """
+    # OUTPUT=2D DENENDİ VE GERİ ALINDI — gerilme yanlış oluyordu.
+    #
+    # OUTPUT=2D düğüm hizalamasını çözüyordu (sayılar mesh ile eşleşiyordu)
+    # ama gerilmeyi kabuğun ORTA DÜZLEMİNDE veriyor, YÜZEYİNDE değil.
+    # Eğilmede gerilme kalınlık boyunca lineerdir: yüzeyde ±sigma_max,
+    # orta düzlemde SIFIR. Gerçek bir testte doğrulandı: 300 MPa olması
+    # gereken kabuk gerilmesi 79.8 MPa'ya düştü (kalan kısım ankastre
+    # köşedeki yerel etkiler + kayma), deplasman ise 23.6 mm'de kaldı
+    # çünkü deplasman kalınlık boyunca değişmez.
+    #
+    # Bu yüzden genişletilmiş çıktı korunuyor; hizalama post-process'te
+    # `_collapse_shell_expansion` ile çözülüyor: üst/alt yüzey çifti orta
+    # yüzey düğümüne katlanır, von Mises için MAKSİMUM (yüzey gerilmesi,
+    # tasarımda aranan bu), deplasman için ORTALAMA alınır.
+    _ = dimension
+    return ""
+
+
+def _static_step_block(step_bc_lines: str = "", dimension: int = 3) -> str:
+    out = _output_qualifier(dimension)
     return (
         "*STEP\n"
         "*STATIC\n"
         f"{step_bc_lines}"
-        "*NODE FILE\n"
+        f"*NODE FILE{out}\n"
         "U\n"
-        "*EL FILE\n"
+        f"*EL FILE{out}\n"
         "S\n"
         "*END STEP\n"
     )
@@ -1001,6 +1239,7 @@ def _frequency_step_block(
     n_modes: Any = 10,
     freq_min: Any = None,
     freq_max: Any = None,
+    dimension: int = 3,
 ) -> str:
     """CalculiX Lanczos özdeğer adımı — `*FREQUENCY` (modal).
 
@@ -1024,11 +1263,14 @@ def _frequency_step_block(
             raise SolverError("freq_max, freq_min'den büyük olmalı (Hz).")
         data_line = f"{n}, {lo:.6g}, {hi:.6g}"
 
+    # Kabukta OUTPUT=2D — statik adımdaki ile aynı gerekçe: mod şekilleri
+    # de genişletilmiş düğümlerle yazılırsa mesh ile hizalanamaz.
+    out = _output_qualifier(dimension)
     return (
         "*STEP\n"
         "*FREQUENCY, STORAGE=YES\n"
         f"{data_line}\n"
-        "*NODE FILE\n"
+        f"*NODE FILE{out}\n"
         "U\n"
         "*END STEP\n"
     )

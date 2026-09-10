@@ -728,6 +728,16 @@ def create_midsurface_for_part(
     ]
     new_face_ids = [item["new_face_id"] for item in midsurfaces]
 
+    # Ölçülen cidar kalınlıkları — kabuk kesiti (*SHELL SECTION) için.
+    # Kullanıcının elle girmesi gerekmemeli: katıdan orta yüzey çıkarıyorsak
+    # kalınlık geometrinin kendisinde zaten var. Birden fazla farklı cidar
+    # varsa (kutu profilde eşit olmayan cidarlar) EN KÜÇÜĞÜ önerilir —
+    # en zayıf kesit, güvenli taraf. Kullanıcı üzerine yazabilir.
+    wall_thicknesses = [
+        round(t, 6) for t in getattr(adapter, "last_wall_thicknesses", []) if t > 0
+    ]
+    suggested_thickness = min(wall_thicknesses) if wall_thicknesses else None
+
     logger.info(
         "Midsurface (otomatik) oluşturuldu: geometry_id=%d, part_id=%d, "
         "adet=%d, yeni_idler=%s",
@@ -743,6 +753,9 @@ def create_midsurface_for_part(
         "midsurface_count": len(midsurfaces),
         "midsurfaces": midsurfaces,
         "new_face_ids": new_face_ids,
+        # Ölçülen cidar kalınlıkları ve kabuk kesiti için önerilen değer.
+        "wall_thicknesses": wall_thicknesses,
+        "suggested_shell_thickness": suggested_thickness,
         # Geriye dönük: ilk çift (plaka gibi tek sonuçta UI mesajı için)
         "chosen_face_id_a": midsurfaces[0]["face_id_a"],
         "chosen_face_id_b": midsurfaces[0]["face_id_b"],
