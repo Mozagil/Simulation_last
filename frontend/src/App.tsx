@@ -346,6 +346,10 @@ function App() {
   /** Seçili mesh düğümlerinin GERÇEK CalculiX numaraları (preview'ın
    * node_ids alanından; dizi index'i DEĞİL). */
   const [meshNodePicks, setMeshNodePicks] = useState<number[]>([]);
+  /** 2. mertebe (kenar-ortası) düğümleri de göster. Varsayılan kapalı:
+   * tet10 mesh'te düğümlerin ~2/3'ü ara düğümdür, hepsi birden çizilince
+   * köşeler seçilemez hale gelir. */
+  const [showMidsideNodes, setShowMidsideNodes] = useState(false);
   /** Modal sonuçları tek sayfada ızgara olarak göster. */
   const [modalGridOpen, setModalGridOpen] = useState(false);
   /** Izgarada tek moda odak; null = hepsi. */
@@ -1519,6 +1523,9 @@ function App() {
 
   // Mesh seçim modları yalnız mesh üretilmiş VE görünürken anlamlıdır.
   const meshSelectionAvailable = meshPreview !== null && showMesh;
+  // 2. mertebe düğüm yalnız tet10 (3D) mesh'te vardır; 1. mertebe ve 2D
+  // kabukta liste boş gelir ve buton anlamsızlaşır.
+  const hasMidsideNodes = (meshPreview?.midside_node_indices?.length ?? 0) > 0;
   const allSelectedPartsHidden =
     resolvedPartIdsForHide.length > 0 &&
     resolvedPartIdsForHide.every((id) => hiddenParts.has(id));
@@ -3858,6 +3865,29 @@ function App() {
                   )}
                 </button>
               ))}
+              <button
+                type="button"
+                className={showMidsideNodes ? "active" : undefined}
+                disabled={!meshSelectionAvailable || !hasMidsideNodes}
+                onClick={() => setShowMidsideNodes((prev) => !prev)}
+                title={
+                  !hasMidsideNodes
+                    ? "2. mertebe düğüm yok (1. mertebe veya 2D mesh)"
+                    : showMidsideNodes
+                      ? "2. mertebe (kenar-ortası) düğümleri gizle"
+                      : "2. mertebe (kenar-ortası) düğümleri göster"
+                }
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1">
+                  <path d="M3 12 L8 4 L13 12 Z" />
+                  <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="13" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="8" cy="4" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="5.5" cy="8" r="1.1" />
+                  <circle cx="10.5" cy="8" r="1.1" />
+                  <circle cx="8" cy="12" r="1.1" />
+                </svg>
+              </button>
               <span className="viewer-ribbon-sep" />
               <button
                 type="button"
@@ -4100,6 +4130,7 @@ function App() {
                   viewerBackground={viewerBackground}
                   meshPicks={meshPicks}
                   meshSelectMode={meshSelectMode}
+                  showMidsideNodes={showMidsideNodes}
                   meshNodePicks={meshNodePicks}
                   onMeshNodePicks={(ids) => setMeshNodePicks(ids)}
                   meshGrow={meshGrow}

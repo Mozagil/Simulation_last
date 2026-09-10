@@ -398,6 +398,10 @@ export interface MeshPreviewData {
    * solver'daki karşılığı budur. Eski önizleme dosyalarında bulunmayabilir;
    * o durumda `index + 1` ile aynı sonucu verir. */
   node_ids?: number[];
+  /** Kenar-ortası (2. mertebe) düğümlerin `nodes` dizisindeki indeksleri.
+   * Köşe düğümleri geometrinin gerçek noktalarıdır; ara düğümler yalnız
+   * eleman mertebesinin sonucudur ve ayrı gösterilip gizlenebilir. */
+  midside_node_indices?: number[];
   /** Üçgen indeksleri [i0,i1,i2, ...] — shaded yüzey. */
   faces: number[];
   /** Kenar uç çiftleri [a,b, ...] — wireframe overlay. */
