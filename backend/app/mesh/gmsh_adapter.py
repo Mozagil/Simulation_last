@@ -1882,6 +1882,11 @@ class GmshMesherAdapter(MesherAdapter):
 
         return new_face_id
 
+    #: `create_midsurface_for_part` tarafından doldurulur — üretilen her
+    #: orta yüzeyin ölçülen cidar kalınlığı (mm). Kabuk kesiti (*SHELL
+    #: SECTION) için kullanılır.
+    last_wall_thicknesses: list[float] = []
+
     def create_midsurface_for_part(
         self, geom: GeometryHandle, part_id: int
     ) -> list[tuple[int, int, int]]:
@@ -1905,6 +1910,23 @@ class GmshMesherAdapter(MesherAdapter):
 
             wall_pairs = _find_thin_wall_pairs(planar_faces) if len(planar_faces) >= 2 else []
             wall_pairs = _filter_profile_wall_pairs(wall_pairs)
+
+            # ÖLÇÜLEN CİDAR KALINLIĞI — kabuk kesiti için.
+            #
+            # Midsurface üretirken cidar çiftinin normal doğrultusundaki
+            # mesafesi zaten hesaplanıyor; bu mesafe kalınlığın TA KENDİSİDİR.
+            # Eskiden hiçbir yere taşınmıyordu ve `shell_thickness` sessizce
+            # 3.0 varsayılanında kalıyordu. Gerçek bir testte doğrulandı:
+            # 10 mm'lik plaka 3 mm kabuk olarak çözülünce deplasman 37 kat
+            # (23.8mm yerine 873mm), gerilme 11 kat sapıyordu — çünkü
+            # delta ~ 1/t^3 ve sigma ~ 1/t^2.
+            #
+            # Dönüş tipini (3'lü tuple) bozmamak için örnek üzerinde
+            # taşınıyor; adapter her istekte yeniden kurulduğu için
+            # istekler arası sızma olmaz.
+            self.last_wall_thicknesses = [
+                float(_plane_separation(a, b)) for a, b in wall_pairs
+            ]
 
             volumes = gmsh.model.getEntities(dim=3)
             if part_id < len(volumes):
