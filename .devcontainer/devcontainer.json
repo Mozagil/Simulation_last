@@ -1,7 +1,21 @@
 {
   "name": "Simulation_last",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y calculix-ccx",
+
+  // Hazır image yerine kendi Dockerfile'ımız: sistem bağımlılıkları
+  // (CalculiX, gmsh'in libGLU vb. kütüphaneleri) image katmanına gömülür ve
+  // önbelleklenir. Eskiden bunlar postCreateCommand'daydı ve tek bir apt
+  // hatası hepsini birden atlıyordu.
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  // Proje bağımlılıkları image'a gömülemez (çalışma alanı ancak container
+  // oluşturulduktan sonra bağlanır), bu yüzden burada kuruluyor.
+  // `|| true` YOK: bir kurulum patlarsa sessizce devam etmek yerine
+  // Codespace kurulum log'unda görünsün.
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
   "forwardPorts": [8000, 5173, 5432],
   "portsAttributes": {
     "8000": { "label": "Backend (FastAPI)" },
