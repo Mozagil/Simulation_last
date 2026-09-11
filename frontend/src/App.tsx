@@ -2196,9 +2196,9 @@ function App() {
   // için yan panelli düzenden çok daha fazla alan gerekiyor.
   if (modalGridOpen && (resultsPreview?.modes?.length ?? 0) > 0 && resultsPreview) {
     const panels: ModalPanel[] = resultsPreview.modes!.map((m) => ({
-      label: `Mod ${m.index}${
-        m.frequency_hz != null ? ` · ${m.frequency_hz.toPrecision(5)} Hz` : ""
-      }`,
+      label: `Mod ${m.index}`,
+      sublabel:
+        m.frequency_hz != null ? `${m.frequency_hz.toPrecision(5)} Hz` : "f —",
       mode: m,
     }));
     return (
@@ -2216,9 +2216,9 @@ function App() {
           </button>
           <strong>Mod şekilleri ({panels.length})</strong>
           <span className="material-assign-hint">
-            Bir moda çift tıkla ya da alttaki etiketine bas — tek başına
-            görünür. Genlikler mod başına normalize edilmiştir; karşılaştırılan
-            şekil ve frekanstır, mutlak büyüklük değil.
+            Her bölme kendi kamerasına sahiptir; başlıktaki ⤢ ile tek moda
+            geçilir. Genlikler mod başına normalize edilmiştir —
+            karşılaştırılan şekil ve frekanstır, mutlak büyüklük değil.
           </span>
         </div>
         <ModalModeGrid

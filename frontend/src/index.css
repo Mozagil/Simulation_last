@@ -2015,7 +2015,7 @@ p {
   color: var(--on-accent);
 }
 
-/* --- Modal mod ızgarası (tüm modlar tek sayfada) --- */
+/* --- Modal mod izgarasi: dosenmis bolmeler --- */
 .modal-grid-page {
   position: fixed;
   inset: 0;
@@ -2029,18 +2029,12 @@ p {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border, #d9ddd6);
   flex: 0 0 auto;
 }
 
-/* Geri butonu içeriği kadar yer kaplasın — flex içinde varsayılan
-   olarak esneyip tüm satırı kaplıyordu. */
-.modal-grid-page-bar > button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
+.modal-grid-page-bar > button,
 .modal-grid-page-bar > strong {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -2059,79 +2053,17 @@ p {
   min-height: 0;
 }
 
-/* min-height:0 olmadan flex çocuğu küçülmez ve canvas taşar. */
-.modal-mode-grid-canvas {
-  flex: 1 1 auto;
-  min-height: 0;
-  position: relative;
-}
-
-.modal-mode-grid-canvas canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* --- Colorbar --- */
-.modal-mode-colorbar {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--border, #d9ddd6);
-  border-radius: 6px;
-  font-size: 11px;
-  pointer-events: none;
-}
-
-.modal-mode-colorbar-title {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.modal-mode-colorbar-body {
-  display: flex;
-  gap: 8px;
-  height: 150px;
-}
-
-.modal-mode-colorbar-scale {
-  width: 16px;
-  height: 100%;
-  border: 1px solid var(--border, #d9ddd6);
-  border-radius: 2px;
-}
-
-.modal-mode-colorbar-ticks {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-
-.modal-mode-colorbar-note {
-  opacity: 0.6;
-  font-style: italic;
-}
-
-/* --- Alt şerit: animasyon, genlik, mod etiketleri --- */
-.modal-mode-grid-legend {
+.modal-mode-grid-toolbar {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-top: 1px solid var(--border, #d9ddd6);
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, #d9ddd6);
+  font-size: 12px;
 }
 
-.modal-mode-grid-legend button {
+.modal-mode-grid-toolbar button {
   font-size: 12px;
   padding: 4px 10px;
   border: 1px solid var(--border, #d9ddd6);
@@ -2142,32 +2074,115 @@ p {
   white-space: nowrap;
 }
 
-.modal-mode-grid-legend button.active {
+.modal-mode-grid-toolbar button.active {
   background: var(--accent, #12a5b0);
   border-color: var(--accent, #12a5b0);
   color: #fff;
 }
 
-.modal-mode-grid-sep {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border, #d9ddd6);
-  margin: 0 6px;
+.modal-mode-grid-spacer {
+  flex: 1 1 auto;
+}
+
+.modal-mode-colorbar-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.modal-mode-colorbar-strip {
+  width: 140px;
+  height: 10px;
+  border: 1px solid var(--border, #d9ddd6);
+  border-radius: 2px;
 }
 
 .modal-mode-amp {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
   white-space: nowrap;
 }
 
 .modal-mode-amp input[type="range"] {
-  width: 110px;
+  width: 100px;
 }
 
 .modal-mode-amp span {
   font-variant-numeric: tabular-nums;
   min-width: 28px;
+}
+
+/* Bolmelerin kapsayicisi. Canvas buraya mutlak konumlanir; bolmeler
+   izgara hucreleridir ve canvas onlarin DOM dikdortgenlerine scissor ile
+   cizer. */
+.modal-mode-grid-panes {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  background: var(--border, #d9ddd6);
+}
+
+.modal-mode-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border, #c9cfc6);
+  background: var(--panel-bg, #fff);
+  overflow: hidden;
+}
+
+.modal-mode-pane-title {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef0ec;
+  border-bottom: 1px solid var(--border, #d9ddd6);
+  white-space: nowrap;
+}
+
+.modal-mode-pane-freq {
+  font-weight: 400;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-mode-pane-zoom {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.modal-mode-pane-zoom:hover {
+  opacity: 1;
+}
+
+/* Canvas'in cizecegi alan. Bos birakilir; icerigi WebGL doldurur.
+   OrbitControls bu div'e baglanir, o yuzden fare olaylarini almali. */
+.modal-mode-pane-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  cursor: grab;
+}
+
+.modal-mode-pane-body:active {
+  cursor: grabbing;
 }
