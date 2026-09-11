@@ -16,6 +16,7 @@ from app.api.geometry import router as geometry_router
 from app.api.health import router as health_router
 from app.api.components import router as components_router
 from app.api.materials import router as materials_router
+from app.api.dataset import router as dataset_router
 from app.api.solve import RUNS_DIR
 from app.api.solve import router as solve_router
 
@@ -53,6 +54,7 @@ app.include_router(geometry_router)
 app.include_router(materials_router)
 app.include_router(components_router)
 app.include_router(solve_router)
+app.include_router(dataset_router)
 
 # Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.
 Path(TESSELLATION_DIR).mkdir(parents=True, exist_ok=True)
