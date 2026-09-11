@@ -31,3 +31,6 @@ uploads/
 *.rad
 *.glb
 *.stl
+
+# Agent tarafindan uretilen yama arsivleri (repo'ya girmez)
+*.zip

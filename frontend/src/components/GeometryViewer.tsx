@@ -636,7 +636,17 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     group.position.copy(refs.modelCenter).multiplyScalar(-1);
 
     const maxDim = refs.maxDim || 1;
-    const sphereRadius = Math.max(maxDim * 0.012, 0.02);
+    const minDim = refs.minDim || maxDim;
+    // Sonuç nokta bulutu, CAD nokta işaretçileriyle AYNI ölçek kuralını
+    // kullanır. Eskiden yalnız `maxDim * 0.012` idi — yani EN UZUN kenara
+    // göre ölçek. 50x10x500 plakada bu 6mm yarıçap, 12mm çaplı küre demekti:
+    // parçanın 10mm'lik kalınlığından BÜYÜK. Kürelerin geometriyi yutması
+    // ("node node görünüyor") bu yüzdendi.
+    //
+    // Tabanı biraz daha büyük tutuluyor (0.012 vs CAD'deki 0.008): sonuç
+    // bulutu bir konturu temsil eder, tekil köşe işaretçisinden daha görünür
+    // olmalı. Tavan ve taban aynı fonksiyondan gelir.
+    const sphereRadius = computeVertexMarkerRadius(maxDim, minDim) * 1.5;
     const sphereGeom = new THREE.SphereGeometry(sphereRadius, 8, 8);
 
     for (let i = 0; i < preview.nodes.length; i++) {
