@@ -127,17 +127,40 @@ def export_dataset(
     out_path: Path,
     *,
     include_files: bool = True,
+    run_ids: list[int] | None = None,
+    geometry_id: int | None = None,
+    only_solved: bool = False,
 ) -> dict[str, Any]:
-    """Tüm analiz geçmişini ve ilgili dosyaları tek bir tar.gz'e yazar.
+    """Analiz geçmişini ve ilgili dosyaları tek bir tar.gz'e yazar.
 
     `include_files=False` yalnız satırları alır — hızlı bir metaveri
     yedeği için; surrogate eğitimi için YETERSİZDİR (alan verisi gitmez).
+
+    FİLTRELER (birlikte kullanılabilir):
+      * `run_ids` — yalnız verilen run'lar. Tek bir vakayı paylaşmak ya da
+        bir eğitim denemesi için alt küme ayırmak içindir.
+      * `geometry_id` — bir geometrinin tüm senaryoları. Aynı parçaya farklı
+        BC'lerle bakılan durumları bir arada taşımak için.
+      * `only_solved` — çözülmemiş run'ları dışarıda bırakır. Bunların
+        sonuç dosyası yoktur, arşivi büyütmekten başka işe yaramazlar.
+
+    Geometri, malzeme ve atamalar HER ZAMAN tamamıyla alınır: run'lar onlara
+    yabancı anahtarla bağlı ve eksik bir geometri içe aktarmada run'ı yetim
+    bırakır. Boyutları küçük olduğu için filtrelemeye değmez.
     """
     geometries = db.query(Geometry).order_by(Geometry.id).all()
     groups = db.query(PhysicalGroup).order_by(PhysicalGroup.id).all()
     materials = db.query(Material).order_by(Material.id).all()
     assignments = db.query(MaterialAssignment).order_by(MaterialAssignment.id).all()
-    runs = db.query(AnalysisRun).order_by(AnalysisRun.id).all()
+
+    run_q = db.query(AnalysisRun)
+    if run_ids:
+        run_q = run_q.filter(AnalysisRun.id.in_([int(r) for r in run_ids]))
+    if geometry_id is not None:
+        run_q = run_q.filter(AnalysisRun.geometry_id == int(geometry_id))
+    if only_solved:
+        run_q = run_q.filter(AnalysisRun.status == "solved")
+    runs = run_q.order_by(AnalysisRun.id).all()
 
     counts = {
         "geometries": len(geometries),
@@ -194,6 +217,13 @@ def export_dataset(
             "counts": counts,
             "includes_files": include_files,
             "copied_files": copied_files,
+            # Hangi filtreyle alındığı arşivde kalır: aylar sonra "bu arşiv
+            # neden eksik" sorusunun cevabı burada olsun.
+            "filters": {
+                "run_ids": list(run_ids) if run_ids else None,
+                "geometry_id": geometry_id,
+                "only_solved": only_solved,
+            },
         }
         (stage / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8"

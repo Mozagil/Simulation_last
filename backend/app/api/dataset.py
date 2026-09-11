@@ -29,17 +29,41 @@ router = APIRouter(prefix="/dataset", tags=["dataset"])
 @router.get("/export")
 def export_dataset_endpoint(
     include_files: bool = True,
+    run_ids: str | None = None,
+    geometry_id: int | None = None,
+    only_solved: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Tüm analiz geçmişini + çözüm dosyalarını tek arşiv olarak indirir.
+    """Analiz geçmişini + çözüm dosyalarını tek arşiv olarak indirir.
 
     `include_files=false` yalnız metaveri alır — hızlıdır ama surrogate
     eğitimi için yetersizdir, `.frd` alan verisi gitmez.
+
+    Filtreler: `run_ids` (virgülle ayrılmış), `geometry_id`, `only_solved`.
+    Hiçbiri verilmezse tüm geçmiş alınır.
     """
+    parsed_ids: list[int] | None = None
+    if run_ids:
+        try:
+            parsed_ids = [int(x) for x in run_ids.split(",") if x.strip()]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="run_ids virgülle ayrılmış tam sayı olmalı."
+            ) from exc
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    out = Path(tempfile.gettempdir()) / f"dataset-{stamp}.tar.gz"
+    suffix = "-secili" if parsed_ids else ("-cozulmus" if only_solved else "")
+    out = Path(tempfile.gettempdir()) / f"dataset{suffix}-{stamp}.tar.gz"
     try:
-        manifest = export_dataset(db, UPLOAD_DIR, out, include_files=include_files)
+        manifest = export_dataset(
+            db,
+            UPLOAD_DIR,
+            out,
+            include_files=include_files,
+            run_ids=parsed_ids,
+            geometry_id=geometry_id,
+            only_solved=only_solved,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Veri seti dışa aktarılamadı")
         raise HTTPException(status_code=500, detail=f"Dışa aktarma başarısız: {exc}") from exc

@@ -50,6 +50,7 @@ import {
 } from "./api/materials";
 import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
+import DatasetPanel from "./components/DatasetPanel";
 import ModalModeGrid, { type ModalPanel } from "./components/ModalModeGrid";
 import {
   FrequencyLinePlot,
@@ -2629,6 +2630,8 @@ function App() {
           <span className="new-case-hint">Önceki analiz Geçmiş'te kalır; Sil ile kaldırabilirsiniz.</span>
         </div>
       )}
+
+      <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
 
       <div className="panel history-panel">
         <span className="eyebrow">Faz 0 · Geçmiş</span>
