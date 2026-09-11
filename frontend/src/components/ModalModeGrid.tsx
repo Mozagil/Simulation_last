@@ -4,9 +4,9 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { ModalModePreview } from "../api/geometry";
 
 export interface ModalPanel {
-  /** Hücre başlığı — ör. "Mod 1" ya da "A · Mod 1". */
+  /** Bölme başlığı — ör. "Mod 1" ya da "A · Mod 1". */
   label: string;
-  /** Etiketin ikinci satırı — genelde frekans. */
+  /** Başlığın sağındaki ikincil bilgi — genelde frekans. */
   sublabel?: string;
   mode: ModalModePreview;
 }
@@ -15,8 +15,9 @@ interface ModalModeGridProps {
   nodes: number[][];
   faces: number[];
   panels: ModalPanel[];
-  /** Sütun sayısı. Verilmezse mod sayısına göre kareye yakın seçilir. */
+  /** Sütun sayısı. Verilmezse mod sayısına göre seçilir. */
   columns?: number;
+  /** Tek bölmeye odak; null = tüm ızgara. */
   focusedIndex: number | null;
   onFocusChange: (index: number | null) => void;
   background: "white" | "black";
@@ -31,59 +32,40 @@ function jetColor(t: number): THREE.Color {
   return new THREE.Color(r, g, b);
 }
 
-/** Mod etiketini canvas'a çizip Sprite dokusu olarak döndürür — etiket
- * 3B'de hücresiyle birlikte hareket etsin diye. HTML overlay kullanmak,
- * kamera her döndüğünde ekran koordinatı yeniden hesaplamayı gerektirirdi. */
-function makeLabelSprite(text: string, sub: string, dark: boolean): THREE.Sprite {
-  const cvs = document.createElement("canvas");
-  cvs.width = 512;
-  cvs.height = 128;
-  const ctx = cvs.getContext("2d")!;
-  ctx.clearRect(0, 0, cvs.width, cvs.height);
-  ctx.textAlign = "center";
-  ctx.fillStyle = dark ? "#f2f4f0" : "#14181a";
-  ctx.font = "bold 44px system-ui, sans-serif";
-  ctx.fillText(text, 256, 48);
-  if (sub) {
-    ctx.font = "34px system-ui, sans-serif";
-    ctx.fillStyle = dark ? "#9fd6dc" : "#0d7f8a";
-    ctx.fillText(sub, 256, 96);
-  }
-  const tex = new THREE.CanvasTexture(cvs);
-  tex.needsUpdate = true;
-  const mat = new THREE.SpriteMaterial({
-    map: tex,
-    transparent: true,
-    depthTest: false,
-  });
-  return new THREE.Sprite(mat);
-}
-
-interface PanelRuntime {
-  group: THREE.Group;
+interface PaneRuntime {
+  el: HTMLDivElement;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls;
   /** Deforme EDİLMEMİŞ, merkezlenmiş üçgen-çorbası konumları. */
   base: Float32Array;
-  /** Her üçgen köşesi için yer değiştirme vektörü × ölçek. */
+  /** Her köşe için yer değiştirme vektörü × ölçek. */
   delta: Float32Array;
   posAttr: THREE.BufferAttribute;
   geom: THREE.BufferGeometry;
 }
 
 /**
- * N doğal modu aynı anda gösterir.
+ * N doğal modu DÖŞENMİŞ BÖLMELERDE gösterir.
  *
- * TEK CANVAS: her mod için ayrı <canvas> açmak tarayıcının eşzamanlı WebGL
- * context sınırına (yaygın olarak 8–16) takılır; 2 analiz karşılaştırmasındaki
- * 12 panel bunu aşar ve en eski context'ler sessizce kaybolur. Bu yüzden tek
- * sahnede N kopya bir ızgaraya diziliyor.
+ * Her mod kendi çerçevesi, kendi başlığı ve KENDİ KAMERASI olan ayrı bir
+ * bölmede durur — klasik CAE post-processor döşeme düzeni gibi. Bir bölmeyi
+ * döndürmek diğerlerini etkilemez; "Kameraları eşle" açıkken hepsi birlikte
+ * döner.
  *
- * HÜCRE BOYUTU: ızgara adımı DEFORME OLMUŞ sınırlara göre hesaplanır.
- * Deforme edilmemiş boyuta göre hesaplamak, genliğin hücreden taşmasına ve
- * komşu modların üst üste binmesine yol açar — ilk sürümde tam olarak bu
- * oldu: 500mm'lik kirişte hücre yüksekliği 80mm iken genlik ±90mm idi.
+ * TEK WebGL CONTEXT: her bölme için ayrı <canvas> açmak tarayıcının
+ * eşzamanlı context sınırına (yaygın olarak 8–16) takılır ve iki analizin
+ * karşılaştırmasındaki 12 bölme bunu aşar — en eski context'ler sessizce
+ * kaybolur, bölmeler siyah kalır. Bunun yerine TEK renderer, `scissor test`
+ * ile her bölmenin DOM dikdörtgenine ayrı ayrı çizer. Bölme başına bağımsız
+ * sahne ve kamera vardır; paylaşılan tek şey context'tir.
+ *
+ * ÖNCEKİ TASARIM (tek sahnede yan yana kopyalar) BIRAKILDI: hücre adımını
+ * elle hesaplamak gerekiyordu, deformasyon genliği hücreyi aşınca modlar
+ * üst üste biniyordu ve bölme başına ayrı kamera vermek mümkün değildi.
  *
  * GENLİK: mod şekilleri özvektördür, mutlak genlikleri fiziksel anlam
- * taşımaz (çözücü keyfi normalize eder). Her panel KENDİ maksimumuna
+ * taşımaz (çözücü keyfi normalize eder). Her bölme KENDİ maksimumuna
  * normalize edilir — karşılaştırılan şekil ve frekanstır, büyüklük değil.
  */
 export default function ModalModeGrid({
@@ -95,44 +77,41 @@ export default function ModalModeGrid({
   onFocusChange,
   background,
 }: ModalModeGridProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const runtimeRef = useRef<PanelRuntime[]>([]);
-  const onFocusRef = useRef(onFocusChange);
-  onFocusRef.current = onFocusChange;
+  const canvasHolderRef = useRef<HTMLDivElement | null>(null);
+  const paneElsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const runtimeRef = useRef<PaneRuntime[]>([]);
 
   const [animating, setAnimating] = useState(true);
-  const [amplitude, setAmplitude] = useState(0.06);
+  const [amplitude, setAmplitude] = useState(0.08);
+  const [syncCameras, setSyncCameras] = useState(true);
   const animatingRef = useRef(animating);
   animatingRef.current = animating;
+  const syncRef = useRef(syncCameras);
+  syncRef.current = syncCameras;
+
+  const visible = focusedIndex === null ? panels : [panels[focusedIndex]];
+  const cols =
+    focusedIndex !== null
+      ? 1
+      : Math.max(
+          1,
+          columns ??
+            (panels.length <= 3 ? panels.length : Math.ceil(panels.length / 2)),
+        );
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || nodes.length === 0 || panels.length === 0) return;
+    const holder = canvasHolderRef.current;
+    if (!holder || nodes.length === 0 || visible.length === 0) return;
     const dark = background === "black";
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(dark ? "#0d0f0e" : "#eef0ec");
-    sceneRef.current = scene;
-
-    const width = container.clientWidth || 800;
-    const height = container.clientHeight || 600;
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500000);
-    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    dirLight.position.set(1, 1.5, 1);
-    scene.add(dirLight);
+    renderer.setScissorTest(true);
+    renderer.domElement.style.position = "absolute";
+    renderer.domElement.style.inset = "0";
+    // Fare olayları bölme div'lerine ulaşsın: OrbitControls onlara bağlı.
+    renderer.domElement.style.pointerEvents = "none";
+    holder.appendChild(renderer.domElement);
 
     const bbox = new THREE.Box3();
     for (const n of nodes) bbox.expandByPoint(new THREE.Vector3(n[0], n[1], n[2]));
@@ -142,26 +121,20 @@ export default function ModalModeGrid({
     bbox.getCenter(center);
     const modelSpan = Math.max(size.x, size.y, size.z) || 1;
     const maxAmp = amplitude * modelSpan;
-
-    // Hücre adımı deforme sınırları kapsar: genlik her yöne ±maxAmp
-    // taşabilir, üstüne nefes payı.
-    const cellW = (size.x + 2 * maxAmp) * 1.2;
-    const cellH = (Math.max(size.y, size.z) + 2 * maxAmp) * 1.35;
-
-    const cols = Math.max(1, columns ?? Math.ceil(Math.sqrt(panels.length)));
-    const rows = Math.ceil(panels.length / cols);
     const triCount = Math.floor(faces.length / 3);
-    const runtimes: PanelRuntime[] = [];
 
-    panels.forEach((panel, pi) => {
-      const g = new THREE.Group();
-      const col = pi % cols;
-      const row = Math.floor(pi / cols);
-      g.position.set(
-        (col - (cols - 1) / 2) * cellW,
-        -(row - (rows - 1) / 2) * cellH,
-        0,
-      );
+    const runtimes: PaneRuntime[] = [];
+
+    visible.forEach((panel, pi) => {
+      const el = paneElsRef.current[pi];
+      if (!el) return;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(dark ? "#101312" : "#f4f6f2");
+      scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+      const dl = new THREE.DirectionalLight(0xffffff, 0.5);
+      dl.position.set(1, 1.5, 1);
+      scene.add(dl);
 
       const vec = panel.mode.displacement_vectors;
       const mag = panel.mode.displacement_magnitude;
@@ -202,91 +175,72 @@ export default function ModalModeGrid({
       geom.setAttribute("position", posAttr);
       geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
       geom.computeVertexNormals();
-      const mat = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        metalness: 0.05,
-        roughness: 0.6,
-        side: THREE.DoubleSide,
-        flatShading: true,
-      });
-      g.add(new THREE.Mesh(geom, mat));
-
-      // Hücre çerçevesi — modlar görsel olarak ayrışsın.
-      const frame = new THREE.LineSegments(
-        new THREE.EdgesGeometry(
-          new THREE.PlaneGeometry(cellW * 0.97, cellH * 0.94),
+      scene.add(
+        new THREE.Mesh(
+          geom,
+          new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            metalness: 0.05,
+            roughness: 0.6,
+            side: THREE.DoubleSide,
+            flatShading: true,
+          }),
         ),
-        new THREE.LineBasicMaterial({ color: dark ? "#3a4441" : "#c9cfc6" }),
       );
-      g.add(frame);
 
-      const sprite = makeLabelSprite(panel.label, panel.sublabel ?? "", dark);
-      sprite.position.set(0, cellH * 0.4, 0);
-      sprite.scale.set(cellW * 0.42, cellW * 0.105, 1);
-      g.add(sprite);
+      const camera = new THREE.PerspectiveCamera(
+        45,
+        1,
+        modelSpan / 500,
+        modelSpan * 60,
+      );
+      const d = modelSpan * 1.5;
+      camera.position.set(d * 0.35, d * 0.45, d);
+      camera.lookAt(0, 0, 0);
 
-      g.userData.panelIndex = pi;
-      scene.add(g);
-      runtimes.push({ group: g, base, delta, posAttr, geom });
+      const controls = new OrbitControls(camera, el);
+      controls.enableDamping = true;
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      runtimes.push({ el, scene, camera, controls, base, delta, posAttr, geom });
     });
     runtimeRef.current = runtimes;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controlsRef.current = controls;
-
-    function fitCamera(index: number | null) {
-      const cam = cameraRef.current;
-      const ctl = controlsRef.current;
-      if (!cam || !ctl) return;
-      if (index !== null && runtimes[index]) {
-        const t = runtimes[index].group.position;
-        ctl.target.set(t.x, t.y, t.z);
-        const d = Math.max(cellW, cellH) * 1.25;
-        cam.position.set(t.x, t.y + d * 0.35, t.z + d);
-      } else {
-        ctl.target.set(0, 0, 0);
-        const span = Math.max(cols * cellW, rows * cellH);
-        cam.position.set(0, span * 0.18, span * 1.05);
-      }
-      cam.updateProjectionMatrix();
-      ctl.update();
-    }
-    fitCamera(focusedIndex);
-
-    const raycaster = new THREE.Raycaster();
-    function handleDoubleClick(ev: MouseEvent) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
-        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(
-        runtimes.map((r) => r.group),
-        true,
-      );
-      if (hits.length === 0) {
-        onFocusRef.current(null);
-        return;
-      }
-      let obj: THREE.Object3D | null = hits[0].object;
-      while (obj && obj.userData.panelIndex === undefined) obj = obj.parent;
-      const idx = obj?.userData.panelIndex;
-      onFocusRef.current(typeof idx === "number" ? idx : null);
-    }
-    renderer.domElement.addEventListener("dblclick", handleDoubleClick);
+    // Kamera eşleme: bir bölme oynayınca diğerlerine kopyala.
+    const detach: (() => void)[] = [];
+    runtimes.forEach((rt, i) => {
+      const onChange = () => {
+        if (!syncRef.current) return;
+        for (let j = 0; j < runtimes.length; j++) {
+          if (j === i) continue;
+          const o = runtimes[j];
+          o.camera.position.copy(rt.camera.position);
+          o.camera.quaternion.copy(rt.camera.quaternion);
+          o.controls.target.copy(rt.controls.target);
+        }
+      };
+      rt.controls.addEventListener("change", onChange);
+      detach.push(() => rt.controls.removeEventListener("change", onChange));
+    });
 
     let raf = 0;
     const t0 = performance.now();
-    const animate = () => {
-      raf = requestAnimationFrame(animate);
-      if (animatingRef.current) {
-        // Tüm paneller AYNI fazda salınır: gerçek frekansları kullanmak
-        // yüksek modları gözle takip edilemez hale getirirdi (mod 6,
-        // mod 1'den 30 kat hızlı). Amaç şekli okutmak.
-        const s = Math.sin(((performance.now() - t0) / 1000) * 2 * Math.PI * 0.6);
-        for (const rt of runtimes) {
+    const render = () => {
+      raf = requestAnimationFrame(render);
+      const holderRect = holder.getBoundingClientRect();
+      if (holderRect.width < 1 || holderRect.height < 1) return;
+      renderer.setSize(holderRect.width, holderRect.height, false);
+
+      // Salınım: tüm bölmeler AYNI fazda. Gerçek frekansları kullanmak
+      // yüksek modları gözle takip edilemez hale getirirdi (mod 6, mod 1'den
+      // ~30 kat hızlı); amaç şekli okutmak.
+      const s = animatingRef.current
+        ? Math.sin(((performance.now() - t0) / 1000) * 2 * Math.PI * 0.55)
+        : 1;
+
+      for (const rt of runtimes) {
+        if (animatingRef.current) {
           const arr = rt.posAttr.array as Float32Array;
           for (let i = 0; i < arr.length; i++) {
             arr[i] = rt.base[i] + rt.delta[i] * s;
@@ -294,69 +248,44 @@ export default function ModalModeGrid({
           rt.posAttr.needsUpdate = true;
           rt.geom.computeVertexNormals();
         }
-      }
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
+        rt.controls.update();
 
-    const handleResize = () => {
-      const w = container.clientWidth || 800;
-      const h = container.clientHeight || 600;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+        const r = rt.el.getBoundingClientRect();
+        const left = r.left - holderRect.left;
+        // WebGL viewport'unun kökeni SOL-ALT; DOM'unki sol-üst.
+        const bottom = holderRect.bottom - r.bottom;
+        const w = Math.max(1, r.width);
+        const h = Math.max(1, r.height);
+        renderer.setViewport(left, bottom, w, h);
+        renderer.setScissor(left, bottom, w, h);
+        rt.camera.aspect = w / h;
+        rt.camera.updateProjectionMatrix();
+        renderer.render(rt.scene, rt.camera);
+      }
     };
-    window.addEventListener("resize", handleResize);
+    render();
 
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", handleResize);
-      renderer.domElement.removeEventListener("dblclick", handleDoubleClick);
-      controls.dispose();
-      scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        const mm = m.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(mm)) mm.forEach((x) => x.dispose());
-        else mm?.dispose();
-      });
-      renderer.dispose();
-      if (renderer.domElement.parentNode === container) {
-        container.removeChild(renderer.domElement);
+      for (const fn of detach) fn();
+      for (const rt of runtimes) {
+        rt.controls.dispose();
+        rt.scene.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          const mm = m.material as THREE.Material | THREE.Material[] | undefined;
+          if (Array.isArray(mm)) mm.forEach((x) => x.dispose());
+          else mm?.dispose();
+        });
       }
-      rendererRef.current = null;
+      renderer.dispose();
+      if (renderer.domElement.parentNode === holder) {
+        holder.removeChild(renderer.domElement);
+      }
       runtimeRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, faces, panels, columns, background, amplitude]);
-
-  // Odak değişimi sahneyi yeniden kurmaz, yalnız kamerayı taşır.
-  useEffect(() => {
-    const cam = cameraRef.current;
-    const ctl = controlsRef.current;
-    const rts = runtimeRef.current;
-    if (!cam || !ctl || rts.length === 0) return;
-    if (focusedIndex !== null && rts[focusedIndex]) {
-      const t = rts[focusedIndex].group.position;
-      const box = new THREE.Box3().setFromObject(rts[focusedIndex].group);
-      const s = new THREE.Vector3();
-      box.getSize(s);
-      const d = (Math.max(s.x, s.y, s.z) || 1) * 1.3;
-      ctl.target.set(t.x, t.y, t.z);
-      cam.position.set(t.x, t.y + d * 0.3, t.z + d);
-    } else {
-      const all = new THREE.Box3();
-      for (const r of rts) all.expandByObject(r.group);
-      const s = new THREE.Vector3();
-      all.getSize(s);
-      const span = Math.max(s.x, s.y) || 1;
-      ctl.target.set(0, 0, 0);
-      cam.position.set(0, span * 0.18, span * 1.05);
-    }
-    cam.updateProjectionMatrix();
-    ctl.update();
-  }, [focusedIndex]);
+  }, [nodes, faces, panels, columns, background, amplitude, focusedIndex]);
 
   const jetStops = Array.from({ length: 11 }, (_, i) => {
     const c = jetColor(i / 10);
@@ -367,27 +296,7 @@ export default function ModalModeGrid({
 
   return (
     <div className="modal-mode-grid">
-      <div className="modal-mode-grid-canvas" ref={containerRef}>
-        <div className="modal-mode-colorbar">
-          <span className="modal-mode-colorbar-title">|u| / |u|max</span>
-          <div className="modal-mode-colorbar-body">
-            <div
-              className="modal-mode-colorbar-scale"
-              style={{ background: `linear-gradient(to top, ${jetStops})` }}
-            />
-            <div className="modal-mode-colorbar-ticks">
-              <span>1.00</span>
-              <span>0.75</span>
-              <span>0.50</span>
-              <span>0.25</span>
-              <span>0.00</span>
-            </div>
-          </div>
-          <span className="modal-mode-colorbar-note">mod başına normalize</span>
-        </div>
-      </div>
-
-      <div className="modal-mode-grid-legend">
+      <div className="modal-mode-grid-toolbar">
         <button
           type="button"
           className={animating ? "active" : undefined}
@@ -395,36 +304,73 @@ export default function ModalModeGrid({
         >
           {animating ? "⏸ Durdur" : "▶ Animasyon"}
         </button>
+        <button
+          type="button"
+          className={syncCameras ? "active" : undefined}
+          onClick={() => setSyncCameras((p) => !p)}
+          title="Bir bölmeyi döndürünce hepsi birlikte dönsün"
+        >
+          Kameraları eşle
+        </button>
         <label className="modal-mode-amp">
           Genlik
           <input
             type="range"
             min={0.01}
-            max={0.15}
+            max={0.2}
             step={0.01}
             value={amplitude}
             onChange={(e) => setAmplitude(parseFloat(e.target.value))}
           />
           <span>{(amplitude * 100).toFixed(0)}%</span>
         </label>
-        <span className="modal-mode-grid-sep" />
-        {panels.map((p, i) => (
-          <button
-            key={`panel-${i}`}
-            type="button"
-            className={focusedIndex === i ? "active" : undefined}
-            onClick={() => onFocusChange(focusedIndex === i ? null : i)}
-            title={`${p.label} ${p.sublabel ?? ""} — tek başına göster`}
-          >
-            {p.label}
-            {p.sublabel ? ` · ${p.sublabel}` : ""}
-          </button>
-        ))}
         {focusedIndex !== null && (
           <button type="button" onClick={() => onFocusChange(null)}>
             ← Tüm modlar
           </button>
         )}
+        <span className="modal-mode-grid-spacer" />
+        <div className="modal-mode-colorbar-inline">
+          <span>|u| / |u|max</span>
+          <div
+            className="modal-mode-colorbar-strip"
+            style={{ background: `linear-gradient(to right, ${jetStops})` }}
+          />
+          <span>mod başına normalize</span>
+        </div>
+      </div>
+
+      <div
+        className="modal-mode-grid-panes"
+        ref={canvasHolderRef}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {visible.map((p, i) => (
+          <div className="modal-mode-pane" key={`pane-${focusedIndex ?? "all"}-${i}`}>
+            <div className="modal-mode-pane-title">
+              <span>{p.label}</span>
+              {p.sublabel && (
+                <span className="modal-mode-pane-freq">{p.sublabel}</span>
+              )}
+              <button
+                type="button"
+                className="modal-mode-pane-zoom"
+                title={
+                  focusedIndex === null ? "Tek başına göster" : "Tüm modlara dön"
+                }
+                onClick={() => onFocusChange(focusedIndex === null ? i : null)}
+              >
+                {focusedIndex === null ? "⤢" : "⤡"}
+              </button>
+            </div>
+            <div
+              className="modal-mode-pane-body"
+              ref={(el) => {
+                paneElsRef.current[i] = el;
+              }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
