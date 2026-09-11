@@ -3,7 +3,7 @@
 Fazlar sırayla ilerler. Bir fazdan diğerine geçmeden önce agent kullanıcıdan onay ister.
 Şu anki faz `CLAUDE.md` içinde "Mevcut faz" başlığında belirtilir — o dosya güncel kaynak.
 
-## Faz 0 — Durability pilotu (CalculiX + Gmsh) — ŞU AN BURADAYIZ
+## Faz 0 — Durability pilotu (CalculiX + Gmsh) — TAMAMLANDI
 
 Hedef: Mimarinin tamamının (geometri import → mesh → backend → solver → post-process →
 db) tamamen açık kaynak yığınla, hiçbir ticari CAE yazılımı/lisansı olmadan uçtan uca
@@ -152,6 +152,251 @@ netleştikten sonra detaylandırılacak — şimdiden hepsini yazmıyoruz çünk
 öğrenilecekler (örn. hangi adımın daha da bölünmesi gerektiği) sonraki fazların adım
 boyutunu da etkileyecek.
 
+## Faz 0.4 — Parametrik geometri kütüphanesi
+
+Ön koşul: Faz 0 tamamlanmış olmalı.
+
+**Bu faz neden var ve neden Faz 0.5'ten ÖNCE:** Faz 0.5'teki DOE/batch runner parametre
+uzayını tararken yüzlerce geometri üretmek zorunda. Her geometri elle STEP yüklemeyi
+gerektirdiği sürece parametrik tarama teknik olarak mümkün değil. Kütüphane, DOE'nin
+ön koşuludur — kolaylık özelliği değil.
+
+İkinci fayda: bu şablonların çoğu mukavemet derslerinin klasik örnekleri, yani
+**kapalı form çözümleri var**. Analitik referans şablonla birlikte saklanırsa her
+üretilen run otomatik olarak doğrulanır.
+
+### Mimari kararlar
+
+**İsimlendirilmiş bölgeler ZORUNLU.** Şablon yalnız geometri değil, yüzey/kenar/nokta
+etiketlerini de üretir (`ankastre_uc`, `yuk_yuzeyi`, `delik_cidari`, `simetri_duzlemi`).
+
+Gerekçe: gmsh yüzey etiketlerini geometriye göre numaralandırır. L=300 ile L=700
+arasında "yüzey 3" farklı bir yüzeye denk gelebilir. İsimlendirme olmadan batch runner
+BC'leri parametre değiştikçe YANLIŞ yere uygular ve bunu hata vermeden yapar — tüm veri
+seti sessizce bozulur. (Aynı sınıftan bir hata Faz 0'da düğüm seviyesinde yaşandı:
+CAD vertex id'si mesh düğüm numarası sanılıyordu.)
+
+Bu etiketler `PhysicalGroup` tablosunda zaten var olan yapıyla saklanır.
+
+**Geometri gmsh OCC ile üretilir, dış CAD çekirdeği eklenmez.** Kutu, silindir, boolean
+işlemler ve fillet gmsh'in OpenCASCADE arayüzünde mevcut. Yeni bağımlılık gerekmez;
+Faz 0'da STEP okumak için kullanılan aynı modül.
+
+**Şablon = parametre şeması + kurucu fonksiyon + analitik referans (varsa) + etiketler.**
+Veri olarak tanımlanır, koda gömülmez; böylece yeni şablon eklemek tek bir dosya
+eklemekten ibaret olur ve frontend formu şemadan otomatik üretilir.
+
+**STEP çıktısı indirilebilir olmalı.** Kullanıcı şablonu kendi CAD programında
+açabilmeli — bu, üretilen geometrinin doğruluğunu bağımsız olarak kontrol etmenin
+tek pratik yolu.
+
+### Şablon listesi
+
+Öncelik sırasına göre. İlk gruptakiler hem analitik çözümü olan hem de surrogate için
+ilginç vakalar.
+
+**Grup 1 — analitik çözümü olan temel vakalar**
+- [ ] Ankastre kiriş, dikdörtgen kesit (L, W, T) — Faz 0'da doğrulandı
+- [ ] Basit mesnetli kiriş (orta noktadan ve yayılı yük)
+- [ ] Delikli plaka (W, H, T, d) — gerilme yığılması, `Kt ≈ 3` (sonsuz plaka limiti)
+- [ ] Çekme deneyi numunesi (dogbone, ISO 6892 / ASTM E8 oranları)
+- [ ] İçten basınçlı kalın cidarlı boru (Lamé çözümü)
+- [ ] Burulmaya maruz mil (dairesel kesit, `τ = Tr/J`)
+
+**Grup 2 — profil kesitleri**
+- [ ] I-kesit kiriş (h, b, tw, tf)
+- [ ] Kutu profil / dikdörtgen tüp
+- [ ] Dairesel tüp
+- [ ] L-köşebent
+
+**Grup 3 — makine elemanları**
+- [ ] T-braket (kaburgalı ve kaburgasız)
+- [ ] L-braket, delikli bağlantı
+- [ ] Flanş (cıvata delikli)
+- [ ] Kademeli mil (çap geçişinde gerilme yığılması, fillet yarıçapı parametre)
+
+**Grup 4 — çentikli/kritik vakalar**
+- [ ] Çentikli çubuk (U ve V çentik)
+- [ ] Kama kanallı mil
+
+Grup 1 ve 4 surrogate için özellikle değerli: gerilme yığılması olan vakalar,
+alan modelinin gerçekten öğrenip öğrenmediğini ayırt eden yerlerdir. Düzgün bir
+kirişte her model iyi görünür.
+
+### Adımlar
+
+**0.4.1 — Şablon altyapısı**
+- [ ] Şablon kayıt mekanizması (parametre şeması, kurucu, etiketler, analitik referans)
+- [ ] gmsh OCC ile STEP üretimi ve mevcut `Geometry` kaydına bağlama
+- [ ] `PhysicalGroup` ile isimlendirilmiş bölgelerin kaydı
+- [ ] Parametre doğrulama (negatif/dejenere değerler, `d < W` gibi geometrik kısıtlar)
+
+**0.4.2 — İlk şablon uçtan uca: ankastre kiriş**
+- [ ] Tek şablonla tüm akış: üret → mesh → BC (isimlendirilmiş bölgeden) → çöz
+- [ ] Sonuç Faz 0'daki doğrulanmış değerlerle eşleşmeli (23.92 mm / 330.7 MPa)
+- [ ] Gerekçe: altyapının doğruluğunu bilinen bir cevapla kilitler
+
+**0.4.3 — API**
+- [ ] `GET /templates` — şablon listesi ve parametre şemaları
+- [ ] `POST /templates/{id}/create` — parametrelerle geometri üretimi
+- [ ] `GET /geometry/{id}/step` — üretilen STEP'in indirilmesi
+
+**0.4.4 — Frontend**
+- [ ] Şablon seçici (görsel önizleme/ikon ile)
+- [ ] Parametre formu — şemadan otomatik üretilir
+- [ ] Üretilen geometrinin mevcut 3B viewer'da gösterimi
+- [ ] "STEP indir" butonu
+
+**0.4.5 — Analitik referans**
+- [ ] Şablona bağlı kapalı form çözüm fonksiyonu
+- [ ] Çözüm sonrası FEA ile analitik sonucun karşılaştırılması ve sapmanın gösterilmesi
+- [ ] Sapma eşiği aşılırsa uyarı — mesh yetersizliğini ya da BC hatasını erken yakalar
+
+**0.4.6 — Grup 1'in tamamlanması**
+- [ ] Kalan Grup 1 şablonları, her biri analitik referansıyla
+- [ ] Her şablon için regresyon testi (parametre → beklenen sonuç aralığı)
+
+### Faz 0.5 ile ilişkisi
+
+DOE (0.5.4) doğrudan bu kütüphaneyi kullanır: parametre uzayı şablonun kendi
+şemasından gelir, BC'ler isimlendirilmiş bölgelere uygulanır, analitik referans
+her run'ı otomatik doğrular. Kütüphane olmadan 0.5.4 yazılamaz.
+
+### Çıkış kriteri
+
+Kullanıcı hiçbir dosya yüklemeden, arayüzden bir şablon seçip parametrelerini girerek
+geometri üretebiliyor; üretilen geometrinin isimlendirilmiş bölgelerine BC
+uygulanabiliyor; sonuç analitik referansla karşılaştırılıyor; STEP indirilebiliyor.
+
+## Faz 0.5 — Surrogate veri altyapısı ve alan modeli (durability)
+
+Ön koşul: Faz 0 tamamlanmış ve sayısal olarak doğrulanmış olmalı; Faz 0.4
+(parametrik geometri kütüphanesi) en az Grup 1 şablonlarıyla hazır olmalı —
+DOE parametre uzayını şablonlardan alır, elle STEP yüklemekle tarama yapılamaz.
+
+**Bu faz neden var:** Faz 4 surrogate'i "birkaç yüz sonuç birikmiş olmalı" ön koşuluyla
+başlıyor ama o sonuçları üretecek mekanizmayı kendi listesinin ilk maddesi olarak
+tanımlıyor — liste kendi ön koşuluyla döngüye giriyor. Ayrıca Faz 4'ün orijinal hedefi
+(Random Forest + skaler metrikler) bu projenin amacını karşılamıyor: amaç tam bir FEA
+aracı gibi davranmak, yani **alan çıktısı** (3B kontur, deformasyon animasyonu) üretmek.
+Tek bir skaler maksimum değerden kontur çizilemez.
+
+Bu faz veri üretim altyapısını kurar ve durability için alan surrogate'ini eğitir.
+Faz 1/2/3 solverları eklendikçe aynı altyapı yeniden kullanılır.
+
+### Mimari kararlar (değiştirilmeden önce tartışılmalı)
+
+**Eleman tipi SABİT, eleman boyutu PARAMETRE.** 3D'de tet10, 2D'de quad — ANSYS'in
+varsayılanlarıyla aynı (SOLID187 / shell). Eleman boyutu bilinçli olarak taranır, çünkü
+mesh etkisini çalışmak bu projenin hedeflerinden biri. Sonuç: düğüm sayısı run'dan
+run'a DEĞİŞİR.
+
+**Değişken düğüm sayısı ⇒ mesh graf olarak işlenir (GNN / neural operator).**
+PCA/POD alternatifi ELENDİ: sabit boyutlu vektör gerektirir, yani sabit topoloji.
+Geometri ya da eleman boyutu değiştiği anda uygulanamaz. GNN'de mesh zaten graftır;
+düğüm sayısı ve BC yerleşimi serbestçe değişebilir.
+
+  * Düğüm girdileri: koordinat (x,y,z), BC bayrakları (sabit mi — kabukta 1..6 / solidde
+    1..3, üzerinde yük var mı, yük bileşenleri), malzeme (E, ν, ρ), kabuksa kalınlık
+  * Düğüm çıktıları: deplasman vektörü (u,v,w) ve von Mises
+  * Skaler metrikler (maks. deplasman/gerilme) alandan TÜREVDİR, ayrıca modellenmez
+
+**Depolama üç katmanlı.** `.inp` SAKLANMAZ — veritabanındaki `bcs`, `element_size`,
+`element_scheme`, `materials_snapshot` alanlarından birebir yeniden üretilebilir.
+`.frd` üretilemez, o çözümün kendisidir.
+
+| Katman | Format | Amaç |
+|---|---|---|
+| Görselleştirme | preview JSON | arayüz (zaten mevcut) |
+| Eğitim | `.npz` float32 | hızlı yükleme, rastgele erişim |
+| Arşiv | `.frd.gz` | ileride farklı çıktı gerekirse yeniden çözmemek için |
+
+Ölçüm (7205 düğümlü tet10 referans vakası): ham `.frd` ~5.4 MB/run, gzip ~0.7 MB,
+eğitim `.npz` ~0.72 MB. 20.000 run ≈ 28 GB. Ham bırakılırsa ≈ 108 GB.
+
+**Kayıplı sıkıştırma (femzip vb.) KULLANILMAZ.** Görselleştirme için sorun değil ama
+eğitim etiketi olarak tehlikeli: modelin hatasıyla sıkıştırmanın hatası birbirine karışır
+ve modelin gerçek doğruluğu ölçülemez hale gelir. gzip kayıpsızdır, bu kısıtı taşımaz.
+
+### Adımlar
+
+Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce test edilir.
+
+**0.5.1 — Doğrulama vakasının regresyon testi olarak sabitlenmesi**
+- [ ] 50x10x500 / 500N / S235 vakası uçtan uca test olarak yazılır (3D solid, 2D kabuk, modal)
+- [ ] Beklenen değerler ve tolerans: 3D 23.92 mm, 2D kabuk 23.6 mm, modal ilk 6 frekans
+- [ ] Gerekçe: bu oturumda düzeltilen yedi sessiz hata (tet10, kabuk dönme DOF'u, kabuk
+      kalınlığı, .frd averaging, node BC çözümlemesi, node CLOAD bölünmesi, kabuk yüzey
+      gerilmesi) yalnız birim testlerle yakalanamazdı — hiçbiri hata fırlatmıyordu
+
+**0.5.2 — Depolama katmanı**
+- [ ] Çözüm sonrası `.frd` → gzip
+- [ ] Çözüm sonrası `.npz` üretimi (düğüm girdileri + çıktıları + bağlantı)
+- [ ] `.inp` saklamayı bırak (DB'den yeniden üretilebilir olduğunu doğrulayan test)
+- [ ] Mevcut run'ları yeni formata taşıyan tek seferlik betik
+
+**0.5.3 — Veri seti dışa/içe aktarma**
+- [ ] `GET /dataset/export`, `POST /dataset/import`, `GET /dataset/summary`
+- [ ] (Kod hazır, uygulanmayı bekliyor)
+
+**0.5.4 — DOE / batch runner**
+- [ ] Parametre uzayı tanımı: geometri (L/W/T), eleman boyutu, malzeme, BC senaryosu
+- [ ] Latin Hypercube örnekleme (scipy.stats.qmc)
+- [ ] BC senaryoları da taranır — aynı geometriye farklı yerlerden farklı yükler.
+      Geometri çeşitliliği tek başına yetmez, model BC'ye göre alan üretmeyi öğrenmeli
+- [ ] Geometri üretimi Faz 0.4 şablon kütüphanesinden (elle yükleme yok)
+- [ ] BC'ler isimlendirilmiş bölgelere uygulanır — parametre değişince kaymaması için
+- [ ] Kuyruk + ilerleme takibi, hatalı run'ın toplu işi durdurmaması
+- [ ] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
+
+**0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
+- [ ] ~200 run üret
+- [ ] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
+      sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
+- [ ] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
+
+**0.5.6 — Skaler baseline (model hedefi DEĞİL, boru hattı testi)**
+- [ ] Random Forest ile maks. deplasman/gerilme tahmini
+- [ ] Amaç: veri boru hattının sağlamlığını ucuza doğrulamak. Skaler surrogate bu
+      projenin hedefi değildir — alan çıktısı olmadan FEA aracı yerine geçmez
+
+**0.5.7 — Alan modeli (GNN)**
+- [ ] PyTorch Geometric ile mesh-graf veri yükleyici
+- [ ] Baseline mimari (MeshGraphNet benzeri encode-process-decode)
+- [ ] Eğitim: düğüm başına deplasman + von Mises
+- [ ] Değerlendirme: alan bazlı hata (düğüm başına RMSE) VE skaler hata (maks. değerler)
+- [ ] Mesh yakınsama davranışı: model farklı eleman boyutlarında ne yapıyor
+
+**0.5.8 — Ekstrapolasyon koruması**
+- [ ] Girdi eğitim uzayının dışındaysa tahmin "uzay dışı" olarak işaretlenir
+- [ ] Gerekçe: ağaç tabanlı modeller uzay dışında SABİT bir değer döndürür ve bunu
+      hata vermeden yapar. Ölçülen örnek: eğitim aralığı dışındaki bir kiriş için
+      gerçek 2976 mm iken model 109 mm verdi (%96 hata, hiçbir uyarı yok). Bir
+      mühendislik aracında sessiz ve güvenli görünen yanlış cevap kabul edilemez
+
+**0.5.9 — Tahmin endpoint'i ve arayüz**
+- [ ] `POST /surrogate/predict` — alan çıktısı döner
+- [ ] Mevcut viewer ile aynı kontur/animasyon yolu kullanılır (preview JSON şeması)
+- [ ] Arayüzde "hızlı tahmin" ile "tam çözüm" görsel olarak AYIRT EDİLİR; tahmin
+      olduğu ve hata payı ekranda görünür
+
+### Bilinen riskler
+
+* **GNN araştırma sınırında.** Ticari örnekleri var (Neural Concept, PhysicsX,
+  Nvidia PhysicsNeMo) ama kapalı form garanti yok. 0.5.6'daki skaler baseline, alan
+  modeli beklendiği gibi çalışmazsa elde kalan sonuç olur.
+* **Veri hacmi.** Alan modeli için birkaç yüz değil binlerce run gerekir.
+* **Donanım.** GPU gerekir; Codespace ücretsiz katmanı eğitim için yetmez.
+* **Genelleme sınırı.** Eğitim hangi geometri ailesinde yapıldıysa model orada
+  güvenilirdir. Tamamen farklı bir parça tipi yeni veri ve yeniden eğitim ister.
+
+### Çıkış kriteri
+
+Doğrulanmış bir geometri ailesinde, eğitim uzayı içindeki bir tasarım için surrogate
+alan tahmini üretebiliyor; tahmin arayüzde kontur ve animasyon olarak görüntülenebiliyor;
+hata payı ölçülmüş ve ekranda gösteriliyor; eğitim uzayı dışındaki sorgular tahmin
+üretmek yerine işaretleniyor.
+
 ## Faz 1 — Crash analizi (OpenRadioss + Gmsh)
 
 Ön koşul: Faz 0 tamamlanmış olmalı ve kullanıcı onayı alınmalı.
@@ -198,15 +443,25 @@ farklı solver ailesi). Kullanıcı onayı ile başlanır.
 - [ ] Frontend: akış alanı görselleştirmesi (kontur/streamline — statik görsel ya da
       three.js ile renklendirilmiş yüzey mesh'i olarak)
 
-## Faz 4 — Surrogate model (tüm analiz tipleri için)
+## Faz 4 — Surrogate modelin diğer analiz tiplerine yayılması
 
-Ön koşul: Faz 1/2/3'ten (hangileri tamamlandıysa) yeterli sayıda (en az birkaç yüz) analiz
-sonucu veritabanında birikmiş olmalı. Analiz tipi başına ayrı bir surrogate model eğitilir
-(durability, crash, kompozit, CFD — her birinin girdi/çıktı uzayı farklı).
+Ön koşul: Faz 0.5 tamamlanmış (durability için alan surrogate'i çalışıyor) ve
+yayılacak analiz tipinin fazı (1/2/3) bitmiş olmalı.
 
-- [ ] DOE (Latin Hypercube Sampling) ile parametre uzayının toplu taranması
-- [ ] Özellik çıkarımı (skaler metrikler + gerekirse PCA ile eğri indirgeme)
-- [ ] Baseline model: scikit-learn Random Forest / Gradient Boosting
+**Faz 0.5 ile ilişkisi:** Veri üretim altyapısı (DOE, depolama, dışa/içe aktarma),
+model mimarisi (mesh-graf / GNN) ve ekstrapolasyon koruması Faz 0.5'te kurulur ve
+DURABILITY üzerinde doğrulanır. Bu faz aynı altyapıyı crash/kompozit/CFD'ye taşır —
+sıfırdan kurmaz. Her analiz tipinin girdi/çıktı uzayı farklı olduğu için ayrı model
+eğitilir, ama boru hattı ortaktır.
+
+Aşağıdaki maddelerden DOE, özellik çıkarımı ve değerlendirme Faz 0.5'te zaten
+yapılmış olacak; burada analiz tipine özgü uyarlamaları kapsar.
+
+- [ ] DOE parametre uzayının analiz tipine uyarlanması (crash: hız/açı/bariyer;
+      CFD: giriş hızı/türbülans; kompozit: katman dizilimi)
+- [ ] Analiz tipine özgü düğüm/eleman özellikleri (Faz 0.5'teki graf şemasına eklenir)
+- [ ] Zamana bağlı çıktılar (crash/CFD): Faz 0.5'teki statik alan modeli zaman
+      boyutunu kapsamaz — ayrı bir mimari kararı gerektirir
 - [ ] Değerlendirme: k-fold cross-validation, hata metrikleri (MAE/RMSE), güven aralığı
 - [ ] Model versiyonlama (MLflow ya da basit dosya tabanlı versiyonlama)
 - [ ] Backend'e "hızlı tahmin" endpoint'i eklenmesi
