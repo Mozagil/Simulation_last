@@ -448,6 +448,30 @@ class CalculiXAdapter(SolverAdapter):
             encoding="utf-8",
         )
         logger.info("CalculiX .inp yazıldı: %s", inp_path)
+
+        # Surrogate eğitim GİRDİLERİ burada yazılır: sınır koşulu -> düğüm
+        # eşlemesi (`nsets`) yalnız bu noktada elde. Çözüm sonrası yeniden
+        # hesaplamak hem yavaş olurdu hem de iki yol arasında sessiz
+        # tutarsızlık riski taşırdı.
+        try:
+            from app.dataset import training_data as _td
+
+            _coords = _read_inp_nodes(inp_path)
+            _X = _td.build_node_inputs(
+                _coords,
+                bcs,
+                nsets,
+                materials,
+                dimension,
+                shell_thickness,
+                _resolve_bc_node_ids,
+            )
+            _td.write_inputs(
+                inp_path.with_suffix(".inputs.npz"), _X, None
+            )
+        except Exception as exc:  # noqa: BLE001 — veri seti üretimi çözümü bozmasın
+            logger.warning("Eğitim girdileri yazılamadı: %s", exc)
+
         return InputArtifact(path=inp_path, kind="file")
 
     def submit(self, artifact: InputArtifact) -> JobHandle:
@@ -618,6 +642,49 @@ class CalculiXAdapter(SolverAdapter):
             encoding="utf-8",
         )
 
+        # Eğitim örneğini tamamla (girdiler + çıktılar) ve `.frd`'yi arşivle.
+        #
+        # MODAL VE STATİK AYRI ŞEMA KULLANIR. Modal `.frd`'de gerilme bloğu
+        # yoktur (`*FREQUENCY` adımı yalnız U yazar) ve `displacement` son
+        # artışı, yani SON MODUN ŞEKLİNİ tutar. Statik şemaya sığdırılırsa
+        # "sıfır gerilmeli statik çözüm" gibi görünen, deplasman alanı
+        # aslında bir mod şekli olan anlamsız bir örnek çıkar — hiçbir yerde
+        # hata vermeden. Bu yüzden modal kendi şemasına yazılır: mod başına
+        # normalize edilmiş şekil + frekans.
+        _is_modal = bool(frequencies) or len(increments) > 1
+        try:
+            from app.dataset import training_data as _td
+
+            if _is_modal:
+                # Modal örnek: mod başına şekil + frekans. Statik şemaya
+                # sığmaz çünkü modal `.frd`'de gerilme yoktur ve tek bir
+                # deplasman alanı değil, mod başına bir alan vardır.
+                _td.write_modal_sample(
+                    job.artifact.path.with_suffix(".inputs.npz"),
+                    job.work_dir / f"{job.artifact.path.stem}.train.npz",
+                    node_order,
+                    modes,
+                )
+            else:
+                _td.write_training_sample(
+                    job.artifact.path.with_suffix(".inputs.npz"),
+                    job.work_dir / f"{job.artifact.path.stem}.train.npz",
+                    node_order,
+                    disp_vector_array,
+                    von_mises_array,
+                )
+            # `.frd` arşivlemesi modal için de geçerli — ham veri saklanır,
+            # şema netleşince yeniden çözmeye gerek kalmaz.
+            _gz = _td.gzip_frd(frd)
+            if _gz is not None:
+                # gzip orijinali SİLER. Aşağıda `frd.stat()` okunduğu ve
+                # `raw_result_path` veritabanına yazıldığı için referansın
+                # yeni dosyaya taşınması şart — aksi halde çözüm biter ama
+                # sonuç kaydı var olmayan bir yolu gösterir.
+                frd = _gz
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Eğitim örneği yazılamadı: %s", exc)
+
         logger.info(
             "FRD parse edildi: %s, node_sayisi=%d, max_disp=%.6g, max_von_mises=%.6g",
             frd,
@@ -636,7 +703,9 @@ class CalculiXAdapter(SolverAdapter):
 
         return ResultSet(
             scalars={
-                "frd_bytes": float(frd.stat().st_size),
+                # NOT: gzip'lendikten sonra bu SIKIŞTIRILMIŞ boyuttur.
+                # Ham boyut için `node_count` ile birlikte değerlendirin.
+                "frd_bytes": float(frd.stat().st_size) if frd.is_file() else 0.0,
                 "node_count": float(len(node_order)),
                 "max_displacement": max_disp,
                 "max_von_mises": max_vm,
