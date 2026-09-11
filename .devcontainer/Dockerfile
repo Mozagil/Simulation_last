@@ -4,35 +4,44 @@
 #   * Bu katmanlar image'a yazılır ve ÖNBELLEKLENİR. Yeni bir Codespace
 #     açıldığında (özellikle prebuild açıksa) tekrar kurulmazlar.
 #   * postCreateCommand her container oluşturmada baştan çalışır ve bir
-#     adımı patlarsa SONRAKİLERİN HEPSİ ATLANIR. Gerçekte yaşandı: universal
-#     image'daki yarn deposunun GPG anahtarı doğrulanamayınca `apt-get update`
-#     exit 100 döndü, CalculiX hiç kurulmadı ve hata ancak solver
-#     çalıştırılmaya kalkışıldığında fark edildi.
-FROM mcr.microsoft.com/devcontainers/universal:2
+#     adımı patlarsa SONRAKİLERİN HEPSİ ATLANIR.
+#
+# Neden `universal:2` değil:
+#   universal image ~10 GB (torch, conda, her dil için toolchain). Üstüne
+#   katman yazınca Codespace diski doluyordu:
+#     ERROR: failed to register layer: ... no space left on device
+#   ve Codespaces sessizce "recovery container"a düşüyordu — npm/gh/ccx
+#   olmayan, port tüneli yarım çalışan bir ortam. Bu projeye Python 3.12 +
+#   Node + Docker yetiyor; onlar devcontainer.json'daki `features` ile geliyor.
+FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm
 
 USER root
-
-# Universal image'da bozuk üçüncü parti apt depoları bulunabiliyor (yarn
-# deposunun imzası doğrulanamıyor). Bunlar projeyle ilgisiz; `apt-get update`
-# komutunun tamamını düşürmemeleri için temizleniyor.
-RUN rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn.sources || true
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # CalculiX çözücü (ccx)
     calculix-ccx \
     # gmsh'in Python paketi başsız çalışsa bile bu paylaşımlı kütüphaneleri
     # dlopen eder; eksikse `import gmsh` anında OSError verir:
-    #   OSError: libGLU.so.1: cannot open shared object file
+    #   OSError: libGL.so.1: cannot open shared object file
+    # Liste `ldd libgmsh.so` çıktısından; universal image'da hepsi hazırdı,
+    # ince python image'da tek tek kurulmalı.
+    libgl1 \
     libglu1-mesa \
+    libx11-6 \
+    libxext6 \
+    libxfixes3 \
+    libxrender1 \
     libxcursor1 \
     libxinerama1 \
     libxft2 \
-    libxrender1 \
     libxi6 \
+    libfontconfig1 \
+    libfreetype6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Kurulumun gerçekten çalıştığını IMAGE BUILD sırasında doğrula — sessizce
 # eksik bir ortamla başlamaktansa build'in patlaması yeğdir.
-RUN which ccx && ldconfig -p | grep -q libGLU
+RUN which ccx && ldconfig -p | grep -q libGL.so.1 && ldconfig -p | grep -q libGLU
 
-USER codespace
+# python devcontainer image'ının varsayılan kullanıcısı (universal'da `codespace`).
+USER vscode

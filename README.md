@@ -20,6 +20,19 @@ klasörü:
 **Faz 0 — Durability pilotu (CalculiX + Gmsh), Adım 0: altyapı iskeleti.**
 Şu an sadece boş bir FastAPI projesi ve `/health` endpoint'i var.
 
+## Codespaces'te çalıştırma
+
+Codespace açılınca `.devcontainer/start.sh` otomatik çalışır: `.env` dosyalarını
+güncel Codespace adıyla üretir, Postgres + backend (:8000) + frontend (:5173)
+sunucularını başlatır ve iki portu public yapar. Elle bir şey başlatmaya gerek yok.
+
+- Frontend adresi: `https://$CODESPACE_NAME-5173.app.github.dev`
+  (VS Code → PORTS sekmesindeki linke tıkla, adresi elle yazma)
+- Sunucu logları: `/tmp/simulation_last/backend.log`, `/tmp/simulation_last/frontend.log`
+- Bir sunucuyu yeniden başlatmak için: `pkill -f uvicorn` / `pkill -f vite`,
+  sonra `bash .devcontainer/start.sh`
+- `frontend/.env` her başlatmada yeniden yazılır; Codespaces'te elle düzenleme.
+
 ## Backend'i yerelde çalıştırma
 
 ```bash
