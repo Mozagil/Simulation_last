@@ -4,22 +4,24 @@
   // Hazır image yerine kendi Dockerfile'ımız: sistem bağımlılıkları
   // (CalculiX, gmsh'in libGLU vb. kütüphaneleri) image katmanına gömülür ve
   // önbelleklenir. Eskiden bunlar postCreateCommand'daydı ve tek bir apt
-  // hatası hepsini birden atlıyordu.
+  // hatası hepsini birden atlıyordu — CalculiX hiç kurulmuyordu.
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
 
-  // Proje bağımlılıkları image'a gömülemez (çalışma alanı ancak container
-  // oluşturulduktan sonra bağlanır), bu yüzden burada kuruluyor.
-  // `|| true` YOK: bir kurulum patlarsa sessizce devam etmek yerine
-  // Codespace kurulum log'unda görünsün.
+  // Çalışma alanına ve ortama bağlı kurulum: pip/npm, .env üretimi,
+  // Postgres, migration. Ayrıntı ve gerekçeler setup.sh içinde.
   "postCreateCommand": "bash .devcontainer/setup.sh",
 
   "forwardPorts": [8000, 5173, 5432],
+
+  // 8000 ve 5173 PUBLIC olmalı: frontend tarayıcıda çalıştığı için backend'e
+  // yönlendirilmiş adres üzerinden gider. 8000 private kalırsa istek
+  // engellenir ve hata konsolda yanıltıcı biçimde "CORS hatası" görünür.
   "portsAttributes": {
-    "8000": { "label": "Backend (FastAPI)" },
-    "5173": { "label": "Frontend (Vite)" },
+    "8000": { "label": "Backend (FastAPI)", "visibility": "public" },
+    "5173": { "label": "Frontend (Vite)", "visibility": "public" },
     "5432": { "label": "PostgreSQL" }
   }
 }
