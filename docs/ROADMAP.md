@@ -196,7 +196,7 @@ tek pratik yolu.
 ilginç vakalar.
 
 **Grup 1 — analitik çözümü olan temel vakalar**
-- [ ] Ankastre kiriş, dikdörtgen kesit (L, W, T) — Faz 0'da doğrulandı
+- [x] Ankastre kiriş, dikdörtgen kesit (L, W, T) — Faz 0'da doğrulandı (`cantilever_beam`)
 - [ ] Basit mesnetli kiriş (orta noktadan ve yayılı yük)
 - [ ] Delikli plaka (W, H, T, d) — gerilme yığılması, `Kt ≈ 3` (sonsuz plaka limiti)
 - [ ] Çekme deneyi numunesi (dogbone, ISO 6892 / ASTM E8 oranları)
@@ -225,16 +225,16 @@ kirişte her model iyi görünür.
 
 ### Adımlar
 
-**0.4.1 — Şablon altyapısı**
-- [ ] Şablon kayıt mekanizması (parametre şeması, kurucu, etiketler, analitik referans)
-- [ ] gmsh OCC ile STEP üretimi ve mevcut `Geometry` kaydına bağlama
-- [ ] `PhysicalGroup` ile isimlendirilmiş bölgelerin kaydı
-- [ ] Parametre doğrulama (negatif/dejenere değerler, `d < W` gibi geometrik kısıtlar)
+**0.4.1 — Şablon altyapısı** — `app/templates/` (base.py, service.py)
+- [x] Şablon kayıt mekanizması (parametre şeması, kurucu, etiketler, analitik referans)
+- [x] gmsh OCC ile STEP üretimi ve mevcut `Geometry` kaydına bağlama
+- [x] `PhysicalGroup` ile isimlendirilmiş bölgelerin kaydı
+- [x] Parametre doğrulama (negatif/dejenere değerler, `L ≥ 5T` gibi geometrik kısıtlar)
 
-**0.4.2 — İlk şablon uçtan uca: ankastre kiriş**
-- [ ] Tek şablonla tüm akış: üret → mesh → BC (isimlendirilmiş bölgeden) → çöz
-- [ ] Sonuç Faz 0'daki doğrulanmış değerlerle eşleşmeli (23.92 mm / 330.7 MPa)
-- [ ] Gerekçe: altyapının doğruluğunu bilinen bir cevapla kilitler
+**0.4.2 — İlk şablon uçtan uca: ankastre kiriş** — `app/templates/cantilever_beam.py`
+- [x] Tek şablonla tüm akış: üret → mesh → BC (isimlendirilmiş bölgeden) → çöz
+- [x] Sonuç Faz 0'daki doğrulanmış değerlerle eşleşmeli (23.92 mm / 330.7 MPa) — `tests/test_templates.py`
+- [x] Gerekçe: altyapının doğruluğunu bilinen bir cevapla kilitler
 
 **0.4.3 — API**
 - [ ] `GET /templates` — şablon listesi ve parametre şemaları
