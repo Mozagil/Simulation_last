@@ -1,1 +1,1 @@
-"""Veri seti: surrogate egitim verisi uretimi ve arsivleme."""
+"""Veri seti arşivleme (dışa/içe aktarma) paketi."""
