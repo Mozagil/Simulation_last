@@ -16,10 +16,18 @@
   // Codespace kurulum log'unda görünsün.
   "postCreateCommand": "bash .devcontainer/setup.sh",
 
-  "forwardPorts": [8000, 5173, 5432],
+  // Her başlatmada (ilk açılış + stop/restart) çalışır: .env dosyalarını
+  // üretir, Postgres/backend/frontend'i ayağa kaldırır, 5173 ve 8000'i
+  // public yapar. Elle terminal açıp sunucu başlatma adımı kalkar.
+  "postStartCommand": "bash .devcontainer/start.sh",
+
+  // `forwardPorts` BİLEREK YOK. Önceden kayıtlı port girişleri Codespace
+  // uyku/uyanma döngüsünde bayatlıyor ve proxy boş 404 veriyordu
+  // (PORTS panelinde "Aktiver Prozess" boş kalıyordu). Portlar artık
+  // süreç dinlemeye başlayınca otomatik yakalanıyor; etiketler yine burada.
   "portsAttributes": {
-    "8000": { "label": "Backend (FastAPI)" },
-    "5173": { "label": "Frontend (Vite)" },
-    "5432": { "label": "PostgreSQL" }
+    "8000": { "label": "Backend (FastAPI)", "onAutoForward": "silent" },
+    "5173": { "label": "Frontend (Vite)", "onAutoForward": "silent" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
   }
 }
