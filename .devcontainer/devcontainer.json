@@ -10,6 +10,14 @@
     "context": ".."
   },
 
+  // Taban image ince (python:3.12); Node, gh ve Docker buradan geliyor.
+  // docker-in-docker: Postgres `docker compose` ile ayağa kalkıyor.
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
   // Proje bağımlılıkları image'a gömülemez (çalışma alanı ancak container
   // oluşturulduktan sonra bağlanır), bu yüzden burada kuruluyor.
   // `|| true` YOK: bir kurulum patlarsa sessizce devam etmek yerine
