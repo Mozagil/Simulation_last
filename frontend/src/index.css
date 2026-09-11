@@ -2171,3 +2171,49 @@ p {
   font-variant-numeric: tabular-nums;
   min-width: 28px;
 }
+
+/* --- Iki modal analizin frekans karsilastirmasi --- */
+.compare-modal-freq {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border, #d9ddd6);
+}
+
+.compare-modal-freq-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.compare-modal-freq-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-modal-freq-table th,
+.compare-modal-freq-table td {
+  padding: 3px 14px 3px 0;
+  text-align: right;
+  border-bottom: 1px solid var(--border, #e4e8e1);
+}
+
+.compare-modal-freq-table th:first-child,
+.compare-modal-freq-table td:first-child {
+  text-align: left;
+  padding-right: 20px;
+  opacity: 0.7;
+}
+
+.compare-modal-freq-table th {
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+/* %5'ten buyuk sapma: iki analizde ayni siradaki modun ayni fiziksel mod
+   olmadigina isaret edebilir, dikkat cekilir. */
+.compare-modal-freq-warn {
+  color: #c1121f;
+  font-weight: 600;
+}

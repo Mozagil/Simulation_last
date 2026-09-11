@@ -128,6 +128,24 @@ async function loadRunPanelData(runId: number): Promise<RunPanelData> {
   };
 }
 
+/** Run'ın kayıtlı skalerlerinden doğal frekans listesi.
+ *
+ * Modal çözüm frekansları `freq_1`, `freq_2`, ... anahtarlarıyla saklanır
+ * (bkz. çözücünün ResultSet.scalars çıktısı). İlk boşlukta durulur —
+ * numaralar 1'den ardışıktır, aradaki bir boşluk eksik veri demektir ve
+ * ötesini okumak mod numaralarını kaydırırdı.
+ */
+function extractFrequencies(scalars: Record<string, number> | null): number[] {
+  if (!scalars) return [];
+  const out: number[] = [];
+  for (let i = 1; i <= 200; i++) {
+    const v = scalars[`freq_${i}`];
+    if (v === undefined) break;
+    out.push(v);
+  }
+  return out;
+}
+
 function ComparisonPanel({
   runId,
   resultsField,
@@ -440,6 +458,9 @@ export default function ComparisonView({
   // önlemek için etikette gösterilir.
   const fieldUnit = resultsField === "von_mises" ? "MPa" : "mm";
 
+  const freqsA = extractFrequencies(scalarsA);
+  const freqsB = extractFrequencies(scalarsB);
+
   const tickCount = 5;
   const ticks: (number | null)[] = Array.from(
     { length: tickCount + 1 },
@@ -525,6 +546,61 @@ export default function ComparisonView({
           </a>
         )}
       </div>
+      {freqsA.length > 0 && (
+        <div className="compare-modal-freq">
+          <div className="compare-modal-freq-head">
+            <strong>Doğal frekanslar</strong>
+            <span className="compare-shared-note">
+              {single
+                ? `${freqsA.length} mod`
+                : freqsB.length === 0
+                  ? "B run'ı modal değil — yalnız A gösteriliyor."
+                  : freqsA.length === freqsB.length
+                    ? `${freqsA.length} mod · Δ% = (B−A)/A`
+                    : `A: ${freqsA.length} mod, B: ${freqsB.length} mod — mod sayıları farklı, eşleşmeyen satırlar “—”.`}
+            </span>
+          </div>
+          <table className="compare-modal-freq-table">
+            <thead>
+              <tr>
+                <th>Mod</th>
+                <th>{single ? "Frekans (Hz)" : "A (Hz)"}</th>
+                {!single && <th>B (Hz)</th>}
+                {!single && <th>Δ%</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from(
+                { length: Math.max(freqsA.length, freqsB.length) },
+                (_, i) => {
+                  const a = freqsA[i];
+                  const b = freqsB[i];
+                  // Mod ŞEKLİ değil yalnız frekans karşılaştırılır: iki
+                  // analizde aynı sıradaki modun aynı fiziksel mod olduğu
+                  // GARANTİ DEĞİLDİR (mesh/malzeme değişince modlar yer
+                  // değiştirebilir). Büyük bir Δ% bunun işareti olabilir.
+                  const d =
+                    a !== undefined && b !== undefined && a !== 0
+                      ? ((b - a) / a) * 100
+                      : null;
+                  return (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td>{a === undefined ? "—" : fmtNum(a, 2)}</td>
+                      {!single && <td>{b === undefined ? "—" : fmtNum(b, 2)}</td>}
+                      {!single && (
+                        <td className={d !== null && Math.abs(d) > 5 ? "compare-modal-freq-warn" : undefined}>
+                          {d === null ? "—" : `${d >= 0 ? "+" : ""}${d.toFixed(2)}%`}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                },
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className={single ? "compare-panels compare-panels-single" : "compare-panels"}>
         <ComparisonPanel
           runId={runIdA}
