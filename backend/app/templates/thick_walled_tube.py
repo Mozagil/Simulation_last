@@ -101,5 +101,9 @@ THICK_WALLED_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "pressure", "region": REGION_INNER, "magnitude": 10.0},
+    ),
     tags=("grup1", "analitik", "lame"),
 )

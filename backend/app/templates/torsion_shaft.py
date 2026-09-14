@@ -91,5 +91,12 @@ TORSION_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # NOT: CLOAD tek yönlü vektördür; çember üzerinde gerçek teğetsel dağılım
+        # (tork) için solver'da tork BC'si gerekir (bkz. ROADMAP 0.4.7). Şimdilik
+        # analitik tablonun varsaydığı büyüklük (T = F·R) ile başlangıç değeri.
+        {"type": "cload", "region": REGION_TORQUE, "fx": 0.0, "fy": 0.0, "fz": 500.0},
+    ),
     tags=("grup1", "analitik", "burulma"),
 )

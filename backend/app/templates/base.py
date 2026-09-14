@@ -98,7 +98,27 @@ class GeometryTemplate:
     #: ile aynı (`max_displacement` [mm], `max_von_mises` [MPa]) ki 0.4.5'te
     #: doğrudan karşılaştırılabilsin. Yoksa None.
     analytic: Callable[[BaseModel, AnalyticInput], dict[str, float]] | None = None
+    #: Şablonun referans yük durumu, BÖLGE ADIYLA bağlı BC listesi
+    #: (`{"type": "fixed", "region": "ankastre_uc"}` gibi; DOE senaryolarıyla
+    #: aynı sözleşme). Geometri üretilince yüzey/kenar id'lerine çevrilip
+    #: kullanıcıya hazır liste olarak sunulur; kullanıcı düzenler/siler.
+    #: Analitik referans bu yük durumu için yazılmıştır — kullanıcı yükü
+    #: değiştirirse karşılaştırma yine geçerli (büyüklük BC'den okunur),
+    #: bölgeyi değiştirirse geçersiz.
+    default_bcs: tuple[dict[str, Any], ...] = ()
     tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        names = {r.name for r in self.regions}
+        for bc in self.default_bcs:
+            region = bc.get("region")
+            if region is not None and region not in names:
+                raise ValueError(
+                    f"Şablon '{self.id}': default_bcs '{region}' bölgesine bağlı ama "
+                    f"böyle bir bölge yok. Mevcut: {sorted(names)}"
+                )
+            if "type" not in bc:
+                raise ValueError(f"Şablon '{self.id}': default_bcs girdisinde 'type' yok: {bc}")
 
     def params_schema(self) -> dict[str, Any]:
         """Frontend formu / DOE için JSON şeması (Pydantic'ten)."""
@@ -114,6 +134,33 @@ class GeometryTemplate:
 
     def region_names(self) -> list[str]:
         return [r.name for r in self.regions]
+
+
+#: Region.dim -> BC sözlüğündeki hedef anahtarı
+BC_KEY_FOR_DIM = {2: "face_ids", 1: "edge_ids", 0: "node_ids"}
+
+
+def bind_region_bcs(
+    template: GeometryTemplate, regions: dict[str, list[int]]
+) -> list[dict[str, Any]]:
+    """`default_bcs`'teki `region` alanlarını gerçek yüzey/kenar/köşe id'lerine çevirir.
+
+    Çıktı doğrudan `SolveRequest.bcs` biçimindedir (`face_ids` / `edge_ids` /
+    `node_ids`); `region` alanı bilgi amaçlı korunur — arayüz listede
+    bölge adını gösterir, solver bilinmeyen alanı yok sayar.
+    """
+    dims = {r.name: r.dim for r in template.regions}
+    bound: list[dict[str, Any]] = []
+    for raw in template.default_bcs:
+        bc = dict(raw)
+        region = bc.get("region")
+        if region:
+            tags = regions.get(region) or []
+            if not tags:
+                raise TemplateError(f"Şablon '{template.id}': '{region}' bölgesi boş, BC bağlanamadı.")
+            bc[BC_KEY_FOR_DIM[dims.get(region, 2)]] = list(tags)
+        bound.append(bc)
+    return bound
 
 
 # --- bölge seçici yardımcıları -------------------------------------------------

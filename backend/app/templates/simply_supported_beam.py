@@ -117,5 +117,11 @@ SIMPLY_SUPPORTED_BEAM = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        # Basit mesnet: sol uç uy=uz=0 ve ux=0 (sabit mesnet), sağ uç uy=uz=0 (kayıcı).
+        {"type": "displacement", "region": REGION_LEFT, "dofs": {"1": 0.0, "2": 0.0, "3": 0.0}},
+        {"type": "displacement", "region": REGION_RIGHT, "dofs": {"2": 0.0, "3": 0.0}},
+        {"type": "cload", "region": REGION_MID_LOAD, "fx": 0.0, "fy": -500.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "egilme"),
 )

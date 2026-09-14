@@ -161,5 +161,10 @@ NOTCHED_BAR = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # σ_brüt ≈ 100 MPa (W=40, T=8): F = 32 kN
+        {"type": "cload", "region": REGION_LOAD, "fx": 32000.0, "fy": 0.0, "fz": 0.0},
+    ),
     tags=("grup4", "analitik", "gerilme_yigilmasi"),
 )

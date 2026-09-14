@@ -13,6 +13,7 @@ from app.templates.base import (
     GeometryTemplate,
     Region,
     TemplateError,
+    bind_region_bcs,
     build_template,
 )
 from app.templates.cantilever_beam import CANTILEVER_BEAM
@@ -74,6 +75,7 @@ __all__ = [
     "Region",
     "TemplateError",
     "UnknownTemplateError",
+    "bind_region_bcs",
     "build_template",
     "get_template",
     "list_templates",

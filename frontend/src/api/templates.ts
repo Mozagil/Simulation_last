@@ -1,5 +1,7 @@
 /** Şablon kütüphanesi API (0.4.3 / 0.4.4). */
 
+import type { SolveBC } from "./materials";
+
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
@@ -22,10 +24,15 @@ export interface GeometryTemplateInfo {
   };
   regions: TemplateRegionInfo[];
   has_analytic: boolean;
+  /** Bölge adıyla bağlı (id'siz) referans BC'ler. */
+  default_bcs?: SolveBC[];
 }
 
 export interface CreateFromTemplateResponse {
   geometry_id: number;
+  /** Şablonun referans sınır koşulları, bu geometrinin yüzey/kenar id'leriyle
+   * bağlı. Arayüz bunları BC listesine hazır koyar; kullanıcı düzenler. */
+  default_bcs?: SolveBC[];
   original_filename: string;
   current_filename: string;
   template_id: string;

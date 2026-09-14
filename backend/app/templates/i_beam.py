@@ -79,5 +79,9 @@ I_BEAM = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -2000.0, "fz": 0.0},
+    ),
     tags=("grup2", "analitik", "egilme", "profil"),
 )
