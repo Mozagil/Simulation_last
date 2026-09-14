@@ -51,6 +51,20 @@ def cload_resultant_n(bcs: list[dict[str, Any]]) -> float | None:
     return total if found else None
 
 
+def first_pressure_mpa(bcs: list[dict[str, Any]]) -> float | None:
+    """İlk Pressure BC büyüklüğü (MPa = N/mm²). Pressure yoksa None."""
+    for bc in bcs:
+        if str(bc.get("type") or "").lower() != "pressure":
+            continue
+        raw = bc.get("magnitude")
+        if raw is None:
+            continue
+        mag = abs(float(raw))
+        if mag > 0.0:
+            return mag
+    return None
+
+
 def _youngs_and_poisson(materials: list[dict[str, Any]]) -> tuple[float | None, float]:
     if not materials:
         return None, 0.3
@@ -92,7 +106,7 @@ def build_analytic_comparison(
     """Karşılaştırma sözlüğü veya gösterilecek bir şey yoksa None.
 
     None: şablon yok / analitik yok / modal / FEA skalerleri yok.
-    skipped=True: şablon var ama CLOAD/E eksik veya parametre geçersiz.
+    skipped=True: şablon var ama CLOAD/Pressure/E eksik veya parametre geçersiz.
     """
     if not template_id:
         return None
@@ -108,8 +122,9 @@ def build_analytic_comparison(
         return None
 
     force = cload_resultant_n(bcs)
-    if force is None:
-        return _skip(template_id, "Analitik karşılaştırma için CLOAD (kuvvet) gerekli.")
+    press = first_pressure_mpa(bcs)
+    if force is None and press is None:
+        return _skip(template_id, "Analitik karşılaştırma için CLOAD veya Pressure gerekli.")
     e_pa, nu = _youngs_and_poisson(materials)
     if e_pa is None:
         return _skip(template_id, "Analitik karşılaştırma için malzeme E değeri gerekli.")
@@ -121,7 +136,12 @@ def build_analytic_comparison(
 
     analytic = template.analytic(
         params,
-        AnalyticInput(force_n=force, youngs_modulus_pa=e_pa, poisson_ratio=nu),
+        AnalyticInput(
+            force_n=force or 0.0,
+            youngs_modulus_pa=e_pa,
+            poisson_ratio=nu,
+            pressure_mpa=press or 0.0,
+        ),
     )
 
     metrics: list[dict[str, Any]] = []

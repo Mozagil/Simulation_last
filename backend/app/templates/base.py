@@ -70,6 +70,8 @@ class AnalyticInput:
     #: True ise toplam kuvvet yayılı yük (UDL) olarak yorumlanır.
     #: False (varsayılan) tekil kuvvet — ankastre uç yükü / mesnetli orta nokta.
     distributed: bool = False
+    #: İç basınç [MPa] — Lamé boru. Yoksa 0.
+    pressure_mpa: float = 0.0
 
 
 @dataclass(frozen=True)

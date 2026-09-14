@@ -198,10 +198,10 @@ ilginç vakalar.
 **Grup 1 — analitik çözümü olan temel vakalar**
 - [x] Ankastre kiriş, dikdörtgen kesit (L, W, T) — Faz 0'da doğrulandı (`cantilever_beam`)
 - [x] Basit mesnetli kiriş (orta noktadan ve yayılı yük) — `simply_supported_beam`
-- [ ] Delikli plaka (W, H, T, d) — gerilme yığılması, `Kt ≈ 3` (sonsuz plaka limiti)
-- [ ] Çekme deneyi numunesi (dogbone, ISO 6892 / ASTM E8 oranları)
-- [ ] İçten basınçlı kalın cidarlı boru (Lamé çözümü)
-- [ ] Burulmaya maruz mil (dairesel kesit, `τ = Tr/J`)
+- [x] Delikli plaka (W, H, T, d) — gerilme yığılması, `Kt ≈ 3` (sonsuz plaka limiti) — `plate_with_hole`
+- [x] Çekme deneyi numunesi (dogbone, ISO 6892 / ASTM E8 oranları) — `dogbone`
+- [x] İçten basınçlı kalın cidarlı boru (Lamé çözümü) — `thick_walled_tube`
+- [x] Burulmaya maruz mil (dairesel kesit, `τ = Tr/J`) — `torsion_shaft`
 
 **Grup 2 — profil kesitleri**
 - [ ] I-kesit kiriş (h, b, tw, tf)
@@ -253,8 +253,8 @@ kirişte her model iyi görünür.
 - [x] Sapma eşiği aşılırsa uyarı — mesh yetersizliğini ya da BC hatasını erken yakalar
 
 **0.4.6 — Grup 1'in tamamlanması**
-- [ ] Kalan Grup 1 şablonları, her biri analitik referansıyla
-- [ ] Her şablon için regresyon testi (parametre → beklenen sonuç aralığı)
+- [x] Kalan Grup 1 şablonları, her biri analitik referansıyla
+- [x] Her şablon için regresyon testi (parametre → beklenen sonuç aralığı)
 
 ### Faz 0.5 ile ilişkisi
 
@@ -323,9 +323,9 @@ ve modelin gerçek doğruluğu ölçülemez hale gelir. gzip kayıpsızdır, bu 
 Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce test edilir.
 
 **0.5.1 — Doğrulama vakasının regresyon testi olarak sabitlenmesi**
-- [ ] 50x10x500 / 500N / S235 vakası uçtan uca test olarak yazılır (3D solid, 2D kabuk, modal)
-- [ ] Beklenen değerler ve tolerans: 3D 23.92 mm, 2D kabuk 23.6 mm, modal ilk 6 frekans
-- [ ] Gerekçe: bu oturumda düzeltilen yedi sessiz hata (tet10, kabuk dönme DOF'u, kabuk
+- [x] 50x10x500 / 500N / S235 vakası uçtan uca test olarak yazılır (3D solid, 2D kabuk, modal)
+- [x] Beklenen değerler ve tolerans: 3D 23.92 mm, 2D kabuk 23.6 mm, modal ilk 6 frekans
+- [x] Gerekçe: bu oturumda düzeltilen yedi sessiz hata (tet10, kabuk dönme DOF'u, kabuk
       kalınlığı, .frd averaging, node BC çözümlemesi, node CLOAD bölünmesi, kabuk yüzey
       gerilmesi) yalnız birim testlerle yakalanamazdı — hiçbiri hata fırlatmıyordu
 

@@ -27,12 +27,13 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 0 — Durability analizi (CalculiX + Gmsh).** Diğer fazlara henüz geçme.
-Solver: CalculiX. Mesh: Gmsh. Post-process: pyLife (yorulma/fatigue).
-Neden: pipeline'ı (geometri import → mesh → pre-process → solve → post-process → db →
-frontend) uçtan uca çalışır hale getirmek. Faz geçişleri `docs/ROADMAP.md`'de —
-şu an 4 analiz tipi (durability, crash, kompozit, CFD) + surrogate model için toplam
-5 fazlık bir plan var, sırayla ilerlenir.
+**FAZ 0.5 — Surrogate veri altyapısı ve alan modeli (durability).**
+Faz 0 ve Faz 0.4 Grup 1 tamam. Solver hâlâ CalculiX; mesh Gmsh.
+Grup 2–4 şablonları (profil / makine elemanı / çentik) **0.5 bittikten sonra**.
+Crash (Faz 1), kompozit, CFD'ye geçme.
+
+Sıradaki mikro-adımlar `docs/ROADMAP.md` 0.5.1 → 0.5.9. Bir adımı bitirince dur;
+0.5.2+'ya onay olmadan geçme.
 
 **Faz değiştirmeden önce bana sor.** Bir sonraki faza otomatik geçme, onay iste.
 

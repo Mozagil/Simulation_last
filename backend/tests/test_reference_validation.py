@@ -53,7 +53,11 @@ RHO = 7850.0
 #: Beklenen sonuçlar (bu proje, C3D10, element_size=8)
 EXPECTED_DISP_MM = 23.92
 EXPECTED_MAX_VM_MPA = 330.7
-#: İlk üç doğal frekans (Hz) — E=210 GPa
+#: 2D kabuk (midsurface + S4, t=10 mm). Deplasman kalınlık boyunca değişmez;
+#: gerilme OUTPUT=2D orta düzlemde ~80 MPa'ya düşer — o yüzden vm alt sınırı.
+EXPECTED_SHELL_DISP_MM = 23.6
+#: İlk altı doğal frekans (Hz) — E=210 GPa. 4–6 sayısal kilit ccx koşusunda
+#: doldurulur; yokken en azından 6 mod ve artan sıra aranır.
 EXPECTED_FREQS_HZ = (33.27, 165.49, 208.11)
 
 TOLERANCE = 0.05
@@ -83,6 +87,22 @@ def _write_plate_step(path: Path) -> None:
         gmsh.write(str(path))
     finally:
         gmsh.finalize()
+
+
+def _longest_edge_at_x(target_x: float, tol: float = 1e-3) -> int:
+    """x=const kenarlarından en uzununu döndürür (kabuk uç kenarı)."""
+    import gmsh
+
+    scored: list[tuple[float, int]] = []
+    for _dim, tag in gmsh.model.getEntities(1):
+        xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(1, tag)
+        if abs(xmin - target_x) < tol and abs(xmax - target_x) < tol:
+            span = max(ymax - ymin, zmax - zmin)
+            scored.append((span, int(tag)))
+    if not scored:
+        raise AssertionError(f"x={target_x} düzleminde kenar bulunamadı")
+    scored.sort(reverse=True)
+    return scored[0][1]
 
 
 def _face_tag_at_x(target_x: float, tol: float = 1e-6) -> int:
@@ -153,6 +173,70 @@ def _solve_reference_case(tmp_path: Path, *, modal: bool = False) -> dict[str, f
     return ccx.parse_results(job).scalars
 
 
+def _mesh_reference_shell(tmp_path: Path) -> tuple:
+    """Referans plakayı midsurface + 2D quad mesh'e çevirir.
+
+    Dönüş: (mesh, shell_thickness, fixed_edge, load_edge).
+    """
+    step = tmp_path / "plate_shell.step"
+    _write_plate_step(step)
+
+    adapter = GmshMesherAdapter()
+    geom = adapter.import_geometry(step)
+    adapter.create_midsurface_for_part(geom, 0)
+    thicknesses = adapter.last_wall_thicknesses
+    assert thicknesses, "midsurface cidar kalınlığı ölçülmedi"
+    shell_t = thicknesses[0]
+    assert shell_t == pytest.approx(THICKNESS_MM, rel=0.05), (
+        f"ölçülen kabuk kalınlığı {shell_t} mm, beklenen {THICKNESS_MM} mm"
+    )
+
+    geom = adapter.import_geometry(step)
+    fixed_edge = _longest_edge_at_x(0.0)
+    load_edge = _longest_edge_at_x(LENGTH_MM)
+    assert fixed_edge != load_edge
+
+    mesh = adapter.generate_mesh(
+        geom, MeshParams(element_size=8.0, dimension=2, element_scheme="quad")
+    )
+    assert mesh.dimension == 2
+    assert "Quad" in mesh.element_type_counts
+    return mesh, shell_t, fixed_edge, load_edge
+
+
+def _solve_reference_shell(tmp_path: Path) -> dict[str, float]:
+    mesh, shell_t, fixed_edge, load_edge = _mesh_reference_shell(tmp_path)
+    params = {
+        "mesh_path": mesh.mesh_path,
+        "dimension": 2,
+        "shell_thickness": shell_t,
+        "output_dir": tmp_path / "run_shell",
+        "job_name": "ref_shell",
+        "materials": [
+            {
+                "part_id": 0,
+                "name": "S235",
+                "youngs_modulus": E_PA,
+                "poisson_ratio": NU,
+                "density": RHO,
+            }
+        ],
+        "bcs": [
+            {"type": "fixed", "edge_ids": [fixed_edge]},
+            {"type": "cload", "edge_ids": [load_edge], "fx": 0.0, "fy": -FORCE_N, "fz": 0.0},
+        ],
+    }
+    ccx = CalculiXAdapter()
+    artifact = ccx.build_input(params)
+    job = ccx.submit(artifact)
+    for _ in range(600):
+        status = ccx.poll_status(job)
+        if status.state in ("done", "failed"):
+            break
+    assert status.state == "done", f"kabuk çözüm başarısız: {status}"
+    return ccx.parse_results(job).scalars
+
+
 @requires_ccx
 def test_reference_cantilever_displacement_and_stress(tmp_path):
     """Statik: deplasman ve maksimum von Mises referans değerlerde kalmalı."""
@@ -192,7 +276,7 @@ def test_reference_cantilever_displacement_matches_beam_theory(tmp_path):
 
 @requires_ccx
 def test_reference_cantilever_modal_frequencies(tmp_path):
-    """Modal: ilk üç doğal frekans.
+    """Modal: ilk altı doğal frekans (1–3 sayısal kilit, 4–6 varlık + sıra).
 
     Bu test aynı zamanda `*DENSITY` yolunu doğruluyor — statik çözümde
     yoğunluk hiç kullanılmaz, yani kg/m^3 -> tonne/mm^3 dönüşümündeki bir
@@ -201,13 +285,17 @@ def test_reference_cantilever_modal_frequencies(tmp_path):
     """
     s = _solve_reference_case(tmp_path, modal=True)
 
-    freqs = [s.get(f"freq_{i}") for i in range(1, 4)]
+    n_freq = s.get("n_frequencies")
+    assert n_freq == pytest.approx(6.0), f"6 mod istendi, n_frequencies={n_freq}; {s}"
+    freqs = [s.get(f"freq_{i}") for i in range(1, 7)]
     assert all(f is not None for f in freqs), f"frekanslar eksik: {s}"
 
-    for i, (got, expected) in enumerate(zip(freqs, EXPECTED_FREQS_HZ), start=1):
+    for i, expected in enumerate(EXPECTED_FREQS_HZ, start=1):
+        got = freqs[i - 1]
         assert got == pytest.approx(expected, rel=TOLERANCE), (
             f"Mod {i}: {got:.2f} Hz, beklenen {expected} Hz"
         )
+    assert freqs == sorted(freqs), f"6 mod artan sırada değil: {freqs}"
 
 
 @requires_ccx
@@ -220,7 +308,31 @@ def test_reference_modal_mode_order_is_stable(tmp_path):
     frekansları tek tek kontrol etmek bunu yakalamaz.
     """
     s = _solve_reference_case(tmp_path, modal=True)
-    freqs = [s[f"freq_{i}"] for i in range(1, 4)]
+    freqs = [s[f"freq_{i}"] for i in range(1, 7)]
     assert freqs == sorted(freqs), f"frekanslar artan sırada değil: {freqs}"
     # Mod 2 / Mod 1 oranı ~5 (kesit atalet momentlerinin karekökü: sqrt(25))
     assert freqs[1] / freqs[0] == pytest.approx(5.0, rel=0.15)
+
+
+def test_reference_shell_mesh_quad_and_thickness(tmp_path):
+    """ccx gerektirmez: 2D yol midsurface kalınlığını ve quad mesh'i korur."""
+    mesh, shell_t, fixed_edge, load_edge = _mesh_reference_shell(tmp_path)
+    assert shell_t == pytest.approx(THICKNESS_MM, abs=0.2)
+    assert mesh.element_type_counts["Quad"] > 0
+    assert fixed_edge != load_edge
+
+
+@requires_ccx
+def test_reference_cantilever_shell_displacement(tmp_path):
+    """2D kabuk: 23.6 mm; t=3 sessiz varsayılanı (~873 mm) ve OUTPUT=2D (~80 MPa) yakalanır."""
+    s = _solve_reference_shell(tmp_path)
+    disp = s.get("max_displacement")
+    vm = s.get("max_von_mises")
+    assert disp is not None and vm is not None, f"skalerler eksik: {s}"
+    assert disp == pytest.approx(EXPECTED_SHELL_DISP_MM, rel=TOLERANCE), (
+        f"Kabuk deplasman {disp:.2f} mm, beklenen {EXPECTED_SHELL_DISP_MM} mm"
+    )
+    assert vm > 200.0, (
+        f"Kabuk von Mises {vm:.1f} MPa — OUTPUT=2D orta düzlem regresyonu ~80 MPa; "
+        f"t=3 mm varsayılanı ise binlerce MPa üretir"
+    )

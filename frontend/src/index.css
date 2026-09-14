@@ -2328,6 +2328,12 @@ p {
   stroke-linejoin: round;
 }
 
+.template-schematic-hole {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
 .template-schematic-face-end {
   fill: var(--accent);
   fill-opacity: 0.38;

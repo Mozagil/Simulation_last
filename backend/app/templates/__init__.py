@@ -16,9 +16,20 @@ from app.templates.base import (
     build_template,
 )
 from app.templates.cantilever_beam import CANTILEVER_BEAM
+from app.templates.dogbone import DOGBONE
+from app.templates.plate_with_hole import PLATE_WITH_HOLE
 from app.templates.simply_supported_beam import SIMPLY_SUPPORTED_BEAM
+from app.templates.thick_walled_tube import THICK_WALLED_TUBE
+from app.templates.torsion_shaft import TORSION_SHAFT
 
-_ALL: tuple[GeometryTemplate, ...] = (CANTILEVER_BEAM, SIMPLY_SUPPORTED_BEAM)
+_ALL: tuple[GeometryTemplate, ...] = (
+    CANTILEVER_BEAM,
+    SIMPLY_SUPPORTED_BEAM,
+    PLATE_WITH_HOLE,
+    DOGBONE,
+    THICK_WALLED_TUBE,
+    TORSION_SHAFT,
+)
 
 TEMPLATES: dict[str, GeometryTemplate] = {}
 for _t in _ALL:
