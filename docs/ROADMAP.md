@@ -512,6 +512,47 @@ yapılmış olacak; burada analiz tipine özgü uyarlamaları kapsar.
 - [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
 - [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
 
+## Faz 4 — Surrogate model (tüm analiz tipleri için)
+
+Ön koşul: Faz 1/2/3'ten (hangileri tamamlandıysa) yeterli sayıda (en az birkaç yüz) analiz
+sonucu veritabanında birikmiş olmalı. Analiz tipi başına ayrı bir surrogate model eğitilir
+(durability, crash, kompozit, CFD — her birinin girdi/çıktı uzayı farklı).
+
+**Karar (bkz. sohbet geçmişi):** Full-field/mesh tabanlı (GNN) surrogate yoluna gidilecek.
+Bu, aşağıdaki alt fazlara bölünür.
+
+### 4a. Ön koşul — Full-field veri altyapısı (Faz 1'e ek, Faz 4b'den önce gerekli)
+- [ ] OpenRadioss animation dosyası (A001...) → VTK dönüştürme adaptörü
+      (`postprocess/openradioss_fullfield.py`) — OpenRadioss/Tools reposundaki converter
+      subprocess ile çağrılır
+- [ ] `ResultSet` şemasına `fullfield_ref` alanı eklenmesi (path + metadata: node_count,
+      timestep_count, format) — mevcut `scalars` alanı korunur, full-field ek katman
+      olarak eklenir
+- [ ] Full-field dosyaların depolanması (dosya sistemi/object storage, Postgres'e sadece
+      path yazılır)
+
+### 4b. Baseline (klasik, karşılaştırma referansı olarak kalır)
+- [ ] DOE (Latin Hypercube Sampling) ile parametre uzayının toplu taranması
+- [ ] Duyarlılık analizi (Sobol/Morris, SALib) — hangi parametrenin sonucu ne kadar
+      etkilediğinin ölçülmesi
+- [ ] Skaler özellik çıkarımı (+ gerekirse PCA ile eğri indirgeme)
+- [ ] Baseline model: scikit-learn Random Forest / Gradient Boosting
+- [ ] Değerlendirme: k-fold cross-validation, hata metrikleri (MAE/RMSE), güven aralığı
+
+### 4c. Full-field / mesh tabanlı surrogate (GNN)
+- [ ] Mesh graph oluşturma: node features (koordinat, kalınlık, malzeme) + edge index
+      (eleman bağlantısından)
+- [ ] Yeni bağımlılık: PyTorch Geometric (veya DGL) — CPU/CUDA kurulum farkına dikkat,
+      Codespaces'te test edilecek
+- [ ] Model mimarisi: GNN / neural operator (mimari seçimi ayrı bir onay noktası)
+- [ ] Değerlendirme: 4b'deki baseline ile karşılaştırmalı hata metrikleri
+- [ ] Model versiyonlama (MLflow ya da basit dosya tabanlı versiyonlama)
+
+### 4d. Servis entegrasyonu
+- [ ] Backend'e "hızlı tahmin" endpoint'i eklenmesi
+- [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
+- [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
+
 ## Faz sırasını değiştirme
 
 Kullanıcı isterse fazlar atlanabilir ya da paralel ilerletilebilir, ama agent bunu kendi
