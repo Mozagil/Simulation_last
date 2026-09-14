@@ -553,6 +553,31 @@ Bu, aşağıdaki alt fazlara bölünür.
 - [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
 - [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
 
+### a) Kendi crash/durability kıyaslama modellerimiz (lisans-temiz)
+- [ ] Basit parametrik crash test parçası (örn. kutu profil / bumper-beam benzeri) —
+      kendi geometrimiz, tamamen bize ait, hiçbir 3. parti lisans kısıtı taşımaz
+- [ ] Bu geometri üzerinde DOE ile CalculiX (durability) ve OpenRadioss (crash) için
+      ayrı ayrı senaryo seti üretimi
+- [ ] Bilinen analitik/literatür referans değerleriyle doğrulama (örn. Hertz temas
+      çözümü, basit çarpışma enerji dengesi) — akademik olarak "sonuçlar referans
+      problemlerle karşılaştırıldı" diyebilmek için
+- [ ] Bu modellerin (geometri + sonuç) projede kalıcı referans veri seti olarak
+      saklanması — lisans kısıtı yok, surrogate eğitim setine serbestçe girebilir
+
+### b) calculix/CalculiX-Examples (MIT) entegrasyonu — regression test harness
+- [ ] Depo MIT lisanslı, doğrudan kopyalanabilir — Contact, RVE, NonLinear, Thermal
+      klasörlerinden ilgili örneklerin seçilip repo içine (`/tests/fixtures/
+      calculix_examples/`) kopyalanması
+- [ ] `run_all.py`/`testall.py`'daki mantığın incelenip CalculiX adaptörünün
+      regression test suite'ine (pytest) adapte edilmesi
+- [ ] `RVE/Periodic`, `RVE/PlaneOrtho1` — Faz 2 (kompozit) için malzeme homojenizasyon
+      doğrulaması olarak kullanılması
+- [ ] `Contact/Hertz_2D`, `Contact/Hertz_axi` — kontak algoritması doğrulaması
+      (analitik Hertz çözümüyle karşılaştırma)
+- [ ] Attribution notu: `docs/LICENSING.md`'ye "test fixtures, calculix/
+      CalculiX-Examples (MIT, Prof. Martin Kraska, Brandenburg University of
+      Applied Sciences) kaynağından alınmıştır" notu eklenmesi
+
 ## Faz sırasını değiştirme
 
 Kullanıcı isterse fazlar atlanabilir ya da paralel ilerletilebilir, ama agent bunu kendi
