@@ -16,8 +16,9 @@ from app.templates.base import (
     build_template,
 )
 from app.templates.cantilever_beam import CANTILEVER_BEAM
+from app.templates.simply_supported_beam import SIMPLY_SUPPORTED_BEAM
 
-_ALL: tuple[GeometryTemplate, ...] = (CANTILEVER_BEAM,)
+_ALL: tuple[GeometryTemplate, ...] = (CANTILEVER_BEAM, SIMPLY_SUPPORTED_BEAM)
 
 TEMPLATES: dict[str, GeometryTemplate] = {}
 for _t in _ALL:

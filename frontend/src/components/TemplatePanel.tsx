@@ -1,0 +1,158 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  createGeometryFromTemplate,
+  downloadGeometryStep,
+  fetchTemplates,
+  TemplateApiError,
+  type CreateFromTemplateResponse,
+  type GeometryTemplateInfo,
+} from "../api/templates";
+import {
+  defaultsFromFields,
+  numberFieldsFromSchema,
+  parseParamInputs,
+  type JsonSchema,
+} from "../templates/schemaForm";
+import TemplateSchematic from "./TemplateSchematic";
+
+interface TemplatePanelProps {
+  geometryId: number | null;
+  geometryFilename: string | null;
+  busy: boolean;
+  onCreated: (result: CreateFromTemplateResponse) => Promise<void> | void;
+}
+
+export default function TemplatePanel({
+  geometryId,
+  geometryFilename,
+  busy,
+  onCreated,
+}: TemplatePanelProps) {
+  const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const selected = templates.find((t) => t.id === selectedId) ?? null;
+  const fields = useMemo(
+    () => (selected ? numberFieldsFromSchema(selected.params_schema as JsonSchema) : []),
+    [selected],
+  );
+
+  function fillDefaults(t: GeometryTemplateInfo) {
+    const f = numberFieldsFromSchema(t.params_schema as JsonSchema);
+    const d = defaultsFromFields(f);
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(d)) next[k] = String(v);
+    setInputs(next);
+  }
+
+  useEffect(() => {
+    fetchTemplates()
+      .then((list) => {
+        setTemplates(list);
+        if (list.length) {
+          setSelectedId(list[0].id);
+          fillDefaults(list[0]);
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Şablonlar alınamadı."));
+  }, []);
+
+  async function handleCreate() {
+    if (!selected) return;
+    const parsed = parseParamInputs(inputs);
+    if (typeof parsed === "string") {
+      setError(parsed);
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      const result = await createGeometryFromTemplate(selected.id, parsed);
+      await onCreated(result);
+    } catch (e) {
+      setError(e instanceof TemplateApiError ? e.message : "Şablon üretilemedi.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (geometryId == null) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      await downloadGeometryStep(geometryId, geometryFilename ?? `geometry-${geometryId}.step`);
+    } catch (e) {
+      setError(e instanceof TemplateApiError ? e.message : "STEP indirilemedi.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const disabled = busy || creating;
+
+  return (
+    <div className="template-panel">
+      <p className="material-assignments-title">Şablondan üret</p>
+      <p className="lead material-lead">Dosya yüklemeden parametrik geometri.</p>
+      {selected && <TemplateSchematic templateId={selected.id} />}
+      <label className="mesh-field">
+        <span>Şablon</span>
+        <select
+          value={selectedId}
+          disabled={disabled || templates.length === 0}
+          onChange={(e) => {
+            const id = e.target.value;
+            setSelectedId(id);
+            const t = templates.find((x) => x.id === id);
+            if (t) fillDefaults(t);
+          }}
+        >
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selected && <p className="filename">{selected.description}</p>}
+      {fields.map((f) => (
+        <label key={f.name} className="mesh-field">
+          <span>
+            {f.label}
+            {f.unit ? ` (${f.unit})` : ""}
+          </span>
+          <input
+            type="number"
+            step="any"
+            value={inputs[f.name] ?? ""}
+            disabled={disabled}
+            title={f.description}
+            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
+          />
+        </label>
+      ))}
+      <div className="template-panel-actions">
+        <button type="button" disabled={disabled || !selected} onClick={() => void handleCreate()}>
+          {creating ? "Üretiliyor…" : "Geometri üret"}
+        </button>
+        <button
+          type="button"
+          disabled={geometryId == null || busy || downloading}
+          onClick={() => void handleDownload()}
+        >
+          {downloading ? "İndiriliyor…" : "STEP indir"}
+        </button>
+      </div>
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

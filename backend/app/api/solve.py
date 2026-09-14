@@ -15,12 +15,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, TESSELLATION_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import SessionLocal, get_db
+from app.models.geometry import Geometry
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
 from app.postprocess.fatigue import compute_safety_factor, estimate_fatigue_life
 from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
+from app.templates.compare import build_analytic_comparison, store_comparison_on_scalars
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,27 @@ def _attach_fatigue_and_sf(
     return scalars, fatigue_note, fatigue_runout
 
 
+def _analytic_comparison_for(
+    geo: Geometry | None,
+    materials: list[dict[str, Any]],
+    bcs: list[dict[str, Any]],
+    analysis_type: str,
+    scalars: dict[str, Any],
+) -> dict[str, Any] | None:
+    if geo is None:
+        return None
+    comparison = build_analytic_comparison(
+        template_id=geo.template_id,
+        template_params=geo.template_params,
+        materials=materials,
+        bcs=bcs,
+        analysis_type=analysis_type,
+        fea_scalars=scalars,
+    )
+    store_comparison_on_scalars(scalars, comparison)
+    return comparison
+
+
 def _complete_ccx_job(run_id: int) -> None:
     db = SessionLocal()
     run = None
@@ -93,6 +116,14 @@ def _complete_ccx_job(run_id: int) -> None:
             assignments,
             analysis_type,
             parsed.results_preview_path,
+        )
+        geo = db.get(Geometry, run.geometry_id)
+        _analytic_comparison_for(
+            geo,
+            list(run.materials_snapshot or []),
+            list(run.bcs or []),
+            analysis_type,
+            scalars,
         )
         run.status = "solved"
         run.message = f"ccx bitti ({status.state})"
@@ -390,7 +421,12 @@ def solve_geometry(
                     analysis_type,
                     parsed.results_preview_path,
                 )
+                comparison = _analytic_comparison_for(
+                    geo, materials, bcs, analysis_type, scalars
+                )
                 result["scalars"] = scalars
+                if comparison is not None:
+                    result["analytic_comparison"] = comparison
                 if fatigue_note:
                     result["fatigue_note"] = fatigue_note
                     result["fatigue_runout"] = fatigue_runout
@@ -506,6 +542,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
             else None
         ),
         "inp_url": f"/files/runs/{run.id}/{Path(run.inp_path).name}" if run.inp_path else None,
+        "analytic_comparison": (run.scalars or {}).get("_analytic_comparison"),
     }
 
 

@@ -1,3 +1,5 @@
+import type { AnalyticComparison } from "../templates/analyticCompare";
+
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
@@ -154,6 +156,7 @@ export interface SolveResponse {
   n_modes?: number | null;
   frequencies?: number[];
   status?: "pending" | "inp_only" | "solved" | "failed";
+  analytic_comparison?: AnalyticComparison | null;
 }
 
 export type SolveBC = {

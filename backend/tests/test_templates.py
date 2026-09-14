@@ -240,9 +240,14 @@ def test_create_geometry_from_template_persists_groups():
 
     db = SessionLocal()
     try:
-        geo, regions = create_geometry_from_template(db, "cantilever_beam", {"length": 200})
+        geo, regions = create_geometry_from_template(db, "cantilever_beam", {"length": 200})[:2]
         try:
             assert geo.current_filename == f"{geo.id}.step"
+            assert geo.template_id == "cantilever_beam"
+            assert geo.template_params is not None
+            assert geo.template_params["length"] == 200.0
+            assert geo.template_params["thickness"] == 10.0
+            assert geo.template_params["width"] == 50.0
             assert (UPLOAD_DIR / geo.current_filename).exists()
             assert (TESSELLATION_DIR / f"{geo.id}.stl").exists()
 

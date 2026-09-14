@@ -51,6 +51,10 @@ import {
 import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
 import DatasetPanel from "./components/DatasetPanel";
+import TemplatePanel from "./components/TemplatePanel";
+import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
+import type { CreateFromTemplateResponse } from "./api/templates";
+import { pickAnalyticComparison } from "./templates/analyticCompare";
 import ModalModeGrid, { type ModalPanel } from "./components/ModalModeGrid";
 import {
   FrequencyLinePlot,
@@ -651,6 +655,10 @@ function App() {
         results_preview_url: detail.results_preview_url,
         analysis_type: isModalRun ? "modal" : "static",
         frequencies: modeFreqs.length ? modeFreqs : restoredFreqs,
+        analytic_comparison: pickAnalyticComparison(
+          detail.analytic_comparison,
+          detail.scalars as Record<string, unknown>,
+        ),
       });
 
       const extra =
@@ -756,6 +764,61 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultsAnimating, selectedModalMode]);
 
+  async function hydrateLoadedGeometry(
+    result: {
+      geometry_id: number;
+      original_filename: string;
+      tessellation_url: string;
+      triangle_to_face: number[];
+      triangle_to_part: number[];
+      volume_part_ids: number[];
+      face_count: number;
+      part_count: number;
+    },
+    displayName: string,
+  ) {
+    activeGeometryIdRef.current = result.geometry_id;
+    setGeometryId(result.geometry_id);
+    setFileName(displayName);
+    setStlUrl(resolveTessellationUrl(result.tessellation_url));
+    setTriangleToFace(result.triangle_to_face);
+    setTriangleToPart(result.triangle_to_part);
+    setVolumePartIds(result.volume_part_ids);
+    setFaceCount(result.face_count);
+    setPartCount(result.part_count);
+    setEdges([]);
+    setPoints([]);
+    setPhysicalGroups([]);
+    setStatus("success");
+    setInfoMessage("Önizleme hazır. Kenar/nokta listesi arka planda yükleniyor…");
+    ensureStepExpanded("mesh");
+
+    const geoId = result.geometry_id;
+    void (async () => {
+      try {
+        const [edgeList, pointList, groupList, assignments] = await Promise.all([
+          fetchEdges(geoId),
+          fetchPoints(geoId),
+          fetchPhysicalGroups(geoId),
+          fetchMaterialAssignments(geoId),
+        ]);
+        if (activeGeometryIdRef.current !== geoId) return;
+        setEdges(edgeList);
+        setPoints(pointList);
+        setPhysicalGroups(groupList);
+        setMaterialAssignments(assignments);
+        setInfoMessage(null);
+      } catch (err) {
+        if (activeGeometryIdRef.current !== geoId) return;
+        const message =
+          err instanceof GeometryUploadError
+            ? err.message
+            : "Kenar/nokta listesi yüklenemedi (önizleme kullanılabilir).";
+        setErrorMessage(message);
+      }
+    })();
+  }
+
   async function handleFileSelected(file: File) {
     setStatus("uploading");
     setErrorMessage(null);
@@ -787,53 +850,43 @@ function App() {
 
     try {
       const result = await uploadGeometry(file);
-      activeGeometryIdRef.current = result.geometry_id;
-      setGeometryId(result.geometry_id);
-      setStlUrl(resolveTessellationUrl(result.tessellation_url));
-      setTriangleToFace(result.triangle_to_face);
-      setTriangleToPart(result.triangle_to_part);
-      setVolumePartIds(result.volume_part_ids);
-      setFaceCount(result.face_count);
-      setPartCount(result.part_count);
-      setEdges([]);
-      setPoints([]);
-      setPhysicalGroups([]);
-      // Önizlemeyi kenar/nokta bitmeden göster — büyük STEP'lerde edges/points
-      // Gmsh kilidini uzun süre tutup UI'yi "Yükleniyor"da bırakıyordu.
-      setStatus("success");
-      setInfoMessage("Önizleme hazır. Kenar/nokta listesi arka planda yükleniyor…");
-      ensureStepExpanded("mesh");
-
-      const geoId = result.geometry_id;
-      void (async () => {
-        try {
-          const [edgeList, pointList, groupList, assignments] = await Promise.all([
-            fetchEdges(geoId),
-            fetchPoints(geoId),
-            fetchPhysicalGroups(geoId),
-            fetchMaterialAssignments(geoId),
-          ]);
-          if (activeGeometryIdRef.current !== geoId) return;
-          setEdges(edgeList);
-          setPoints(pointList);
-          setPhysicalGroups(groupList);
-          setMaterialAssignments(assignments);
-          setInfoMessage(null);
-        } catch (err) {
-          if (activeGeometryIdRef.current !== geoId) return;
-          const message =
-            err instanceof GeometryUploadError
-              ? err.message
-              : "Kenar/nokta listesi yüklenemedi (önizleme kullanılabilir).";
-          setErrorMessage(message);
-        }
-      })();
+      hydrateLoadedGeometry(result, file.name);
     } catch (err) {
       const message =
         err instanceof GeometryUploadError ? err.message : "Beklenmeyen bir hata oluştu.";
       setErrorMessage(message);
       setStatus("error");
     }
+  }
+
+  async function handleTemplateCreated(result: CreateFromTemplateResponse) {
+    setStatus("uploading");
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setSelection(EMPTY_SELECTION);
+    setMode("surface");
+    setHiddenParts(new Set());
+    setActiveGroupId(null);
+    setNewGroupName("");
+    setCanUndo(false);
+    setMeshResult(null);
+    setMeshPreview(null);
+    setShowMesh(true);
+    setMeshWireframe(false);
+    setMeshQuality(null);
+    setMaterialAssignments([]);
+    setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
+    setResultsDeformScale(0);
+    setResultsAnimating(false);
+    setResultsScaleMinInput("");
+    setResultsScaleMaxInput("");
+    setMeshPicks([]);
+    setMeshGrow("element");
+    setProductTree(null);
+    setComponentName("");
+    hydrateLoadedGeometry(result, result.original_filename);
   }
 
   function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1476,7 +1529,11 @@ function App() {
   }
 
   const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
-  const externalHighlight = activeGroup ? { faceIds: activeGroup.entity_tags } : null;
+  const externalHighlight = activeGroup
+    ? activeGroup.dim === 1
+      ? { edgeIds: activeGroup.entity_tags }
+      : { faceIds: activeGroup.entity_tags }
+    : null;
 
   const canCopySurface = mode === "surface" && selection.ids.length >= 1;
   const canOffsetMidsurface = mode === "surface" && selection.ids.length >= 1;
@@ -2011,6 +2068,10 @@ function App() {
           scalars: d.scalars,
           results_preview_url: d.results_preview_url,
           inp_url: d.inp_url ?? result.inp_url,
+          analytic_comparison: pickAnalyticComparison(
+            d.analytic_comparison,
+            d.scalars as Record<string, unknown>,
+          ),
         };
       }
       setSolveResult(finalResult);
@@ -2109,6 +2170,10 @@ function App() {
           scalars: d.scalars,
           results_preview_url: d.results_preview_url,
           inp_url: d.inp_url ?? result.inp_url,
+          analytic_comparison: pickAnalyticComparison(
+            d.analytic_comparison,
+            d.scalars as Record<string, unknown>,
+          ),
         };
       }
       setSolveResult(finalResult);
@@ -2382,6 +2447,13 @@ function App() {
           />
           <span>{status === "uploading" ? "Yükleniyor…" : "Dosya seç (.step / .iges)"}</span>
         </label>
+
+        <TemplatePanel
+          geometryId={geometryId}
+          geometryFilename={fileName}
+          busy={status === "uploading" || busyAction !== null}
+          onCreated={handleTemplateCreated}
+        />
 
         {fileName && (
           <p className="filename">
@@ -3695,6 +3767,10 @@ function App() {
             <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
               .inp indir
             </a>
+
+            {solveResult.analytic_comparison && (
+              <AnalyticComparisonPanel comparison={solveResult.analytic_comparison} />
+            )}
 
             {resultsPreview && solveResult.analysis_type !== "modal" && (
               <>

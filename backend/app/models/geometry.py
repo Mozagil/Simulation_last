@@ -14,6 +14,7 @@ uygulanabilir (replay).
 """
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,6 +33,10 @@ class Geometry(Base):
     # değiştirir, tam bir geçmiş (undo stack) tutulmuyor. Mutasyon yoksa ya da
     # zaten geri alındıysa None.
     previous_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Şablondan üretildiyse köken: DOE (0.5.4) ve analitik sapma (0.4.5)
+    # bu olmadan geometriyi parametreye bağlayamaz. Elle yüklemede ikisi de None.
+    template_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    template_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

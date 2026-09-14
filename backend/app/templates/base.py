@@ -67,6 +67,9 @@ class AnalyticInput:
     force_n: float = 0.0
     youngs_modulus_pa: float = 210e9
     poisson_ratio: float = 0.3
+    #: True ise toplam kuvvet yayılı yük (UDL) olarak yorumlanır.
+    #: False (varsayılan) tekil kuvvet — ankastre uç yükü / mesnetli orta nokta.
+    distributed: bool = False
 
 
 @dataclass(frozen=True)
@@ -170,20 +173,21 @@ def build_template(template: GeometryTemplate, params: BaseModel, step_path: Pat
         if not volumes:
             raise TemplateError(f"Şablon '{template.id}' hiç hacim üretmedi.")
 
-        # Bölgeleri geometrik olarak bul.
-        faces = [tag for _dim, tag in gmsh.model.getEntities(dim=2)]
-        bboxes = {tag: tuple(gmsh.model.getBoundingBox(2, tag)) for tag in faces}
+        # Bölgeleri geometrik olarak bul (yüzey dim=2, kenar dim=1).
         regions: dict[str, list[int]] = {}
         for region in template.regions:
+            tags = [tag for _d, tag in gmsh.model.getEntities(dim=region.dim)]
+            bboxes = {tag: tuple(gmsh.model.getBoundingBox(region.dim, tag)) for tag in tags}
             hits = sorted(tag for tag, bb in bboxes.items() if region.select(bb, params))
+            kind = "kenar" if region.dim == 1 else "yüzey"
             if not hits:
                 raise TemplateError(
-                    f"Şablon '{template.id}': '{region.name}' bölgesi için yüzey bulunamadı."
+                    f"Şablon '{template.id}': '{region.name}' bölgesi için {kind} bulunamadı."
                 )
             if region.expected_faces is not None and len(hits) != region.expected_faces:
                 raise TemplateError(
                     f"Şablon '{template.id}': '{region.name}' için {region.expected_faces} "
-                    f"yüzey bekleniyordu, {len(hits)} bulundu: {hits}"
+                    f"{kind} bekleniyordu, {len(hits)} bulundu: {hits}"
                 )
             regions[region.name] = hits
 

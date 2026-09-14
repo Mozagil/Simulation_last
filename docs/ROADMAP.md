@@ -197,7 +197,7 @@ ilginç vakalar.
 
 **Grup 1 — analitik çözümü olan temel vakalar**
 - [x] Ankastre kiriş, dikdörtgen kesit (L, W, T) — Faz 0'da doğrulandı (`cantilever_beam`)
-- [ ] Basit mesnetli kiriş (orta noktadan ve yayılı yük)
+- [x] Basit mesnetli kiriş (orta noktadan ve yayılı yük) — `simply_supported_beam`
 - [ ] Delikli plaka (W, H, T, d) — gerilme yığılması, `Kt ≈ 3` (sonsuz plaka limiti)
 - [ ] Çekme deneyi numunesi (dogbone, ISO 6892 / ASTM E8 oranları)
 - [ ] İçten basınçlı kalın cidarlı boru (Lamé çözümü)
@@ -237,20 +237,20 @@ kirişte her model iyi görünür.
 - [x] Gerekçe: altyapının doğruluğunu bilinen bir cevapla kilitler
 
 **0.4.3 — API**
-- [ ] `GET /templates` — şablon listesi ve parametre şemaları
-- [ ] `POST /templates/{id}/create` — parametrelerle geometri üretimi
-- [ ] `GET /geometry/{id}/step` — üretilen STEP'in indirilmesi
+- [x] `GET /templates` — şablon listesi ve parametre şemaları
+- [x] `POST /templates/{id}/create` — parametrelerle geometri üretimi; `geometries.template_id` + `template_params` yazılır
+- [x] `GET /geometry/{id}/step` — üretilen STEP'in indirilmesi
 
 **0.4.4 — Frontend**
-- [ ] Şablon seçici (görsel önizleme/ikon ile)
-- [ ] Parametre formu — şemadan otomatik üretilir
-- [ ] Üretilen geometrinin mevcut 3B viewer'da gösterimi
-- [ ] "STEP indir" butonu
+- [x] Şablon seçici (liste; ikon/önizleme yok)
+- [x] Parametre formu — şemadan otomatik üretilir
+- [x] Üretilen geometrinin mevcut 3B viewer'da gösterimi
+- [x] "STEP indir" butonu
 
 **0.4.5 — Analitik referans**
-- [ ] Şablona bağlı kapalı form çözüm fonksiyonu
-- [ ] Çözüm sonrası FEA ile analitik sonucun karşılaştırılması ve sapmanın gösterilmesi
-- [ ] Sapma eşiği aşılırsa uyarı — mesh yetersizliğini ya da BC hatasını erken yakalar
+- [x] Şablona bağlı kapalı form çözüm fonksiyonu
+- [x] Çözüm sonrası FEA ile analitik sonucun karşılaştırılması ve sapmanın gösterilmesi
+- [x] Sapma eşiği aşılırsa uyarı — mesh yetersizliğini ya da BC hatasını erken yakalar
 
 **0.4.6 — Grup 1'in tamamlanması**
 - [ ] Kalan Grup 1 şablonları, her biri analitik referansıyla

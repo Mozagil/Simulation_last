@@ -27,10 +27,12 @@ logger = logging.getLogger(__name__)
 
 def create_geometry_from_template(
     db: Session, template_id: str, raw_params: dict[str, Any]
-) -> tuple[Geometry, dict[str, list[int]]]:
+) -> tuple[Geometry, dict[str, list[int]], Any]:
     """Şablonu kurar, kalıcı Geometry + PhysicalGroup kayıtlarını oluşturur.
 
-    Döner: (geometry, bölge_adı -> yüzey etiketleri).
+    Döner: (geometry, bölge_adı -> yüzey etiketleri, tessellation).
+    `template_id` / `template_params` satıra yazılır — 0.4.5 sapma hesabı
+    ve 0.5.4 DOE bununla geometriyi parametreye bağlar.
     Hatalar: `UnknownTemplateError`, `pydantic.ValidationError`,
     `TemplateError`, `GmshImportError` — API katmanı bunları 404/422'ye çevirir.
     Kurulum bir adımda patlarsa yarım kayıt bırakılmaz.
@@ -39,7 +41,13 @@ def create_geometry_from_template(
     params = template.parse_params(raw_params)
 
     _ensure_dirs()
-    geo = Geometry(original_filename=f"{template.id}.step", current_filename="")
+    dumped = params.model_dump()
+    geo = Geometry(
+        original_filename=f"{template.id}.step",
+        current_filename="",
+        template_id=template.id,
+        template_params=dumped,
+    )
     db.add(geo)
     db.commit()
     db.refresh(geo)
@@ -50,7 +58,7 @@ def create_geometry_from_template(
         result = build_template(template, params, step_path)
         geo.current_filename = stored_name
         db.commit()
-        _regenerate_tessellation(geo.id, step_path)
+        tess = _regenerate_tessellation(geo.id, step_path)
     except Exception:
         step_path.unlink(missing_ok=True)
         db.delete(geo)
@@ -72,10 +80,10 @@ def create_geometry_from_template(
         "Sablondan geometri uretildi: template=%s geometry_id=%d params=%s bolgeler=%s",
         template.id,
         geo.id,
-        params.model_dump(),
+        dumped,
         result.regions,
     )
-    return geo, result.regions
+    return geo, result.regions, tess
 
 
 __all__ = ["create_geometry_from_template", "GmshImportError"]
