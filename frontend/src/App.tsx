@@ -149,10 +149,11 @@ function isBcKind(value: string): value is BcKind {
 }
 
 function summarizeStoredBc(payload: SolveBC): string {
+  const region = payload.region ? `${payload.region} · ` : "";
   const faces = payload.face_ids?.length ? `yüzey ${payload.face_ids.join(",")}` : "";
   const edgeSel = payload.edge_ids?.length ? `kenar ${payload.edge_ids.join(",")}` : "";
   const nodes = payload.node_ids?.length ? `nokta ${payload.node_ids.join(",")}` : "";
-  const sel = [faces, edgeSel, nodes].filter(Boolean).join(" · ");
+  const sel = region + [faces, edgeSel, nodes].filter(Boolean).join(" · ");
   const kind = payload.type;
   if (kind === "fixed") return `Fixed · ${sel || "seçim yok"}`;
   if (kind === "cload") {
@@ -897,7 +898,17 @@ function App() {
     setMeshGrow("element");
     setProductTree(null);
     setComponentName("");
-    hydrateLoadedGeometry(result, result.original_filename);
+    await hydrateLoadedGeometry(result, result.original_filename);
+    // Şablonun referans sınır koşulları hazır gelir (bölge adı + gerçek yüzey
+    // id'leri). Önceki geometrinin BC'leri bu geometride anlamsız — liste
+    // tamamen değiştirilir; kullanıcı istediğini siler/ekler/değiştirir.
+    const defaults = result.default_bcs ?? [];
+    setBcList(bcItemsFromSnapshot(defaults));
+    if (defaults.length > 0) {
+      setInfoMessage(
+        `Şablonun ${defaults.length} varsayılan sınır koşulu yüklendi — BC listesinden düzenleyebilirsiniz.`,
+      );
+    }
   }
 
   function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {

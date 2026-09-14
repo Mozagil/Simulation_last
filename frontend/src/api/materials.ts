@@ -161,6 +161,9 @@ export interface SolveResponse {
 
 export type SolveBC = {
   type: string;
+  /** Şablon bölgesi adı (`ankastre_uc` gibi) — yalnız bilgi amaçlı; backend
+   * şablon geometrisinde varsayılan BC'leri bu alanla etiketler. */
+  region?: string;
   face_ids?: number[];
   edge_ids?: number[];
   /** CAD vertex (köşe) id'leri — backend POINT_ nset'i üzerinden mesh

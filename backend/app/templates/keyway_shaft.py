@@ -131,5 +131,10 @@ KEYWAY_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # NOT: bkz. torsion_shaft — gerçek tork BC'si 0.4.7'de.
+        {"type": "cload", "region": REGION_TORQUE, "fx": 0.0, "fy": 0.0, "fz": 500.0},
+    ),
     tags=("grup4", "analitik", "burulma", "gerilme_yigilmasi"),
 )

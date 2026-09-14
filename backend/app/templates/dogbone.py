@@ -173,5 +173,10 @@ DOGBONE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # σ_nom ≈ 200 MPa ölçü kesitinde (b=12.5, a=3): F = 7.5 kN
+        {"type": "cload", "region": REGION_LOAD, "fx": 7500.0, "fy": 0.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "cekme"),
 )

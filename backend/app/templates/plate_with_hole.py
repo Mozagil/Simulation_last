@@ -137,5 +137,10 @@ PLATE_WITH_HOLE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # σ_brüt ≈ 100 MPa (W=100, T=5): F = 50 kN
+        {"type": "cload", "region": REGION_LOAD, "fx": 50000.0, "fy": 0.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "gerilme_yigilmasi"),
 )
