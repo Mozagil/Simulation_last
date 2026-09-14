@@ -2300,6 +2300,17 @@ p {
   color: var(--muted);
 }
 
+.surrogate-banner {
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px dashed #c45c26;
+  background: rgba(196, 92, 38, 0.12);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 .doe-study-list {
   margin: 12px 0 0;
   padding-left: 18px;

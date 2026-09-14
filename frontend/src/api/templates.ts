@@ -53,7 +53,7 @@ export async function fetchTemplates(): Promise<GeometryTemplateInfo[]> {
 
 export async function createGeometryFromTemplate(
   templateId: string,
-  params: Record<string, number>,
+  params: Record<string, number | string>,
 ): Promise<CreateFromTemplateResponse> {
   const res = await fetch(`${API_BASE_URL}/templates/${encodeURIComponent(templateId)}/create`, {
     method: "POST",

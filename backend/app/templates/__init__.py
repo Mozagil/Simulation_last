@@ -16,11 +16,17 @@ from app.templates.base import (
     build_template,
 )
 from app.templates.cantilever_beam import CANTILEVER_BEAM
+from app.templates.circular_tube import CIRCULAR_TUBE
 from app.templates.dogbone import DOGBONE
+from app.templates.i_beam import I_BEAM
+from app.templates.keyway_shaft import KEYWAY_SHAFT
+from app.templates.l_angle import L_ANGLE
+from app.templates.notched_bar import NOTCHED_BAR
 from app.templates.plate_with_hole import PLATE_WITH_HOLE
 from app.templates.simply_supported_beam import SIMPLY_SUPPORTED_BEAM
 from app.templates.thick_walled_tube import THICK_WALLED_TUBE
 from app.templates.torsion_shaft import TORSION_SHAFT
+from app.templates.box_tube import BOX_TUBE
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -29,6 +35,12 @@ _ALL: tuple[GeometryTemplate, ...] = (
     DOGBONE,
     THICK_WALLED_TUBE,
     TORSION_SHAFT,
+    I_BEAM,
+    BOX_TUBE,
+    CIRCULAR_TUBE,
+    L_ANGLE,
+    NOTCHED_BAR,
+    KEYWAY_SHAFT,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}

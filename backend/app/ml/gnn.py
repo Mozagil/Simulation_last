@@ -1,0 +1,288 @@
+"""MeshGraphNet-benzeri encode-process-decode, NumPy (0.5.7).
+
+PyTorch Geometric bilinçli olarak eklenmedi: Codespace imajı torch ile
+disk dolduruyordu. Aynı şema (düğüm girdi/çıktı + kenar) korunur; GPU
+eğitimi ayrı bir bağımlılık kararı.
+
+Eğitim: son katman en küçük kareler, process katmanları birkaç SGD adımı.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from app.dataset.training_data import NODE_INPUT_CHANNELS, NODE_OUTPUT_CHANNELS
+from app.ml.graph_data import GraphSample
+from app.ml.ood import bounds_from_matrix
+
+DEFAULT_GNN_PATH = Path("uploads") / "models" / "field_gnn.npz"
+
+
+def _relu(x: np.ndarray) -> np.ndarray:
+    return np.maximum(x, 0.0)
+
+
+def _mean_neighbors(h: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    n = h.shape[0]
+    agg = np.zeros_like(h)
+    deg = np.zeros((n, 1), dtype=np.float64)
+    if edges.size == 0:
+        return agg
+    for a, b in edges:
+        agg[a] += h[b]
+        agg[b] += h[a]
+        deg[a] += 1.0
+        deg[b] += 1.0
+    return agg / np.maximum(deg, 1.0)
+
+
+class NumpyMeshGNN:
+    def __init__(self, in_dim: int, hidden: int = 24, n_proc: int = 2, out_dim: int = 4, seed: int = 0):
+        rng = np.random.default_rng(seed)
+        scale = 0.15
+        self.W_enc = rng.normal(0.0, scale, (in_dim, hidden))
+        self.b_enc = np.zeros(hidden)
+        self.W_self = rng.normal(0.0, scale, (hidden, hidden))
+        self.W_nei = rng.normal(0.0, scale, (hidden, hidden))
+        self.b_proc = np.zeros(hidden)
+        self.W_out = rng.normal(0.0, scale, (hidden, out_dim))
+        self.b_out = np.zeros(out_dim)
+        self.n_proc = n_proc
+        self.hidden = hidden
+
+    def encode(self, X: np.ndarray) -> np.ndarray:
+        return _relu(X @ self.W_enc + self.b_enc)
+
+    def process(self, h: np.ndarray, edges: np.ndarray) -> np.ndarray:
+        for _ in range(self.n_proc):
+            agg = _mean_neighbors(h, edges)
+            h = _relu(h @ self.W_self + agg @ self.W_nei + self.b_proc)
+        return h
+
+    def hidden_states(self, X: np.ndarray, edges: np.ndarray) -> np.ndarray:
+        return self.process(self.encode(X), edges)
+
+    def forward(self, X: np.ndarray, edges: np.ndarray) -> np.ndarray:
+        h = self.hidden_states(X, edges)
+        return h @ self.W_out + self.b_out
+
+    def fit_output_ls(self, samples: list[GraphSample]) -> None:
+        hs: list[np.ndarray] = []
+        ys: list[np.ndarray] = []
+        for s in samples:
+            if s.node_outputs is None:
+                continue
+            hs.append(self.hidden_states(s.node_inputs, s.edges))
+            ys.append(s.node_outputs)
+        if not hs:
+            raise ValueError("GNN eğitimi için düğüm çıktılı örnek yok.")
+        H = np.vstack(hs)
+        Y = np.vstack(ys)
+        ones = np.ones((H.shape[0], 1))
+        A = np.hstack([H, ones])
+        wb, *_ = np.linalg.lstsq(A, Y, rcond=None)
+        self.W_out = wb[:-1]
+        self.b_out = wb[-1]
+
+    def sgd_process(self, samples: list[GraphSample], *, steps: int = 8, lr: float = 1e-4) -> None:
+        """Process ağırlıklarına kaba gradyan (son katman donuk)."""
+        for _ in range(steps):
+            d_self = np.zeros_like(self.W_self)
+            d_nei = np.zeros_like(self.W_nei)
+            n_used = 0
+            for s in samples:
+                if s.node_outputs is None:
+                    continue
+                h0 = self.encode(s.node_inputs)
+                pred = self.forward(s.node_inputs, s.edges)
+                err = pred - s.node_outputs
+                # ∂L/∂h_last ≈ err @ W_out.T
+                g_h = err @ self.W_out.T
+                agg = _mean_neighbors(h0, s.edges)
+                # tek process adımı yaklaşığı
+                d_self += h0.T @ g_h
+                d_nei += agg.T @ g_h
+                n_used += 1
+            if n_used == 0:
+                return
+            self.W_self -= lr * d_self / n_used
+            self.W_nei -= lr * d_nei / n_used
+            self.fit_output_ls(samples)
+
+    def to_npz(self) -> dict[str, np.ndarray]:
+        return {
+            "W_enc": self.W_enc,
+            "b_enc": self.b_enc,
+            "W_self": self.W_self,
+            "W_nei": self.W_nei,
+            "b_proc": self.b_proc,
+            "W_out": self.W_out,
+            "b_out": self.b_out,
+            "n_proc": np.int32(self.n_proc),
+        }
+
+    @classmethod
+    def from_npz(cls, data: dict[str, np.ndarray]) -> "NumpyMeshGNN":
+        model = cls(
+            in_dim=int(data["W_enc"].shape[0]),
+            hidden=int(data["W_enc"].shape[1]),
+            n_proc=int(data["n_proc"]),
+            out_dim=int(data["W_out"].shape[1]),
+        )
+        for key in ("W_enc", "b_enc", "W_self", "W_nei", "b_proc", "W_out", "b_out"):
+            setattr(model, key, np.asarray(data[key], dtype=np.float64))
+        return model
+
+
+def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, Any]:
+    sq = np.zeros(len(NODE_OUTPUT_CHANNELS))
+    n = 0
+    scalar_sq = np.zeros(2)
+    n_graphs = 0
+    by_size: dict[str, list[float]] = {}
+    for s in samples:
+        if s.node_outputs is None:
+            continue
+        pred = model.forward(s.node_inputs, s.edges)
+        y = s.node_outputs
+        diff = pred - y
+        sq += (diff ** 2).mean(axis=0)
+        n += 1
+        n_graphs += 1
+        mag_t = np.linalg.norm(y[:, :3], axis=1)
+        mag_p = np.linalg.norm(pred[:, :3], axis=1)
+        scalar_sq[0] += (float(mag_t.max()) - float(mag_p.max())) ** 2
+        scalar_sq[1] += (float(y[:, 3].max()) - float(pred[:, 3].max())) ** 2
+        key = "unknown" if s.element_size is None else f"{s.element_size:.1f}"
+        node_rmse = float(np.sqrt((diff ** 2).mean()))
+        by_size.setdefault(key, []).append(node_rmse)
+    if n == 0:
+        return {}
+    per_ch = {
+        name: float(np.sqrt(sq[i] / n))
+        for i, name in enumerate(NODE_OUTPUT_CHANNELS)
+    }
+    size_rmse = {k: float(np.mean(v)) for k, v in sorted(by_size.items())}
+    return {
+        "n_graphs": n_graphs,
+        "node_rmse": per_ch,
+        "scalar_rmse": {
+            "max_displacement": float(np.sqrt(scalar_sq[0] / n_graphs)),
+            "max_von_mises": float(np.sqrt(scalar_sq[1] / n_graphs)),
+        },
+        "rmse_by_element_size": size_rmse,
+    }
+
+
+def train_gnn(
+    samples: list[GraphSample],
+    *,
+    seed: int = 2026,
+    hidden: int = 24,
+    sgd_steps: int = 6,
+) -> dict[str, Any]:
+    if len(samples) < 2:
+        raise ValueError("GNN için en az 2 graf örnek gerekir.")
+    in_dim = samples[0].node_inputs.shape[1]
+    model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=2, out_dim=len(NODE_OUTPUT_CHANNELS), seed=seed)
+    model.fit_output_ls(samples)
+    model.sgd_process(samples, steps=sgd_steps, lr=1e-4)
+    globals_ = []
+    for s in samples:
+        # OOD için global özet: bbox + ortalama yük/E (kanal 7-12)
+        x = s.node_inputs
+        g = np.concatenate(
+            [
+                x[:, :3].min(axis=0),
+                x[:, :3].max(axis=0),
+                x[:, 7:13].mean(axis=0),
+            ]
+        )
+        globals_.append(g)
+    G = np.vstack(globals_)
+    metrics = _field_rmse(samples, model)
+    return {
+        "kind": "field_gnn",
+        "model": model,
+        "bounds": bounds_from_matrix(G),
+        "n_samples": len(samples),
+        "metrics": metrics,
+        "input_channels": list(NODE_INPUT_CHANNELS),
+        "output_channels": list(NODE_OUTPUT_CHANNELS),
+        "seed": seed,
+    }
+
+
+def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
+    dest = path or DEFAULT_GNN_PATH
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    model: NumpyMeshGNN = bundle["model"]
+    payload = model.to_npz()
+    payload["bounds_min"] = np.asarray(bundle["bounds"]["min"], dtype=np.float64)
+    payload["bounds_max"] = np.asarray(bundle["bounds"]["max"], dtype=np.float64)
+    payload["n_samples"] = np.int32(bundle["n_samples"])
+    payload["seed"] = np.int32(bundle["seed"])
+    np.savez_compressed(dest, **payload)
+    meta = dest.with_suffix(".json")
+    import json
+
+    meta.write_text(
+        json.dumps(
+            {
+                "kind": "field_gnn",
+                "n_samples": bundle["n_samples"],
+                "metrics": bundle["metrics"],
+                "input_channels": bundle["input_channels"],
+                "output_channels": bundle["output_channels"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    bundle["metrics_path"] = str(meta)
+    return dest
+
+
+def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
+    dest = path or DEFAULT_GNN_PATH
+    if not dest.is_file():
+        return None
+    with np.load(dest, allow_pickle=False) as z:
+        data = {k: z[k] for k in z.files}
+    model = NumpyMeshGNN.from_npz(data)
+    import json
+
+    metrics = {}
+    meta = dest.with_suffix(".json")
+    if meta.is_file():
+        metrics = json.loads(meta.read_text(encoding="utf-8"))
+    return {
+        "kind": "field_gnn",
+        "model": model,
+        "bounds": {
+            "min": [float(v) for v in data.get("bounds_min", [])],
+            "max": [float(v) for v in data.get("bounds_max", [])],
+        },
+        "n_samples": int(data.get("n_samples", 0)),
+        "metrics": metrics.get("metrics") if isinstance(metrics, dict) else {},
+        "input_channels": metrics.get("input_channels") if isinstance(metrics, dict) else list(NODE_INPUT_CHANNELS),
+        "output_channels": metrics.get("output_channels") if isinstance(metrics, dict) else list(NODE_OUTPUT_CHANNELS),
+    }
+
+
+def global_features_for_ood(X: np.ndarray) -> np.ndarray:
+    return np.concatenate(
+        [
+            X[:, :3].min(axis=0),
+            X[:, :3].max(axis=0),
+            X[:, 7:13].mean(axis=0),
+        ]
+    )
+
+
+def predict_field(bundle: dict[str, Any], sample: GraphSample) -> np.ndarray:
+    model: NumpyMeshGNN = bundle["model"]
+    return model.forward(sample.node_inputs, sample.edges)

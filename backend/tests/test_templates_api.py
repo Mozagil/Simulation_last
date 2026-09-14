@@ -55,6 +55,12 @@ def test_list_templates_includes_cantilever_schema():
     assert "dogbone" in ids
     assert "thick_walled_tube" in ids
     assert "torsion_shaft" in ids
+    assert "i_beam" in ids
+    assert "box_tube" in ids
+    assert "circular_tube" in ids
+    assert "l_angle" in ids
+    assert "notched_bar" in ids
+    assert "keyway_shaft" in ids
     beam = next(t for t in body["templates"] if t["id"] == "cantilever_beam")
     assert beam["has_analytic"] is True
     assert set(beam["params_schema"]["properties"]) == {"length", "thickness", "width"}

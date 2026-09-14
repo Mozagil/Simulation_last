@@ -23,6 +23,24 @@ export default function TemplateSchematic({ templateId }: TemplateSchematicProps
   if (templateId === "torsion_shaft") {
     return <TorsionShaftSchematic />;
   }
+  if (templateId === "i_beam") {
+    return <IBeamSchematic />;
+  }
+  if (templateId === "box_tube") {
+    return <BoxTubeSchematic />;
+  }
+  if (templateId === "circular_tube") {
+    return <CircularTubeSchematic />;
+  }
+  if (templateId === "l_angle") {
+    return <LAngleSchematic />;
+  }
+  if (templateId === "notched_bar") {
+    return <NotchedBarSchematic />;
+  }
+  if (templateId === "keyway_shaft") {
+    return <KeywayShaftSchematic />;
+  }
   return null;
 }
 
@@ -303,6 +321,91 @@ function TorsionShaftSchematic() {
         <text x="248" y="42" className="template-schematic-label">
           T
         </text>
+      </svg>
+    </figure>
+  );
+}
+
+function IBeamSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="I-kesit kiriş: h yükseklik, b flanş, tw gövde, tf flanş kalınlığı">
+        <rect x="110" y="28" width="80" height="16" className="template-schematic-face-side" />
+        <rect x="140" y="44" width="20" height="56" className="template-schematic-face-side" />
+        <rect x="110" y="100" width="80" height="16" className="template-schematic-face-side" />
+        <text x="200" y="40" className="template-schematic-label">b</text>
+        <text x="200" y="80" className="template-schematic-label">h</text>
+        <text x="168" y="76" className="template-schematic-label">tw</text>
+        <text x="200" y="112" className="template-schematic-label">tf</text>
+      </svg>
+    </figure>
+  );
+}
+
+function BoxTubeSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Kutu profil: dış h ve b, cidar t">
+        <rect x="90" y="32" width="120" height="80" className="template-schematic-face-side" />
+        <rect x="110" y="48" width="80" height="48" className="template-schematic-hole" />
+        <text x="220" y="48" className="template-schematic-label">h</text>
+        <text x="150" y="128" textAnchor="middle" className="template-schematic-label">b</text>
+        <text x="150" y="76" textAnchor="middle" className="template-schematic-label">t</text>
+      </svg>
+    </figure>
+  );
+}
+
+function CircularTubeSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Dairesel tüp: dış R, iç r">
+        <circle cx="150" cy="72" r="48" className="template-schematic-face-side" />
+        <circle cx="150" cy="72" r="32" className="template-schematic-hole" />
+        <text x="210" y="70" className="template-schematic-label">R</text>
+        <text x="168" y="78" className="template-schematic-label">r</text>
+      </svg>
+    </figure>
+  );
+}
+
+function LAngleSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="L-köşebent: bacak a, kalınlık t">
+        <rect x="90" y="28" width="18" height="90" className="template-schematic-face-side" />
+        <rect x="90" y="100" width="90" height="18" className="template-schematic-face-side" />
+        <text x="200" y="112" className="template-schematic-label">a</text>
+        <text x="78" y="80" className="template-schematic-label">t</text>
+      </svg>
+    </figure>
+  );
+}
+
+function NotchedBarSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Çentikli çubuk: karşılıklı U veya V çentik, çekme F">
+        <path
+          d="M40,40 L130,40 A16,16 0 0 1 162,40 L260,40 L260,110 L162,110 A16,16 0 0 1 130,110 L40,110 Z"
+          className="template-schematic-face-side"
+        />
+        <text x="150" y="28" textAnchor="middle" className="template-schematic-label">U / V</text>
+        <text x="22" y="80" className="template-schematic-label">F</text>
+        <text x="272" y="80" className="template-schematic-label">F</text>
+      </svg>
+    </figure>
+  );
+}
+
+function KeywayShaftSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Kama kanallı mil: yarıçap R, kama genişliği w ve derinliği h">
+        <circle cx="150" cy="72" r="48" className="template-schematic-face-side" />
+        <rect x="138" y="28" width="24" height="22" className="template-schematic-hole" />
+        <text x="210" y="70" className="template-schematic-label">R</text>
+        <text x="150" y="24" textAnchor="middle" className="template-schematic-label">w, h</text>
       </svg>
     </figure>
   );

@@ -204,10 +204,10 @@ ilginç vakalar.
 - [x] Burulmaya maruz mil (dairesel kesit, `τ = Tr/J`) — `torsion_shaft`
 
 **Grup 2 — profil kesitleri**
-- [ ] I-kesit kiriş (h, b, tw, tf)
-- [ ] Kutu profil / dikdörtgen tüp
-- [ ] Dairesel tüp
-- [ ] L-köşebent
+- [x] I-kesit kiriş (h, b, tw, tf)
+- [x] Kutu profil / dikdörtgen tüp
+- [x] Dairesel tüp
+- [x] L-köşebent
 
 **Grup 3 — makine elemanları**
 - [ ] T-braket (kaburgalı ve kaburgasız)
@@ -216,8 +216,8 @@ ilginç vakalar.
 - [ ] Kademeli mil (çap geçişinde gerilme yığılması, fillet yarıçapı parametre)
 
 **Grup 4 — çentikli/kritik vakalar**
-- [ ] Çentikli çubuk (U ve V çentik)
-- [ ] Kama kanallı mil
+- [x] Çentikli çubuk (U ve V çentik)
+- [x] Kama kanallı mil
 
 Grup 1 ve 4 surrogate için özellikle değerli: gerilme yığılması olan vakalar,
 alan modelinin gerçekten öğrenip öğrenmediğini ayırt eden yerlerdir. Düzgün bir
@@ -356,28 +356,28 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
 
 **0.5.6 — Skaler baseline (model hedefi DEĞİL, boru hattı testi)**
-- [ ] Random Forest ile maks. deplasman/gerilme tahmini
-- [ ] Amaç: veri boru hattının sağlamlığını ucuza doğrulamak. Skaler surrogate bu
+- [x] Random Forest ile maks. deplasman/gerilme tahmini
+- [x] Amaç: veri boru hattının sağlamlığını ucuza doğrulamak. Skaler surrogate bu
       projenin hedefi değildir — alan çıktısı olmadan FEA aracı yerine geçmez
 
 **0.5.7 — Alan modeli (GNN)**
-- [ ] PyTorch Geometric ile mesh-graf veri yükleyici
-- [ ] Baseline mimari (MeshGraphNet benzeri encode-process-decode)
-- [ ] Eğitim: düğüm başına deplasman + von Mises
-- [ ] Değerlendirme: alan bazlı hata (düğüm başına RMSE) VE skaler hata (maks. değerler)
-- [ ] Mesh yakınsama davranışı: model farklı eleman boyutlarında ne yapıyor
+- [x] Mesh-graf veri yükleyici (`.train.npz`; PyG yok — Codespace disk sınırı, NumPy GNN)
+- [x] Baseline mimari (MeshGraphNet benzeri encode-process-decode)
+- [x] Eğitim: düğüm başına deplasman + von Mises
+- [x] Değerlendirme: alan bazlı hata (düğüm başına RMSE) VE skaler hata (maks. değerler)
+- [x] Mesh yakınsama davranışı: model farklı eleman boyutlarında ne yapıyor
 
 **0.5.8 — Ekstrapolasyon koruması**
-- [ ] Girdi eğitim uzayının dışındaysa tahmin "uzay dışı" olarak işaretlenir
-- [ ] Gerekçe: ağaç tabanlı modeller uzay dışında SABİT bir değer döndürür ve bunu
+- [x] Girdi eğitim uzayının dışındaysa tahmin "uzay dışı" olarak işaretlenir
+- [x] Gerekçe: ağaç tabanlı modeller uzay dışında SABİT bir değer döndürür ve bunu
       hata vermeden yapar. Ölçülen örnek: eğitim aralığı dışındaki bir kiriş için
       gerçek 2976 mm iken model 109 mm verdi (%96 hata, hiçbir uyarı yok). Bir
       mühendislik aracında sessiz ve güvenli görünen yanlış cevap kabul edilemez
 
 **0.5.9 — Tahmin endpoint'i ve arayüz**
-- [ ] `POST /surrogate/predict` — alan çıktısı döner
-- [ ] Mevcut viewer ile aynı kontur/animasyon yolu kullanılır (preview JSON şeması)
-- [ ] Arayüzde "hızlı tahmin" ile "tam çözüm" görsel olarak AYIRT EDİLİR; tahmin
+- [x] `POST /surrogate/predict` — alan çıktısı döner
+- [x] Mevcut viewer ile aynı kontur/animasyon yolu kullanılır (preview JSON şeması)
+- [x] Arayüzde "hızlı tahmin" ile "tam çözüm" görsel olarak AYIRT EDİLİR; tahmin
       olduğu ve hata payı ekranda görünür
 
 ### Bilinen riskler
@@ -400,6 +400,15 @@ hata payı ölçülmüş ve ekranda gösteriliyor; eğitim uzayı dışındaki s
 ## Faz 1 — Crash analizi (OpenRadioss + Gmsh)
 
 Ön koşul: Faz 0 tamamlanmış olmalı ve kullanıcı onayı alınmalı.
+
+**İzolasyon (zorunlu):** Faz 1, Faz 0 durability / modal / surrogate kodunu
+kırmadan paralel yürür. Yeni `OpenRadiossAdapter` + crash'e özgü mesh export /
+post-process; mevcut CalculiX `SolverAdapter`, `/solve` statik-modal akışı,
+DOE kalite seti ve `/surrogate/*` bu fazda refaktör edilmez. Geometri
+import (STEP/IGES, Gmsh tessellation) ortak kalabilir. Crash UI ayrı bir
+bölüm/sekmedir, mevcut Results/surrogate görünümünün üzerine yazılmaz.
+Regresyon: mevcut `test_reference_validation`, `test_templates*`,
+`test_doe`, `test_surrogate` yeşil kalmak zorundadır.
 
 - [ ] `OpenRadiossAdapter` implementasyonu (Radioss block format `.rad`/`.inc` üretimi)
 - [ ] Gmsh mesh export'unun OpenRadioss formatına uyarlanması (Faz 0'da kullanılan aynı

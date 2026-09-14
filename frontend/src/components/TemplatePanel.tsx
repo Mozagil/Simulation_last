@@ -9,6 +9,7 @@ import {
 } from "../api/templates";
 import {
   defaultsFromFields,
+  enumFieldsFromSchema,
   numberFieldsFromSchema,
   parseParamInputs,
   type JsonSchema,
@@ -40,10 +41,16 @@ export default function TemplatePanel({
     () => (selected ? numberFieldsFromSchema(selected.params_schema as JsonSchema) : []),
     [selected],
   );
+  const enums = useMemo(
+    () => (selected ? enumFieldsFromSchema(selected.params_schema as JsonSchema) : []),
+    [selected],
+  );
 
   function fillDefaults(t: GeometryTemplateInfo) {
-    const f = numberFieldsFromSchema(t.params_schema as JsonSchema);
-    const d = defaultsFromFields(f);
+    const schema = t.params_schema as JsonSchema;
+    const f = numberFieldsFromSchema(schema);
+    const e = enumFieldsFromSchema(schema);
+    const d = defaultsFromFields(f, e);
     const next: Record<string, string> = {};
     for (const [k, v] of Object.entries(d)) next[k] = String(v);
     setInputs(next);
@@ -63,7 +70,7 @@ export default function TemplatePanel({
 
   async function handleCreate() {
     if (!selected) return;
-    const parsed = parseParamInputs(inputs);
+    const parsed = parseParamInputs(inputs, enums.map((e) => e.name));
     if (typeof parsed === "string") {
       setError(parsed);
       return;
@@ -120,6 +127,23 @@ export default function TemplatePanel({
         </select>
       </label>
       {selected && <p className="filename">{selected.description}</p>}
+      {enums.map((f) => (
+        <label key={f.name} className="mesh-field">
+          <span>{f.label}</span>
+          <select
+            value={inputs[f.name] ?? f.defaultValue}
+            disabled={disabled}
+            title={f.description}
+            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
+          >
+            {f.options.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
       {fields.map((f) => (
         <label key={f.name} className="mesh-field">
           <span>

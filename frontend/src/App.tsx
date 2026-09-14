@@ -52,6 +52,8 @@ import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } 
 import ComparisonView from "./components/ComparisonView";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
+import SurrogatePanel from "./components/SurrogatePanel";
+import type { SurrogatePredictResult } from "./api/surrogate";
 import TemplatePanel from "./components/TemplatePanel";
 import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
 import type { CreateFromTemplateResponse } from "./api/templates";
@@ -396,6 +398,12 @@ function App() {
   const [showCustomMaterialForm, setShowCustomMaterialForm] = useState(false);
   const [solveResult, setSolveResult] = useState<SolveResponse | null>(null);
   const [resultsPreview, setResultsPreview] = useState<ResultsPreviewData | null>(null);
+  const [resultsSource, setResultsSource] = useState<"solver" | "surrogate">("solver");
+  const [surrogateMeta, setSurrogateMeta] = useState<{
+    ood: boolean;
+    message: string;
+    kind: string;
+  } | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [resultsField, setResultsField] = useState<
     "von_mises" | "displacement_magnitude" | "safety_factor"
@@ -624,6 +632,8 @@ function App() {
       const resultNodes = results?.nodes.length ?? 0;
       const resultsMatch = results !== null && meshNodes > 0 && meshNodes === resultNodes;
       setResultsPreview(resultsMatch ? results : null);
+      setResultsSource("solver");
+      setSurrogateMeta(null);
       setShowResults(resultsMatch);
       setResultsDeformScale(0);
       setResultsAnimating(false);
@@ -2085,6 +2095,8 @@ function App() {
         try {
           const preview = await fetchResultsPreview(finalResult.results_preview_url);
           setResultsPreview(preview);
+          setResultsSource("solver");
+          setSurrogateMeta(null);
           setShowResults(true);
         } catch (previewErr) {
           console.error("Sonuç önizlemesi alınamadı:", previewErr);
@@ -2188,6 +2200,8 @@ function App() {
         try {
           const preview = await fetchResultsPreview(finalResult.results_preview_url);
           setResultsPreview(preview);
+          setResultsSource("solver");
+          setSurrogateMeta(null);
           setShowResults(true);
           const fromModes = (preview.modes ?? [])
             .map((m) => m.frequency_hz)
@@ -2706,6 +2720,25 @@ function App() {
 
       <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
       <DoePanel refreshKey={runsHistory.length} />
+      <SurrogatePanel
+        refreshKey={runsHistory.length}
+        geometryId={geometryId}
+        runId={solveResult?.run_id ?? null}
+        onPrediction={(result: SurrogatePredictResult) => {
+          setSurrogateMeta({
+            ood: result.out_of_domain,
+            message: result.message,
+            kind: result.kind,
+          });
+          if (result.kind === "field" && result.preview.nodes.length > 0) {
+            setResultsSource("surrogate");
+            setResultsPreview(result.preview as ResultsPreviewData);
+            setShowResults(true);
+            setResultsDeformScale(0);
+            setResultsAnimating(false);
+          }
+        }}
+      />
 
       <div className="panel history-panel">
         <span className="eyebrow">Faz 0 · Geçmiş</span>
@@ -3749,6 +3782,11 @@ function App() {
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Sonuç</span>
         <h1>Results</h1>
+        {surrogateMeta && (
+          <p className="surrogate-banner" role="status">
+            {surrogateMeta.message}
+          </p>
+        )}
         {!solveResult && (
           <p className="lead material-lead">
             Henüz çözüm yok — statik için "4 · BOUNDARY CONDITIONS", modal için
@@ -4004,6 +4042,13 @@ function App() {
                 )}
                 {resultsPreview && (
                   <>
+                    {resultsSource === "surrogate" && surrogateMeta && (
+                      <div className="surrogate-banner" role="status">
+                        TAHMİN — tam CalculiX çözümü değil
+                        {surrogateMeta.kind === "scalar" ? " · skaler baseline (kontur yok)" : ""}
+                        {surrogateMeta.ood ? " · eğitim uzayı dışı" : ""}
+                      </div>
+                    )}
                     <div className="viewer-panel-float viewer-results-toggle">
                       <label className="viewer-float-checkbox">
                         <input

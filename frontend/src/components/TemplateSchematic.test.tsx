@@ -59,4 +59,18 @@ describe("TemplateSchematic", () => {
     const { container } = render(<TemplateSchematic templateId="yok" />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("I-kesit ve kutu profil şemalarını gösterir", () => {
+    render(<TemplateSchematic templateId="i_beam" />);
+    expect(screen.getByRole("img", { name: /I-kesit/i })).toBeInTheDocument();
+    render(<TemplateSchematic templateId="box_tube" />);
+    expect(screen.getByRole("img", { name: /kutu profil/i })).toBeInTheDocument();
+  });
+
+  it("çentikli çubuk ve kama mili şemalarını gösterir", () => {
+    render(<TemplateSchematic templateId="notched_bar" />);
+    expect(screen.getByRole("img", { name: /çentikli çubuk/i })).toBeInTheDocument();
+    render(<TemplateSchematic templateId="keyway_shaft" />);
+    expect(screen.getByRole("img", { name: /kama kanallı mil/i })).toBeInTheDocument();
+  });
 });

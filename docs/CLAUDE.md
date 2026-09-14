@@ -28,12 +28,14 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 ## Mevcut faz
 
 **FAZ 0.5 — Surrogate veri altyapısı ve alan modeli (durability).**
-Faz 0 ve Faz 0.4 Grup 1 tamam. Solver hâlâ CalculiX; mesh Gmsh.
-Grup 2–4 şablonları (profil / makine elemanı / çentik) **0.5 bittikten sonra**.
-Crash (Faz 1), kompozit, CFD'ye geçme.
+Faz 0 ve Faz 0.4 Grup 1 + Grup 2 + Grup 4 tamam. Solver hâlâ CalculiX; mesh Gmsh.
+Grup 3 şablonları (braket / flanş / kademeli mil) ayrı onay.
+Crash (Faz 1) onayla başlar; **mevcut durability / modal / surrogate yolunu
+değiştirmeden** ayrı adaptör + ayrı UI bölümü olarak yürür. Geometri import
+ortak kalabilir.
 
-Sıradaki mikro-adımlar `docs/ROADMAP.md` 0.5.1 → 0.5.9. Bir adımı bitirince dur;
-0.5.2+'ya onay olmadan geçme.
+Sıradaki mikro-adımlar `docs/ROADMAP.md`. Bir adımı bitirince dur;
+onay olmadan sonraki adıma / faza geçme.
 
 **Faz değiştirmeden önce bana sor.** Bir sonraki faza otomatik geçme, onay iste.
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultsFromFields,
+  enumFieldsFromSchema,
   numberFieldsFromSchema,
   parseParamInputs,
 } from "./schemaForm";
@@ -81,5 +82,32 @@ describe("parseParamInputs", () => {
 
   it("boş metni sayı saymaz", () => {
     expect(parseParamInputs({ length: "" })).toBe("length geçerli bir sayı olmalı.");
+  });
+
+  it("enum alanını sayıya çevirmez", () => {
+    expect(parseParamInputs({ notch_kind: "v", width: "40" }, ["notch_kind"])).toEqual({
+      notch_kind: "v",
+      width: 40,
+    });
+  });
+});
+
+describe("enumFieldsFromSchema", () => {
+  it("string enum seçeneklerini çıkarır", () => {
+    const fields = enumFieldsFromSchema({
+      properties: {
+        notch_kind: { type: "string", enum: ["u", "v"], default: "u", title: "Notch Kind" },
+        n: { type: "number", default: 1 },
+      },
+    });
+    expect(fields).toEqual([
+      {
+        name: "notch_kind",
+        label: "Notch Kind",
+        description: "",
+        options: ["u", "v"],
+        defaultValue: "u",
+      },
+    ]);
   });
 });
