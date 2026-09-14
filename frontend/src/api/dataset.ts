@@ -17,6 +17,7 @@ export interface DatasetSummary {
   materials: number;
   analysis_runs: number;
   solved_runs: number;
+  training_samples: number;
 }
 
 export interface DatasetImportResult {

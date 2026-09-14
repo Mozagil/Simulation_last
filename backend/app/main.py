@@ -20,6 +20,7 @@ from app.api.dataset import router as dataset_router
 from app.api.solve import RUNS_DIR
 from app.api.solve import router as solve_router
 from app.api.templates import router as templates_router
+from app.api.doe import router as doe_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -57,6 +58,7 @@ app.include_router(components_router)
 app.include_router(solve_router)
 app.include_router(dataset_router)
 app.include_router(templates_router)
+app.include_router(doe_router)
 
 # Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.
 Path(TESSELLATION_DIR).mkdir(parents=True, exist_ok=True)

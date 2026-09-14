@@ -104,6 +104,10 @@ export default function DatasetPanel({
             <span>çözülmüş run</span>
           </div>
           <div>
+            <strong>{summary.training_samples}</strong>
+            <span>eğitim .npz</span>
+          </div>
+          <div>
             <strong>{summary.geometries}</strong>
             <span>geometri</span>
           </div>

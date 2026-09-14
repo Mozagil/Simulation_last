@@ -84,11 +84,17 @@ def dataset_summary(db: Session = Depends(get_db)) -> dict:
     from app.models.material import Material
     from app.models.run import AnalysisRun
 
+    train_n = 0
+    runs_root = Path("uploads") / "runs"
+    if runs_root.is_dir():
+        train_n = sum(1 for _ in runs_root.glob("*/*.train.npz"))
+
     return {
         "geometries": db.query(Geometry).count(),
         "materials": db.query(Material).count(),
         "analysis_runs": db.query(AnalysisRun).count(),
         "solved_runs": db.query(AnalysisRun).filter(AnalysisRun.status == "solved").count(),
+        "training_samples": train_n,
     }
 
 

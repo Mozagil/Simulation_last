@@ -51,6 +51,7 @@ import {
 import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
 import DatasetPanel from "./components/DatasetPanel";
+import DoePanel from "./components/DoePanel";
 import TemplatePanel from "./components/TemplatePanel";
 import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
 import type { CreateFromTemplateResponse } from "./api/templates";
@@ -2704,6 +2705,7 @@ function App() {
       )}
 
       <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+      <DoePanel refreshKey={runsHistory.length} />
 
       <div className="panel history-panel">
         <span className="eyebrow">Faz 0 · Geçmiş</span>

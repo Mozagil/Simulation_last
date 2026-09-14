@@ -2280,6 +2280,33 @@ p {
   margin-bottom: 8px;
 }
 
+.doe-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin: 10px 0 12px;
+}
+
+.doe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.doe-quality {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.doe-study-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .template-panel {
   margin-top: 16px;
   padding-top: 14px;

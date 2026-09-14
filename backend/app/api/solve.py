@@ -22,6 +22,7 @@ from app.postprocess.fatigue import compute_safety_factor, estimate_fatigue_life
 from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
+from app.dataset.rebuild import discard_solver_input
 from app.templates.compare import build_analytic_comparison, store_comparison_on_scalars
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,7 @@ def _complete_ccx_job(run_id: int) -> None:
             if parsed.results_preview_path
             else None
         )
+        discard_solver_input(run)
         db.commit()
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
         logger.warning("ccx job başarısız run_id=%s: %s", run_id, exc)
@@ -448,6 +450,9 @@ def solve_geometry(
                     if parsed.results_preview_path
                     else None
                 )
+                discard_solver_input(run)
+                result["inp_path"] = None
+                result["inp_url"] = None
                 db.commit()
             except SolverError as exc:
                 result["message"] = str(exc)

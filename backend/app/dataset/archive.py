@@ -20,7 +20,8 @@ ARŞİV YAPISI (tar.gz):
     db/material_assignments.json
     db/analysis_runs.json
     files/geometries/...   — STEP/IGES kaynak dosyaları
-    files/runs/{run_id}/... — .inp, .frd, sonuç/mesh önizlemeleri
+    files/runs/{run_id}/... — .frd.gz, .train.npz, sonuç/mesh önizlemeleri
+    (`.inp` saklanmaz; DB anlığından yeniden üretilir)
 
 JSON tercih edildi (pg_dump değil): Postgres sürümleri arası taşınabilir,
 insan okuyabilir, git'te diff'lenebilir ve surrogate eğitim betiği doğrudan
@@ -75,6 +76,8 @@ _GEOMETRY_COLS = [
     "original_filename",
     "current_filename",
     "previous_filename",
+    "template_id",
+    "template_params",
     "created_at",
     "updated_at",
 ]
@@ -305,6 +308,8 @@ def import_dataset(
                 original_filename=row["original_filename"],
                 current_filename=row["current_filename"],
                 previous_filename=row.get("previous_filename"),
+                template_id=row.get("template_id"),
+                template_params=row.get("template_params"),
             )
             db.add(g)
             db.flush()

@@ -330,30 +330,30 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
       gerilmesi) yalnız birim testlerle yakalanamazdı — hiçbiri hata fırlatmıyordu
 
 **0.5.2 — Depolama katmanı**
-- [ ] Çözüm sonrası `.frd` → gzip
-- [ ] Çözüm sonrası `.npz` üretimi (düğüm girdileri + çıktıları + bağlantı)
-- [ ] `.inp` saklamayı bırak (DB'den yeniden üretilebilir olduğunu doğrulayan test)
-- [ ] Mevcut run'ları yeni formata taşıyan tek seferlik betik
+- [x] Çözüm sonrası `.frd` → gzip
+- [x] Çözüm sonrası `.npz` üretimi (düğüm girdileri + çıktıları + bağlantı)
+- [x] `.inp` saklamayı bırak (DB'den yeniden üretilebilir olduğunu doğrulayan test)
+- [x] Mevcut run'ları yeni formata taşıyan tek seferlik betik
 
 **0.5.3 — Veri seti dışa/içe aktarma**
-- [ ] `GET /dataset/export`, `POST /dataset/import`, `GET /dataset/summary`
-- [ ] (Kod hazır, uygulanmayı bekliyor)
+- [x] `GET /dataset/export`, `POST /dataset/import`, `GET /dataset/summary`
+- [x] Arşiv `.frd.gz` + `.train.npz` + şablon kökenini taşır; UI panel mevcut
 
 **0.5.4 — DOE / batch runner**
-- [ ] Parametre uzayı tanımı: geometri (L/W/T), eleman boyutu, malzeme, BC senaryosu
-- [ ] Latin Hypercube örnekleme (scipy.stats.qmc)
-- [ ] BC senaryoları da taranır — aynı geometriye farklı yerlerden farklı yükler.
+- [x] Parametre uzayı tanımı: geometri (L/W/T), eleman boyutu, malzeme, BC senaryosu
+- [x] Latin Hypercube örnekleme (NumPy McKay LHS; tohumla yinelenebilir)
+- [x] BC senaryoları da taranır — aynı geometriye farklı yerlerden farklı yükler.
       Geometri çeşitliliği tek başına yetmez, model BC'ye göre alan üretmeyi öğrenmeli
-- [ ] Geometri üretimi Faz 0.4 şablon kütüphanesinden (elle yükleme yok)
-- [ ] BC'ler isimlendirilmiş bölgelere uygulanır — parametre değişince kaymaması için
-- [ ] Kuyruk + ilerleme takibi, hatalı run'ın toplu işi durdurmaması
-- [ ] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
+- [x] Geometri üretimi Faz 0.4 şablon kütüphanesinden (elle yükleme yok)
+- [x] BC'ler isimlendirilmiş bölgelere uygulanır — parametre değişince kaymaması için
+- [x] Kuyruk + ilerleme takibi, hatalı run'ın toplu işi durdurmaması
+- [x] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
 
 **0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
-- [ ] ~200 run üret
-- [ ] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
+- [x] ~200 run üret
+- [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
       sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
-- [ ] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
+- [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
 
 **0.5.6 — Skaler baseline (model hedefi DEĞİL, boru hattı testi)**
 - [ ] Random Forest ile maks. deplasman/gerilme tahmini

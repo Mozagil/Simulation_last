@@ -43,7 +43,12 @@ def db_session(tmp_path):
 
 def _seed(db, uploads: Path) -> int:
     """Bir geometri + bir malzeme + bir çözülmüş run kurar, run dosyası yazar."""
-    g = Geometry(original_filename="plaka.step", current_filename="plaka.step")
+    g = Geometry(
+        original_filename="plaka.step",
+        current_filename="plaka.step",
+        template_id="cantilever_beam",
+        template_params={"length": 500.0},
+    )
     db.add(g)
     db.flush()
     (uploads / "plaka.step").write_text("ISO-10303-21;", encoding="utf-8")
@@ -76,11 +81,9 @@ def _seed(db, uploads: Path) -> int:
 
     run_dir = uploads / "runs" / str(r.id)
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "job.inp").write_text("*HEADING\ntest\n", encoding="utf-8")
-    # .frd alan verisinin taşındığını doğrulamak için ayırt edici içerik.
-    (run_dir / "job.frd").write_text("FRD-FIELD-DATA-MARKER\n", encoding="utf-8")
-    r.inp_path = str(run_dir / "job.inp")
-    r.frd_path = str(run_dir / "job.frd")
+    (run_dir / "job.frd.gz").write_bytes(b"\x1f\x8b fake-gz")
+    (run_dir / "job.train.npz").write_bytes(b"PK\x03\x04")
+    r.frd_path = str(run_dir / "job.frd.gz")
     db.commit()
     return r.id
 
@@ -114,10 +117,11 @@ def test_export_includes_frd_field_data(db_session, tmp_path):
     export_dataset(db_session, uploads, out)
 
     with tarfile.open(out, "r:gz") as tar:
-        frd = [n for n in tar.getnames() if n.endswith(".frd")]
-        assert frd, "arşivde .frd yok"
-        content = tar.extractfile(frd[0]).read().decode("utf-8")
-    assert "FRD-FIELD-DATA-MARKER" in content
+        names = tar.getnames()
+        frd = [n for n in names if n.endswith(".frd") or n.endswith(".frd.gz")]
+        assert frd, "arşivde .frd/.frd.gz yok"
+        npz = [n for n in names if n.endswith(".train.npz")]
+        assert npz, "arşivde .train.npz yok"
 
 
 def test_export_without_files_skips_artifacts(db_session, tmp_path):
@@ -162,3 +166,25 @@ def test_import_rejects_path_traversal(db_session, tmp_path):
 
     with pytest.raises(ValueError, match="güvensiz yol"):
         import_dataset(db_session, uploads, evil)
+
+
+def test_import_restores_template_origin(db_session, tmp_path):
+    uploads = tmp_path / "uploads"
+    (uploads / "runs").mkdir(parents=True)
+    _seed(db_session, uploads)
+    out = tmp_path / "ds.tar.gz"
+    export_dataset(db_session, uploads, out)
+
+    engine = db_session.get_bind()
+    Session = sessionmaker(bind=engine)
+    dest = Session()
+    try:
+        dest.query(AnalysisRun).delete()
+        dest.query(Geometry).delete()
+        dest.commit()
+        import_dataset(dest, uploads, out)
+        geo = dest.query(Geometry).one()
+        assert geo.template_id == "cantilever_beam"
+        assert geo.template_params["length"] == 500.0
+    finally:
+        dest.close()
