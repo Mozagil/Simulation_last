@@ -350,10 +350,13 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
 
 **0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
-- [x] ~200 run üret
+- [x] ~200 run üret (API + kuyruk + tarayıcı hazır)
 - [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
       sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
 - [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
+- [ ] **Operasyonel borç:** 200'lük kalite seti henüz gerçek ccx ile koşulmadı
+      (yerel Windows PATH'te `ccx` yok). Codespace'te Toplu tarama →
+      `ccx çalıştır` → `200'lük kalite seti`. Faz 1 bunu bloke etmez.
 
 **0.5.6 — Skaler baseline (model hedefi DEĞİL, boru hattı testi)**
 - [x] Random Forest ile maks. deplasman/gerilme tahmini
@@ -410,18 +413,50 @@ bölüm/sekmedir, mevcut Results/surrogate görünümünün üzerine yazılmaz.
 Regresyon: mevcut `test_reference_validation`, `test_templates*`,
 `test_doe`, `test_surrogate` yeşil kalmak zorundadır.
 
-- [ ] `OpenRadiossAdapter` implementasyonu (Radioss block format `.rad`/`.inc` üretimi)
-- [ ] Gmsh mesh export'unun OpenRadioss formatına uyarlanması (Faz 0'da kullanılan aynı
-      mesh modülü, farklı export fonksiyonu)
-- [ ] Barrier geometrisinin/parametrelerinin (hız, açı, rigid wall pozisyonu) girdi
-      dosyasına yazılması
-- [ ] OpenRadioss'un sunucuya kurulumu (derleme ya da hazır binary — lisans sunucusu
-      GEREKMEZ, bkz. `LICENSING.md`)
-- [ ] Post-process: OpenRadioss çıktı dosyalarından (time-history, animasyon) enerji,
-      reaksiyon kuvveti, ivme, HIC gibi metriklerin çıkarılması
-- [ ] Job süresi uzun olduğu için websocket tabanlı ilerleme takibi
-- [ ] Aynı frontend/backend/db şeması Faz 0'dan yeniden kullanılır — sadece solver
-      adaptörü, mesh export fonksiyonu ve post-process modülü eklenir
+**1.1 — OpenRadiossAdapter iskeleti**
+- [x] `SolverAdapter` uygulaması: starter `_0000.rad` + engine `_0001.rad`
+- [x] `/NODE`, `/TETRA4`, `/INIVEL`, `/RWALL`, `/MAT/LAW1` yazımı (parametre listesinden)
+- [x] İkili yoksa `SolverError` (CalculiX `/solve` değişmez)
+
+**1.2 — Gmsh → OpenRadioss mesh export**
+- [x] Aynı `.msh` (Faz 0 `generate_mesh`), ayrı export fonksiyonu
+- [x] tet10 köşeleri → `/TETRA4`; kenar-ortası düğüm yazılmaz; `.msh` üzerine yazılmaz
+- [x] `OpenRadiossAdapter.build_input` `mesh_path` kabul eder
+
+**1.3 — Barrier parametreleri**
+- [x] `CrashBarrierParams`: hız (`speed_m_s`), açı (`angle_deg`), rigid wall nokta+normal
+- [x] 0° = duvara dik; açı hız vektörünü üretir → `/INIVEL` + `/RWALL`
+- [x] Geçersiz şema `SolverError` (endpoint/UI yok — 1.7 / 1.8)
+
+**1.4 — OpenRadioss kurulumu (operasyonel)**
+- [x] Codespace image: resmi `OpenRadioss_linux64.zip` (`latest-20260728`) → `/opt/openradioss`
+- [x] `OPENRADIOSS_PATH` kök dizin (resmi) veya engine dosyası; starter+engine `submit`
+- [x] Windows yerelde ikili yok (200'lük ccx gibi); `vendor/openradioss` veya Codespace rebuild
+
+**1.5 — Post-process**
+- [x] Engine listing + `*T01.csv`: iç enerji, kinetik enerji, RWALL kuvvet
+- [x] İvme → g; HIC15 / HIC36 (FMVSS 208)
+- [x] Starter `/TH/RWALL` + `/TH/PART`; engine `/TH/TITLE` (binary T01: th_to_csv)
+
+**1.6 — Websocket ilerleme**
+- [x] `GET /crash/jobs/{id}` + `WS /crash/jobs/{id}/ws` (in-memory hub)
+- [x] Engine listing satırından cycle / time → yüzde (`t_end_ms`)
+- [x] Durability `/solve` ve DOE kuyruğu bağlanmaz
+
+**1.7 — Yeni crash endpoint**
+- [x] `POST /crash/solve` — 3D mesh + `CrashBarrierParams` → `.rad` (`uploads/crash/{job_id}/`)
+- [x] `run_solver` yoksa `rad_only`; ikili yoksa `failed`; arka plan + hub (CalculiX `/solve` aynı)
+
+**1.8 — Crash UI (ayrı bölüm/sekme)**
+- [x] Üst sekme **CRASH** (DURABILITY / MODAL yanında); Results/surrogate üzerine yazılmaz
+- [x] Bariyer hız/açı/duvar + `.rad üret / çöz` + job yüzde / HIC-enerji skalerleri
+
+**1.9 — Crash kartları (LAW / TYPE14) + senaryo şeması**
+- [x] `CrashModelParams`: LAW1|LAW2, Isolid, Ismstr, NIP; LAW2 a/b/n (σy malzeme veya override)
+- [x] `POST /crash/solve` `model` + `scenario` (`rigid_wall` | `plate_ball`) — `/solve` dokunulmaz
+- [x] Crash UI: senaryo SVG, malzeme kanunu, eleman kartı (öneri yok)
+- [ ] Plaka–küre: plaka şu an `/RWALL` (rijit). Deforme plaka + `/INTER` ayrı mikro-adım
+- [ ] Hex / çok parçalı mesh ayrı mikro-adım
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 

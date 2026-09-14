@@ -1058,6 +1058,13 @@ p {
   color: var(--muted);
 }
 
+.mesh-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
 .mesh-field input,
 .mesh-field select {
   width: 100%;
@@ -2042,6 +2049,32 @@ p {
 .analysis-tab.active {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+.crash-progress-track {
+  height: 8px;
+  margin: 8px 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.crash-progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.crash-scalar-list {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.crash-schematic-caption {
+  margin: 0 4px 6px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* --- Modal mod izgarasi: dosenmis bolmeler --- */

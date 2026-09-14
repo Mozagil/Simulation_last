@@ -53,6 +53,7 @@ import ComparisonView from "./components/ComparisonView";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
+import CrashPanel from "./components/CrashPanel";
 import type { SurrogatePredictResult } from "./api/surrogate";
 import TemplatePanel from "./components/TemplatePanel";
 import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
@@ -270,7 +271,7 @@ function App() {
   // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
   // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
   // sekmede de aynı).
-  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal">("durability");
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -3302,6 +3303,16 @@ function App() {
         >
           MODAL
         </button>
+        <button
+          type="button"
+          className={analysisTab === "crash" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => {
+            setAnalysisTab("crash");
+            ensureStepExpanded("bc");
+          }}
+        >
+          CRASH
+        </button>
       </div>
 
       {analysisTab === "durability" && (
@@ -3771,6 +3782,26 @@ function App() {
       </>
       )}
 
+      {analysisTab === "crash" && (
+      <>
+      <button
+        type="button"
+        className={expandedSteps.has("bc") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("bc")}
+      >
+        4 · CRASH
+      </button>
+      {expandedSteps.has("bc") && (
+        <CrashPanel
+          geometryId={geometryId}
+          meshDimension={meshResult?.dimension ?? null}
+        />
+      )}
+      </>
+      )}
+
+      {analysisTab !== "crash" && (
+      <>
       <button
         type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
@@ -3862,6 +3893,8 @@ function App() {
           </div>
         )}
       </div>
+      )}
+      </>
       )}
 
       </div>
