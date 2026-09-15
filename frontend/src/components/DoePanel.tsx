@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchMaterials } from "../api/materials";
+import { fetchMaterials, type Material } from "../api/materials";
+import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
 import {
   createDoeStudy,
   fetchDoeQuality,
@@ -8,23 +9,11 @@ import {
   type DoeQualityInfo,
   type DoeStudyInfo,
 } from "../api/doe";
-
-const CANTILEVER_SCENARIOS = [
-  {
-    name: "tip_-y",
-    bcs: [
-      { type: "fixed", region: "ankastre_uc" },
-      { type: "cload", region: "yuk_yuzeyi", fx: 0, fy: -500, fz: 0 },
-    ],
-  },
-  {
-    name: "tip_-z",
-    bcs: [
-      { type: "fixed", region: "ankastre_uc" },
-      { type: "cload", region: "yuk_yuzeyi", fx: 0, fy: 0, fz: -500 },
-    ],
-  },
-];
+import DoeSpecForm, {
+  buildSpec,
+  initialStateFor,
+  type DoeFormState,
+} from "./DoeSpecForm";
 
 function formatCounts(counts: Record<string, number> | undefined): string {
   if (!counts) return "";
@@ -37,8 +26,10 @@ function formatCounts(counts: Record<string, number> | undefined): string {
 export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
   const [studies, setStudies] = useState<DoeStudyInfo[]>([]);
   const [qualityById, setQualityById] = useState<Record<number, DoeQualityInfo>>({});
-  const [nSamples, setNSamples] = useState("8");
-  const [seed, setSeed] = useState("42");
+  const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [form, setForm] = useState<DoeFormState | null>(null);
+  const [materialId, setMaterialId] = useState<number | "">("");
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +43,21 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
   useEffect(() => {
     reload();
   }, [reload, refreshKey]);
+
+  useEffect(() => {
+    fetchTemplates()
+      .then((list) => {
+        setTemplates(list);
+        if (list.length) setForm(initialStateFor(list[0]));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Şablonlar alınamadı."));
+    fetchMaterials()
+      .then((list) => {
+        setMaterials(list);
+        if (list.length) setMaterialId(list[0].id);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Malzemeler alınamadı."));
+  }, []);
 
   useEffect(() => {
     const running = studies.some((s) => s.status === "running" || s.status === "pending");
@@ -86,36 +92,25 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
   }, [studies]);
 
   async function handleStart() {
+    const template = templates.find((t) => t.id === form?.templateId);
+    if (!form || !template) return;
+    if (materialId === "") {
+      setError("Malzeme seçilmeli.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const materials = await fetchMaterials();
-      if (!materials.length) {
-        throw new Error("Malzeme kütüphanesi boş.");
+      const spec = buildSpec(form, template, [materialId], runSolver);
+      const study = await createDoeStudy(spec, true);
+      // Örnekleme, şablonun geometrik kısıtlarını ihlal eden kombinasyonları
+      // eler; istenenden az örnek çıkabilir — kullanıcı sessiz kalmasın.
+      if (study.n_cases < spec.n_samples) {
+        setError(
+          `${spec.n_samples} örnek istendi, ${study.n_cases} üretildi — ` +
+            "aralıklar şablonun geometrik kısıtlarıyla çelişiyor olabilir.",
+        );
       }
-      const n = parseInt(nSamples, 10);
-      const s = parseInt(seed, 10);
-      if (!Number.isFinite(n) || n < 1) throw new Error("Örnek sayısı geçersiz.");
-      await createDoeStudy(
-        {
-          name: "cantilever LHS",
-          template_id: "cantilever_beam",
-          seed: Number.isFinite(s) ? s : 0,
-          n_samples: n,
-          geometry: {
-            length: [400, 600],
-            thickness: [8, 12],
-            width: [40, 60],
-          },
-          element_size: [6, 12],
-          material_ids: [materials[0].id],
-          bc_scenarios: CANTILEVER_SCENARIOS,
-          dimension: 3,
-          element_scheme: "tet",
-          run_solver: runSolver,
-        },
-        true,
-      );
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "DOE başlatılamadı.");
@@ -128,12 +123,11 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
     setBusy(true);
     setError(null);
     try {
-      const materials = await fetchMaterials();
-      if (!materials.length) {
-        throw new Error("Malzeme kütüphanesi boş.");
+      if (materialId === "") {
+        throw new Error("Malzeme seçilmeli.");
       }
       await startQualitySet({
-        material_ids: [materials[0].id],
+        material_ids: [materialId],
         run_solver: runSolver,
         wait: false,
       });
@@ -150,8 +144,10 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
       <span className="eyebrow">Faz 0.5 · DOE</span>
       <h1>Toplu tarama</h1>
       <p className="lead">
-        Ankastre kiriş şablonundan Latin Hypercube örnekler. BC&apos;ler isimli
-        bölgelere bağlanır; bir örnek patlarsa diğerleri durmaz.
+        Seçtiğin şablondan Latin Hypercube örnekler. Her parametreyi sabit
+        tutabilir ya da aralık verip taratabilirsin. BC&apos;ler şablonun
+        varsayılanlarından gelir ve isimli bölgelere bağlanır; bir örnek
+        patlarsa diğerleri durmaz.
       </p>
       <p className="lead">
         Kalite seti: 200 ankastre kiriş, tohum 2026. L 450–700 mm, T 8–12 mm, W
@@ -160,14 +156,40 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
         sayılır; mesh/BC önerisi yok.
       </p>
 
+      {form && (
+        <DoeSpecForm templates={templates} state={form} busy={busy} onChange={setForm} />
+      )}
+
       <div className="doe-fields">
         <label className="mesh-field">
+          <span>Malzeme</span>
+          <select
+            value={materialId}
+            disabled={busy || materials.length === 0}
+            onChange={(e) => setMaterialId(e.target.value === "" ? "" : Number(e.target.value))}
+          >
+            {materials.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mesh-field">
           <span>Örnek</span>
-          <input value={nSamples} onChange={(e) => setNSamples(e.target.value)} />
+          <input
+            value={form?.nSamples ?? ""}
+            disabled={busy || !form}
+            onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
+          />
         </label>
         <label className="mesh-field">
           <span>Tohum</span>
-          <input value={seed} onChange={(e) => setSeed(e.target.value)} />
+          <input
+            value={form?.seed ?? ""}
+            disabled={busy || !form}
+            onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
+          />
         </label>
         <label className="dataset-filter">
           <input

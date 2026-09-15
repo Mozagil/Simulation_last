@@ -34,9 +34,14 @@ export interface DoeSpecPayload {
   template_id: string;
   seed: number;
   n_samples: number;
+  /** Taranacak parametreler: ad -> [min, max] */
   geometry: Record<string, [number, number]>;
+  /** Taranmayan, sabit verilen parametreler (sayı ya da enum). */
+  fixed_params?: Record<string, number | string>;
   element_size: [number, number];
   load_fy?: [number, number];
+  /** Senaryodaki tüm yük BC'lerini bu katsayı aralığıyla ölçekler. */
+  load_scale?: [number, number];
   material_ids: number[];
   bc_scenarios: { name: string; bcs: Record<string, unknown>[] }[];
   dimension?: number;

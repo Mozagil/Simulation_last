@@ -2408,6 +2408,43 @@ p {
   fill: var(--ink);
 }
 
+.doe-spec-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.doe-param-row {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.doe-param-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.doe-param-name {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.doe-param-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doe-param-range input {
+  min-width: 0;
+  flex: 1;
+}
+
 .param-symbol {
   margin-left: 6px;
   padding: 0 5px;
