@@ -153,9 +153,10 @@ describe("DoePanel", () => {
     });
     render(<DoePanel />);
     await screen.findByLabelText("Uzunluk min");
-    fireEvent.click(screen.getByRole("button", { name: "200'lük kalite seti" }));
+    fireEvent.click(screen.getByRole("button", { name: /200'lük kalite seti/ }));
     await waitFor(() => expect(startQualitySet).toHaveBeenCalledTimes(1));
     expect(startQualitySet).toHaveBeenCalledWith({
+      template_id: "cantilever_beam",
       material_ids: [3],
       run_solver: false,
       wait: false,
@@ -195,5 +196,20 @@ describe("DoePanel", () => {
       expect(screen.getByText(/En az bir malzeme/)).toBeInTheDocument(),
     );
     expect(createDoeStudy).not.toHaveBeenCalled();
+  });
+
+  it("kalite setini formda seçili şablonla başlatır", async () => {
+    render(<DoePanel />);
+    await screen.findByLabelText("Uzunluk min");
+    expect(
+      screen.getByRole("button", { name: /200'lük kalite seti · Ankastre kiriş/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /200'lük kalite seti/ }));
+    await waitFor(() => expect(startQualitySet).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(startQualitySet).mock.calls[0][0]).toMatchObject({
+      template_id: "cantilever_beam",
+      material_ids: [3],
+    });
   });
 });

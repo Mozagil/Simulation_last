@@ -91,6 +91,8 @@ export interface DoeQualityInfo {
 }
 
 export async function startQualitySet(opts: {
+  /** Hangi şablonun referans seti; verilmezse ankastre kiriş. */
+  template_id?: string;
   material_ids?: number[];
   run_solver?: boolean;
   wait?: boolean;
@@ -99,6 +101,7 @@ export async function startQualitySet(opts: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      template_id: opts.template_id,
       material_ids: opts.material_ids,
       run_solver: opts.run_solver ?? false,
       wait: opts.wait ?? false,

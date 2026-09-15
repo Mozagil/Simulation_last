@@ -60,7 +60,7 @@ def test_quality_set_is_200_reproducible_and_slender():
         # oran; geometri değişirken çözünürlük sabit kalsın).
         assert 0.5 - 1e-9 <= s.element_size / g["thickness"] <= 1.2 + 1e-9
         assert -800.0 <= _fy(s) <= -200.0
-        assert s.scenario.name == "tip_-y"
+        assert s.scenario.name == "varsayilan"
         assert {bc.get("region") for bc in s.scenario.bcs} == {"ankastre_uc", "yuk_yuzeyi"}
 
 
@@ -305,3 +305,80 @@ def test_quality_set_endpoint_does_not_run_queue(db_session, monkeypatch):
         app.dependency_overrides.pop(get_db, None)
     # TestClient arka plan görevini çağırır; kuyruk no-op, mesh yok.
     assert ran["n"] == 1
+
+
+# --- şablon seçimi ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "template_id",
+    ["plate_with_hole", "i_beam", "thick_walled_tube", "notched_bar", "dogbone"],
+)
+def test_quality_set_available_for_every_analytic_template(template_id):
+    """Kalite seti ankastre kirişe bağlı değil; analitiği olan her şablonda kurulur."""
+    from app.doe.quality_set import QUALITY_SET_N, quality_spec
+    from app.doe.sampling import sample_spec
+    from app.templates import get_template
+
+    spec = quality_spec(template_id, [1, 2])
+    assert spec.template_id == template_id
+    assert spec.n_samples == QUALITY_SET_N
+    # Aralıklar şema varsayılanının çevresinde; enum alanları taranmaz.
+    template = get_template(template_id)
+    props = template.params_schema()["properties"]
+    for name, (lo, hi) in spec.geometry.items():
+        assert props[name]["type"] in ("number", "integer")
+        assert lo < props[name]["default"] < hi
+    assert spec.element_ratio == template.default_element_ratio
+    # Geçersiz kombinasyonlar elenip yerine yenisi çekilir: tam sayıda örnek.
+    samples = sample_spec(spec)
+    assert len(samples) == QUALITY_SET_N
+
+
+def test_quality_set_scenario_comes_from_template_defaults():
+    from app.doe.quality_set import quality_spec
+    from app.templates import get_template
+
+    spec = quality_spec("thick_walled_tube", [1])
+    types = {bc["type"] for bc in spec.bc_scenarios[0].bcs}
+    assert types == {bc["type"] for bc in get_template("thick_walled_tube").default_bcs}
+    assert "pressure" in types, "boru basınçla yüklenmeli"
+
+
+def test_load_scale_covers_same_force_band_as_before():
+    """Ankastre kirişte eski `load_fy` (-800..-200) ile aynı bant."""
+    from app.doe.quality_set import quality_spec
+    from app.doe.sampling import sample_spec
+
+    fy = [
+        bc["fy"]
+        for s in sample_spec(quality_spec("cantilever_beam", [1]))
+        for bc in s.scenario.bcs
+        if bc["type"] == "cload"
+    ]
+    assert min(fy) >= -800.0 - 1e-6
+    assert max(fy) <= -200.0 + 1e-6
+    assert all(v < 0 for v in fy), "yön korunmalı"
+
+
+def test_unknown_template_rejected():
+    from app.doe.quality_set import quality_spec
+    from app.templates import UnknownTemplateError
+
+    with pytest.raises(UnknownTemplateError):
+        quality_spec("yok_boyle_sablon", [1])
+
+
+def test_template_without_analytic_rejected():
+    from dataclasses import replace
+
+    from app.doe.quality_set import QualitySetError, quality_spec
+    from app.templates import TEMPLATES, get_template
+
+    original = get_template("cantilever_beam")
+    TEMPLATES["_test_no_analytic"] = replace(original, id="_test_no_analytic", analytic=None)
+    try:
+        with pytest.raises(QualitySetError, match="kapalı form"):
+            quality_spec("_test_no_analytic", [1])
+    finally:
+        del TEMPLATES["_test_no_analytic"]

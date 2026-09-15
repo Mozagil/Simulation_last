@@ -358,7 +358,10 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Çoklu malzeme: LHS kesikli boyut dengeli dağıtıyor (200 örnek, 2 malzeme → 100/100)
 
 **0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
-- [x] ~200 run üret
+- [x] Kalite seti her şablon için kurulabilir (analitiği olan 12 şablon);
+      aralıklar şablona özgü ve sabit — set bir referanstır, aynı tohum aynı
+      200 örneği üretir
+- [ ] ~200 run üret — **kod hazır, çalıştırılmadı** (ccx işaretli koşu gerekiyor)
 - [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
       sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
 - [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)

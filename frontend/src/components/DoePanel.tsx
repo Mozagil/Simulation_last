@@ -135,6 +135,8 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
     }
   }
 
+  const templateName = templates.find((t) => t.id === form?.templateId)?.name ?? null;
+
   async function handleToggleResults(studyId: number) {
     if (openResults?.study_id === studyId) {
       setOpenResults(null);
@@ -159,6 +161,10 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
         throw new Error("En az bir malzeme seçilmeli.");
       }
       await startQualitySet({
+        // Formda seçili şablonun referans seti — aralıklar şablona özgü ve
+        // sabittir (formdaki aralıklar KULLANILMAZ; set karşılaştırılabilir
+        // bir referans olmalı).
+        template_id: form?.templateId,
         material_ids: materialIds,
         run_solver: runSolver,
         wait: false,
@@ -182,10 +188,12 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
         patlarsa diğerleri durmaz.
       </p>
       <p className="lead">
-        Kalite seti: 200 ankastre kiriş, tohum 2026. L 450–700 mm, T 8–12 mm, W
-        35–70 mm, eleman 6–14 mm, uç yükü −800…−200 N (−y). Tek malzeme, tek BC
-        (ankastre + uç CLOAD). Kapalı form sapması ve kaba aykırı değerler
-        sayılır; mesh/BC önerisi yok.
+        Kalite seti: seçili şablondan 200 örnek, tohum 2026. Aralıklar şablona
+        özgü ve sabittir — yukarıdaki form aralıkları kullanılmaz, çünkü set bir
+        referanstır: aynı tohum her zaman aynı 200 örneği üretir. Yük, şablonun
+        varsayılanının 0.4–1.6 katı. Kapalı form sapması ve kaba aykırı değerler
+        sayılır; mesh/BC önerisi yok. Kendi aralıklarını taramak için örnek
+        sayısını 200 yapıp &quot;DOE başlat&quot; kullan.
       </p>
 
       {form && (
@@ -252,7 +260,7 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
           disabled={busy}
           onClick={() => void handleQualitySet()}
         >
-          200&apos;lük kalite seti
+          {templateName ? `200'lük kalite seti · ${templateName}` : "200'lük kalite seti"}
         </button>
       </div>
 
