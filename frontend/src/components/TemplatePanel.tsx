@@ -25,6 +25,9 @@ interface TemplatePanelProps {
   geometryFilename: string | null;
   busy: boolean;
   onCreated: (result: CreateFromTemplateResponse) => Promise<void> | void;
+  /** Seçili şablon değişince haber ver — DOE paneli bunu izliyor, böylece
+   * kullanıcı tek yerden şablon seçiyor. */
+  onTemplateSelected?: (templateId: string) => void;
 }
 
 export default function TemplatePanel({
@@ -32,6 +35,7 @@ export default function TemplatePanel({
   geometryFilename,
   busy,
   onCreated,
+  onTemplateSelected,
 }: TemplatePanelProps) {
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -70,6 +74,7 @@ export default function TemplatePanel({
         setTemplates(list);
         if (list.length) {
           setSelectedId(list[0].id);
+          onTemplateSelected?.(list[0].id);
           fillDefaults(list[0]);
         }
       })
@@ -143,6 +148,7 @@ export default function TemplatePanel({
           onChange={(e) => {
             const id = e.target.value;
             setSelectedId(id);
+            onTemplateSelected?.(id);
             const t = templates.find((x) => x.id === id);
             if (t) fillDefaults(t);
           }}

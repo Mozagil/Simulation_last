@@ -700,6 +700,8 @@ function App() {
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   // Geçmiş satırlarında şablon parametrelerini şemadaki harfle göstermek için.
   const [paramSymbols, setParamSymbols] = useState<SymbolMap>({});
+  // Geometri panelinde seçili şablon; DOE paneli bunu izliyor.
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
   const [bcFy, setBcFy] = useState("0");
@@ -2501,6 +2503,7 @@ function App() {
           geometryFilename={fileName}
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
+          onTemplateSelected={setActiveTemplateId}
         />
 
         {fileName && (
@@ -2754,6 +2757,7 @@ function App() {
       <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
       <DoePanel
         refreshKey={runsHistory.length}
+        templateId={activeTemplateId}
         onOpenRun={(runId) => void handleOpenRunForEdit(runId)}
       />
       <SurrogatePanel

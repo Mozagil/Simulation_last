@@ -28,11 +28,15 @@ function formatCounts(counts: Record<string, number> | undefined): string {
 
 interface DoePanelProps {
   refreshKey?: number;
+  /** Geometri panelinde seçilen şablon. Değişince DOE formu da ona geçer
+   * (kullanıcı yine DOE tarafından değiştirebilir). Aralıklar sıfırlanır:
+   * eski şablonun aralıkları yenisinde anlamsız. */
+  templateId?: string | null;
   /** Tablodaki satıra tıklanınca o run'ı aç (Analiz Geçmişi ile aynı yol). */
   onOpenRun?: (runId: number) => void;
 }
 
-export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
+export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanelProps) {
   const [studies, setStudies] = useState<DoeStudyInfo[]>([]);
   const [qualityById, setQualityById] = useState<Record<number, DoeQualityInfo>>({});
   // Açık tablo: aynı anda tek çalışma; 200 satırlık tabloyu ikinci kez açmak
@@ -134,6 +138,21 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
       setBusy(false);
     }
   }
+
+  // Dışarıdan gelen şablon seçimini izle. Kullanıcı DOE formundan başka bir
+  // şablon seçerse ve dışarısı değişmezse ona dokunulmaz — `templateId`
+  // değiştiği anda senkronlanır.
+  useEffect(() => {
+    if (!templateId || templates.length === 0) return;
+    setForm((prev) => {
+      if (prev?.templateId === templateId) return prev;
+      const t = templates.find((x) => x.id === templateId);
+      if (!t) return prev;
+      return prev
+        ? { ...initialStateFor(t), nSamples: prev.nSamples, seed: prev.seed }
+        : initialStateFor(t);
+    });
+  }, [templateId, templates]);
 
   const templateName = templates.find((t) => t.id === form?.templateId)?.name ?? null;
 

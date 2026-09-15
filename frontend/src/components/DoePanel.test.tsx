@@ -22,6 +22,26 @@ import { createDoeStudy, fetchDoeQuality, fetchDoeStudies, startQualitySet } fro
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates } from "../api/templates";
 
+const PLATE = {
+  id: "plate_with_hole",
+  name: "Delikli plaka",
+  description: "",
+  tags: [],
+  params_schema: {
+    properties: {
+      diameter: { type: "number", default: 20, unit: "mm", title: "Delik çapı", symbol: "d" },
+    },
+  },
+  regions: [],
+  has_analytic: true,
+  default_element_ratio: [0.12, 0.25],
+  has_characteristic_length: true,
+  default_bcs: [
+    { type: "fixed", region: "tutulan_uc" },
+    { type: "cload", region: "yuk_ucu", fx: 50000, fy: 0, fz: 0 },
+  ],
+};
+
 const CANTILEVER = {
   id: "cantilever_beam",
   name: "Ankastre kiriş",
@@ -51,7 +71,7 @@ describe("DoePanel", () => {
     vi.mocked(fetchDoeQuality).mockReset();
     vi.mocked(fetchMaterials).mockReset();
     vi.mocked(fetchTemplates).mockReset();
-    vi.mocked(fetchTemplates).mockResolvedValue([CANTILEVER as never]);
+    vi.mocked(fetchTemplates).mockResolvedValue([CANTILEVER, PLATE] as never);
     vi.mocked(fetchDoeStudies).mockResolvedValue([]);
     vi.mocked(fetchDoeQuality).mockResolvedValue({
       study_id: 1,
@@ -211,5 +231,34 @@ describe("DoePanel", () => {
       template_id: "cantilever_beam",
       material_ids: [3],
     });
+  });
+
+  it("dışarıdan gelen şablon seçimini izler", async () => {
+    const { rerender } = render(<DoePanel templateId="cantilever_beam" />);
+    await screen.findByLabelText("Uzunluk min");
+
+    rerender(<DoePanel templateId="plate_with_hole" />);
+
+    // Form o şablonun parametrelerine geçmeli, eskisi kalmamalı.
+    expect(await screen.findByLabelText("Delik çapı min")).toHaveValue(16);
+    expect(screen.queryByLabelText("Uzunluk min")).not.toBeInTheDocument();
+    // Düğme ve oran aralığı da yeni şablonun.
+    expect(
+      screen.getByRole("button", { name: /200'lük kalite seti · Delikli plaka/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Eleman boyutu min")).toHaveValue(0.12);
+  });
+
+  it("dışarıdaki seçim değişmedikçe DOE formundaki seçime dokunmaz", async () => {
+    const { rerender } = render(<DoePanel templateId="cantilever_beam" />);
+    await screen.findByLabelText("Uzunluk min");
+
+    // Kullanıcı DOE formundan plakaya geçiyor
+    fireEvent.change(screen.getByLabelText("Şablon"), { target: { value: "plate_with_hole" } });
+    await screen.findByLabelText("Delik çapı min");
+
+    // Aynı templateId ile yeniden render: seçim korunmalı
+    rerender(<DoePanel templateId="cantilever_beam" />);
+    expect(screen.getByLabelText("Delik çapı min")).toBeInTheDocument();
   });
 });
