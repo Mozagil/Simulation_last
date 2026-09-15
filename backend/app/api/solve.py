@@ -500,6 +500,11 @@ def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "status": r.status,
                 "message": r.message,
                 "scalars": r.scalars,
+                # Şablondan üretilen geometrilerde hangi parametrelerle
+                # üretildiği; DOE taramasında "hangi aralık hangi sonucu verdi"
+                # sorusunun cevabı burada. Yüklenen STEP'te None.
+                "template_id": r.geometry.template_id if r.geometry else None,
+                "template_params": r.geometry.template_params if r.geometry else None,
             }
             for r in runs
         ],
@@ -520,6 +525,8 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         "id": run.id,
         "geometry_id": run.geometry_id,
         "geometry_filename": run.geometry.original_filename if run.geometry else None,
+        "template_id": run.geometry.template_id if run.geometry else None,
+        "template_params": run.geometry.template_params if run.geometry else None,
         "name": run.name,
         "created_at": run.created_at.isoformat(),
         "dimension": run.dimension,
