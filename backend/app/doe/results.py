@@ -37,20 +37,43 @@ def _num(value: Any) -> float | None:
 
 
 def _analytic(scalars: dict[str, Any]) -> dict[str, Any]:
-    """Analitik karşılaştırma alanlarını iki kaynaktan da okur.
+    """Analitik karşılaştırmayı `_analytic_comparison.metrics`'ten okur.
 
-    0.4.5 sapmayı `analytic_dev_*_pct` olarak yazıyor; DOE tarafı ayrıca
-    `_analytic_comparison` sözlüğü tutuyor. Hangisi varsa kullanılır.
+    Yapı (bkz. `templates/compare.py`):
+        {"skipped": bool, "reason": str|None, "warned": bool,
+         "metrics": [{"key": "max_displacement", "analytic": …, "fea": …,
+                      "rel_error": 0.167, ...}]}
+
+    `rel_error` İŞARETSİZDİR; tabloda yönü görmek istiyoruz (FEA analitikten
+    yukarıda mı aşağıda mı), o yüzden işaretli sapmayı analytic/fea'den
+    yeniden hesaplıyoruz.
     """
-    dev_disp = _num(scalars.get("analytic_dev_max_displacement_pct"))
-    dev_vm = _num(scalars.get("analytic_dev_max_von_mises_pct"))
+    out: dict[str, Any] = {
+        "dev_displacement_pct": None,
+        "dev_von_mises_pct": None,
+        "analytic_skipped": None,
+    }
     cmp_ = scalars.get("_analytic_comparison")
-    if isinstance(cmp_, dict):
-        devs = cmp_.get("deviations")
-        if isinstance(devs, dict):
-            dev_disp = dev_disp if dev_disp is not None else _num(devs.get("max_displacement"))
-            dev_vm = dev_vm if dev_vm is not None else _num(devs.get("max_von_mises"))
-    return {"dev_displacement_pct": dev_disp, "dev_von_mises_pct": dev_vm}
+    if not isinstance(cmp_, dict):
+        return out
+    if cmp_.get("skipped"):
+        out["analytic_skipped"] = cmp_.get("reason") or "karşılaştırma atlandı"
+        return out
+
+    field = {"max_displacement": "dev_displacement_pct", "max_von_mises": "dev_von_mises_pct"}
+    for metric in cmp_.get("metrics") or []:
+        target = field.get(metric.get("key"))
+        if target is None:
+            continue
+        ana = _num(metric.get("analytic"))
+        fea = _num(metric.get("fea"))
+        if ana not in (None, 0.0) and fea is not None:
+            out[target] = (fea - ana) / ana * 100.0
+        else:
+            # Analitik sıfır/okunamaz: işaretsiz göreli hatayı kullan.
+            rel = _num(metric.get("rel_error"))
+            out[target] = rel * 100.0 if rel is not None else None
+    return out
 
 
 def study_results(db: Session, study: DoeStudy) -> dict[str, Any]:

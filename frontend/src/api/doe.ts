@@ -132,6 +132,8 @@ export interface DoeResultRow {
   scalars: Record<string, number | null>;
   dev_displacement_pct: number | null;
   dev_von_mises_pct: number | null;
+  /** Karşılaştırma yapılamadıysa sebebi (yük yok, şablon analitiği yok …). */
+  analytic_skipped?: string | null;
   message: string | null;
 }
 

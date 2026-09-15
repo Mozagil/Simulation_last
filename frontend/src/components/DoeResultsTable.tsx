@@ -119,7 +119,7 @@ export default function DoeResultsTable({ results, onOpenRun }: DoeResultsTableP
                 key={r.index}
                 className={r.quality === "ok" ? undefined : "doe-table-row-flagged"}
                 onClick={() => r.run_id !== null && onOpenRun?.(r.run_id)}
-                title={r.message ?? undefined}
+                title={r.message ?? r.analytic_skipped ?? undefined}
               >
                 <td>{r.index}</td>
                 {results.param_columns.map((p) => (
@@ -129,8 +129,10 @@ export default function DoeResultsTable({ results, onOpenRun }: DoeResultsTableP
                 {scalarKeys.map((k) => (
                   <td key={k}>{fmt(r.scalars[k])}</td>
                 ))}
-                <td>{fmtPct(r.dev_displacement_pct)}</td>
-                <td>{fmtPct(r.dev_von_mises_pct)}</td>
+                <td title={r.analytic_skipped ?? undefined}>
+                  {fmtPct(r.dev_displacement_pct)}
+                </td>
+                <td title={r.analytic_skipped ?? undefined}>{fmtPct(r.dev_von_mises_pct)}</td>
                 <td>{r.quality}</td>
               </tr>
             ))}
