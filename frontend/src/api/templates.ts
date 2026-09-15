@@ -26,6 +26,10 @@ export interface GeometryTemplateInfo {
   has_analytic: boolean;
   /** Bölge adıyla bağlı (id'siz) referans BC'ler. */
   default_bcs?: SolveBC[];
+  /** Oranlı mesh için önerilen [min, maks] eleman/karakteristik uzunluk oranı. */
+  default_element_ratio?: [number, number];
+  /** Şablon karakteristik uzunluk tanımlıyor mu (oranlı mesh mümkün mü). */
+  has_characteristic_length?: boolean;
 }
 
 export interface CreateFromTemplateResponse {

@@ -39,6 +39,9 @@ export interface DoeSpecPayload {
   /** Taranmayan, sabit verilen parametreler (sayı ya da enum). */
   fixed_params?: Record<string, number | string>;
   element_size: [number, number];
+  /** Verilirse element_size yerine bu oran taranır: eleman = oran × şablonun
+   * karakteristik uzunluğu (kirişte kalınlık, plakada delik çapı). */
+  element_ratio?: [number, number];
   load_fy?: [number, number];
   /** Senaryodaki tüm yük BC'lerini bu katsayı aralığıyla ölçekler. */
   load_scale?: [number, number];

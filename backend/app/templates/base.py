@@ -98,6 +98,15 @@ class GeometryTemplate:
     #: ile aynı (`max_displacement` [mm], `max_von_mises` [MPa]) ki 0.4.5'te
     #: doğrudan karşılaştırılabilsin. Yoksa None.
     analytic: Callable[[BaseModel, AnalyticInput], dict[str, float]] | None = None
+    #: Sonucu belirleyen en küçük ölçü (mm): kirişte kalınlık, delikli plakada
+    #: delik çapı, çentikli çubukta çentik yarıçapı… Mesh boyutunu buna ORANLI
+    #: seçmek, geometri değişirken çözünürlüğü sabit tutar. Mutlak mm ile
+    #: tarayınca L=450 ve L=700 örnekleri farklı çözünürlükte çözülür ve
+    #: analitik sapmanın ne kadarının mesh'ten geldiği ayırt edilemez.
+    characteristic_length: Callable[[BaseModel], float] | None = None
+    #: Bu şablon için makul eleman/karakteristik uzunluk oranı aralığı.
+    #: Deneyle bulunur (bkz. PR açıklaması); arayüz formu bunu önceden doldurur.
+    default_element_ratio: tuple[float, float] = (0.5, 1.0)
     #: Şablonun referans yük durumu, BÖLGE ADIYLA bağlı BC listesi
     #: (`{"type": "fixed", "region": "ankastre_uc"}` gibi; DOE senaryolarıyla
     #: aynı sözleşme). Geometri üretilince yüzey/kenar id'lerine çevrilip
@@ -131,6 +140,17 @@ class GeometryTemplate:
         katmanı) bunu 422'ye çevirir.
         """
         return self.params_model.model_validate(raw)
+
+    def element_size_for(self, params: BaseModel, ratio: float) -> float | None:
+        """Oranlı mesh boyutu (mm). Şablon karakteristik uzunluk tanımlamadıysa None."""
+        if self.characteristic_length is None:
+            return None
+        length = float(self.characteristic_length(params))
+        if not (length > 0.0):
+            raise TemplateError(
+                f"Şablon '{self.id}': karakteristik uzunluk pozitif olmalı, {length} geldi."
+            )
+        return length * ratio
 
     def region_names(self) -> list[str]:
         return [r.name for r in self.regions]

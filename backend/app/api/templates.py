@@ -47,6 +47,9 @@ def _template_payload(t: GeometryTemplate) -> dict[str, Any]:
         "has_analytic": t.analytic is not None,
         # Bölge adıyla bağlı referans BC'ler (id'siz); DOE senaryosu için de girdi.
         "default_bcs": [dict(bc) for bc in t.default_bcs],
+        # Oranlı mesh boyutu için: arayüz formu bu aralığı önceden doldurur.
+        "default_element_ratio": list(t.default_element_ratio),
+        "has_characteristic_length": t.characteristic_length is not None,
     }
 
 

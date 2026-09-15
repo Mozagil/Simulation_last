@@ -161,6 +161,9 @@ NOTCHED_BAR = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: çentik yarıçapı — gerilme yığılması burada.
+    characteristic_length=lambda p: p.notch_radius,
+    default_element_ratio=(0.25, 0.6),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         # σ_brüt ≈ 100 MPa (W=40, T=8): F = 32 kN

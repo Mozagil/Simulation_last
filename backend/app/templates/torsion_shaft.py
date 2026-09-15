@@ -91,6 +91,9 @@ TORSION_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: mil yarıçapı.
+    characteristic_length=lambda p: p.radius,
+    default_element_ratio=(0.25, 0.5),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         # NOT: CLOAD tek yönlü vektördür; çember üzerinde gerçek teğetsel dağılım

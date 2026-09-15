@@ -2,6 +2,11 @@
 
 Her örnek Euler-Bernoulli ile karşılaştırılabilir olsun diye yük hep −y
 (uç CLOAD). −z senaryosu bu sette yok — analitik formül o eksende geçersiz.
+
+`material_ids` birden fazla verilirse örnekler malzemelere dengeli dağılır
+(LHS kesikli boyut). Doğrusal statikte E yalnız deplasmanı etkiler (σ ≈ E'den
+bağımsız), ama model girdisinde E olduğu için tek malzemeyle eğitilen bir
+surrogate başka malzemeye genelleyemez.
 """
 
 from __future__ import annotations
@@ -28,7 +33,11 @@ def cantilever_quality_spec(material_ids: list[int], *, run_solver: bool = False
         seed=QUALITY_SET_SEED,
         n_samples=QUALITY_SET_N,
         geometry=_GEOMETRY,
-        element_size=(6.0, 14.0),
+        # Mutlak mm yerine ORAN: T 8–12 mm arasında değişirken çözünürlük
+        # sabit kalsın. Ölçüldü: mutlak 6–14 mm'de aynı fizik %9.6–%21.8
+        # gerilme sapması veriyor ve bazı örnekler mesh yüzünden uyarı
+        # tetikliyor — kalite raporu okunamaz hale geliyor.
+        element_ratio=(0.5, 1.2),
         load_fy=(-800.0, -200.0),
         material_ids=list(material_ids),
         bc_scenarios=[

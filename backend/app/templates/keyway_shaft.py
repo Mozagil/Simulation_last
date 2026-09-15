@@ -131,6 +131,12 @@ KEYWAY_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: dip radyusu (0 girilirse Kt'de kullanılan 0.02·D
+    # varsayılanı). Yığılma kama dibinde; mesh oradaki gradyanı çözmeli.
+    # Dip radyusu geometride yok (yalnız Kt formülünde), o yüzden kama
+    # genişliği: kanal kesitini çözebilen en kaba ölçü.
+    characteristic_length=lambda p: p.key_width,
+    default_element_ratio=(0.5, 1.2),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         # NOT: bkz. torsion_shaft — gerçek tork BC'si 0.4.7'de.

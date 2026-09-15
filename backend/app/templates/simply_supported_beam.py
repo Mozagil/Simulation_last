@@ -117,6 +117,9 @@ SIMPLY_SUPPORTED_BEAM = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: kesit kalınlığı.
+    characteristic_length=lambda p: p.thickness,
+    default_element_ratio=(0.5, 1.2),
     default_bcs=(
         # Basit mesnet: sol uç uy=uz=0 ve ux=0 (sabit mesnet), sağ uç uy=uz=0 (kayıcı).
         {"type": "displacement", "region": REGION_LEFT, "dofs": {"1": 0.0, "2": 0.0, "3": 0.0}},

@@ -143,3 +143,89 @@ def test_load_scale_scales_pressure():
 def test_invalid_load_scale_rejected(bad):
     with pytest.raises(ValueError):
         _spec(load_scale=bad)
+
+
+# --- oranlı mesh boyutu ---------------------------------------------------------
+
+
+def test_element_ratio_keeps_resolution_constant_across_geometry():
+    """Mutlak mm'de oran geometriyle sürükleniyor; oranlı modda sabit kalıyor."""
+    geometry = {"length": (450.0, 700.0), "thickness": (8.0, 12.0)}
+
+    absolute = sample_spec(_spec(n_samples=40, geometry=geometry, element_size=(6.0, 14.0)))
+    abs_ratios = [s.element_size / s.geometry_params["thickness"] for s in absolute]
+    assert max(abs_ratios) / min(abs_ratios) > 2.0, "mutlak modda çözünürlük çok oynuyor (beklenen)"
+
+    relative = sample_spec(_spec(n_samples=40, geometry=geometry, element_ratio=(0.5, 1.2)))
+    rel_ratios = [s.element_size / s.geometry_params["thickness"] for s in relative]
+    assert min(rel_ratios) >= 0.5 - 1e-9
+    assert max(rel_ratios) <= 1.2 + 1e-9
+
+
+def test_element_ratio_uses_template_characteristic_length():
+    """Delikli plakada karakteristik uzunluk delik çapı — kalınlık değil."""
+    samples = sample_spec(
+        DoeSpec(
+            template_id="plate_with_hole",
+            n_samples=6,
+            seed=2,
+            geometry={"diameter": (10.0, 30.0)},
+            element_ratio=(0.15, 0.25),
+            material_ids=[1],
+            bc_scenarios=[
+                {
+                    "name": "cekme",
+                    "bcs": [
+                        {"type": "fixed", "region": "tutulan_uc"},
+                        {"type": "cload", "region": "yuk_ucu", "fx": 1000.0, "fy": 0.0, "fz": 0.0},
+                    ],
+                }
+            ],
+        )
+    )
+    for s in samples:
+        ratio = s.element_size / s.geometry_params["diameter"]
+        assert 0.15 - 1e-9 <= ratio <= 0.25 + 1e-9, ratio
+    # Çap taranıyor, oran sabit aralıkta: eleman boyutu çapla birlikte değişmeli.
+    sizes = sorted((s.geometry_params["diameter"], s.element_size) for s in samples)
+    assert sizes[0][1] < sizes[-1][1]
+
+
+def test_element_ratio_falls_back_to_absolute_for_unknown_template():
+    spec = DoeSpec(
+        template_id="yok_boyle_sablon",
+        n_samples=3,
+        seed=1,
+        geometry={"length": (100.0, 200.0)},
+        element_size=(5.0, 9.0),
+        element_ratio=(0.4, 0.6),
+        material_ids=[1],
+        bc_scenarios=CANTILEVER_BCS,
+    )
+    for s in sample_spec(spec):
+        assert 5.0 <= s.element_size <= 9.0
+
+
+@pytest.mark.parametrize("bad", [(0.0, 1.0), (-0.5, 1.0), (1.0, 0.5)])
+def test_invalid_element_ratio_rejected(bad):
+    with pytest.raises(ValueError):
+        _spec(element_ratio=bad)
+
+
+# --- çoklu malzeme --------------------------------------------------------------
+
+
+def test_two_materials_split_evenly():
+    from collections import Counter
+
+    samples = sample_spec(_spec(n_samples=200, material_ids=[7, 9]))
+    counts = Counter(s.material_id for s in samples)
+    assert counts == {7: 100, 9: 100}
+
+
+def test_three_materials_are_balanced():
+    from collections import Counter
+
+    counts = Counter(s.material_id for s in sample_spec(_spec(n_samples=90, material_ids=[1, 2, 3])))
+    assert set(counts) == {1, 2, 3}
+    assert max(counts.values()) - min(counts.values()) <= 1

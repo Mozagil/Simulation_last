@@ -35,6 +35,8 @@ const CANTILEVER = {
   },
   regions: [],
   has_analytic: true,
+  default_element_ratio: [0.5, 1.2],
+  has_characteristic_length: true,
   default_bcs: [
     { type: "fixed", region: "ankastre_uc" },
     { type: "cload", region: "yuk_yuzeyi", fx: 0, fy: -500, fz: 0 },
@@ -58,7 +60,10 @@ describe("DoePanel", () => {
       counts: { inp_only: 8 },
       flagged: { inp_only: [0, 1, 2, 3, 4, 5, 6, 7] },
     });
-    vi.mocked(fetchMaterials).mockResolvedValue([{ id: 3, name: "S235" } as never]);
+    vi.mocked(fetchMaterials).mockResolvedValue([
+      { id: 3, name: "S235" },
+      { id: 4, name: "AlMg3" },
+    ] as never);
     vi.mocked(createDoeStudy).mockResolvedValue({
       id: 1,
       name: "cantilever LHS",
@@ -88,6 +93,8 @@ describe("DoePanel", () => {
     expect(spec.geometry).toEqual({ length: [400, 600], thickness: [8, 12] });
     expect(spec.bc_scenarios[0].bcs).toEqual(CANTILEVER.default_bcs);
     expect(spec.load_scale).toEqual([0.5, 2]);
+    // Oranlı mesh varsayılan: şablonun önerdiği aralık gönderilir.
+    expect(spec.element_ratio).toEqual([0.5, 1.2]);
   });
 
   it("kullanıcının verdiği aralığı ve sabitlediği parametreyi gönderir", async () => {
@@ -153,5 +160,40 @@ describe("DoePanel", () => {
       run_solver: false,
       wait: false,
     });
+  });
+
+  it("birden çok malzeme seçilebilir ve hepsi gönderilir", async () => {
+    render(<DoePanel />);
+    await screen.findByLabelText("Uzunluk min");
+    // İlk malzeme varsayılan seçili; ikincisini de işaretle.
+    fireEvent.click(screen.getByLabelText("AlMg3"));
+    fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
+    await waitFor(() => expect(createDoeStudy).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createDoeStudy).mock.calls[0][0].material_ids).toEqual([3, 4]);
+  });
+
+  it("sabit mm moduna geçince oran değil mutlak boyut gönderir", async () => {
+    render(<DoePanel />);
+    await screen.findByLabelText("Uzunluk min");
+    fireEvent.change(screen.getByLabelText("Eleman boyutu tipi"), { target: { value: "mm" } });
+    fireEvent.change(screen.getByLabelText("Eleman boyutu min"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Eleman boyutu maks"), { target: { value: "9" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
+    await waitFor(() => expect(createDoeStudy).toHaveBeenCalledTimes(1));
+    const [spec] = vi.mocked(createDoeStudy).mock.calls[0];
+    expect(spec.element_size).toEqual([5, 9]);
+    expect(spec.element_ratio).toBeUndefined();
+  });
+
+  it("malzeme seçilmezse istek göndermez", async () => {
+    render(<DoePanel />);
+    await screen.findByLabelText("Uzunluk min");
+    fireEvent.click(screen.getByLabelText("S235")); // varsayılan seçimi kaldır
+    fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
+    await waitFor(() =>
+      expect(screen.getByText(/En az bir malzeme/)).toBeInTheDocument(),
+    );
+    expect(createDoeStudy).not.toHaveBeenCalled();
   });
 });

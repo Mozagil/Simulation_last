@@ -57,6 +57,9 @@ L_ANGLE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: kanat kalınlığı.
+    characteristic_length=lambda p: p.thickness,
+    default_element_ratio=(0.5, 1.2),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -500.0, "fz": 0.0},

@@ -173,6 +173,9 @@ DOGBONE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: ölçü genişliği / omuz yarıçapının küçüğü.
+    characteristic_length=lambda p: min(p.gauge_width, p.fillet_radius),
+    default_element_ratio=(0.15, 0.35),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         # σ_nom ≈ 200 MPa ölçü kesitinde (b=12.5, a=3): F = 7.5 kN

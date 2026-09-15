@@ -33,6 +33,8 @@ export interface DoeFormState {
   templateId: string;
   params: Record<string, ParamRow>;
   enums: Record<string, string>;
+  /** "ratio": eleman = oran × karakteristik uzunluk. "mm": mutlak boyut. */
+  elementMode: "ratio" | "mm";
   elementMin: string;
   elementMax: string;
   loadMin: string;
@@ -58,12 +60,18 @@ export function initialStateFor(template: GeometryTemplateInfo): DoeFormState {
   }
   const enums: Record<string, string> = {};
   for (const f of enumFieldsFromSchema(schema)) enums[f.name] = f.defaultValue;
+  // Oranlı mod varsayılan: geometri tarandıkça mesh çözünürlüğü sabit kalır.
+  // Mutlak mm'de aynı fizik, sırf mesh yüzünden %9.6–%21.8 gerilme sapması
+  // veriyor ve bazı örnekler yanlışlıkla uyarı tetikliyor.
+  const canRatio = template.has_characteristic_length !== false;
+  const [rLo, rHi] = template.default_element_ratio ?? [0.5, 1.2];
   return {
     templateId: template.id,
     params,
     enums,
-    elementMin: "6",
-    elementMax: "12",
+    elementMode: canRatio ? "ratio" : "mm",
+    elementMin: canRatio ? String(rLo) : "6",
+    elementMax: canRatio ? String(rHi) : "12",
     loadMin: "0.5",
     loadMax: "2",
     nSamples: "8",
@@ -107,9 +115,12 @@ export function buildSpec(
     throw new Error("En az bir parametre aralık olarak taranmalı.");
   }
 
-  const eLo = num(state.elementMin, "Eleman boyutu min");
-  const eHi = num(state.elementMax, "Eleman boyutu maks");
-  if (eHi <= eLo) throw new Error("Eleman boyutu: maks değer min değerden büyük olmalı.");
+  const isRatio = state.elementMode === "ratio";
+  const eLabel = isRatio ? "Eleman oranı" : "Eleman boyutu";
+  const eLo = num(state.elementMin, `${eLabel} min`);
+  const eHi = num(state.elementMax, `${eLabel} maks`);
+  if (eLo <= 0) throw new Error(`${eLabel} pozitif olmalı.`);
+  if (eHi <= eLo) throw new Error(`${eLabel}: maks değer min değerden büyük olmalı.`);
   const lLo = num(state.loadMin, "Yük katsayısı min");
   const lHi = num(state.loadMax, "Yük katsayısı maks");
   if (lLo <= 0) throw new Error("Yük katsayısı pozitif olmalı.");
@@ -129,7 +140,11 @@ export function buildSpec(
     n_samples: n,
     geometry,
     fixed_params: fixed,
-    element_size: [eLo, eHi],
+    // Oranlı modda backend element_size'ı yok sayar; yine de geçerli bir
+    // aralık göndermek gerekiyor (şablon karakteristik uzunluk vermezse
+    // geri düşülen değer bu).
+    element_size: isRatio ? [6, 12] : [eLo, eHi],
+    ...(isRatio ? { element_ratio: [eLo, eHi] as [number, number] } : {}),
     load_scale: [lLo, lHi],
     material_ids: materialIds,
     bc_scenarios: [{ name: "varsayilan", bcs: bcs as unknown as Record<string, unknown>[] }],
@@ -258,7 +273,20 @@ export default function DoeSpecForm({ templates, state, busy, onChange }: DoeSpe
 
       <div className="doe-param-row">
         <div className="doe-param-head">
-          <span className="doe-param-name">Eleman boyutu (mm)</span>
+          <span className="doe-param-name">
+            {state.elementMode === "ratio" ? "Eleman oranı (×)" : "Eleman boyutu (mm)"}
+          </span>
+          <select
+            aria-label="Eleman boyutu tipi"
+            value={state.elementMode}
+            disabled={busy || template?.has_characteristic_length === false}
+            onChange={(e) =>
+              onChange({ ...state, elementMode: e.target.value as "ratio" | "mm" })
+            }
+          >
+            <option value="ratio">Oranlı</option>
+            <option value="mm">Sabit mm</option>
+          </select>
         </div>
         <div className="doe-param-range">
           <input
@@ -279,6 +307,13 @@ export default function DoeSpecForm({ templates, state, busy, onChange }: DoeSpe
             onChange={(e) => onChange({ ...state, elementMax: e.target.value })}
           />
         </div>
+        {state.elementMode === "ratio" && (
+          <p className="filename">
+            Eleman boyutu = oran × şablonun karakteristik uzunluğu (kirişte kesit
+            kalınlığı, delikli plakada delik çapı). Geometri değişirken mesh
+            çözünürlüğü sabit kalır.
+          </p>
+        )}
       </div>
 
       <div className="doe-param-row">

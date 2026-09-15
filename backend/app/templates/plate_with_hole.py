@@ -137,6 +137,9 @@ PLATE_WITH_HOLE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: delik çapı — Kt burada belirleniyor.
+    characteristic_length=lambda p: p.diameter,
+    default_element_ratio=(0.12, 0.25),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         # σ_brüt ≈ 100 MPa (W=100, T=5): F = 50 kN

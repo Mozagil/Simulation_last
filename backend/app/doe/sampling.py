@@ -27,6 +27,13 @@ class DoeSpec(BaseModel):
     #: (sayı ya da enum). `geometry` ile aynı adı taşıyamaz.
     fixed_params: dict[str, float | str] = Field(default_factory=dict)
     element_size: tuple[float, float] = (6.0, 12.0)
+    #: Verilirse `element_size` yerine bu ORAN aralığı taranır ve her örneğin
+    #: eleman boyutu `oran × şablonun karakteristik uzunluğu` olur (kirişte
+    #: kalınlık, delikli plakada delik çapı…). Gerekçe: mutlak mm ile tarayınca
+    #: geometri değişirken çözünürlük de değişir; ölçtük — ankastre kirişte
+    #: T=8/14mm (oran 1.75) örneği %21.8 gerilme sapmasıyla uyarı verirken
+    #: T=12/6mm (oran 0.50) %9.6'da kalıyor. Aynı fizik, farklı mesh.
+    element_ratio: tuple[float, float] | None = None
     #: Verilirse CLOAD Fy bu aralıkta taranır (N, işaret korunur). Analitik
     #: uç yüküyle aynı yön: ankastre kirişte −y.
     load_fy: tuple[float, float] | None = None
@@ -69,6 +76,12 @@ class DoeSpec(BaseModel):
                 raise ValueError("load_scale üst sınır alt sınırdan büyük olmalı.")
             if a <= 0:
                 raise ValueError("load_scale alt sınır pozitif olmalı.")
+        if self.element_ratio is not None:
+            a, b = self.element_ratio
+            if a <= 0:
+                raise ValueError("element_ratio alt sınır pozitif olmalı.")
+            if b <= a:
+                raise ValueError("element_ratio üst sınır alt sınırdan büyük olmalı.")
         if self.dimension not in (2, 3):
             raise ValueError("dimension 2 veya 3 olmalı.")
         return self
@@ -128,6 +141,12 @@ def _sample_row(spec: DoeSpec, row: np.ndarray, geo_keys: list[str], index: int)
         }
     )
     k = len(geo_keys)
+    element_size = _lerp(spec.element_size[0], spec.element_size[1], float(row[k]))
+    if spec.element_ratio is not None:
+        ratio = _lerp(spec.element_ratio[0], spec.element_ratio[1], float(row[k]))
+        sized = _element_size_from_ratio(spec.template_id, params, ratio)
+        if sized is not None:
+            element_size = sized
     scenario = _pick(spec.bc_scenarios, float(row[k + 2])).model_copy(deep=True)
     if spec.load_fy is not None:
         fy = _lerp(spec.load_fy[0], spec.load_fy[1], float(row[k + 3]))
@@ -142,10 +161,26 @@ def _sample_row(spec: DoeSpec, row: np.ndarray, geo_keys: list[str], index: int)
     return DoeSample(
         index=index,
         geometry_params=params,
-        element_size=_lerp(spec.element_size[0], spec.element_size[1], float(row[k])),
+        element_size=element_size,
         material_id=int(_pick(spec.material_ids, float(row[k + 1]))),
         scenario=scenario,
     )
+
+
+def _element_size_from_ratio(
+    template_id: str, params: dict[str, Any], ratio: float
+) -> float | None:
+    """Oranı mm'ye çevirir. Şablon ya da parametre uygun değilse None —
+    o durumda mutlak `element_size` aralığı kullanılmaya devam eder."""
+    from app.templates import UnknownTemplateError, get_template
+
+    try:
+        template = get_template(template_id)
+        return template.element_size_for(template.parse_params(params), ratio)
+    except UnknownTemplateError:
+        return None
+    except Exception:  # noqa: BLE001 — mesh boyutu hesabı taramayı düşürmesin
+        return None
 
 
 def _params_valid(spec: DoeSpec, params: dict[str, Any]) -> bool:

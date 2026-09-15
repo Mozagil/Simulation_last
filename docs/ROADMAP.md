@@ -349,6 +349,14 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Kuyruk + ilerleme takibi, hatalı run'ın toplu işi durdurmaması
 - [x] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
 
+**0.5.4 eki — mesh çözünürlüğü ve malzeme taraması**
+- [x] `DoeSpec.element_ratio`: eleman boyutu = oran × şablonun karakteristik
+      uzunluğu (`GeometryTemplate.characteristic_length`). Gerekçe ölçüldü:
+      ankastre kirişte mutlak 6–14 mm ile aynı fizik %9.6–%21.8 gerilme sapması
+      veriyor ve oran 1.75'e çıkan örnek mesh yüzünden uyarı tetikliyor.
+- [x] 12 şablona karakteristik uzunluk + önerilen oran aralığı
+- [x] Çoklu malzeme: LHS kesikli boyut dengeli dağıtıyor (200 örnek, 2 malzeme → 100/100)
+
 **0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
 - [x] ~200 run üret
 - [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın

@@ -56,7 +56,9 @@ def test_quality_set_is_200_reproducible_and_slender():
         assert 8.0 <= g["thickness"] <= 12.0
         assert 35.0 <= g["width"] <= 70.0
         assert g["length"] / g["thickness"] >= 5.0
-        assert 6.0 <= s.element_size <= 14.0
+        # Oranlı mesh: eleman boyutu kalınlığın 0.5–1.2 katı (mutlak mm yerine
+        # oran; geometri değişirken çözünürlük sabit kalsın).
+        assert 0.5 - 1e-9 <= s.element_size / g["thickness"] <= 1.2 + 1e-9
         assert -800.0 <= _fy(s) <= -200.0
         assert s.scenario.name == "tip_-y"
         assert {bc.get("region") for bc in s.scenario.bcs} == {"ankastre_uc", "yuk_yuzeyi"}

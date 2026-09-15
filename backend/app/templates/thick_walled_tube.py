@@ -101,6 +101,9 @@ THICK_WALLED_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: cidar kalınlığı — Lamé gradyanı cidar boyunca.
+    characteristic_length=lambda p: p.outer_radius - p.inner_radius,
+    default_element_ratio=(0.2, 0.5),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         {"type": "pressure", "region": REGION_INNER, "magnitude": 10.0},

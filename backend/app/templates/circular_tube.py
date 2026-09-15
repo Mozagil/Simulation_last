@@ -62,6 +62,9 @@ CIRCULAR_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: cidar kalınlığı.
+    characteristic_length=lambda p: p.outer_radius - p.inner_radius,
+    default_element_ratio=(0.5, 1.2),
     default_bcs=(
         {"type": "fixed", "region": REGION_FIXED},
         {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -1000.0, "fz": 0.0},

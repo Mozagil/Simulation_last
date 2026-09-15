@@ -42,7 +42,10 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [form, setForm] = useState<DoeFormState | null>(null);
-  const [materialId, setMaterialId] = useState<number | "">("");
+  // Çoklu seçim: örnekler malzemelere dengeli dağılır (200 örnek + 2 malzeme
+  // = 100/100). E model girdisinde olduğu için tek malzemeyle eğitilen
+  // surrogate başka malzemeye genelleyemez.
+  const [materialIds, setMaterialIds] = useState<number[]>([]);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +70,7 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
     fetchMaterials()
       .then((list) => {
         setMaterials(list);
-        if (list.length) setMaterialId(list[0].id);
+        if (list.length) setMaterialIds([list[0].id]);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Malzemeler alınamadı."));
   }, []);
@@ -107,14 +110,14 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
   async function handleStart() {
     const template = templates.find((t) => t.id === form?.templateId);
     if (!form || !template) return;
-    if (materialId === "") {
-      setError("Malzeme seçilmeli.");
+    if (materialIds.length === 0) {
+      setError("En az bir malzeme seçilmeli.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const spec = buildSpec(form, template, [materialId], runSolver);
+      const spec = buildSpec(form, template, materialIds, runSolver);
       const study = await createDoeStudy(spec, true);
       // Örnekleme, şablonun geometrik kısıtlarını ihlal eden kombinasyonları
       // eler; istenenden az örnek çıkabilir — kullanıcı sessiz kalmasın.
@@ -152,11 +155,11 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
     setBusy(true);
     setError(null);
     try {
-      if (materialId === "") {
-        throw new Error("Malzeme seçilmeli.");
+      if (materialIds.length === 0) {
+        throw new Error("En az bir malzeme seçilmeli.");
       }
       await startQualitySet({
-        material_ids: [materialId],
+        material_ids: materialIds,
         run_solver: runSolver,
         wait: false,
       });
@@ -190,20 +193,24 @@ export default function DoePanel({ refreshKey, onOpenRun }: DoePanelProps) {
       )}
 
       <div className="doe-fields">
-        <label className="mesh-field">
-          <span>Malzeme</span>
-          <select
-            value={materialId}
-            disabled={busy || materials.length === 0}
-            onChange={(e) => setMaterialId(e.target.value === "" ? "" : Number(e.target.value))}
-          >
-            {materials.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="doe-material-picker">
+          <legend>Malzeme</legend>
+          {materials.map((m) => (
+            <label key={m.id}>
+              <input
+                type="checkbox"
+                checked={materialIds.includes(m.id)}
+                disabled={busy}
+                onChange={(e) =>
+                  setMaterialIds((prev) =>
+                    e.target.checked ? [...prev, m.id] : prev.filter((x) => x !== m.id),
+                  )
+                }
+              />
+              {m.name}
+            </label>
+          ))}
+        </fieldset>
         <label className="mesh-field">
           <span>Örnek</span>
           <input
