@@ -55,6 +55,12 @@ import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
 import type { SurrogatePredictResult } from "./api/surrogate";
 import TemplatePanel from "./components/TemplatePanel";
+import {
+  summarizeTemplateParams,
+  symbolMapFromTemplates,
+  type SymbolMap,
+} from "./templates/paramSummary";
+import { fetchTemplates } from "./api/templates";
 import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
 import type { CreateFromTemplateResponse } from "./api/templates";
 import { pickAnalyticComparison } from "./templates/analyticCompare";
@@ -692,6 +698,8 @@ function App() {
     }
   }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
+  // Geçmiş satırlarında şablon parametrelerini şemadaki harfle göstermek için.
+  const [paramSymbols, setParamSymbols] = useState<SymbolMap>({});
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
   const [bcFy, setBcFy] = useState("0");
@@ -722,6 +730,20 @@ function App() {
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("shell");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Şablon şemalarını bir kez yükle: geçmişte parametreleri harfle göstermek için.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTemplates()
+      .then((list) => {
+        if (!cancelled) setParamSymbols(symbolMapFromTemplates(list));
+      })
+      // Harf haritası olmazsa parametre adları gösterilir; hata mesajı gereksiz.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Malzeme kütüphanesini bir kez yükle.
   useEffect(() => {
@@ -2730,7 +2752,10 @@ function App() {
       )}
 
       <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
-      <DoePanel refreshKey={runsHistory.length} />
+      <DoePanel
+        refreshKey={runsHistory.length}
+        onOpenRun={(runId) => void handleOpenRunForEdit(runId)}
+      />
       <SurrogatePanel
         refreshKey={runsHistory.length}
         geometryId={geometryId}
@@ -2789,6 +2814,11 @@ function App() {
                     {r.geometry_filename} · {r.dimension === 2 ? "2D" : "3D"} ·{" "}
                     {new Date(r.created_at).toLocaleString("tr-TR")}
                   </div>
+                  {r.template_params && (
+                    <div className="history-item-params">
+                      {summarizeTemplateParams(r.template_id, r.template_params, paramSymbols)}
+                    </div>
+                  )}
                   {r.scalars.max_von_mises !== undefined && (
                     <div className="history-item-scalar">
                       VM max: {r.scalars.max_von_mises.toExponential(2)} · Deplasman max:{" "}

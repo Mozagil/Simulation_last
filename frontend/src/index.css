@@ -1562,6 +1562,13 @@ p {
   margin-top: 2px;
 }
 
+.history-item-params {
+  margin-top: 2px;
+  font-family: var(--font-head);
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .history-item-scalar {
   font-size: 10px;
   color: var(--muted);
@@ -2406,6 +2413,108 @@ p {
 
 .template-schematic-load-head {
   fill: var(--ink);
+}
+
+.doe-results-toggle {
+  display: block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.doe-table-scroll {
+  max-height: 320px;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.doe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.doe-table th,
+.doe-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.doe-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.doe-table tfoot td {
+  font-family: var(--font-head);
+  color: var(--muted);
+  border-bottom: none;
+}
+
+.doe-table-row-flagged {
+  background: rgba(220, 53, 69, 0.08);
+}
+
+.doe-table tbody tr:hover {
+  background: var(--surface-2, rgba(0, 0, 0, 0.04));
+  cursor: pointer;
+}
+
+.doe-table-sort {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.doe-spec-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.doe-param-row {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.doe-param-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.doe-param-name {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.doe-param-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doe-param-range input {
+  min-width: 0;
+  flex: 1;
 }
 
 .param-symbol {

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import SessionLocal, get_db
 from app.doe.quality import scan_study
+from app.doe.results import study_results
 from app.doe.quality_set import cantilever_quality_spec
 from app.doe.runner import persist_study, run_study, study_progress
 from app.doe.sampling import DoeSpec
@@ -114,6 +115,18 @@ def start_quality_set(
         background_tasks.add_task(_run_in_background, study.id)
     loaded = _load_study(db, study.id)
     return study_progress(loaded or study)
+
+
+@router.get("/studies/{study_id}/results")
+def study_results_endpoint(study_id: int, db: Session = Depends(get_db)) -> dict:
+    """Örnek başına tek satır: parametreler + skalerler + analitik sapma.
+
+    Tek tek run'a girmeden dağılımı görmek için (0.5.5 okuma tarafı).
+    """
+    study = db.get(DoeStudy, study_id)
+    if study is None:
+        raise HTTPException(status_code=404, detail=f"DOE bulunamadı: id={study_id}")
+    return study_results(db, study)
 
 
 @router.get("/studies/{study_id}/quality")
