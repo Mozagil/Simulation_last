@@ -18,6 +18,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Test ortamı .env dosyasını okur; Codespaces'te VITE_API_BASE_URL tünel
+// adresidir ve sabit "localhost:8000" beklemek testi ortama bağımlı kılar
+// (aynı kod lokalde geçip Codespace'te patlıyordu). Modülün kullandığı
+// değeri aynı kuralla türetiyoruz.
+const BASE: string =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
+
 describe("fetchTemplates", () => {
   it("GET /templates gövdesinden listeyi döner", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
@@ -29,7 +36,7 @@ describe("fetchTemplates", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const list = await fetchTemplates();
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/templates");
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/templates`);
     expect(list).toEqual([{ id: "cantilever_beam", name: "Ankastre kiriş" }]);
   });
 
@@ -52,7 +59,7 @@ describe("createGeometryFromTemplate", () => {
     });
     expect(result.geometry_id).toBe(9);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/templates/cantilever_beam/create",
+      `${BASE}/templates/cantilever_beam/create`,
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,7 +108,7 @@ describe("downloadGeometryStep", () => {
     });
 
     await downloadGeometryStep(9, "9.step");
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/geometry/9/step");
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/geometry/9/step`);
     expect(createObjectURL).toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:step");
