@@ -21,15 +21,15 @@ REGION_NOTCH = "centik_civari"
 class NotchedBarParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(200.0, gt=0, description="Boy L (x, çekme)", json_schema_extra={"unit": "mm"})
-    width: float = Field(40.0, gt=0, description="Brüt genişlik W (y)", json_schema_extra={"unit": "mm"})
-    thickness: float = Field(8.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm"})
+    length: float = Field(200.0, gt=0, description="Boy L (x, çekme)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    width: float = Field(40.0, gt=0, description="Brüt genişlik W (y)", json_schema_extra={"unit": "mm", "symbol": "W"})
+    thickness: float = Field(8.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm", "symbol": "T"})
     notch_kind: Literal["u", "v"] = Field("u", description="Çentik tipi: u (yarım daire) veya v")
-    notch_radius: float = Field(4.0, gt=0, description="U: yarıçap (=derinlik); V: uç yarıçapı r", json_schema_extra={"unit": "mm"})
+    notch_radius: float = Field(4.0, gt=0, description="U: yarıçap (=derinlik); V: uç yarıçapı r", json_schema_extra={"unit": "mm", "symbol": "r"})
     notch_depth: float = Field(
-        6.0, gt=0, description="V çentik derinliği a (U'da yok sayılır, a=r)", json_schema_extra={"unit": "mm"}
+        6.0, gt=0, description="V çentik derinliği a (U'da yok sayılır, a=r)", json_schema_extra={"unit": "mm", "symbol": "a"}
     )
-    v_angle_deg: float = Field(90.0, gt=0, lt=180, description="V dahil açı (derece)")
+    v_angle_deg: float = Field(90.0, gt=0, lt=180, description="V dahil açı (derece)", json_schema_extra={"symbol": "θ"})
 
     @model_validator(mode="after")
     def _notch_fits(self) -> "NotchedBarParams":

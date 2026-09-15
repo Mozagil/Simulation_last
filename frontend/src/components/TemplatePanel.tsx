@@ -176,6 +176,8 @@ export default function TemplatePanel({
         <label key={f.name} className="mesh-field">
           <span>
             {f.label}
+            {/* Şemadaki harf: kullanıcı hangi ölçü olduğunu tahmin etmesin. */}
+            {f.symbol ? <em className="param-symbol">{f.symbol}</em> : null}
             {f.unit ? ` (${f.unit})` : ""}
           </span>
           <input

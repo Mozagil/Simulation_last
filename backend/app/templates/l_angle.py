@@ -14,9 +14,9 @@ REGION_LOAD = "yuk_yuzeyi"
 class LAngleParams(BaseModel):
     """Tüm boyutlar mm. Eşit bacak: y ve z doğrultusunda `leg`."""
 
-    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm"})
-    leg: float = Field(40.0, gt=0, description="Bacak uzunluğu a (y ve z)", json_schema_extra={"unit": "mm"})
-    thickness: float = Field(5.0, gt=0, description="Kalınlık t", json_schema_extra={"unit": "mm"})
+    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    leg: float = Field(40.0, gt=0, description="Bacak uzunluğu a (y ve z)", json_schema_extra={"unit": "mm", "symbol": "a"})
+    thickness: float = Field(5.0, gt=0, description="Kalınlık t", json_schema_extra={"unit": "mm", "symbol": "t"})
 
     @model_validator(mode="after")
     def _angle(self) -> "LAngleParams":

@@ -22,15 +22,15 @@ REGION_KEYWAY = "kama_yuvasi"
 class KeywayShaftParams(BaseModel):
     """Tüm boyutlar mm. Eksen x, daire yz, merkez orijin."""
 
-    length: float = Field(120.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm"})
-    radius: float = Field(12.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm"})
-    key_width: float = Field(5.0, gt=0, description="Kama genişliği w (z)", json_schema_extra={"unit": "mm"})
-    key_depth: float = Field(3.0, gt=0, description="Kama derinliği h (radyal)", json_schema_extra={"unit": "mm"})
+    length: float = Field(120.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    radius: float = Field(12.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm", "symbol": "R"})
+    key_width: float = Field(5.0, gt=0, description="Kama genişliği w (z)", json_schema_extra={"unit": "mm", "symbol": "w"})
+    key_depth: float = Field(3.0, gt=0, description="Kama derinliği h (radyal)", json_schema_extra={"unit": "mm", "symbol": "h"})
     fillet_radius: float = Field(
         0.0,
         ge=0,
         description="Kt için dip radyusu (0 → 0.02 D); geometride yok",
-        json_schema_extra={"unit": "mm"},
+        json_schema_extra={"unit": "mm", "symbol": "rf"},
     )
 
     @model_validator(mode="after")

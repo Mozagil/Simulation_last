@@ -22,8 +22,8 @@ REGION_TORQUE = "yuk_burulma"
 class TorsionShaftParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(100.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm"})
-    radius: float = Field(10.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm"})
+    length: float = Field(100.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    radius: float = Field(10.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm", "symbol": "R"})
 
     @model_validator(mode="after")
     def _slender(self) -> "TorsionShaftParams":

@@ -24,9 +24,9 @@ REGION_LOAD = "yuk_yuzeyi"
 class CantileverBeamParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm"})
-    thickness: float = Field(10.0, gt=0, description="Kesit kalınlığı T (y, yük yönü)", json_schema_extra={"unit": "mm"})
-    width: float = Field(50.0, gt=0, description="Kesit genişliği W (z)", json_schema_extra={"unit": "mm"})
+    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    thickness: float = Field(10.0, gt=0, description="Kesit kalınlığı T (y, yük yönü)", json_schema_extra={"unit": "mm", "symbol": "T"})
+    width: float = Field(50.0, gt=0, description="Kesit genişliği W (z)", json_schema_extra={"unit": "mm", "symbol": "W"})
 
     @model_validator(mode="after")
     def _beam_like(self) -> "CantileverBeamParams":

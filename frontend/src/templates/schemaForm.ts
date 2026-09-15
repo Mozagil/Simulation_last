@@ -8,6 +8,8 @@ export interface JsonSchemaProperty {
   exclusiveMinimum?: number;
   minimum?: number;
   unit?: string;
+  /** Şemadaki harf (L, T, W …) — form etiketinde gösterilir. */
+  symbol?: string;
   enum?: (string | number)[];
 }
 
@@ -19,6 +21,7 @@ export interface JsonSchema {
 export interface SchemaNumberField {
   name: string;
   label: string;
+  symbol: string | null;
   description: string;
   unit: string | null;
   defaultValue: number;
@@ -32,6 +35,7 @@ export function numberFieldsFromSchema(schema: JsonSchema): SchemaNumberField[] 
     .map(([name, p]) => ({
       name,
       label: p.title ?? name,
+      symbol: p.symbol ?? null,
       description: p.description ?? "",
       unit: p.unit ?? null,
       defaultValue: typeof p.default === "number" ? p.default : 0,

@@ -29,22 +29,22 @@ class DogboneParams(BaseModel):
     """Tüm boyutlar mm. ASTM E8 sac tipi varsayılanları."""
 
     gauge_length: float = Field(
-        50.0, gt=0, description="Ölçü boyu L0 (x, paralel kesit)", json_schema_extra={"unit": "mm"}
+        50.0, gt=0, description="Ölçü boyu L0 (x, paralel kesit)", json_schema_extra={"unit": "mm", "symbol": "L0"}
     )
     gauge_width: float = Field(
-        12.5, gt=0, description="Ölçü genişliği b", json_schema_extra={"unit": "mm"}
+        12.5, gt=0, description="Ölçü genişliği b", json_schema_extra={"unit": "mm", "symbol": "b"}
     )
     thickness: float = Field(
-        3.0, gt=0, description="Kalınlık a (z)", json_schema_extra={"unit": "mm"}
+        3.0, gt=0, description="Kalınlık a (z)", json_schema_extra={"unit": "mm", "symbol": "a"}
     )
     grip_width: float = Field(
-        20.0, gt=0, description="Tutamak genişliği B", json_schema_extra={"unit": "mm"}
+        20.0, gt=0, description="Tutamak genişliği B", json_schema_extra={"unit": "mm", "symbol": "B"}
     )
     grip_length: float = Field(
-        40.0, gt=0, description="Tutamak boyu (her uç)", json_schema_extra={"unit": "mm"}
+        40.0, gt=0, description="Tutamak boyu (her uç)", json_schema_extra={"unit": "mm", "symbol": "Lg"}
     )
     fillet_radius: float = Field(
-        12.5, gt=0, description="Geçiş yarıçapı R", json_schema_extra={"unit": "mm"}
+        12.5, gt=0, description="Geçiş yarıçapı R", json_schema_extra={"unit": "mm", "symbol": "R"}
     )
 
     @model_validator(mode="after")

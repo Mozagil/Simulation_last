@@ -17,11 +17,11 @@ REGION_LOAD = "yuk_yuzeyi"
 class IBeamParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm"})
-    height: float = Field(80.0, gt=0, description="Kesit yüksekliği h (y)", json_schema_extra={"unit": "mm"})
-    flange_width: float = Field(50.0, gt=0, description="Flanş genişliği b (z)", json_schema_extra={"unit": "mm"})
-    web: float = Field(6.0, gt=0, description="Gövde kalınlığı tw", json_schema_extra={"unit": "mm"})
-    flange: float = Field(8.0, gt=0, description="Flanş kalınlığı tf", json_schema_extra={"unit": "mm"})
+    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    height: float = Field(80.0, gt=0, description="Kesit yüksekliği h (y)", json_schema_extra={"unit": "mm", "symbol": "h"})
+    flange_width: float = Field(50.0, gt=0, description="Flanş genişliği b (z)", json_schema_extra={"unit": "mm", "symbol": "b"})
+    web: float = Field(6.0, gt=0, description="Gövde kalınlığı tw", json_schema_extra={"unit": "mm", "symbol": "tw"})
+    flange: float = Field(8.0, gt=0, description="Flanş kalınlığı tf", json_schema_extra={"unit": "mm", "symbol": "tf"})
 
     @model_validator(mode="after")
     def _section(self) -> "IBeamParams":

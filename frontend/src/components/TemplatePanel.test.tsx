@@ -24,9 +24,11 @@ const CANTILEVER = {
   tags: ["grup1"],
   params_schema: {
     properties: {
-      length: { type: "number", default: 500, exclusiveMinimum: 0, unit: "mm", title: "Length" },
-      thickness: { type: "number", default: 10, exclusiveMinimum: 0, unit: "mm" },
-      width: { type: "number", default: 50, exclusiveMinimum: 0, unit: "mm" },
+      length: {
+        type: "number", default: 500, exclusiveMinimum: 0, unit: "mm", title: "Length", symbol: "L",
+      },
+      thickness: { type: "number", default: 10, exclusiveMinimum: 0, unit: "mm", symbol: "T" },
+      width: { type: "number", default: 50, exclusiveMinimum: 0, unit: "mm", symbol: "W" },
     },
   },
   regions: [
@@ -231,5 +233,16 @@ describe("TemplatePanel", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(createGeometryFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it("parametre etiketinde şemadaki harfi gösterir", async () => {
+    render(
+      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+    );
+    const length = await screen.findByDisplayValue("500");
+    const label = length.closest("label");
+    expect(label).toHaveTextContent("Length");
+    expect(label).toHaveTextContent("L");
+    expect(label).toHaveTextContent("(mm)");
   });
 });

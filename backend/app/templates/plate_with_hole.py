@@ -24,16 +24,16 @@ class PlateWithHoleParams(BaseModel):
     """Tüm boyutlar mm."""
 
     height: float = Field(
-        200.0, gt=0, description="Plaka uzunluğu H (çekme yönü, x)", json_schema_extra={"unit": "mm"}
+        200.0, gt=0, description="Plaka uzunluğu H (çekme yönü, x)", json_schema_extra={"unit": "mm", "symbol": "H"}
     )
     width: float = Field(
-        100.0, gt=0, description="Plaka genişliği W (y)", json_schema_extra={"unit": "mm"}
+        100.0, gt=0, description="Plaka genişliği W (y)", json_schema_extra={"unit": "mm", "symbol": "W"}
     )
     thickness: float = Field(
-        5.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm"}
+        5.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm", "symbol": "T"}
     )
     diameter: float = Field(
-        20.0, gt=0, description="Delik çapı d", json_schema_extra={"unit": "mm"}
+        20.0, gt=0, description="Delik çapı d", json_schema_extra={"unit": "mm", "symbol": "d"}
     )
 
     @model_validator(mode="after")
