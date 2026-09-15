@@ -405,6 +405,100 @@ alan tahmini üretebiliyor; tahmin arayüzde kontur ve animasyon olarak görünt
 hata payı ölçülmüş ve ekranda gösteriliyor; eğitim uzayı dışındaki sorgular tahmin
 üretmek yerine işaretleniyor.
 
+## Faz 0.6 — Doğrusal olmayan davranış ve sonuç güvenilirliği
+
+**Neden bu faz:** Faz 0–0.5 boyunca her çözüm doğrusal elastik, küçük deformasyon
+ve `*STATIC` ile yapıldı. Bu varsayımların sınırına birkaç yerde zaten değiyoruz
+(aşağıda) ve surrogate'in öğrendiği hedeflerin bir kısmı mesh'ten bağımsız değil.
+Faz 1'e (crash) geçmeden önce bu tarafın sağlama alınması gerekiyor; crash zaten
+doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
+
+### Mimari kararlar
+
+- **Yakınsama denetimi diğer her şeyden önce gelir.** Doğrusal statikte çözüm
+  daima "yakınsar", bu yüzden bugün risk düşük. NLGEOM veya plastisite açılır
+  açılmaz yarı yakınsamış çözümler üretilir ve mevcut hat bunları geçerli
+  eğitim verisi sayar — kimse kontrol etmiyor. Sessiz veri zehirlenmesinin
+  en olası yolu bu.
+- **Tekil gerilme hedefi surrogate'i bozar.** Ankastre köşedeki von Mises
+  yakınsamaz; mesh sıklaştıkça artar. Düğüm başına von Mises ile eğitilen bir
+  GNN, tekillik çevresinde fiziği değil MESH'i öğrenir. Hedefin kendisi
+  mesh'ten bağımsız olmalı.
+- **CalculiX'te arc-length (Riks) yok.** Limit yük civarında yük kontrollü
+  çözüm yakınsamaz; çare deplasman kontrolü. Bu bir solver kısıtıdır,
+  çözüm ayarıyla aşılamaz.
+- **Doğrusal olmayan koşuda analitik referans geçersizleşir.** Kapalı form
+  çözümler küçük deformasyon + elastik varsayar. Karşılaştırma bu koşularda
+  ATLANMALI (uyarı vermek yerine "geçerli değil" demeli), yoksa kalite raporu
+  yanlış alarm üretir.
+
+### Bilinen sınır durumları (ölçüldü)
+
+- Doğrulama vakası: 500 mm kiriş, 24 mm uç deplasmanı = açıklığın %4.8'i.
+  Küçük deformasyon varsayımının sınırında; NLGEOM ile sonuç birkaç yüzde
+  daha rijit çıkar. Kalite setinde yük −800 N'a kadar taranıyor, yani bu
+  sınırı aşan örnekler ÜRETİLİYOR ve analitik referans sessizce geçersiz hale
+  geliyor.
+- Ankastre köşede VM sapması, mesh oranı sabitken bile geometriyle %6.7–%12.8
+  arasında geziyor (ölçüm: PR "oranlı mesh"). Kalanı tekillikten; mesh
+  ayarıyla kapatılamaz.
+
+### Adımlar
+
+**0.6.1 — Yakınsama denetimi (önce bu)**
+- [ ] CalculiX `.sta` / `.cvg` dosyalarının okunması: artım sayısı, cutback,
+      son yakınsamış artım, iterasyon sayısı
+- [ ] `AnalysisRun`'a yakınsama özeti (`converged`, `n_increments`, `n_cutbacks`)
+- [ ] Yakınsamamış / kısmi çözüm `solved` sayılmaz; DOE kalite taramasında
+      ayrı etiket (`not_converged`), eğitim verisine girmez
+- [ ] Regresyon testi: bilerek yakınsamayan bir vaka kurulup `solved` olmadığı
+      doğrulanır
+
+**0.6.2 — Tekillik ve mesh'ten bağımsız gerilme hedefi**
+- [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) — gerçek
+      parçalarda zaten var, tekilliği geometrik olarak kaldırır
+- [ ] Hot-spot ekstrapolasyonu: yüzeyde 0.4t ve 1.0t mesafelerinden okuyup
+      köşeye doğrultma (kaynak yorulmasındaki standart yaklaşım)
+- [ ] `scalars`'a hem tepe (`max_von_mises`) hem hot-spot (`hotspot_von_mises`)
+      yazılır; hangisinin mesh'e duyarlı olduğu belgelenir
+- [ ] Mesh yakınsama çalışması: aynı geometri 4–5 farklı oranda çözülüp
+      tepe ve hot-spot değerlerinin davranışı ölçülür (tepe yakınsamaz,
+      hot-spot yakınsamalı — kanıtlanmalı)
+- [ ] Surrogate hedefi hot-spot'a taşınır; tepe değer kayıtta kalır
+
+**0.6.3 — Büyük deformasyon (NLGEOM)**
+- [ ] `*STEP, NLGEOM` + artım kontrolü (`*STATIC` başlangıç/min/maks artım)
+- [ ] Analiz tipi seçimi: `linear` / `nlgeom` (mevcut `analysis_type` alanı)
+- [ ] Doğrulama: kiriş büyük deplasman vakası, literatür referansıyla
+      (uç yüklü ankastre kiriş büyük deformasyon kapalı formu mevcut)
+- [ ] Analitik karşılaştırma nlgeom koşularda "geçerli değil" olarak atlanır
+- [ ] Küçük deformasyon sınırını aşan DOE örneklerinin işaretlenmesi
+      (deplasman / karakteristik uzunluk oranı eşiği)
+
+**0.6.4 — Plastisite**
+- [ ] Malzeme modeline pekleşme eğrisi (`*PLASTIC`, izotropik; gerilme–plastik
+      şekil değiştirme tablosu). Mevcut `yield_strength` yalnız güvenlik
+      katsayısı için kullanılıyor, yeterli değil
+- [ ] Deplasman kontrollü yükleme seçeneği (limit yük civarında yük kontrolü
+      yakınsamaz; CalculiX'te Riks yok)
+- [ ] Yeni hedef skalerler: maks. eşdeğer plastik şekil değiştirme, limit yük
+      katsayısı. Plastik koşuda `max_von_mises` akma değerinde sabitlenir ve
+      surrogate hedefi olarak anlamsızlaşır
+- [ ] Doğrulama: tek eksenli çekme numunesi (dogbone) — akma sonrası davranış
+      malzeme eğrisiyle birebir eşleşmeli
+
+**0.6.5 — Surrogate tarafının uyarlanması**
+- [ ] Eğitim verisine yakınsama ve analiz tipi bayrakları; doğrusal ve
+      doğrusal olmayan koşular AYRI modeller (karıştırmak ikisini de bozar)
+- [ ] Doğrusal olmayan koşuda ekstrapolasyon koruması daha katı: yük seviyesi
+      eğitim aralığının dışındaysa tahmin reddedilir
+
+### Çıkış kriteri
+
+Yakınsamamış hiçbir çözüm eğitim verisine giremiyor; tekil olmayan (hot-spot)
+gerilme hedefi mesh yakınsaması gösteriyor; NLGEOM ve plastik koşular
+doğrulanmış referanslarla eşleşiyor.
+
 ## Faz 1 — Crash analizi (OpenRadioss + Gmsh)
 
 Ön koşul: Faz 0 tamamlanmış olmalı ve kullanıcı onayı alınmalı.
