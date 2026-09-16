@@ -4,6 +4,12 @@
    "dark-eng" seçildi — ikisi de keskin köşeli, tutarlı bir mühendislik
    estetiği paylaşıyor).
 
+   GÜNCELLEME (Workbench v4 mockup reskin — adım 1/N, sadece token):
+   Aydınlık mod accent rengi ve köşe yarıçapı, yeni Claude Design
+   teslimindeki ("Workbench v4") mavi-gri paletine çekildi. Karanlık moda
+   DOKUNULMADI — yeni mockup'ta karanlık mod tanımı yok, o ayrı bir
+   Claude Design teslimi/onay gerektirir.
+
    Kullanım: main.tsx içinde index.css'ten ÖNCE import edilir.
    Tema geçişi: <html data-theme="light | dark">
    ============================================================ */
@@ -19,53 +25,54 @@
   --radius-md: 6px;
   --radius-lg: 10px;
   --sidebar-w: 400px;
+  --step-sidebar-w: 380px;   /* adım 23/N: sağ adım sidebar'ı */
 
   /* contour skalası: sonuç renk gradyanı (legend + colorbar) */
   --contour: linear-gradient(to top, #2f7fd1, #4fbf6a, #f5c63c, #d93b2b);
 }
 
-/* ---------- AYDINLIK MOD (Ansys Klasik) ---------- */
+/* ---------- AYDINLIK MOD (Workbench v4 reskin) ---------- */
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #f5f6f7;
-  --surface: #ffffff;        /* panel yüzeyi */
-  --surface-2: #fbfcfc;      /* input / ikincil buton dolgusu */
-  --surface-3: #e9ecee;      /* viewport zemini */
-  --ink: #2a2e33;
-  --muted: #6e757c;
-  --disabled: #b3b9be;
-  --accent: #00b4c8;
-  --accent-hover: #00a0b2;
-  --accent-soft: #e2f6f8;
+  --bg: #f2f2f3;              /* eski: #f5f6f7 — Workbench v4 --color-bg */
+  --surface: #ffffff;         /* panel yüzeyi */
+  --surface-2: #f5f5f8;       /* eski: #fbfcfc — Workbench v4 --color-neutral-100 */
+  --surface-3: #e7e7ea;       /* eski: #e9ecee — Workbench v4 --color-neutral-200 */
+  --ink: #1d1f20;             /* eski: #2a2e33 — Workbench v4 --color-text */
+  --muted: #5d5d60;           /* eski: #6e757c — Workbench v4 --color-neutral-700 */
+  --disabled: #b7b7ba;        /* eski: #b3b9be — Workbench v4 --color-neutral-400 */
+  --accent: #5980a6;          /* eski: #00b4c8 (turkuaz) — Workbench v4 --color-accent */
+  --accent-hover: #416180;    /* eski: #00a0b2 — Workbench v4 --color-accent-700 */
+  --accent-soft: #eef6ff;     /* eski: #e2f6f8 — Workbench v4 --color-accent-100 */
   --on-accent: #ffffff;
-  --border: #d8dcdf;
-  --border-soft: #e7eaec;
-  --danger: #a13d3d;
+  --border: #d4d4d7;          /* eski: #d8dcdf — Workbench v4 --color-neutral-300 */
+  --border-soft: #e7e7ea;     /* eski: #e7eaec */
+  --danger: #a13d3d;          /* değişmedi — semantik renk, mockup'ta karşılığı yok */
   --danger-soft: #fbe0e0;
-  --success: #1c7a3d;
+  --success: #1c7a3d;         /* değişmedi — semantik renk */
   --success-soft: #dff3e6;
-  --highlight: #d97757;      /* seçili yüzey vurgusu */
-  --shadow-md: 0 2px 6px rgba(42, 46, 51, 0.10);
+  --highlight: #d97757;       /* değişmedi — seçili yüzey vurgusu, işlevsel/semantik */
+  --shadow-md: 0 2px 6px rgba(29, 31, 32, 0.10);
   --glow: none;
-  --radius-md: 2px;          /* klasik CAE: keskin köşe */
-  --radius-lg: 3px;
+  --radius-md: 0px;           /* eski: 2px — Workbench v4 tamamen keskin köşe (0) */
+  --radius-lg: 0px;           /* eski: 3px */
   --grid-tint: transparent;
 
   /* viewport üzerindeki float paneller */
   --float-bg: rgba(255, 255, 255, 0.94);
-  --float-surface: #f4f6f7;
-  --float-border: #d8dcdf;
-  --float-ink: #2a2e33;
-  --float-ink-dim: #6e757c;
-  --float-accent: #00b4c8;
+  --float-surface: #f5f5f8;
+  --float-border: #d4d4d7;
+  --float-ink: #1d1f20;
+  --float-ink-dim: #5d5d60;
+  --float-accent: #5980a6;
 
   /* three.js sahnesi (JS'ten okunur) */
-  --scene-bg: #e9ecee;
+  --scene-bg: #e7e7ea;
   --scene-mesh: #7f8b93;
-  --scene-selected: #00b4c8;
+  --scene-selected: #5980a6;
 }
 
-/* ---------- KARANLIK MOD (Dark Engineering) ---------- */
+/* ---------- KARANLIK MOD (Dark Engineering) — DEĞİŞMEDİ ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
   --bg: #0c0d10;
@@ -88,7 +95,7 @@
   --highlight: #ffd60a;
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
   --glow: 0 0 10px rgba(0, 217, 232, 0.45);
-  --radius-md: 0px;          /* keskin köşe */
+  --radius-md: 0px;
   --radius-lg: 0px;
   --grid-tint: rgba(0, 217, 232, 0.06);
   --contour: linear-gradient(to top, #00a3ff, #32e86b, #ffd60a, #ff3b30);
@@ -108,35 +115,37 @@
 /* tema yoksa varsayılan olarak aydınlık mod davransın */
 :root:not([data-theme]) {
   color-scheme: light;
-  --bg: #f5f6f7;
+  --bg: #f2f2f3;
   --surface: #ffffff;
-  --surface-2: #fbfcfc;
-  --surface-3: #e9ecee;
-  --ink: #2a2e33;
-  --muted: #6e757c;
-  --disabled: #b3b9be;
-  --accent: #00b4c8;
-  --accent-hover: #00a0b2;
-  --accent-soft: #e2f6f8;
+  --surface-2: #f5f5f8;
+  --surface-3: #e7e7ea;
+  --ink: #1d1f20;
+  --muted: #5d5d60;
+  --disabled: #b7b7ba;
+  --accent: #5980a6;
+  --accent-hover: #416180;
+  --accent-soft: #eef6ff;
   --on-accent: #ffffff;
-  --border: #d8dcdf;
-  --border-soft: #e7eaec;
+  --border: #d4d4d7;
+  --border-soft: #e7e7ea;
   --danger: #a13d3d;
   --danger-soft: #fbe0e0;
   --success: #1c7a3d;
   --success-soft: #dff3e6;
   --highlight: #d97757;
-  --shadow-md: 0 2px 6px rgba(42, 46, 51, 0.1);
+  --shadow-md: 0 2px 6px rgba(29, 31, 32, 0.1);
   --glow: none;
+  --radius-md: 0px;
+  --radius-lg: 0px;
   --float-bg: rgba(255, 255, 255, 0.94);
-  --float-surface: #f4f6f7;
-  --float-border: #d8dcdf;
-  --float-ink: #2a2e33;
-  --float-ink-dim: #6e757c;
-  --float-accent: #00b4c8;
-  --scene-bg: #e9ecee;
+  --float-surface: #f5f5f8;
+  --float-border: #d4d4d7;
+  --float-ink: #1d1f20;
+  --float-ink-dim: #5d5d60;
+  --float-accent: #5980a6;
+  --scene-bg: #e7e7ea;
   --scene-mesh: #7f8b93;
-  --scene-selected: #00b4c8;
+  --scene-selected: #5980a6;
 }
 
 /* tema değişiminde yumuşak geçiş (canvas etkilenmez) */

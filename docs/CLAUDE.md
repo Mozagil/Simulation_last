@@ -27,15 +27,14 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 0.5 — Surrogate veri altyapısı ve alan modeli (durability).**
-Faz 0 ve Faz 0.4 Grup 1 + Grup 2 + Grup 4 tamam. Solver hâlâ CalculiX; mesh Gmsh.
-Grup 3 şablonları (braket / flanş / kademeli mil) ayrı onay.
-Crash (Faz 1) onayla başlar; **mevcut durability / modal / surrogate yolunu
-değiştirmeden** ayrı adaptör + ayrı UI bölümü olarak yürür. Geometri import
-ortak kalabilir.
+**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.9 tamam.** Durability (CalculiX
+`/solve`, modal, DOE, surrogate) paralel ve dokunulmaz. Faz 1 devam eder
+(1.10: deforme plaka + `/INTER` onayla). `/solve` refaktör edilmez.
 
-Sıradaki mikro-adımlar `docs/ROADMAP.md`. Bir adımı bitirince dur;
-onay olmadan sonraki adıma / faza geçme.
+**Operasyonel borç:** 200'lük kalite seti Codespace'te ccx ile koşulacak.
+
+Grup 3 şablonları ayrı onay. Faz 1'de `/solve` refaktör etme; yeni crash
+yolu ekle. Bir mikro-adımı bitirince dur.
 
 **Faz değiştirmeden önce bana sor.** Bir sonraki faza otomatik geçme, onay iste.
 

@@ -41,5 +41,9 @@ fi
 
 echo "--- Doğrulama ---"
 which ccx || { echo "HATA: ccx bulunamadı"; exit 1; }
+test -x /opt/openradioss/exec/engine_linux64_gf \
+  || { echo "HATA: OpenRadioss engine yok (/opt/openradioss)"; exit 1; }
+test -x /opt/openradioss/exec/starter_linux64_gf \
+  || { echo "HATA: OpenRadioss starter yok"; exit 1; }
 python -c "import gmsh; print('gmsh OK')"
 echo "Kurulum tamam."
