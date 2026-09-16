@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./theme.css";
+import "./header-brand.css";
 import "./theme-select.css";
 import "./index.css";
 

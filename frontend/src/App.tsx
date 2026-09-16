@@ -56,6 +56,7 @@ import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
 import type { SurrogatePredictResult } from "./api/surrogate";
 import TemplatePanel from "./components/TemplatePanel";
+import TemplateSchematic from "./components/TemplateSchematic";
 import AnalyticComparisonPanel from "./components/AnalyticComparisonPanel";
 import type { CreateFromTemplateResponse } from "./api/templates";
 import { pickAnalyticComparison } from "./templates/analyticCompare";
@@ -122,6 +123,15 @@ interface BcListItem {
   summary: string;
   payload: SolveBC;
 }
+
+const STEP_LABELS: Record<string, string> = {
+  geometry: "Geometri",
+  mesh: "Mesh",
+  material: "Malzeme",
+  bc: "Sınır koşulları",
+  modal: "Modal",
+  results: "Sonuçlar",
+};
 
 const BC_KIND_LABELS: Record<BcKind, string> = {
   fixed: "Fixed",
@@ -275,19 +285,34 @@ function App() {
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
+  // Wizard: aynı anda TEK adım açık. expandedSteps bir Set olarak kalıyor
+  // ki mevcut tüm `expandedSteps.has("mesh")` kontrolleri değişmeden
+  // çalışsın — ama içinde her zaman tek eleman var.
   const [expandedSteps, setExpandedSteps] = useState<Set<WizardStep>>(
     () => new Set(["geometry"]),
   );
   function toggleStep(step: WizardStep) {
-    setExpandedSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(step)) next.delete(step);
-      else next.add(step);
-      return next;
-    });
+    setExpandedSteps(new Set([step]));
   }
   function ensureStepExpanded(step: WizardStep) {
-    setExpandedSteps((prev) => (prev.has(step) ? prev : new Set(prev).add(step)));
+    setExpandedSteps((prev) => (prev.has(step) ? prev : new Set([step])));
+  }
+
+  // Adım sırası analiz tipine göre değişir — sağ sidebar'daki İleri/Geri
+  // navigasyonu ve "Adım n/N" sayacı bunu kullanır.
+  const stepOrder: WizardStep[] =
+    analysisTab === "modal"
+      ? ["geometry", "mesh", "material", "modal", "results"]
+      : analysisTab === "crash"
+        ? ["geometry", "mesh", "material", "bc"]
+        : ["geometry", "mesh", "material", "bc", "results"];
+
+  const activeStep: WizardStep =
+    stepOrder.find((s) => expandedSteps.has(s)) ?? stepOrder[0];
+  const activeStepIndex = stepOrder.indexOf(activeStep);
+
+  function goToStep(step: WizardStep | undefined) {
+    if (step) setExpandedSteps(new Set([step]));
   }
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -431,6 +456,10 @@ function App() {
   const [compareSelection, setCompareSelection] = useState<number[]>([]);
   const [reviewRunId, setReviewRunId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"edit" | "compare" | "review">("edit");
+  // Hangi çalışma alanı açık: simülasyon tezgahı mı, ML stüdyo mu.
+  // Aynı App state'ini paylaşırlar (runsHistory, geometryId vb.) — sadece
+  // hangi panellerin render edildiği değişir.
+  const [workspace, setWorkspace] = useState<"workbench" | "ml">("workbench");
   const [caseNameInput, setCaseNameInput] = useState("");
 
   /** Geometri ya da mesh mutasyona uğradığında (heal, defeature, offset,
@@ -692,6 +721,12 @@ function App() {
     }
   }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
+  const [templateBcRegions, setTemplateBcRegions] = useState<Record<string, number[]> | null>(null);
+  const [templateBcTemplateId, setTemplateBcTemplateId] = useState<string | null>(null);
+  const [templateBcInputs, setTemplateBcInputs] = useState<
+    Record<string, { fx: string; fy: string; fz: string }>
+  >({});
+  const [templateBcAdded, setTemplateBcAdded] = useState<Set<string>>(new Set());
   const [bcDraftKind, setBcDraftKind] = useState<BcKind>("fixed");
   const [bcFx, setBcFx] = useState("0");
   const [bcFy, setBcFy] = useState("0");
@@ -722,6 +757,39 @@ function App() {
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("shell");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  // Yeniden boyutlandırılabilir bölmeler (px). Sürükle-bırak kollarıyla
+  // ayarlanır; grid satır/eleman yüksekliğini doğrudan besler.
+  const [historyHeight, setHistoryHeight] = useState(300);
+  const [treeHeight, setTreeHeight] = useState(260);
+
+  /** Ortak dikey resize kolu mantığı. dir=-1 yukarı sürükleyince büyür. */
+  function startVerticalResize(
+    e: React.MouseEvent,
+    current: number,
+    setter: (v: number) => void,
+    dir: 1 | -1,
+    min: number,
+    max: number,
+  ) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = current;
+    function onMove(ev: MouseEvent) {
+      const delta = (ev.clientY - startY) * dir;
+      setter(Math.min(max, Math.max(min, startH + delta)));
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }
 
   // Malzeme kütüphanesini bir kez yükle.
   useEffect(() => {
@@ -899,6 +967,18 @@ function App() {
     setProductTree(null);
     setComponentName("");
     hydrateLoadedGeometry(result, result.original_filename);
+    if (result.regions && Object.keys(result.regions).length > 0) {
+      setTemplateBcRegions(result.regions);
+      setTemplateBcTemplateId(result.template_id);
+      setTemplateBcAdded(new Set());
+      const defaults: Record<string, { fx: string; fy: string; fz: string }> = {};
+      for (const name of Object.keys(result.regions)) {
+        defaults[name] = { fx: "0", fy: "0", fz: "-1000" };
+      }
+      setTemplateBcInputs(defaults);
+    } else {
+      setTemplateBcRegions(null);
+    }
   }
 
   function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -2025,6 +2105,40 @@ function App() {
     setBcList((prev) => prev.filter((b) => b.id !== id));
   }
 
+  // Şablon geometrisi üretildiğinde açılan popup için: canlı 3B seçim
+  // yerine, şablonun zaten bildiği bölge (region) yüzeylerini doğrudan
+  // kullanarak BC ekler. handleAddBc ile AYNI SolveBC payload şekli —
+  // sadece face_ids kaynağı "canlı seçim" değil, "bilinen bölge".
+  function isFixedRegionName(name: string): boolean {
+    const n = name.toLowerCase();
+    return n.includes("ankastre") || n.includes("sabit") || n.includes("fix");
+  }
+
+  function handleAddTemplateBc(regionName: string, faceIds: number[]) {
+    const kind: BcKind = isFixedRegionName(regionName) ? "fixed" : "cload";
+    const id = `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    let payload: SolveBC;
+    let summary: string;
+    if (kind === "fixed") {
+      payload = { type: "fixed", face_ids: faceIds };
+      summary = `Fixed · yüzey ${faceIds.join(",")} (${regionName})`;
+    } else {
+      const inputs = templateBcInputs[regionName] ?? { fx: "0", fy: "0", fz: "0" };
+      const fx = parseFloat(inputs.fx);
+      const fy = parseFloat(inputs.fy);
+      const fz = parseFloat(inputs.fz);
+      if (!Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) {
+        setErrorMessage("CLOAD için geçerli Fx/Fy/Fz girin.");
+        return;
+      }
+      payload = { type: "cload", fx, fy, fz, face_ids: faceIds };
+      summary = `CLOAD (${fx},${fy},${fz}) · yüzey ${faceIds.join(",")} (${regionName})`;
+    }
+    setBcList((prev) => [...prev, { id, kind, summary, payload }]);
+    setTemplateBcAdded((prev) => new Set(prev).add(regionName));
+    setInfoMessage(`BC eklendi: ${BC_KIND_LABELS[kind]} (${regionName})`);
+  }
+
   async function pollRunUntilDone(runId: number) {
     for (let i = 0; i < 400; i++) {
       const d = await fetchRunDetail(runId);
@@ -2352,10 +2466,85 @@ function App() {
     );
   }
 
+  if (workspace === "ml") {
+    return (
+      <main className="ml-studio-page">
+        <div className="toolbar">
+          <div className="toolbar-left">
+            <button
+              type="button"
+              className="ml-studio-back"
+              onClick={() => setWorkspace("workbench")}
+            >
+              ‹ Tezgaha dön
+            </button>
+            <span className="app-brand-divider" />
+            <span className="app-brand">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="5" cy="6" r="2" />
+                <circle cx="5" cy="18" r="2" />
+                <circle cx="19" cy="12" r="2" />
+                <path d="M7 6.5l10 4.7M7 17.5l10-4.7" />
+              </svg>
+              <span className="app-brand-title">ML STÜDYO</span>
+            </span>
+            <span className="tag tag-neutral">faz 0.5 · 0.6</span>
+          </div>
+          <div className="toolbar-actions">
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </div>
+        </div>
+
+        <div className="ml-studio-body">
+        <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+        <DoePanel
+          refreshKey={runsHistory.length}
+          onInspectRun={(runId) => {
+            setWorkspace("workbench");
+            setReviewRunId(runId);
+            setViewMode("review");
+          }}
+          onEditRun={(runId) => {
+            setWorkspace("workbench");
+            void handleOpenRunForEdit(runId);
+          }}
+        />
+        <SurrogatePanel
+          refreshKey={runsHistory.length}
+          geometryId={geometryId}
+          runId={solveResult?.run_id ?? null}
+          onPrediction={(result: SurrogatePredictResult) => {
+            setSurrogateMeta({
+              ood: result.out_of_domain,
+              message: result.message,
+              kind: result.kind,
+            });
+            if (result.kind === "field" && result.preview.nodes.length > 0) {
+              setResultsSource("surrogate");
+              setResultsPreview(result.preview as ResultsPreviewData);
+              setShowResults(true);
+              setResultsDeformScale(0);
+              setResultsAnimating(false);
+            }
+          }}
+        />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="page" data-collapsed={sidebarCollapsed ? "" : undefined}>
       <div className="toolbar">
         <div className="toolbar-left">
+          <span className="app-brand">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth={1.5} strokeLinejoin="round">
+              <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+              <path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9" />
+            </svg>
+            <span className="app-brand-title">SİMÜLASYON TEZGAHI</span>
+          </span>
+          <span className="app-brand-divider" />
           <span className="toolbar-icon" aria-hidden="true">
             ◆
           </span>
@@ -2438,870 +2627,33 @@ function App() {
             {sidebarCollapsed ? "»" : "«"}
           </button>
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <button
+            type="button"
+            className="ml-studio-chip ml-studio-chip-button"
+            onClick={() => setWorkspace("ml")}
+            title="ML Stüdyo — veri seti, DOE ve vekil model"
+          >
+            ML Stüdyo · faz 0.5–0.6
+          </button>
         </div>
       </div>
-      <div className="left-column">
-      <button
-        type="button"
-        className={expandedSteps.has("geometry") ? "step-nav-item active" : "step-nav-item"}
-        onClick={() => toggleStep("geometry")}
-      >
-        1 · GEOMETRY
-      </button>
-      {expandedSteps.has("geometry") && (
-      <div className="panel">
-        <span className="eyebrow">Faz 0 · Geometri önizleme</span>
-        <h1>Geometri yükle</h1>
-
-        <label className="upload-control">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_EXTENSIONS}
-            onChange={handleInputChange}
-            disabled={status === "uploading"}
-          />
-          <span>{status === "uploading" ? "Yükleniyor…" : "Dosya seç (.step / .iges)"}</span>
-        </label>
-
-        <TemplatePanel
-          geometryId={geometryId}
-          geometryFilename={fileName}
-          busy={status === "uploading" || busyAction !== null}
-          onCreated={handleTemplateCreated}
-        />
-
-        {fileName && (
-          <p className="filename">
-            {fileName}
-            {status === "success" && " — yüklendi"}
-          </p>
-        )}
-
-        {errorMessage && (
-          <p className="error-message" role="alert">
-            {errorMessage}
-          </p>
-        )}
-
-        {status === "success" && infoMessage && <p className="info-message">{infoMessage}</p>}
-
-        {status === "success" && faceCount !== null && (
-          <div className="face-info">
-            <div className="geo-count-list">
-              <p>
-                <span>part count</span>
-                {partCount}
-              </p>
-              <p>
-                <span>face count</span>
-                {faceCount}
-              </p>
-              <p>
-                <span>edge / point</span>
-                {edges.length} / {points.length}
-              </p>
-            </div>
-            {selection.ids.length > 0 && (
-              <p className="face-info-selected">{describeSelection(selection)}</p>
-            )}
-
-
-            <ButtonGroup
-              title="GEOMETRİ"
-              items={[
-                {
-                  key: "heal",
-                  label: busyAction === "heal" ? "Düzeltiliyor…" : "Heal",
-                  disabled: busyAction !== null,
-                  onClick: () => void handleHeal(),
-                },
-                {
-                  key: "defeature",
-                  label: busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır",
-                  active: showDefeaturePanel,
-                  disabled: !canDefeature || busyAction !== null,
-                  onClick: () => {
-                    const hasFaceSelection =
-                      selection.mode === "surface" && selection.ids.length > 0;
-                    if (hasFaceSelection) {
-                      void handleApplyDefeature();
-                    } else {
-                      setShowDefeaturePanel((prev) => !prev);
-                    }
-                  },
-                },
-                {
-                  key: "midsurface",
-                  label:
-                    busyAction === "midsurface"
-                      ? "Oluşturuluyor…"
-                      : canUseMidsurfaceManual
-                        ? "Midsurface (2 yüzey)"
-                        : "Midsurface (parça seç)",
-                  disabled: !canUseMidsurface || busyAction !== null,
-                  onClick: handleMidsurfaceClick,
-                },
-              ]}
-              layout="column"
-            />
-
-            <ButtonGroup
-              title="PHYSICAL GROUP'LAR"
-              items={physicalGroups.map((g) => ({
-                key: String(g.id),
-                label: g.name,
-                active: activeGroupId === g.id,
-                onClick: () => handleGroupButtonClick(g.id),
-              }))}
-              emptyLabel="Henüz grup yok"
-              layout="column"
-            />
-
-            {showGroupForm && (
-              <div className="group-create-form">
-                <input
-                  type="text"
-                  className="group-name-input"
-                  placeholder="Grup adı (örn. inlet)"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  disabled={busyAction === "create-group"}
-                />
-                <button
-                  type="button"
-                  className="group-create-button"
-                  onClick={() => void handleCreatePhysicalGroup()}
-                  disabled={!canCreateGroup || busyAction === "create-group"}
-                >
-                  {busyAction === "create-group" ? "Oluşturuluyor…" : "Grup oluştur"}
-                </button>
-              </div>
-            )}
-
-            {showOffsetPanel && (
-              <div className="group-create-form offset-panel">
-                <label className="offset-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={offsetAutoThickness}
-                    onChange={(e) => setOffsetAutoThickness(e.target.checked)}
-                    disabled={busyAction === "offset-midsurface"}
-                  />
-                  Kalınlığı otomatik tespit et (en yakın paralel yüzeye göre)
-                </label>
-                {!offsetAutoThickness && (
-                  <input
-                    type="number"
-                    className="group-name-input"
-                    placeholder="Kalınlık (örn. 3)"
-                    value={offsetThickness}
-                    onChange={(e) => setOffsetThickness(e.target.value)}
-                    disabled={busyAction === "offset-midsurface"}
-                    min="0"
-                    step="0.1"
-                  />
-                )}
-                <label className="offset-checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={offsetFlip}
-                    onChange={(e) => setOffsetFlip(e.target.checked)}
-                    disabled={busyAction === "offset-midsurface"}
-                  />
-                  Yönü ters çevir (dışa doğru — varsayılan: içe)
-                </label>
-                <button
-                  type="button"
-                  className="group-create-button"
-                  onClick={() => void handleCreateOffsetMidsurfaces()}
-                  disabled={!canOffsetMidsurface || busyAction === "offset-midsurface"}
-                >
-                  {busyAction === "offset-midsurface" ? "Oluşturuluyor…" : "Uygula"}
-                </button>
-              </div>
-            )}
-
-            {showDefeaturePanel && (
-              <div className="group-create-form">
-                <input
-                  type="number"
-                  className="group-name-input"
-                  placeholder="Radius eşiği (örn. 5)"
-                  value={defeatureRadius}
-                  onChange={(e) => setDefeatureRadius(e.target.value)}
-                  disabled={busyAction === "defeature"}
-                  min="0"
-                  step="0.1"
-                />
-                <button
-                  type="button"
-                  className="group-create-button"
-                  onClick={() => void handleApplyDefeature()}
-                  disabled={busyAction === "defeature"}
-                >
-                  {busyAction === "defeature" ? "Kaldırılıyor…" : "Uygula"}
-                </button>
-              </div>
-            )}
-
-            <div className="geo-operations">
-              <ButtonGroup
-                title="İŞLEMLER"
-                items={[
-                  {
-                    key: "copy-surface",
-                    label: busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala",
-                    disabled: !canCopySurface || busyAction !== null,
-                    onClick: () => void handleCopySurface(),
-                  },
-                  {
-                    key: "offset-midsurface",
-                    label: "Kalınlık/2 kaydır",
-                    active: showOffsetPanel,
-                    disabled: !canOffsetMidsurface || busyAction !== null,
-                    onClick: () => setShowOffsetPanel((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-hide-part",
-                    label: allSelectedPartsHidden ? "Solid göster" : "Solid gizle",
-                    disabled: !canToggleHidePart,
-                    onClick: handleToggleHidePart,
-                  },
-                  {
-                    key: "toggle-hide-surfaces",
-                    label: allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle",
-                    disabled: !canToggleHideSurfaces,
-                    onClick: handleToggleHideSurfaces,
-                  },
-                  {
-                    key: "toggle-mesh",
-                    label: showMesh ? "Mesh gizle" : "Mesh göster",
-                    disabled: meshPreview === null,
-                    active: showMesh && meshPreview !== null,
-                    onClick: () => setShowMesh((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-mesh-wireframe",
-                    label: meshWireframe ? "Mesh tel kafes (açık)" : "Mesh tel kafes",
-                    disabled: meshPreview === null || !showMesh,
-                    active: meshWireframe && showMesh && meshPreview !== null,
-                    onClick: () => setMeshWireframe((prev) => !prev),
-                  },
-                  {
-                    key: "toggle-edges",
-                    label: showEdges ? "Kenar çizgileri (açık)" : "Kenar çizgileri (kapalı)",
-                    active: showEdges,
-                    onClick: () => setShowEdges((prev) => !prev),
-                  },
-                  {
-                    key: "undo",
-                    label: busyAction === "undo" ? "Geri alınıyor…" : "Geri al",
-                    disabled: !canUndo || busyAction !== null,
-                    onClick: () => void handleUndo(),
-                  },
-                ]}
-                layout="column"
-              />
-            </div>
-          </div>
-        )}
-
-      </div>
-      )}
-
-      {status !== "idle" && (
-        <div className="new-case-row">
-          <button type="button" className="reset-button" onClick={handleReset}>
-            🔄 Yeni Case Başlat
-          </button>
-          <span className="new-case-hint">Önceki analiz Geçmiş'te kalır; Sil ile kaldırabilirsiniz.</span>
-        </div>
-      )}
-
-      <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
-      <DoePanel refreshKey={runsHistory.length} />
-      <SurrogatePanel
-        refreshKey={runsHistory.length}
-        geometryId={geometryId}
-        runId={solveResult?.run_id ?? null}
-        onPrediction={(result: SurrogatePredictResult) => {
-          setSurrogateMeta({
-            ood: result.out_of_domain,
-            message: result.message,
-            kind: result.kind,
-          });
-          if (result.kind === "field" && result.preview.nodes.length > 0) {
-            setResultsSource("surrogate");
-            setResultsPreview(result.preview as ResultsPreviewData);
-            setShowResults(true);
-            setResultsDeformScale(0);
-            setResultsAnimating(false);
-          }
-        }}
-      />
-
-      <div className="panel history-panel">
-        <span className="eyebrow">Faz 0 · Geçmiş</span>
-        <h1>Analiz Geçmişi ({runsHistory.length})</h1>
-        <p className="lead">
-          Satıra tıklayınca incelersiniz. Düzenle tüm adımları geri yükler; Sil kaydı kaldırır.
-          Karşılaştırmak için soldan 2 run işaretleyin.
-        </p>
-        {runsHistory.length === 0 ? (
-          <p className="material-assign-hint">Henüz kayıtlı analiz yok.</p>
-        ) : (
-          <ul className="history-list">
-            {runsHistory.map((r) => (
-              <li key={r.id} className="history-item">
-                <label className="history-item-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={compareSelection.includes(r.id)}
-                    onChange={() => toggleCompareSelection(r.id)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="history-item-body"
-                  onClick={() => {
-                    setReviewRunId(r.id);
-                    setViewMode("review");
-                  }}
-                >
-                  <div className="history-item-title">
-                    {r.name ?? `Run #${r.id}`}{" "}
-                    <span className={`history-status history-status-${r.status}`}>
-                      {r.status}
-                    </span>
-                  </div>
-                  <div className="history-item-sub">
-                    {r.geometry_filename} · {r.dimension === 2 ? "2D" : "3D"} ·{" "}
-                    {new Date(r.created_at).toLocaleString("tr-TR")}
-                  </div>
-                  {r.scalars.max_von_mises !== undefined && (
-                    <div className="history-item-scalar">
-                      VM max: {r.scalars.max_von_mises.toExponential(2)} · Deplasman max:{" "}
-                      {r.scalars.max_displacement?.toExponential(2) ?? "—"}
-                    </div>
-                  )}
-                </button>
-                <div className="history-item-actions">
-                  <button
-                    type="button"
-                    className="history-action-button"
-                    disabled={busyAction !== null}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleOpenRunForEdit(r.id);
-                    }}
-                  >
-                    {busyAction === "load-run" ? "Yükleniyor…" : "Düzenle"}
-                  </button>
-                  <button
-                    type="button"
-                    className="history-action-button history-action-button-danger"
-                    disabled={busyAction !== null}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDeleteRun(r.id, r.name ?? `Run #${r.id}`);
-                    }}
-                  >
-                    Sil
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {compareSelection.length === 2 && (
-          <button
-            type="button"
-            className="material-assign-button"
-            onClick={() => setViewMode("compare")}
-          >
-            İki Case'i Karşılaştır (Split-Screen)
-          </button>
-        )}
-      </div>
-
-      <button
-        type="button"
-        className={expandedSteps.has("mesh") ? "step-nav-item active" : "step-nav-item"}
-        onClick={() => toggleStep("mesh")}
-      >
-        2 · MESH
-      </button>
-      {expandedSteps.has("mesh") && (
-      <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · Mesh</span>
-        <h1>Mesh</h1>
-        <label className="mesh-field">
-          <span>Eleman boyutu</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.1"
-            value={meshElementSize}
-            onChange={(e) => setMeshElementSize(e.target.value)}
-            disabled={busyAction === "mesh"}
-          />
-        </label>
-        <div className="mesh-dim-row" role="group" aria-label="Mesh boyutu">
-          <button
-            type="button"
-            className={meshDimension === 2 ? "active" : undefined}
-            disabled={busyAction === "mesh"}
-            onClick={() => {
-              if (meshDimension !== 2) {
-                setMeshResult(null);
-                invalidateStaleResults();
-              }
-              setMeshDimension(2);
-              setMeshScheme("quad");
-            }}
-          >
-            2D shell
-          </button>
-          <button
-            type="button"
-            className={meshDimension === 3 ? "active" : undefined}
-            disabled={busyAction === "mesh"}
-            onClick={() => {
-              if (meshDimension !== 3) {
-                setMeshResult(null);
-                invalidateStaleResults();
-              }
-              setMeshDimension(3);
-              setMeshScheme("tet");
-            }}
-          >
-            3D solid
-          </button>
-        </div>
-        <label className="mesh-field">
-          <span>Eleman tipi</span>
-          <select
-            value={meshScheme}
-            disabled={busyAction === "mesh"}
-            onChange={(e) => setMeshScheme(e.target.value as MeshElementScheme)}
-          >
-            <option value="tet">tet</option>
-            <option value="quad">quad</option>
-            <option value="mix">mix</option>
-          </select>
-        </label>
-        <p className="mesh-side-hint">
-          Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
-          değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).
-        </p>
-        <button
-          type="button"
-          className="mesh-generate-button"
-          disabled={busyAction !== null}
-          onClick={() => void handleGenerateMesh()}
-        >
-          {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
-        </button>
-        <div className="mesh-tools" role="group" aria-label="Mesh araçları">
-          <button
-            type="button"
-            disabled={busyAction !== null || meshResult === null}
-            onClick={() => void handleMeshQuality()}
-          >
-            {busyAction === "mesh-quality" ? "Hesaplanıyor…" : "Kalite"}
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null || meshResult === null}
-            onClick={() => void handleFreeEdges()}
-          >
-            {busyAction === "free-edge" ? "…" : "Free edge"}
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null || meshResult === null}
-            onClick={() => void handleEquivalence(false)}
-          >
-            {busyAction === "equivalence" ? "…" : "Equivalence"}
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null || meshResult === null}
-            onClick={() => {
-              const meshFaceIds =
-                showMesh && meshPicks.length > 0
-                  ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
-                  : [];
-              const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
-              const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
-              setRigidSlave({
-                faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
-                edges: cadEdgeIds,
-              });
-              setBcDraftKind("rigid_body");
-              ensureStepExpanded("bc");
-              setInfoMessage(
-                "Rigid body: köle yüzey kilitlendi. Point modunda REF nokta seçip BC ekleyin.",
-              );
-            }}
-          >
-            Rigid body
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null || meshResult === null}
-            onClick={() => void handleNsetReport()}
-          >
-            {busyAction === "nset" ? "…" : "NSET"}
-          </button>
-        </div>
-        {meshResult && (
-          <div className="mesh-result">
-            <p>
-              {meshResult.dimension === 2 ? "Shell" : "Solid"} ·{" "}
-              {meshResult.element_scheme} · size {meshResult.element_size}
-            </p>
-            <p>
-              {meshResult.node_count} düğüm · {meshResult.element_count} eleman
-            </p>
-            <ul>
-              {Object.entries(meshResult.element_type_counts).map(([name, n]) => (
-                <li key={name}>
-                  {name}: {n}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {meshQuality && (
-          <div className="mesh-result mesh-quality-result">
-            <p>Kalite · {meshQuality.element_count} eleman</p>
-            <p>
-              Jacobian (minSJ): {meshQuality.jacobian.min.toFixed(4)} /{" "}
-              {meshQuality.jacobian.mean.toFixed(4)} /{" "}
-              {meshQuality.jacobian.max.toFixed(4)}
-            </p>
-            <p>
-              Aspect: {meshQuality.aspect_ratio.min.toFixed(3)} /{" "}
-              {meshQuality.aspect_ratio.mean.toFixed(3)} /{" "}
-              {meshQuality.aspect_ratio.max.toFixed(3)}
-            </p>
-            {meshQuality.skewness && (
-              <p>
-                Skewness: {meshQuality.skewness.min.toFixed(3)} /{" "}
-                {meshQuality.skewness.mean.toFixed(3)} /{" "}
-                {meshQuality.skewness.max.toFixed(3)}
-              </p>
-            )}
-            {meshQuality.warpage && (
-              <p>
-                Warpage (°): {meshQuality.warpage.min.toFixed(2)} /{" "}
-                {meshQuality.warpage.mean.toFixed(2)} /{" "}
-                {meshQuality.warpage.max.toFixed(2)}
-              </p>
-            )}
-            <label className="mesh-field">
-              <span>Renk metriği</span>
-              <select
-                value={meshQualityMetric}
-                onChange={(e) =>
-                  setMeshQualityMetric(
-                    e.target.value as "jacobian" | "aspect_ratio" | "skewness" | "warpage",
-                  )
-                }
-              >
-                <option value="jacobian">Jacobian (minSJ)</option>
-                <option value="aspect_ratio">Aspect</option>
-                <option value="skewness">Skewness</option>
-                <option value="warpage">Warpage</option>
-              </select>
-            </label>
-            <ResultsHistogram
-              label={`${meshQualityMetric} dağılımı`}
-              values={
-                (meshQualityMetric === "jacobian"
-                  ? meshQuality.jacobian
-                  : meshQualityMetric === "aspect_ratio"
-                    ? meshQuality.aspect_ratio
-                    : meshQualityMetric === "skewness"
-                      ? meshQuality.skewness
-                      : meshQuality.warpage
-                )?.values ?? []
-              }
-              color="#c45c26"
-            />
-            <p className="mesh-quality-hint">min / mean / max · kırmızı = kötü eleman</p>
-          </div>
-        )}
-        {nsetReport && (
-          <pre className="mesh-result" style={{ whiteSpace: "pre-wrap", fontSize: 11 }}>
-            {nsetReport}
-          </pre>
-        )}
-      </div>
-      )}
-
-      <button
-        type="button"
-        className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
-        onClick={() => toggleStep("material")}
-      >
-        3 · MATERIAL
-      </button>
-      {expandedSteps.has("material") && (
-      <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · Malzeme</span>
-        <h1>Malzeme</h1>
-        {materials.length === 0 ? (
-          <p className="filename">Malzeme listesi yükleniyor…</p>
-        ) : (
-          <>
-            <label className="mesh-field material-field">
-              <span>Kütüphane</span>
-              <select
-                value={selectedMaterialId ?? ""}
-                onChange={(e) => setSelectedMaterialId(Number(e.target.value))}
-              >
-                {materials.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.category})
-                  </option>
-                ))}
-              </select>
-            </label>
-            {selectedMaterial && (
-              <div className="material-props">
-                <p>
-                  <span>E</span>
-                  {formatGPa(selectedMaterial.youngs_modulus)}
-                </p>
-                <p>
-                  <span>ν</span>
-                  {selectedMaterial.poisson_ratio.toFixed(2)}
-                </p>
-                <p>
-                  <span>ρ</span>
-                  {selectedMaterial.density.toFixed(0)} kg/m³
-                </p>
-                <p>
-                  <span>Rp0.2</span>
-                  {formatMPa(selectedMaterial.yield_strength)}
-                </p>
-                <p>
-                  <span>Rm</span>
-                  {formatMPa(selectedMaterial.ultimate_strength)}
-                </p>
-                {selectedMaterial.elongation != null && (
-                  <p>
-                    <span>A</span>
-                    {selectedMaterial.elongation.toFixed(0)} %
-                  </p>
-                )}
-                <p>
-                  <span>S-N</span>
-                  {selectedMaterial.sn_curve &&
-                  typeof selectedMaterial.sn_curve === "object" &&
-                  "source" in selectedMaterial.sn_curve
-                    ? String(
-                        (selectedMaterial.sn_curve as { source?: string }).source ===
-                          "estimated"
-                          ? "tahmini"
-                          : (selectedMaterial.sn_curve as { source?: string }).source ===
-                              "tested"
-                            ? "test"
-                            : "var",
-                      )
-                    : "yok"}
-                </p>
-              </div>
-            )}
-            <div className="material-action-row">
-              <button
-                type="button"
-                className="material-assign-button"
-                disabled={!canAssignMaterial || busyAction !== null}
-                onClick={() => void handleAssignMaterial()}
-              >
-                {busyAction === "assign-material" ? "Atanıyor…" : "ATA"}
-              </button>
-              <button
-                type="button"
-                className="material-secondary-button"
-                onClick={() => setShowCustomMaterialForm((prev) => !prev)}
-              >
-                + ÖZEL
-              </button>
-            </div>
-            <button
-              type="button"
-              className="material-advanced-toggle"
-              onClick={() => setShowAdvancedMaterial((prev) => !prev)}
-            >
-              {showAdvancedMaterial ? "▾" : "▸"} Gelişmiş (component / kalınlık)
-            </button>
-            {showAdvancedMaterial && (
-              <>
-            <label className="mesh-field material-field">
-              <span>Component adı</span>
-              <input
-                value={componentName}
-                onChange={(e) => setComponentName(e.target.value)}
-                placeholder={
-                  meshPartIds.length > 0
-                    ? `COMP_PART_${meshPartIds[0]}`
-                    : "COMP_PART_n"
-                }
-              />
-            </label>
-            <label className="mesh-field material-field">
-              <span>Property</span>
-              <select
-                value={propertyKind}
-                onChange={(e) => setPropertyKind(e.target.value as PropertyKind)}
-              >
-                <option value="shell">shell (kalınlık)</option>
-                <option value="solid">solid</option>
-              </select>
-            </label>
-            {propertyKind === "shell" && (
-              <label className="mesh-field material-field">
-                <span>Kalınlık</span>
-                <input
-                  value={shellThickness}
-                  onChange={(e) => setShellThickness(e.target.value)}
-                />
-              </label>
-            )}
-            <button
-              type="button"
-              className="material-assign-button"
-              disabled={!canCreateComponent || busyAction !== null}
-              onClick={() => void handleUpsertComponent()}
-            >
-              {busyAction === "component" ? "Kaydediliyor…" : "Component güncelle"}
-            </button>
-            <button
-              type="button"
-              className="material-secondary-button"
-              disabled={selectedMaterialId === null || busyAction !== null}
-              onClick={() => void handleEstimateSn()}
-            >
-              {busyAction === "sn-curve" ? "S-N…" : "Tahmini S-N üret"}
-            </button>
-            {!canAssignMaterial && geometryId !== null && (
-              <p className="material-assign-hint">
-                Mesh elemanına tıklayın. Face: o CAD yüzeyi. Attached: tüm parça.
-              </p>
-            )}
-            {canCreateComponent && !canAssignMaterial && (
-              <p className="material-assign-hint">Kütüphaneden malzeme seçin.</p>
-            )}
-              </>
-            )}
-            {productTree && productTree.items.filter((i) => i.component).length > 0 && (
-              <div className="product-tree">
-                <p className="material-assignments-title">Ürün ağacı</p>
-                <ul className="product-tree-list">
-                  {productTree.items
-                    .filter((i) => i.component)
-                    .map((item) => (
-                      <ProductTreeRow
-                        key={item.component?.id ?? item.part_id}
-                        item={item}
-                        materials={materials}
-                        busy={busyAction !== null}
-                        onSave={(componentId, thickness, materialId) =>
-                          void handlePatchTreeComponent(componentId, thickness, materialId)
-                        }
-                      />
-                    ))}
-                </ul>
-              </div>
-            )}
-            {materialAssignments.length > 0 && (
-              <div className="material-assignments">
-                <p className="material-assignments-title">Atamalar</p>
-                <ul>
-                  {materialAssignments.map((a) => (
-                    <li key={a.id}>
-                      Parça #{a.part_id} → {a.material_name}
-                      {a.material_category ? ` (${a.material_category})` : ""}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {showCustomMaterialForm && (
-            <div className="material-custom">
-              <p className="material-assignments-title">Özel malzeme</p>
-              <label className="mesh-field material-field">
-                <span>Ad</span>
-                <input
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Örn. OzelCelik"
-                />
-              </label>
-              <div className="material-custom-grid">
-                <label className="mesh-field">
-                  <span>E (GPa)</span>
-                  <input value={customE} onChange={(e) => setCustomE(e.target.value)} />
-                </label>
-                <label className="mesh-field">
-                  <span>ν</span>
-                  <input value={customNu} onChange={(e) => setCustomNu(e.target.value)} />
-                </label>
-                <label className="mesh-field">
-                  <span>ρ</span>
-                  <input value={customRho} onChange={(e) => setCustomRho(e.target.value)} />
-                </label>
-                <label className="mesh-field">
-                  <span>Rp0.2 (MPa)</span>
-                  <input value={customFy} onChange={(e) => setCustomFy(e.target.value)} />
-                </label>
-                <label className="mesh-field">
-                  <span>Rm (MPa)</span>
-                  <input value={customRm} onChange={(e) => setCustomRm(e.target.value)} />
-                </label>
-              </div>
-              <label className="material-check">
-                <input
-                  type="checkbox"
-                  checked={snEstimate}
-                  onChange={(e) => setSnEstimate(e.target.checked)}
-                />
-                Oluştururken tahmini S-N ekle
-              </label>
-              <button
-                type="button"
-                className="material-secondary-button"
-                disabled={busyAction !== null}
-                onClick={() => void handleCreateCustomMaterial()}
-              >
-                {busyAction === "create-material" ? "Ekleniyor…" : "Özel malzeme ekle"}
-              </button>
-            </div>
-            )}
-          </>
-        )}
-      </div>
-      )}
-
-      <div className="analysis-tab-switch">
+      <div className="analysis-rail">
+        <span className="analysis-rail-label">ANALİZ TİPİ</span>
         <button
           type="button"
           className={analysisTab === "durability" ? "analysis-tab active" : "analysis-tab"}
           onClick={() => setAnalysisTab("durability")}
         >
-          DURABILITY
+          <span className="analysis-tab-label">DURABILITY</span>
+          <span className="analysis-tab-meta">CalculiX · statik</span>
         </button>
         <button
           type="button"
           className={analysisTab === "modal" ? "analysis-tab active" : "analysis-tab"}
           onClick={() => setAnalysisTab("modal")}
         >
-          MODAL
+          <span className="analysis-tab-label">MODAL</span>
+          <span className="analysis-tab-meta">CalculiX · frekans</span>
         </button>
         <button
           type="button"
@@ -3311,12 +2663,32 @@ function App() {
             ensureStepExpanded("bc");
           }}
         >
-          CRASH
+          <span className="analysis-tab-label">CRASH</span>
+          <span className="analysis-tab-meta">OpenRadioss · dinamik</span>
         </button>
-      </div>
-
+      <div className="step-tab-strip">
+      <button
+        type="button"
+        className={expandedSteps.has("geometry") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("geometry")}
+      >
+        1 · GEOMETRY
+      </button>
+      <button
+        type="button"
+        className={expandedSteps.has("mesh") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("mesh")}
+      >
+        2 · MESH
+      </button>
+      <button
+        type="button"
+        className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("material")}
+      >
+        3 · MATERIAL
+      </button>
       {analysisTab === "durability" && (
-      <>
       <button
         type="button"
         className={expandedSteps.has("bc") ? "step-nav-item active" : "step-nav-item"}
@@ -3324,262 +2696,8 @@ function App() {
       >
         4 · BOUNDARY CONDITIONS
       </button>
-      {expandedSteps.has("bc") && (
-      <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · CalculiX</span>
-        <h1>Solver / BC</h1>
-        {meshResult && (
-          <div className="bc-mesh-summary">
-            <p>
-              <span>element size</span>
-              {meshResult.element_size} mm
-            </p>
-            <p>
-              <span>scheme</span>
-              {meshResult.dimension === 2 ? "2D · " : "3D · "}
-              {meshResult.element_scheme}
-            </p>
-          </div>
-        )}
-        <p className="lead material-lead">
-          Mesh elemanına tıklayın → BC türü seçin → ekleyin.
-        </p>
-
-        <div className="bc-add-card">
-          {showMesh && meshPicks.length > 0 && (
-            <p className="material-assign-hint">
-              Mesh seçim: {meshGrow} · yüzey{" "}
-              {[...new Set(meshPicks.map((p) => p.faceId))].join(", ")} · parça{" "}
-              {meshPartIds.join(", ")}
-            </p>
-          )}
-
-          <p className="material-assignments-title">BC türü</p>
-          <div className="bc-button-row">
-            {(
-              [
-                "fixed",
-                "cload",
-                "pressure",
-                "displacement",
-                "sliding",
-                "bearing",
-                "gravity",
-                "rigid_body",
-              ] as BcKind[]
-            ).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
-                disabled={busyAction !== null}
-                onClick={() => {
-                  if (kind === "rigid_body") {
-                    const meshFaceIds =
-                      showMesh && meshPicks.length > 0
-                        ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
-                        : [];
-                    const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
-                    const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
-                    setRigidSlave({
-                      faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
-                      edges: cadEdgeIds,
-                    });
-                  }
-                  setBcDraftKind(kind);
-                }}
-              >
-                {BC_KIND_LABELS[kind]}
-              </button>
-            ))}
-          </div>
-          <p className="material-assign-hint">{BC_KIND_HINTS[bcDraftKind]}</p>
-
-        {bcDraftKind === "cload" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>Fx</span>
-              <input value={bcFx} onChange={(e) => setBcFx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Fy</span>
-              <input value={bcFy} onChange={(e) => setBcFy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Fz</span>
-              <input value={bcFz} onChange={(e) => setBcFz(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {bcDraftKind === "pressure" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>|P|</span>
-              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>dx</span>
-              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>dy</span>
-              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>dz</span>
-              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {bcDraftKind === "displacement" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>Ux</span>
-              <input value={bcUx} onChange={(e) => setBcUx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Uy</span>
-              <input value={bcUy} onChange={(e) => setBcUy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Uz</span>
-              <input value={bcUz} onChange={(e) => setBcUz(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {bcDraftKind === "sliding" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>Nx</span>
-              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Ny</span>
-              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Nz</span>
-              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {bcDraftKind === "bearing" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>Büyüklük</span>
-              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Axis x</span>
-              <input value={bcAx} onChange={(e) => setBcAx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Axis y</span>
-              <input value={bcAy} onChange={(e) => setBcAy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Axis z</span>
-              <input value={bcAz} onChange={(e) => setBcAz(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {bcDraftKind === "gravity" && (
-          <div className="bc-fields">
-            <label className="mesh-field">
-              <span>gx</span>
-              <input value={bcGx} onChange={(e) => setBcGx(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>gy</span>
-              <input value={bcGy} onChange={(e) => setBcGy(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>gz</span>
-              <input value={bcGz} onChange={(e) => setBcGz(e.target.value)} />
-            </label>
-          </div>
-        )}
-
-        <button
-          type="button"
-          className="material-assign-button bc-add-confirm"
-          disabled={busyAction !== null}
-          onClick={() => handleAddBc(bcDraftKind)}
-        >
-          Listeye ekle
-        </button>
-        </div>
-
-        {bcList.length > 0 && (
-          <div className="material-assignments">
-            <div className="bc-list-header">
-              <p className="material-assignments-title">BC LİSTESİ</p>
-              <span className="bc-list-count">{bcList.length}</span>
-            </div>
-            <ul className="bc-card-list">
-              {bcList.map((b, i) => (
-                <li key={b.id} className={i === 0 ? "bc-card bc-card-first" : "bc-card"}>
-                  <span>{b.summary}</span>
-                  <button
-                    type="button"
-                    className="bc-remove-button"
-                    onClick={() => handleRemoveBc(b.id)}
-                    title="Kaldır"
-                  >
-                    ⋯
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <p className="bc-type-hint">
-              Fixed · Force · Pressure · Displacement · Sliding · Bearing · Gravity
-            </p>
-          </div>
-        )}
-
-        <label className="material-check">
-          <input
-            type="text"
-            className="group-name-input"
-            placeholder="Case adı (opsiyonel, örn. '9kN - orijinal')"
-            value={caseNameInput}
-            onChange={(e) => setCaseNameInput(e.target.value)}
-          />
-        </label>
-        <label className="material-check">
-          <input
-            type="checkbox"
-            checked={runCcx}
-            onChange={(e) => setRunCcx(e.target.checked)}
-          />
-          ccx çalıştır (kuruluysa)
-        </label>
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={
-            busyAction !== null ||
-            geometryId === null ||
-            meshResult === null ||
-            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
-          }
-          onClick={() => void handleSolve()}
-        >
-          {busyAction === "solve" ? "Üretiliyor…" : ".inp üret / çöz"}
-        </button>
-        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
-          <p className="material-assign-hint">
-            ⚠ En az bir Fixed / Displacement / Sliding BC eklemeden çözülemez —
-            aksi halde model boşlukta asılı kalır (rijit cisim hareketi).
-          </p>
-        )}
-      </div>
       )}
-      </>
-      )}
-
       {analysisTab === "modal" && (
-      <>
       <button
         type="button"
         className={expandedSteps.has("modal") ? "step-nav-item active" : "step-nav-item"}
@@ -3587,203 +2705,8 @@ function App() {
       >
         5 · MODAL
       </button>
-      {expandedSteps.has("modal") && (
-      <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · CalculiX</span>
-        <h1>Modal</h1>
-        <p className="lead material-lead">
-          Aynı mesh, malzeme ve mesnetler kullanılır. Yükler (Force / Pressure /
-          Gravity) modal step’e yazılmaz. Sonuç: doğal frekans listesi + son
-          modun şekli viewer’da.
-        </p>
-        <div className="bc-mesh-summary">
-          <p>
-            <span>mesnet</span>
-            {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length}
-          </p>
-          <p>
-            <span>mesh</span>
-            {meshResult ? `${meshResult.dimension === 2 ? "2D" : "3D"}` : "yok"}
-          </p>
-        </div>
-
-        <div className="bc-add-card">
-          <p className="material-assignments-title">MESNET EKLE</p>
-          <p className="material-assign-hint">
-            Modal analiz sadece kısıt (mesnet) kullanır — yük gerekmez. Mesh
-            elemanına tıklayın (Face = tüm yüzey), sonra ekleyin.
-          </p>
-          <button
-            type="button"
-            className="material-assign-button"
-            disabled={busyAction !== null}
-            onClick={() => handleAddBc("fixed")}
-          >
-            + Fixed Mesnet Ekle
-          </button>
-        </div>
-
-        {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length > 0 && (
-          <div className="material-assignments">
-            <div className="bc-list-header">
-              <p className="material-assignments-title">MESNETLER</p>
-            </div>
-            <ul className="bc-card-list">
-              {bcList
-                .filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
-                .map((b) => (
-                  <li key={b.id} className="bc-card">
-                    <span>{b.summary}</span>
-                    <button
-                      type="button"
-                      className="bc-remove-button"
-                      onClick={() => handleRemoveBc(b.id)}
-                      title="Kaldır"
-                    >
-                      ⋯
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </div>
-        )}
-        <label className="mesh-field">
-          <span>Mod sayısı</span>
-          <input
-            type="number"
-            min={1}
-            max={200}
-            step={1}
-            value={modalNModes}
-            onChange={(e) => setModalNModes(e.target.value)}
-            disabled={busyAction !== null}
-          />
-        </label>
-        <div className="bc-fields">
-          <label className="mesh-field">
-            <span>f min (Hz, opsiyonel)</span>
-            <input
-              value={modalFreqMin}
-              onChange={(e) => setModalFreqMin(e.target.value)}
-              disabled={busyAction !== null}
-              placeholder="—"
-            />
-          </label>
-          <label className="mesh-field">
-            <span>f max (Hz, opsiyonel)</span>
-            <input
-              value={modalFreqMax}
-              onChange={(e) => setModalFreqMax(e.target.value)}
-              disabled={busyAction !== null}
-              placeholder="—"
-            />
-          </label>
-        </div>
-        <label className="material-check">
-          <input
-            type="checkbox"
-            checked={runCcx}
-            onChange={(e) => setRunCcx(e.target.checked)}
-          />
-          ccx çalıştır (kuruluysa)
-        </label>
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={
-            busyAction !== null ||
-            geometryId === null ||
-            meshResult === null ||
-            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
-          }
-          onClick={() => void handleModalSolve()}
-        >
-          {busyAction === "modal" ? "Üretiliyor…" : "Modal çöz"}
-        </button>
-        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
-          <p className="material-assign-hint">
-            ⚠ Önce 4 · BOUNDARY CONDITIONS’dan en az bir mesnet ekleyin.
-          </p>
-        )}
-        {modalFrequencies.length > 0 && <FrequencyLinePlot frequencies={modalFrequencies} />}
-        {(resultsPreview?.modes?.length ?? 0) > 0 && (
-          <div className="material-assignments">
-            <p className="material-assignments-title">
-              Mod şekilleri ({resultsPreview?.modes?.length})
-            </p>
-            <p className="material-assign-hint">
-              Her kart bir doğal mod. Göster: 3B kontur. Animasyon: ± salınım.
-            </p>
-            <button
-              type="button"
-              className="vf-btn"
-              onClick={() => {
-                setModalGridOpen((prev) => !prev);
-                setModalGridFocus(null);
-              }}
-              title="Tüm modları tek sayfada yan yana göster"
-            >
-              {modalGridOpen ? "Izgarayı kapat" : `Tüm modları göster (${resultsPreview?.modes?.length})`}
-            </button>
-            <div className="mode-card-grid">
-              {resultsPreview?.modes?.map((mode, i) => (
-                <div
-                  key={`mode-${mode.index}`}
-                  className={
-                    i === selectedModalMode ? "mode-card mode-card-active" : "mode-card"
-                  }
-                >
-                  <ModeShapeThumb
-                    nodes={resultsPreview.nodes}
-                    vectors={mode.displacement_vectors}
-                  />
-                  <div className="mode-card-meta">
-                    <strong>Mode {mode.index}</strong>
-                    <span>
-                      {mode.frequency_hz != null
-                        ? `${mode.frequency_hz.toPrecision(5)} Hz`
-                        : "f —"}
-                    </span>
-                  </div>
-                  <div className="mode-card-actions">
-                    <button type="button" className="vf-btn" onClick={() => showModalMode(i)}>
-                      Göster
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        resultsAnimating && selectedModalMode === i
-                          ? "vf-btn vf-active"
-                          : "vf-btn"
-                      }
-                      onClick={() =>
-                        resultsAnimating && selectedModalMode === i
-                          ? setResultsAnimating(false)
-                          : playModalMode(i)
-                      }
-                    >
-                      {resultsAnimating && selectedModalMode === i ? "Durdur" : "Animasyon"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {solveResult?.analysis_type === "modal" && modalFrequencies.length === 0 && (
-          <p className="material-assign-hint">
-            {solveResult.solver_ran
-              ? "Frekans tablosu .dat’dan okunamadı; .inp / log’a bakın."
-              : "inp üretildi. Frekans listesi için ccx’i işaretleyip tekrar çözün."}
-          </p>
-        )}
-      </div>
       )}
-      </>
-      )}
-
       {analysisTab === "crash" && (
-      <>
       <button
         type="button"
         className={expandedSteps.has("bc") ? "step-nav-item active" : "step-nav-item"}
@@ -3791,17 +2714,8 @@ function App() {
       >
         4 · CRASH
       </button>
-      {expandedSteps.has("bc") && (
-        <CrashPanel
-          geometryId={geometryId}
-          meshDimension={meshResult?.dimension ?? null}
-        />
       )}
-      </>
-      )}
-
       {analysisTab !== "crash" && (
-      <>
       <button
         type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
@@ -3809,93 +2723,369 @@ function App() {
       >
         6 · RESULTS
       </button>
-      {expandedSteps.has("results") && (
-      <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · Sonuç</span>
-        <h1>Results</h1>
-        {surrogateMeta && (
-          <p className="surrogate-banner" role="status">
-            {surrogateMeta.message}
-          </p>
-        )}
-        {!solveResult && (
-          <p className="lead material-lead">
-            Henüz çözüm yok — statik için "4 · BOUNDARY CONDITIONS", modal için
-            "5 · MODAL" adımından çözün. Sonuç görselleştirmesi 3B görünümün
-            üzerindeki panellerde belirir.
-          </p>
-        )}
-        {solveResult && (
-          <div className="material-assignments">
-            <p className="material-assignments-title">Sonuç</p>
-            <p className="material-assign-hint">{solveResult.message}</p>
-            <p className="material-assign-hint">
-              MATERIAL={String(solveResult.cards.has_material)} · SECTION=
-              {String(solveResult.cards.has_section)} · ccx=
-              {String(solveResult.ccx_available)} · ran=
-              {String(solveResult.solver_ran)}
-            </p>
-            <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
-              .inp indir
-            </a>
-
-            {solveResult.analytic_comparison && (
-              <AnalyticComparisonPanel comparison={solveResult.analytic_comparison} />
-            )}
-
-            {resultsPreview && solveResult.analysis_type !== "modal" && (
-              <>
-                <ResultsStatsTable
-                  label="Von Mises (MPa)"
-                  values={resultsPreview.von_mises}
-                />
-                <ResultsHistogram
-                  label="Von Mises dağılımı"
-                  values={resultsPreview.von_mises}
-                  color="#e05a3b"
-                />
-                <ResultsStatsTable
-                  label="Deplasman (mm)"
-                  values={resultsPreview.displacement_magnitude}
-                />
-                <ResultsHistogram
-                  label="Deplasman dağılımı"
-                  values={resultsPreview.displacement_magnitude}
-                  color="#2f7fd1"
-                />
-              </>
-            )}
-            {resultsPreview && solveResult.analysis_type === "modal" && displayResultsPreview && (
-              <>
-                <p className="material-assign-hint">
-                  Seçili mod {selectedModalMode + 1}
-                  {resultsPreview.modes?.[selectedModalMode]?.frequency_hz != null
-                    ? ` · ${resultsPreview.modes[selectedModalMode].frequency_hz.toPrecision(5)} Hz`
-                    : ""}
-                  . Görseller ve animasyon: 5 · MODAL.
-                </p>
-                <ResultsStatsTable
-                  label="Mod şekli |U| (mm)"
-                  values={displayResultsPreview.displacement_magnitude}
-                />
-                <ResultsHistogram
-                  label="Mod şekli dağılımı"
-                  values={displayResultsPreview.displacement_magnitude}
-                  color="#2f7fd1"
-                />
-              </>
-            )}
-
-            <p className="material-assign-hint" style={{ marginTop: 8 }}>
-              3B renk skalası ve deformasyon kontrolleri, görünümün üzerindeki
-              yüzen panellerde (sağ üst/alt köşeler).
-            </p>
-          </div>
-        )}
-      </div>
       )}
+      </div>
+      </div>
+      <div className="selection-mode-row" role="toolbar" aria-label="Seçim modu">
+              {SELECTION_MODES.map(({ mode: m, label }) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={meshSelectMode === null && mode === m ? "active" : undefined}
+                  disabled={!cadSelectionAvailable}
+                  onClick={() => {
+                    // CAD moduna dönerken mesh seçimini kapat — ikisi
+                    // karşılıklı dışlayıcı.
+                    setMeshSelectMode(null);
+                    setMeshNodePicks([]);
+                    setMode(m);
+                    setSelection({ mode: m, ids: [] });
+                    setMeshPicks([]);
+                    setMeshGrow("element");
+                  }}
+                  title={
+                    cadSelectionAvailable
+                      ? label
+                      : `${label} — geometri (solid/yüzey) gizli`
+                  }
+                >
+                  {m === "part" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
+                  )}
+                  {m === "surface" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z" /></svg>
+                  )}
+                  {m === "edge" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12L13 4" /></svg>
+                  )}
+                  {m === "point" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5" /></svg>
+                  )}
+                  <span className="selection-mode-label">{label}</span>
+                </button>
+              ))}
+              <span className="viewer-ribbon-sep" />
+              {MESH_SELECT_MODES.map(({ mode: m, label }) => (
+                <button
+                  key={`mesh-${m}`}
+                  type="button"
+                  className={meshSelectMode === m ? "active" : undefined}
+                  disabled={!meshSelectionAvailable}
+                  onClick={() => {
+                    const next = meshSelectMode === m ? null : m;
+                    setMeshSelectMode(next);
+                    // Mesh seçimine geçerken CAD seçimini temizle.
+                    if (next !== null) setSelection({ mode, ids: [] });
+                    setMeshNodePicks([]);
+                    setMeshPicks([]);
+                    setMeshGrow("element");
+                  }}
+                  title={
+                    meshSelectionAvailable ? label : `${label} — mesh gizli`
+                  }
+                >
+                  {m === "element" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /></svg>
+                  )}
+                  {m === "node" && (
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none" /></svg>
+                  )}
+                  <span className="selection-mode-label">{label}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className={showMidsideNodes ? "active" : undefined}
+                disabled={!meshSelectionAvailable || !hasMidsideNodes}
+                onClick={() => setShowMidsideNodes((prev) => !prev)}
+                title={
+                  !hasMidsideNodes
+                    ? "2. mertebe düğüm yok (1. mertebe veya 2D mesh)"
+                    : showMidsideNodes
+                      ? "2. mertebe (kenar-ortası) düğümleri gizle"
+                      : "2. mertebe (kenar-ortası) düğümleri göster"
+                }
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1">
+                  <path d="M3 12 L8 4 L13 12 Z" />
+                  <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="13" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="8" cy="4" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="5.5" cy="8" r="1.1" />
+                  <circle cx="10.5" cy="8" r="1.1" />
+                  <circle cx="8" cy="12" r="1.1" />
+                </svg>
+              </button>
+              {status === "success" && (
+                <>
+                  <span className="viewer-ribbon-sep" />
+                  <button
+                    type="button"
+                    disabled={busyAction !== null}
+                    onClick={() => void handleHeal()}
+                    title={busyAction === "heal" ? "Düzeltiliyor…" : "Heal — tolerans onarımı + silindirik delikleri kapatır"}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 2v12M2 8h12" />
+                      <circle cx="8" cy="8" r="5.5" />
+                    </svg>
+                    <span className="selection-mode-label">HEAL</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={showDefeaturePanel ? "active" : undefined}
+                    disabled={!canDefeature || busyAction !== null}
+                    onClick={() => {
+                      const hasFaceSelection =
+                        selection.mode === "surface" && selection.ids.length > 0;
+                      if (hasFaceSelection) {
+                        void handleApplyDefeature();
+                      } else {
+                        setShowDefeaturePanel((prev) => !prev);
+                      }
+                    }}
+                    title={busyAction === "defeature" ? "Kaldırılıyor…" : "Fillet kaldır"}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+                      <path d="M3 13V7a4 4 0 0 1 4-4h6" />
+                      <path d="M3 13h10" strokeDasharray="2 2" />
+                    </svg>
+                    <span className="selection-mode-label">FİLLET</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canUseMidsurface || busyAction !== null}
+                    onClick={handleMidsurfaceClick}
+                    title={
+                      busyAction === "midsurface"
+                        ? "Oluşturuluyor…"
+                        : canUseMidsurfaceManual
+                          ? "Midsurface (2 yüzey seçili)"
+                          : "Midsurface (parça seç)"
+                    }
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                      <path d="M2 5h12M2 11h12" />
+                      <path d="M2 8h12" strokeDasharray="2 2" />
+                    </svg>
+                    <span className="selection-mode-label">MİD</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canCopySurface || busyAction !== null}
+                    onClick={() => void handleCopySurface()}
+                    title={busyAction === "copy" ? "Kopyalanıyor…" : "Yüzey kopyala"}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                      <path d="M5 2h6l2 2v8H5z" />
+                      <path d="M3 5v9h7" strokeDasharray="2 2" />
+                    </svg>
+                    <span className="selection-mode-label">KOPYA</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={showOffsetPanel ? "active" : undefined}
+                    disabled={!canOffsetMidsurface || busyAction !== null}
+                    onClick={() => setShowOffsetPanel((prev) => !prev)}
+                    title="Kalınlık/2 kaydır"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                      <path d="M2 6h12" />
+                      <path d="M2 10h12" strokeDasharray="2 2" />
+                      <path d="M8 6v4" />
+                    </svg>
+                    <span className="selection-mode-label">OFFSET</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={showEdges ? "active" : undefined}
+                    onClick={() => setShowEdges((prev) => !prev)}
+                    title={showEdges ? "Kenar çizgileri (açık)" : "Kenar çizgileri (kapalı)"}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                      <path d="M3 5l5-3 5 3v6l-5 3-5-3z" />
+                    </svg>
+                    <span className="selection-mode-label">KENARLAR</span>
+                  </button>
+
+                  <span className="viewer-ribbon-sep" />
+                  <span className="toolbar-groups-inline">
+                    <span className="toolbar-groups-inline-label">BÖLGELER</span>
+                    {physicalGroups.length === 0 ? (
+                      <span className="toolbar-groups-inline-empty">henüz grup yok</span>
+                    ) : (
+                      physicalGroups.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          className={
+                            activeGroupId === g.id
+                              ? "toolbar-group-chip active"
+                              : "toolbar-group-chip"
+                          }
+                          onClick={() => handleGroupButtonClick(g.id)}
+                          title={`${g.name} — ${g.face_count} yüzey`}
+                        >
+                          {g.name}
+                        </button>
+                      ))
+                    )}
+                    {showGroupForm && (
+                      <>
+                        <input
+                          type="text"
+                          className="toolbar-group-input"
+                          placeholder="Grup adı"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          disabled={busyAction === "create-group"}
+                        />
+                        <button
+                          type="button"
+                          className="toolbar-group-chip toolbar-group-chip-create"
+                          onClick={() => void handleCreatePhysicalGroup()}
+                          disabled={!canCreateGroup || busyAction === "create-group"}
+                        >
+                          {busyAction === "create-group" ? "Oluşturuluyor…" : "+ Grup oluştur"}
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </>
+              )}
+      </div>
+      <div className="left-column">
+      {geometryId !== null && (
+      <>
+      <div className="model-tree" style={{ height: `${treeHeight}px` }}>
+        <div className="model-tree-search">
+          <input type="text" placeholder="Ara..." disabled />
+        </div>
+        <div className="model-tree-root">
+          <span className="model-tree-icon">○</span>
+          <span className="model-tree-name">{fileName ?? "geometri"}</span>
+          <span className="model-tree-badge">{uniquePartIdsFromPreview(meshPreview).length} parça</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>Geometri</span>
+          <span className="model-tree-value">{faceCount ?? "—"} yüzey</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>Bölgeler</span>
+          <span className="model-tree-value">
+            {physicalGroups.length > 0 ? `${physicalGroups.length} adlandırılmış` : "—"}
+          </span>
+        </div>
+        {physicalGroups.map((g) => (
+          <div className="model-tree-row model-tree-depth-2" key={g.id}>
+            <span className="model-tree-leaf">{g.name}</span>
+            <span className="model-tree-value">yüzey</span>
+          </div>
+        ))}
+        <div className="model-tree-row model-tree-depth-1">
+          <span>Component'ler</span>
+          <span className="model-tree-value">{uniquePartIdsFromPreview(meshPreview).length}</span>
+        </div>
+        {uniquePartIdsFromPreview(meshPreview).map((partId) => {
+          const assignment = materialAssignments.find((a) => a.part_id === partId);
+          return (
+            <div className="model-tree-row model-tree-depth-2" key={partId}>
+              <span className="model-tree-leaf">Parça #{partId}</span>
+              {assignment?.material_name ? (
+                <span className="model-tree-value">{assignment.material_name}</span>
+              ) : (
+                <span className="model-tree-tag">atama yok</span>
+              )}
+            </div>
+          );
+        })}
+        <div className="model-tree-row model-tree-depth-1">
+          <span>Mesh</span>
+          <span className="model-tree-value">
+            {meshResult ? `${meshResult.element_scheme} · ${meshResult.element_size} mm` : "—"}
+          </span>
+        </div>
+      </div>
+      <div
+        className="resize-handle resize-handle-bottom"
+        role="separator"
+        aria-orientation="horizontal"
+        title="Sürükleyerek ağaç yüksekliğini ayarla"
+        onMouseDown={(e) => startVerticalResize(e, treeHeight, setTreeHeight, 1, 120, 700)}
+      />
       </>
       )}
+      {geometryId === null && (
+      <>
+      <div className="model-tree" style={{ height: `${treeHeight}px` }}>
+        <div className="model-tree-search">
+          <input type="text" placeholder="Ara..." disabled />
+        </div>
+        <p className="model-tree-empty-hint">
+          Ağaç, geometri yüklendikten sonra parçaları, bölgeleri ve sonraki
+          adımları listeler.
+        </p>
+        <div className="model-tree-row model-tree-depth-1 model-tree-row-muted">
+          <span>Geometri</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1 model-tree-row-muted">
+          <span>Bölgeler</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1 model-tree-row-muted">
+          <span>Mesh</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1 model-tree-row-muted">
+          <span>Malzeme</span>
+        </div>
+      </div>
+      <div
+        className="resize-handle resize-handle-bottom"
+        role="separator"
+        aria-orientation="horizontal"
+        title="Sürükleyerek ağaç yüksekliğini ayarla"
+        onMouseDown={(e) => startVerticalResize(e, treeHeight, setTreeHeight, 1, 120, 700)}
+      />
+      <div className="geo-details-card">
+        <span className="eyebrow">Detaylar</span>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>dosya</span>
+          <span className="model-tree-value">{fileName ?? "—"}</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>parça</span>
+          <span className="model-tree-value">{partCount ?? "—"}</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>yüzey</span>
+          <span className="model-tree-value">{faceCount ?? "—"}</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>birim</span>
+          <span className="model-tree-value">mm</span>
+        </div>
+        <div className="model-tree-row model-tree-depth-1">
+          <span>durum</span>
+          <span className="model-tree-value">
+            {status === "uploading"
+              ? "yükleniyor"
+              : status === "error"
+                ? "hata"
+                : "yükleme bekleniyor"}
+          </span>
+        </div>
+      </div>
+      </>
+      )}
+      {status !== "idle" && (
+        <div className="new-case-row">
+          <button type="button" className="reset-button" onClick={handleReset}>
+            🔄 Yeni Case Başlat
+          </button>
+          <span className="new-case-hint">Önceki analiz Geçmiş'te kalır; Sil ile kaldırabilirsiniz.</span>
+        </div>
+      )}
+
+
 
       </div>
 
@@ -3951,94 +3141,6 @@ function App() {
                 title={allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle"}
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
-              </button>
-              <span className="viewer-ribbon-sep" />
-              {SELECTION_MODES.map(({ mode: m, label }) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={meshSelectMode === null && mode === m ? "active" : undefined}
-                  disabled={!cadSelectionAvailable}
-                  onClick={() => {
-                    // CAD moduna dönerken mesh seçimini kapat — ikisi
-                    // karşılıklı dışlayıcı.
-                    setMeshSelectMode(null);
-                    setMeshNodePicks([]);
-                    setMode(m);
-                    setSelection({ mode: m, ids: [] });
-                    setMeshPicks([]);
-                    setMeshGrow("element");
-                  }}
-                  title={
-                    cadSelectionAvailable
-                      ? label
-                      : `${label} — geometri (solid/yüzey) gizli`
-                  }
-                >
-                  {m === "part" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
-                  )}
-                  {m === "surface" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3 6l5-3 5 3-5 3z" /></svg>
-                  )}
-                  {m === "edge" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12L13 4" /></svg>
-                  )}
-                  {m === "point" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5" /></svg>
-                  )}
-                </button>
-              ))}
-              <span className="viewer-ribbon-sep" />
-              {MESH_SELECT_MODES.map(({ mode: m, label }) => (
-                <button
-                  key={`mesh-${m}`}
-                  type="button"
-                  className={meshSelectMode === m ? "active" : undefined}
-                  disabled={!meshSelectionAvailable}
-                  onClick={() => {
-                    const next = meshSelectMode === m ? null : m;
-                    setMeshSelectMode(next);
-                    // Mesh seçimine geçerken CAD seçimini temizle.
-                    if (next !== null) setSelection({ mode, ids: [] });
-                    setMeshNodePicks([]);
-                    setMeshPicks([]);
-                    setMeshGrow("element");
-                  }}
-                  title={
-                    meshSelectionAvailable ? label : `${label} — mesh gizli`
-                  }
-                >
-                  {m === "element" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /></svg>
-                  )}
-                  {m === "node" && (
-                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1"><path d="M2 3h12v10H2z M2 8h12 M8 3v10" /><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none" /></svg>
-                  )}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={showMidsideNodes ? "active" : undefined}
-                disabled={!meshSelectionAvailable || !hasMidsideNodes}
-                onClick={() => setShowMidsideNodes((prev) => !prev)}
-                title={
-                  !hasMidsideNodes
-                    ? "2. mertebe düğüm yok (1. mertebe veya 2D mesh)"
-                    : showMidsideNodes
-                      ? "2. mertebe (kenar-ortası) düğümleri gizle"
-                      : "2. mertebe (kenar-ortası) düğümleri göster"
-                }
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.1">
-                  <path d="M3 12 L8 4 L13 12 Z" />
-                  <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="13" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="8" cy="4" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="5.5" cy="8" r="1.1" />
-                  <circle cx="10.5" cy="8" r="1.1" />
-                  <circle cx="8" cy="12" r="1.1" />
-                </svg>
               </button>
               <span className="viewer-ribbon-sep" />
               <button
@@ -4354,10 +3456,1414 @@ function App() {
             )}
           </>
         ) : (
-          <div className="viewer-placeholder">
-            <p>Bir geometri yüklendiğinde 3B önizleme burada görünecek.</p>
+          <div className="viewer-placeholder viewer-placeholder-upload">
+        <div className="geo-upload-columns">
+        <div
+          className={isDraggingFile ? "geo-dropzone geo-dropzone-active" : "geo-dropzone"}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (status !== "uploading") setIsDraggingFile(true);
+          }}
+          onDragLeave={() => setIsDraggingFile(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDraggingFile(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file && status !== "uploading") void handleFileSelected(file);
+          }}
+        >
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinejoin="round">
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+            <path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9" />
+          </svg>
+          <h1 className="geo-dropzone-title">GEOMETRİ YÜKLE</h1>
+          <p className="lead material-lead">
+            {status === "uploading" ? "Yükleniyor…" : "Dosyayı buraya bırakın veya seçin"}
+          </p>
+          <p className="geo-dropzone-formats">{ACCEPTED_EXTENSIONS.replaceAll(",", " · ")}</p>
+          <div className="geo-dropzone-actions">
+            <label className="geo-dropzone-btn geo-dropzone-btn-primary">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_EXTENSIONS}
+                onChange={handleInputChange}
+                disabled={status === "uploading"}
+              />
+              <span>Dosya seç</span>
+            </label>
+          </div>
+        </div>
+
+        <TemplatePanel
+          geometryId={geometryId}
+          geometryFilename={fileName}
+          busy={status === "uploading" || busyAction !== null}
+          onCreated={handleTemplateCreated}
+        />
+        </div>
+
+        <div className="geo-formats-card">
+          <span className="eyebrow">Desteklenen formatlar</span>
+          <p className="lead material-lead">STEP (.step, .stp) · IGES (.igs, .iges)</p>
+        </div>
+
           </div>
         )}
+      </div>
+
+      <aside className="step-sidebar">
+        <div className="step-sidebar-head">
+          <span className="eyebrow">Adım {activeStepIndex + 1} / {stepOrder.length}</span>
+          <h2>{STEP_LABELS[activeStep]}</h2>
+        </div>
+        <div className="step-sidebar-body">
+      {expandedSteps.has("geometry") && (
+      <div className="panel">
+        <span className="eyebrow">Faz 0 · Geometri</span>
+        <h1>Geometri düzenle</h1>
+
+        {geometryId === null && (
+          <p className="lead material-lead">
+            Geometri viewport'ta (ortada) yüklenir — dosya bırak ya da şablondan üret.
+          </p>
+        )}
+
+        {geometryId !== null && (
+          <p className="lead material-lead">
+            Onarım, fillet kaldırma, midsurface, yüzey kopyalama ve bölge
+            oluşturma araçları üstteki araç çubuğunda. Bir yüzey/parça seçtiğinde
+            ilgili araçlar aktifleşir.
+          </p>
+        )}
+
+        {fileName && (
+          <p className="filename">
+            {fileName}
+            {status === "success" && " — yüklendi"}
+          </p>
+        )}
+
+        {errorMessage && (
+          <p className="error-message" role="alert">
+            {errorMessage}
+          </p>
+        )}
+
+        {status === "success" && infoMessage && <p className="info-message">{infoMessage}</p>}
+
+        {status === "success" &&
+          (selection.ids.length > 0 || showOffsetPanel || showDefeaturePanel) && (
+          <div className="face-info">
+            {selection.ids.length > 0 && (
+              <p className="face-info-selected">{describeSelection(selection)}</p>
+            )}
+
+            {showOffsetPanel && (
+              <div className="group-create-form offset-panel">
+                <label className="offset-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={offsetAutoThickness}
+                    onChange={(e) => setOffsetAutoThickness(e.target.checked)}
+                    disabled={busyAction === "offset-midsurface"}
+                  />
+                  Kalınlığı otomatik tespit et (en yakın paralel yüzeye göre)
+                </label>
+                {!offsetAutoThickness && (
+                  <input
+                    type="number"
+                    className="group-name-input"
+                    placeholder="Kalınlık (örn. 3)"
+                    value={offsetThickness}
+                    onChange={(e) => setOffsetThickness(e.target.value)}
+                    disabled={busyAction === "offset-midsurface"}
+                    min="0"
+                    step="0.1"
+                  />
+                )}
+                <label className="offset-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={offsetFlip}
+                    onChange={(e) => setOffsetFlip(e.target.checked)}
+                    disabled={busyAction === "offset-midsurface"}
+                  />
+                  Yönü ters çevir (dışa doğru — varsayılan: içe)
+                </label>
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleCreateOffsetMidsurfaces()}
+                  disabled={!canOffsetMidsurface || busyAction === "offset-midsurface"}
+                >
+                  {busyAction === "offset-midsurface" ? "Oluşturuluyor…" : "Uygula"}
+                </button>
+              </div>
+            )}
+
+            {showDefeaturePanel && (
+              <div className="group-create-form">
+                <input
+                  type="number"
+                  className="group-name-input"
+                  placeholder="Radius eşiği (örn. 5)"
+                  value={defeatureRadius}
+                  onChange={(e) => setDefeatureRadius(e.target.value)}
+                  disabled={busyAction === "defeature"}
+                  min="0"
+                  step="0.1"
+                />
+                <button
+                  type="button"
+                  className="group-create-button"
+                  onClick={() => void handleApplyDefeature()}
+                  disabled={busyAction === "defeature"}
+                >
+                  {busyAction === "defeature" ? "Kaldırılıyor…" : "Uygula"}
+                </button>
+              </div>
+            )}
+
+          </div>
+        )}
+
+      </div>
+      )}
+
+      {expandedSteps.has("mesh") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · Mesh</span>
+        <h1>Mesh</h1>
+        <label className="mesh-field">
+          <span>Eleman boyutu</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.1"
+            value={meshElementSize}
+            onChange={(e) => setMeshElementSize(e.target.value)}
+            disabled={busyAction === "mesh"}
+          />
+        </label>
+        <div className="mesh-dim-row" role="group" aria-label="Mesh boyutu">
+          <button
+            type="button"
+            className={meshDimension === 2 ? "active" : undefined}
+            disabled={busyAction === "mesh"}
+            onClick={() => {
+              if (meshDimension !== 2) {
+                setMeshResult(null);
+                invalidateStaleResults();
+              }
+              setMeshDimension(2);
+              setMeshScheme("quad");
+            }}
+          >
+            2D shell
+          </button>
+          <button
+            type="button"
+            className={meshDimension === 3 ? "active" : undefined}
+            disabled={busyAction === "mesh"}
+            onClick={() => {
+              if (meshDimension !== 3) {
+                setMeshResult(null);
+                invalidateStaleResults();
+              }
+              setMeshDimension(3);
+              setMeshScheme("tet");
+            }}
+          >
+            3D solid
+          </button>
+        </div>
+        <label className="mesh-field">
+          <span>Eleman tipi</span>
+          <select
+            value={meshScheme}
+            disabled={busyAction === "mesh"}
+            onChange={(e) => setMeshScheme(e.target.value as MeshElementScheme)}
+          >
+            <option value="tet">tet</option>
+            <option value="quad">quad</option>
+            <option value="mix">mix</option>
+          </select>
+        </label>
+        <p className="mesh-side-hint">
+          Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
+          değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).
+        </p>
+        <button
+          type="button"
+          className="mesh-generate-button"
+          disabled={busyAction !== null}
+          onClick={() => void handleGenerateMesh()}
+        >
+          {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
+        </button>
+        <div className="mesh-tools" role="group" aria-label="Mesh araçları">
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleMeshQuality()}
+          >
+            {busyAction === "mesh-quality" ? "Hesaplanıyor…" : "Kalite"}
+          </button>
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleFreeEdges()}
+          >
+            {busyAction === "free-edge" ? "…" : "Free edge"}
+          </button>
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleEquivalence(false)}
+          >
+            {busyAction === "equivalence" ? "…" : "Equivalence"}
+          </button>
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => {
+              const meshFaceIds =
+                showMesh && meshPicks.length > 0
+                  ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
+                  : [];
+              const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
+              const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
+              setRigidSlave({
+                faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
+                edges: cadEdgeIds,
+              });
+              setBcDraftKind("rigid_body");
+              ensureStepExpanded("bc");
+              setInfoMessage(
+                "Rigid body: köle yüzey kilitlendi. Point modunda REF nokta seçip BC ekleyin.",
+              );
+            }}
+          >
+            Rigid body
+          </button>
+          <button
+            type="button"
+            disabled={busyAction !== null || meshResult === null}
+            onClick={() => void handleNsetReport()}
+          >
+            {busyAction === "nset" ? "…" : "NSET"}
+          </button>
+        </div>
+        {meshResult && (
+          <div className="mesh-result">
+            <p>
+              {meshResult.dimension === 2 ? "Shell" : "Solid"} ·{" "}
+              {meshResult.element_scheme} · size {meshResult.element_size}
+            </p>
+            <p>
+              {meshResult.node_count} düğüm · {meshResult.element_count} eleman
+            </p>
+            <ul>
+              {Object.entries(meshResult.element_type_counts).map(([name, n]) => (
+                <li key={name}>
+                  {name}: {n}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {meshQuality && (
+          <div className="mesh-result mesh-quality-result">
+            <p>Kalite · {meshQuality.element_count} eleman</p>
+            <p>
+              Jacobian (minSJ): {meshQuality.jacobian.min.toFixed(4)} /{" "}
+              {meshQuality.jacobian.mean.toFixed(4)} /{" "}
+              {meshQuality.jacobian.max.toFixed(4)}
+            </p>
+            <p>
+              Aspect: {meshQuality.aspect_ratio.min.toFixed(3)} /{" "}
+              {meshQuality.aspect_ratio.mean.toFixed(3)} /{" "}
+              {meshQuality.aspect_ratio.max.toFixed(3)}
+            </p>
+            {meshQuality.skewness && (
+              <p>
+                Skewness: {meshQuality.skewness.min.toFixed(3)} /{" "}
+                {meshQuality.skewness.mean.toFixed(3)} /{" "}
+                {meshQuality.skewness.max.toFixed(3)}
+              </p>
+            )}
+            {meshQuality.warpage && (
+              <p>
+                Warpage (°): {meshQuality.warpage.min.toFixed(2)} /{" "}
+                {meshQuality.warpage.mean.toFixed(2)} /{" "}
+                {meshQuality.warpage.max.toFixed(2)}
+              </p>
+            )}
+            <label className="mesh-field">
+              <span>Renk metriği</span>
+              <select
+                value={meshQualityMetric}
+                onChange={(e) =>
+                  setMeshQualityMetric(
+                    e.target.value as "jacobian" | "aspect_ratio" | "skewness" | "warpage",
+                  )
+                }
+              >
+                <option value="jacobian">Jacobian (minSJ)</option>
+                <option value="aspect_ratio">Aspect</option>
+                <option value="skewness">Skewness</option>
+                <option value="warpage">Warpage</option>
+              </select>
+            </label>
+            <ResultsHistogram
+              label={`${meshQualityMetric} dağılımı`}
+              values={
+                (meshQualityMetric === "jacobian"
+                  ? meshQuality.jacobian
+                  : meshQualityMetric === "aspect_ratio"
+                    ? meshQuality.aspect_ratio
+                    : meshQualityMetric === "skewness"
+                      ? meshQuality.skewness
+                      : meshQuality.warpage
+                )?.values ?? []
+              }
+              color="#c45c26"
+            />
+            <p className="mesh-quality-hint">min / mean / max · kırmızı = kötü eleman</p>
+          </div>
+        )}
+        {nsetReport && (
+          <pre className="mesh-result" style={{ whiteSpace: "pre-wrap", fontSize: 11 }}>
+            {nsetReport}
+          </pre>
+        )}
+      </div>
+      )}
+
+      {expandedSteps.has("material") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · Malzeme</span>
+        <h1>Malzeme</h1>
+        {materials.length === 0 ? (
+          <p className="filename">Malzeme listesi yükleniyor…</p>
+        ) : (
+          <>
+            <label className="mesh-field material-field">
+              <span>Kütüphane</span>
+              <select
+                value={selectedMaterialId ?? ""}
+                onChange={(e) => setSelectedMaterialId(Number(e.target.value))}
+              >
+                {materials.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.category})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedMaterial && (
+              <div className="material-props">
+                <p>
+                  <span>E</span>
+                  {formatGPa(selectedMaterial.youngs_modulus)}
+                </p>
+                <p>
+                  <span>ν</span>
+                  {selectedMaterial.poisson_ratio.toFixed(2)}
+                </p>
+                <p>
+                  <span>ρ</span>
+                  {selectedMaterial.density.toFixed(0)} kg/m³
+                </p>
+                <p>
+                  <span>Rp0.2</span>
+                  {formatMPa(selectedMaterial.yield_strength)}
+                </p>
+                <p>
+                  <span>Rm</span>
+                  {formatMPa(selectedMaterial.ultimate_strength)}
+                </p>
+                {selectedMaterial.elongation != null && (
+                  <p>
+                    <span>A</span>
+                    {selectedMaterial.elongation.toFixed(0)} %
+                  </p>
+                )}
+                <p>
+                  <span>S-N</span>
+                  {selectedMaterial.sn_curve &&
+                  typeof selectedMaterial.sn_curve === "object" &&
+                  "source" in selectedMaterial.sn_curve
+                    ? String(
+                        (selectedMaterial.sn_curve as { source?: string }).source ===
+                          "estimated"
+                          ? "tahmini"
+                          : (selectedMaterial.sn_curve as { source?: string }).source ===
+                              "tested"
+                            ? "test"
+                            : "var",
+                      )
+                    : "yok"}
+                </p>
+              </div>
+            )}
+            <div className="material-action-row">
+              <button
+                type="button"
+                className="material-assign-button"
+                disabled={!canAssignMaterial || busyAction !== null}
+                onClick={() => void handleAssignMaterial()}
+              >
+                {busyAction === "assign-material" ? "Atanıyor…" : "ATA"}
+              </button>
+              <button
+                type="button"
+                className="material-secondary-button"
+                onClick={() => setShowCustomMaterialForm((prev) => !prev)}
+              >
+                + ÖZEL
+              </button>
+            </div>
+            <button
+              type="button"
+              className="material-advanced-toggle"
+              onClick={() => setShowAdvancedMaterial((prev) => !prev)}
+            >
+              {showAdvancedMaterial ? "▾" : "▸"} Gelişmiş (component / kalınlık)
+            </button>
+            {showAdvancedMaterial && (
+              <>
+            <label className="mesh-field material-field">
+              <span>Component adı</span>
+              <input
+                value={componentName}
+                onChange={(e) => setComponentName(e.target.value)}
+                placeholder={
+                  meshPartIds.length > 0
+                    ? `COMP_PART_${meshPartIds[0]}`
+                    : "COMP_PART_n"
+                }
+              />
+            </label>
+            <label className="mesh-field material-field">
+              <span>Property</span>
+              <select
+                value={propertyKind}
+                onChange={(e) => setPropertyKind(e.target.value as PropertyKind)}
+              >
+                <option value="shell">shell (kalınlık)</option>
+                <option value="solid">solid</option>
+              </select>
+            </label>
+            {propertyKind === "shell" && (
+              <label className="mesh-field material-field">
+                <span>Kalınlık</span>
+                <input
+                  value={shellThickness}
+                  onChange={(e) => setShellThickness(e.target.value)}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              className="material-assign-button"
+              disabled={!canCreateComponent || busyAction !== null}
+              onClick={() => void handleUpsertComponent()}
+            >
+              {busyAction === "component" ? "Kaydediliyor…" : "Component güncelle"}
+            </button>
+            <button
+              type="button"
+              className="material-secondary-button"
+              disabled={selectedMaterialId === null || busyAction !== null}
+              onClick={() => void handleEstimateSn()}
+            >
+              {busyAction === "sn-curve" ? "S-N…" : "Tahmini S-N üret"}
+            </button>
+            {!canAssignMaterial && geometryId !== null && (
+              <p className="material-assign-hint">
+                Mesh elemanına tıklayın. Face: o CAD yüzeyi. Attached: tüm parça.
+              </p>
+            )}
+            {canCreateComponent && !canAssignMaterial && (
+              <p className="material-assign-hint">Kütüphaneden malzeme seçin.</p>
+            )}
+              </>
+            )}
+            {productTree && productTree.items.filter((i) => i.component).length > 0 && (
+              <div className="product-tree">
+                <p className="material-assignments-title">Ürün ağacı</p>
+                <ul className="product-tree-list">
+                  {productTree.items
+                    .filter((i) => i.component)
+                    .map((item) => (
+                      <ProductTreeRow
+                        key={item.component?.id ?? item.part_id}
+                        item={item}
+                        materials={materials}
+                        busy={busyAction !== null}
+                        onSave={(componentId, thickness, materialId) =>
+                          void handlePatchTreeComponent(componentId, thickness, materialId)
+                        }
+                      />
+                    ))}
+                </ul>
+              </div>
+            )}
+            {materialAssignments.length > 0 && (
+              <div className="material-assignments">
+                <p className="material-assignments-title">Atamalar</p>
+                <ul>
+                  {materialAssignments.map((a) => (
+                    <li key={a.id}>
+                      Parça #{a.part_id} → {a.material_name}
+                      {a.material_category ? ` (${a.material_category})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {showCustomMaterialForm && (
+            <div className="material-custom">
+              <p className="material-assignments-title">Özel malzeme</p>
+              <label className="mesh-field material-field">
+                <span>Ad</span>
+                <input
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="Örn. OzelCelik"
+                />
+              </label>
+              <div className="material-custom-grid">
+                <label className="mesh-field">
+                  <span>E (GPa)</span>
+                  <input value={customE} onChange={(e) => setCustomE(e.target.value)} />
+                </label>
+                <label className="mesh-field">
+                  <span>ν</span>
+                  <input value={customNu} onChange={(e) => setCustomNu(e.target.value)} />
+                </label>
+                <label className="mesh-field">
+                  <span>ρ</span>
+                  <input value={customRho} onChange={(e) => setCustomRho(e.target.value)} />
+                </label>
+                <label className="mesh-field">
+                  <span>Rp0.2 (MPa)</span>
+                  <input value={customFy} onChange={(e) => setCustomFy(e.target.value)} />
+                </label>
+                <label className="mesh-field">
+                  <span>Rm (MPa)</span>
+                  <input value={customRm} onChange={(e) => setCustomRm(e.target.value)} />
+                </label>
+              </div>
+              <label className="material-check">
+                <input
+                  type="checkbox"
+                  checked={snEstimate}
+                  onChange={(e) => setSnEstimate(e.target.checked)}
+                />
+                Oluştururken tahmini S-N ekle
+              </label>
+              <button
+                type="button"
+                className="material-secondary-button"
+                disabled={busyAction !== null}
+                onClick={() => void handleCreateCustomMaterial()}
+              >
+                {busyAction === "create-material" ? "Ekleniyor…" : "Özel malzeme ekle"}
+              </button>
+            </div>
+            )}
+          </>
+        )}
+      </div>
+      )}
+
+      {analysisTab === "durability" && (
+      <>
+      {expandedSteps.has("bc") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · CalculiX</span>
+        <h1>Solver / BC</h1>
+        {meshResult && (
+          <div className="bc-mesh-summary">
+            <p>
+              <span>element size</span>
+              {meshResult.element_size} mm
+            </p>
+            <p>
+              <span>scheme</span>
+              {meshResult.dimension === 2 ? "2D · " : "3D · "}
+              {meshResult.element_scheme}
+            </p>
+          </div>
+        )}
+        <p className="lead material-lead">
+          Mesh elemanına tıklayın → BC türü seçin → ekleyin.
+        </p>
+
+        <div className="bc-add-card">
+          {showMesh && meshPicks.length > 0 && (
+            <p className="material-assign-hint">
+              Mesh seçim: {meshGrow} · yüzey{" "}
+              {[...new Set(meshPicks.map((p) => p.faceId))].join(", ")} · parça{" "}
+              {meshPartIds.join(", ")}
+            </p>
+          )}
+
+          <p className="material-assignments-title">BC türü</p>
+          <div className="bc-button-row">
+            {(
+              [
+                "fixed",
+                "cload",
+                "pressure",
+                "displacement",
+                "sliding",
+                "bearing",
+                "gravity",
+                "rigid_body",
+              ] as BcKind[]
+            ).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={`bc-add-button${bcDraftKind === kind ? " active" : ""}`}
+                disabled={busyAction !== null}
+                onClick={() => {
+                  if (kind === "rigid_body") {
+                    const meshFaceIds =
+                      showMesh && meshPicks.length > 0
+                        ? [...new Set(meshPicks.map((p) => p.faceId).filter((id) => id > 0))]
+                        : [];
+                    const cadFaceIds = mode === "surface" ? [...selection.ids] : [];
+                    const cadEdgeIds = mode === "edge" ? [...selection.ids] : [];
+                    setRigidSlave({
+                      faces: cadFaceIds.length ? cadFaceIds : meshFaceIds,
+                      edges: cadEdgeIds,
+                    });
+                  }
+                  setBcDraftKind(kind);
+                }}
+              >
+                {BC_KIND_LABELS[kind]}
+              </button>
+            ))}
+          </div>
+          <p className="material-assign-hint">{BC_KIND_HINTS[bcDraftKind]}</p>
+
+        {bcDraftKind === "cload" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Fx</span>
+              <input value={bcFx} onChange={(e) => setBcFx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Fy</span>
+              <input value={bcFy} onChange={(e) => setBcFy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Fz</span>
+              <input value={bcFz} onChange={(e) => setBcFz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "pressure" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>|P|</span>
+              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dx</span>
+              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dy</span>
+              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>dz</span>
+              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "displacement" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Ux</span>
+              <input value={bcUx} onChange={(e) => setBcUx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Uy</span>
+              <input value={bcUy} onChange={(e) => setBcUy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Uz</span>
+              <input value={bcUz} onChange={(e) => setBcUz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "sliding" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Nx</span>
+              <input value={bcNx} onChange={(e) => setBcNx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ny</span>
+              <input value={bcNy} onChange={(e) => setBcNy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Nz</span>
+              <input value={bcNz} onChange={(e) => setBcNz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "bearing" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>Büyüklük</span>
+              <input value={bcMagnitude} onChange={(e) => setBcMagnitude(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis x</span>
+              <input value={bcAx} onChange={(e) => setBcAx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis y</span>
+              <input value={bcAy} onChange={(e) => setBcAy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Axis z</span>
+              <input value={bcAz} onChange={(e) => setBcAz(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {bcDraftKind === "gravity" && (
+          <div className="bc-fields">
+            <label className="mesh-field">
+              <span>gx</span>
+              <input value={bcGx} onChange={(e) => setBcGx(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>gy</span>
+              <input value={bcGy} onChange={(e) => setBcGy(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>gz</span>
+              <input value={bcGz} onChange={(e) => setBcGz(e.target.value)} />
+            </label>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="material-assign-button bc-add-confirm"
+          disabled={busyAction !== null}
+          onClick={() => handleAddBc(bcDraftKind)}
+        >
+          Listeye ekle
+        </button>
+        </div>
+
+        {bcList.length > 0 && (
+          <div className="material-assignments">
+            <div className="bc-list-header">
+              <p className="material-assignments-title">BC LİSTESİ</p>
+              <span className="bc-list-count">{bcList.length}</span>
+            </div>
+            <ul className="bc-card-list">
+              {bcList.map((b, i) => (
+                <li key={b.id} className={i === 0 ? "bc-card bc-card-first" : "bc-card"}>
+                  <span>{b.summary}</span>
+                  <button
+                    type="button"
+                    className="bc-remove-button"
+                    onClick={() => handleRemoveBc(b.id)}
+                    title="Kaldır"
+                  >
+                    ⋯
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="bc-type-hint">
+              Fixed · Force · Pressure · Displacement · Sliding · Bearing · Gravity
+            </p>
+          </div>
+        )}
+
+        <label className="material-check">
+          <input
+            type="text"
+            className="group-name-input"
+            placeholder="Case adı (opsiyonel, örn. '9kN - orijinal')"
+            value={caseNameInput}
+            onChange={(e) => setCaseNameInput(e.target.value)}
+          />
+        </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={runCcx}
+            onChange={(e) => setRunCcx(e.target.checked)}
+          />
+          ccx çalıştır (kuruluysa)
+        </label>
+        <button
+          type="button"
+          className="material-assign-button"
+          disabled={
+            busyAction !== null ||
+            geometryId === null ||
+            meshResult === null ||
+            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+          }
+          onClick={() => void handleSolve()}
+        >
+          {busyAction === "solve" ? "Üretiliyor…" : ".inp üret / çöz"}
+        </button>
+        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
+          <p className="material-assign-hint">
+            ⚠ En az bir Fixed / Displacement / Sliding BC eklemeden çözülemez —
+            aksi halde model boşlukta asılı kalır (rijit cisim hareketi).
+          </p>
+        )}
+      </div>
+      )}
+      </>
+      )}
+
+      {analysisTab === "modal" && (
+      <>
+      {expandedSteps.has("modal") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · CalculiX</span>
+        <h1>Modal</h1>
+        <p className="lead material-lead">
+          Aynı mesh, malzeme ve mesnetler kullanılır. Yükler (Force / Pressure /
+          Gravity) modal step’e yazılmaz. Sonuç: doğal frekans listesi + son
+          modun şekli viewer’da.
+        </p>
+        <div className="bc-mesh-summary">
+          <p>
+            <span>mesnet</span>
+            {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length}
+          </p>
+          <p>
+            <span>mesh</span>
+            {meshResult ? `${meshResult.dimension === 2 ? "2D" : "3D"}` : "yok"}
+          </p>
+        </div>
+
+        <div className="bc-add-card">
+          <p className="material-assignments-title">MESNET EKLE</p>
+          <p className="material-assign-hint">
+            Modal analiz sadece kısıt (mesnet) kullanır — yük gerekmez. Mesh
+            elemanına tıklayın (Face = tüm yüzey), sonra ekleyin.
+          </p>
+          <button
+            type="button"
+            className="material-assign-button"
+            disabled={busyAction !== null}
+            onClick={() => handleAddBc("fixed")}
+          >
+            + Fixed Mesnet Ekle
+          </button>
+        </div>
+
+        {bcList.filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding").length > 0 && (
+          <div className="material-assignments">
+            <div className="bc-list-header">
+              <p className="material-assignments-title">MESNETLER</p>
+            </div>
+            <ul className="bc-card-list">
+              {bcList
+                .filter((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+                .map((b) => (
+                  <li key={b.id} className="bc-card">
+                    <span>{b.summary}</span>
+                    <button
+                      type="button"
+                      className="bc-remove-button"
+                      onClick={() => handleRemoveBc(b.id)}
+                      title="Kaldır"
+                    >
+                      ⋯
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
+        <label className="mesh-field">
+          <span>Mod sayısı</span>
+          <input
+            type="number"
+            min={1}
+            max={200}
+            step={1}
+            value={modalNModes}
+            onChange={(e) => setModalNModes(e.target.value)}
+            disabled={busyAction !== null}
+          />
+        </label>
+        <div className="bc-fields">
+          <label className="mesh-field">
+            <span>f min (Hz, opsiyonel)</span>
+            <input
+              value={modalFreqMin}
+              onChange={(e) => setModalFreqMin(e.target.value)}
+              disabled={busyAction !== null}
+              placeholder="—"
+            />
+          </label>
+          <label className="mesh-field">
+            <span>f max (Hz, opsiyonel)</span>
+            <input
+              value={modalFreqMax}
+              onChange={(e) => setModalFreqMax(e.target.value)}
+              disabled={busyAction !== null}
+              placeholder="—"
+            />
+          </label>
+        </div>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={runCcx}
+            onChange={(e) => setRunCcx(e.target.checked)}
+          />
+          ccx çalıştır (kuruluysa)
+        </label>
+        <button
+          type="button"
+          className="material-assign-button"
+          disabled={
+            busyAction !== null ||
+            geometryId === null ||
+            meshResult === null ||
+            !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+          }
+          onClick={() => void handleModalSolve()}
+        >
+          {busyAction === "modal" ? "Üretiliyor…" : "Modal çöz"}
+        </button>
+        {!bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding") && (
+          <p className="material-assign-hint">
+            ⚠ Önce 4 · BOUNDARY CONDITIONS’dan en az bir mesnet ekleyin.
+          </p>
+        )}
+        {modalFrequencies.length > 0 && <FrequencyLinePlot frequencies={modalFrequencies} />}
+        {(resultsPreview?.modes?.length ?? 0) > 0 && (
+          <div className="material-assignments">
+            <p className="material-assignments-title">
+              Mod şekilleri ({resultsPreview?.modes?.length})
+            </p>
+            <p className="material-assign-hint">
+              Her kart bir doğal mod. Göster: 3B kontur. Animasyon: ± salınım.
+            </p>
+            <button
+              type="button"
+              className="vf-btn"
+              onClick={() => {
+                setModalGridOpen((prev) => !prev);
+                setModalGridFocus(null);
+              }}
+              title="Tüm modları tek sayfada yan yana göster"
+            >
+              {modalGridOpen ? "Izgarayı kapat" : `Tüm modları göster (${resultsPreview?.modes?.length})`}
+            </button>
+            <div className="mode-card-grid">
+              {resultsPreview?.modes?.map((mode, i) => (
+                <div
+                  key={`mode-${mode.index}`}
+                  className={
+                    i === selectedModalMode ? "mode-card mode-card-active" : "mode-card"
+                  }
+                >
+                  <ModeShapeThumb
+                    nodes={resultsPreview.nodes}
+                    vectors={mode.displacement_vectors}
+                  />
+                  <div className="mode-card-meta">
+                    <strong>Mode {mode.index}</strong>
+                    <span>
+                      {mode.frequency_hz != null
+                        ? `${mode.frequency_hz.toPrecision(5)} Hz`
+                        : "f —"}
+                    </span>
+                  </div>
+                  <div className="mode-card-actions">
+                    <button type="button" className="vf-btn" onClick={() => showModalMode(i)}>
+                      Göster
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        resultsAnimating && selectedModalMode === i
+                          ? "vf-btn vf-active"
+                          : "vf-btn"
+                      }
+                      onClick={() =>
+                        resultsAnimating && selectedModalMode === i
+                          ? setResultsAnimating(false)
+                          : playModalMode(i)
+                      }
+                    >
+                      {resultsAnimating && selectedModalMode === i ? "Durdur" : "Animasyon"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {solveResult?.analysis_type === "modal" && modalFrequencies.length === 0 && (
+          <p className="material-assign-hint">
+            {solveResult.solver_ran
+              ? "Frekans tablosu .dat’dan okunamadı; .inp / log’a bakın."
+              : "inp üretildi. Frekans listesi için ccx’i işaretleyip tekrar çözün."}
+          </p>
+        )}
+      </div>
+      )}
+      </>
+      )}
+
+      {analysisTab === "crash" && (
+      <>
+      {expandedSteps.has("bc") && (
+        <CrashPanel
+          geometryId={geometryId}
+          meshDimension={meshResult?.dimension ?? null}
+        />
+      )}
+      </>
+      )}
+
+      {analysisTab !== "crash" && (
+      <>
+      {expandedSteps.has("results") && (
+      <div className="panel material-panel">
+        <span className="eyebrow">Faz 0 · Sonuç</span>
+        <h1>Results</h1>
+        {surrogateMeta && (
+          <p className="surrogate-banner" role="status">
+            {surrogateMeta.message}
+          </p>
+        )}
+        {!solveResult && (
+          <p className="lead material-lead">
+            Henüz çözüm yok — statik için "4 · BOUNDARY CONDITIONS", modal için
+            "5 · MODAL" adımından çözün. Sonuç görselleştirmesi 3B görünümün
+            üzerindeki panellerde belirir.
+          </p>
+        )}
+        {solveResult && (
+          <div className="material-assignments">
+            <p className="material-assignments-title">Sonuç</p>
+            <p className="material-assign-hint">{solveResult.message}</p>
+            <p className="material-assign-hint">
+              MATERIAL={String(solveResult.cards.has_material)} · SECTION=
+              {String(solveResult.cards.has_section)} · ccx=
+              {String(solveResult.ccx_available)} · ran=
+              {String(solveResult.solver_ran)}
+            </p>
+            <a className="material-inp-link" href={`http://localhost:8000${solveResult.inp_url}`} target="_blank" rel="noreferrer">
+              .inp indir
+            </a>
+
+            {solveResult.analytic_comparison && (
+              <AnalyticComparisonPanel comparison={solveResult.analytic_comparison} />
+            )}
+
+            {resultsPreview && solveResult.analysis_type !== "modal" && (
+              <>
+                <ResultsStatsTable
+                  label="Von Mises (MPa)"
+                  values={resultsPreview.von_mises}
+                />
+                <ResultsHistogram
+                  label="Von Mises dağılımı"
+                  values={resultsPreview.von_mises}
+                  color="#e05a3b"
+                />
+                <ResultsStatsTable
+                  label="Deplasman (mm)"
+                  values={resultsPreview.displacement_magnitude}
+                />
+                <ResultsHistogram
+                  label="Deplasman dağılımı"
+                  values={resultsPreview.displacement_magnitude}
+                  color="#2f7fd1"
+                />
+              </>
+            )}
+            {resultsPreview && solveResult.analysis_type === "modal" && displayResultsPreview && (
+              <>
+                <p className="material-assign-hint">
+                  Seçili mod {selectedModalMode + 1}
+                  {resultsPreview.modes?.[selectedModalMode]?.frequency_hz != null
+                    ? ` · ${resultsPreview.modes[selectedModalMode].frequency_hz.toPrecision(5)} Hz`
+                    : ""}
+                  . Görseller ve animasyon: 5 · MODAL.
+                </p>
+                <ResultsStatsTable
+                  label="Mod şekli |U| (mm)"
+                  values={displayResultsPreview.displacement_magnitude}
+                />
+                <ResultsHistogram
+                  label="Mod şekli dağılımı"
+                  values={displayResultsPreview.displacement_magnitude}
+                  color="#2f7fd1"
+                />
+              </>
+            )}
+
+            <p className="material-assign-hint" style={{ marginTop: 8 }}>
+              3B renk skalası ve deformasyon kontrolleri, görünümün üzerindeki
+              yüzen panellerde (sağ üst/alt köşeler).
+            </p>
+          </div>
+        )}
+      </div>
+      )}
+      </>
+      )}
+
+        </div>
+        <div className="step-sidebar-nav">
+          <button
+            type="button"
+            className="step-nav-back"
+            disabled={activeStepIndex <= 0}
+            onClick={() => goToStep(stepOrder[activeStepIndex - 1])}
+          >
+            ‹ Geri
+          </button>
+          <button
+            type="button"
+            className="step-nav-next"
+            disabled={activeStepIndex >= stepOrder.length - 1}
+            onClick={() => goToStep(stepOrder[activeStepIndex + 1])}
+          >
+            İleri ›
+          </button>
+        </div>
+      </aside>
+
+      {templateBcRegions && (
+        <div className="template-bc-backdrop">
+          <div className="template-bc-modal">
+            <div className="template-bc-modal-head">
+              <span className="eyebrow">Şablon · Sınır koşulları</span>
+              <h1>Sınır koşullarını tanımla</h1>
+              {templateBcTemplateId && <TemplateSchematic templateId={templateBcTemplateId} />}
+              <p className="lead material-lead">
+                Şablon şu bölgeleri tanımladı — her biri için uygun sınır koşulunu ekleyebilirsin.
+              </p>
+            </div>
+            {Object.entries(templateBcRegions).map(([regionName, faceIds]) => {
+              const added = templateBcAdded.has(regionName);
+              const fixedRegion = isFixedRegionName(regionName);
+              const inputs = templateBcInputs[regionName] ?? { fx: "0", fy: "0", fz: "-1000" };
+              return (
+                <div className="template-bc-row" key={regionName}>
+                  <div className="template-bc-row-head">
+                    <span className="template-bc-row-name">{regionName}</span>
+                    <span className="tag tag-neutral">{faceIds.length} yüzey</span>
+                    <span className="tag tag-outline">
+                      {fixedRegion ? "Fixed" : "CLOAD (Fx/Fy/Fz)"}
+                    </span>
+                  </div>
+                  {!fixedRegion && (
+                    <div className="bc-fields">
+                      <label className="mesh-field">
+                        <span>Fx</span>
+                        <input
+                          value={inputs.fx}
+                          disabled={added}
+                          onChange={(e) =>
+                            setTemplateBcInputs((prev) => ({
+                              ...prev,
+                              [regionName]: { ...inputs, fx: e.target.value },
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="mesh-field">
+                        <span>Fy</span>
+                        <input
+                          value={inputs.fy}
+                          disabled={added}
+                          onChange={(e) =>
+                            setTemplateBcInputs((prev) => ({
+                              ...prev,
+                              [regionName]: { ...inputs, fy: e.target.value },
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="mesh-field">
+                        <span>Fz</span>
+                        <input
+                          value={inputs.fz}
+                          disabled={added}
+                          onChange={(e) =>
+                            setTemplateBcInputs((prev) => ({
+                              ...prev,
+                              [regionName]: { ...inputs, fz: e.target.value },
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={added}
+                    onClick={() => handleAddTemplateBc(regionName, faceIds)}
+                  >
+                    {added ? "Eklendi ✓" : fixedRegion ? "Fixed olarak ekle" : "Uygula"}
+                  </button>
+                </div>
+              );
+            })}
+            <div className="template-bc-modal-actions">
+              <button type="button" className="geo-dropzone-btn geo-dropzone-btn-secondary" onClick={() => setTemplateBcRegions(null)}>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="history-footer" style={{ height: `${historyHeight}px` }}>
+        <div
+          className="resize-handle resize-handle-top"
+          role="separator"
+          aria-orientation="horizontal"
+          title="Sürükleyerek yüksekliği ayarla"
+          onMouseDown={(e) =>
+            startVerticalResize(e, historyHeight, setHistoryHeight, -1, 72, 640)
+          }
+        />
+        <span className="eyebrow">Faz 0 · Geçmiş</span>
+        <h1>Analiz Geçmişi ({runsHistory.length})</h1>
+        <p className="lead">
+          Satıra tıklayınca incelersiniz. Düzenle tüm adımları geri yükler; Sil kaydı kaldırır.
+          Karşılaştırmak için soldan 2 run işaretleyin.
+        </p>
+        {runsHistory.length === 0 ? (
+          <p className="material-assign-hint">Henüz kayıtlı analiz yok.</p>
+        ) : (
+          <ul className="history-list">
+            {runsHistory.map((r) => (
+              <li key={r.id} className="history-item">
+                <label className="history-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={compareSelection.includes(r.id)}
+                    onChange={() => toggleCompareSelection(r.id)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="history-item-body"
+                  onClick={() => {
+                    setReviewRunId(r.id);
+                    setViewMode("review");
+                  }}
+                >
+                  <div className="history-item-title">
+                    {r.name ?? `Run #${r.id}`}{" "}
+                    <span className={`history-status history-status-${r.status}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <div className="history-item-sub">
+                    {r.geometry_filename} · {r.dimension === 2 ? "2D" : "3D"} ·{" "}
+                    {new Date(r.created_at).toLocaleString("tr-TR")}
+                  </div>
+                  {r.scalars.max_von_mises !== undefined && (
+                    <div className="history-item-scalar">
+                      VM max: {r.scalars.max_von_mises.toExponential(2)} · Deplasman max:{" "}
+                      {r.scalars.max_displacement?.toExponential(2) ?? "—"}
+                    </div>
+                  )}
+                </button>
+                <div className="history-item-actions">
+                  <button
+                    type="button"
+                    className="history-action-button"
+                    disabled={busyAction !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleOpenRunForEdit(r.id);
+                    }}
+                  >
+                    {busyAction === "load-run" ? "Yükleniyor…" : "Düzenle"}
+                  </button>
+                  <button
+                    type="button"
+                    className="history-action-button history-action-button-danger"
+                    disabled={busyAction !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteRun(r.id, r.name ?? `Run #${r.id}`);
+                    }}
+                  >
+                    Sil
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {compareSelection.length === 2 && (
+          <button
+            type="button"
+            className="material-assign-button"
+            onClick={() => setViewMode("compare")}
+          >
+            İki Case'i Karşılaştır (Split-Screen)
+          </button>
+        )}
+      </div>
+
+      <div className="status-bar">
+        <span className="status-bar-group">
+          <span className="status-bar-item">
+            <span className="status-bar-key">parça</span>
+            {partCount ?? "—"}
+          </span>
+          <span className="status-bar-item">
+            <span className="status-bar-key">yüzey</span>
+            {faceCount ?? "—"}
+          </span>
+          <span className="status-bar-item">
+            <span className="status-bar-key">kenar / nokta</span>
+            {edges.length} / {points.length}
+          </span>
+          {meshResult && (
+            <span className="status-bar-item">
+              <span className="status-bar-key">mesh</span>
+              {meshResult.node_count} düğüm · {meshResult.element_count} eleman ·{" "}
+              {meshResult.element_scheme}
+            </span>
+          )}
+          <span className="status-bar-item">
+            <span className="status-bar-key">birim</span>
+            mm
+          </span>
+        </span>
+        <span className="status-bar-group status-bar-right">
+          {selection.ids.length > 0 && (
+            <span className="status-bar-item">{describeSelection(selection)}</span>
+          )}
+        </span>
       </div>
     </main>
   );

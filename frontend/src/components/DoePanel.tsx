@@ -34,9 +34,20 @@ function formatCounts(counts: Record<string, number> | undefined): string {
     .join(" · ");
 }
 
-export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
+export default function DoePanel({
+  refreshKey,
+  onInspectRun,
+  onEditRun,
+}: {
+  refreshKey?: number;
+  /** Bir DOE vakasının çözümünü inceleme ekranında açar. */
+  onInspectRun?: (runId: number) => void;
+  /** Bir DOE vakasını tezgaha geri yükler (tüm adımlar düzenlenebilir). */
+  onEditRun?: (runId: number) => void;
+}) {
   const [studies, setStudies] = useState<DoeStudyInfo[]>([]);
   const [qualityById, setQualityById] = useState<Record<number, DoeQualityInfo>>({});
+  const [expandedStudyId, setExpandedStudyId] = useState<number | null>(null);
   const [nSamples, setNSamples] = useState("8");
   const [seed, setSeed] = useState("42");
   const [runSolver, setRunSolver] = useState(false);
@@ -202,17 +213,91 @@ export default function DoePanel({ refreshKey }: { refreshKey?: number }) {
         <ul className="doe-study-list">
           {studies.slice(0, 5).map((st) => {
             const q = qualityById[st.id];
+            const expanded = expandedStudyId === st.id;
             return (
               <li key={st.id}>
-                <strong>#{st.id}</strong> {st.status} · {st.n_cases} örnek
-                {st.message ? ` · ${st.message}` : ""}
-                {q ? (
-                  <span className="doe-quality">
-                    {" "}
-                    · kalite ok:{q.n_ok}
-                    {formatCounts(q.counts) ? ` · ${formatCounts(q.counts)}` : ""}
-                  </span>
-                ) : null}
+                <button
+                  type="button"
+                  className="doe-study-head"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedStudyId(expanded ? null : st.id)}
+                >
+                  <span className="doe-study-caret">{expanded ? "▾" : "▸"}</span>
+                  <strong>#{st.id}</strong> {st.status} · {st.n_cases} örnek
+                  {st.message ? ` · ${st.message}` : ""}
+                  {q ? (
+                    <span className="doe-quality">
+                      {" "}
+                      · kalite ok:{q.n_ok}
+                      {formatCounts(q.counts) ? ` · ${formatCounts(q.counts)}` : ""}
+                    </span>
+                  ) : null}
+                </button>
+
+                {expanded && (
+                  <div className="doe-case-table">
+                    {st.cases.length === 0 ? (
+                      <p className="material-assign-hint">Bu çalışmada vaka yok.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>parametreler</th>
+                            <th>eleman</th>
+                            <th>durum</th>
+                            <th aria-label="işlemler" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {st.cases.map((c) => (
+                            <tr key={c.id}>
+                              <td>{c.index}</td>
+                              <td className="doe-case-params">
+                                {Object.entries(c.geometry_params)
+                                  .map(([k, v]) => `${k} ${v}`)
+                                  .join(" · ") || "—"}
+                              </td>
+                              <td>{c.element_size}</td>
+                              <td>
+                                <span className={`doe-case-status doe-case-status-${c.status}`}>
+                                  {c.status}
+                                </span>
+                                {c.message ? (
+                                  <span className="doe-case-message"> · {c.message}</span>
+                                ) : null}
+                              </td>
+                              <td className="doe-case-actions">
+                                {c.run_id !== null ? (
+                                  <>
+                                    {onInspectRun && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onInspectRun(c.run_id as number)}
+                                      >
+                                        İncele
+                                      </button>
+                                    )}
+                                    {onEditRun && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onEditRun(c.run_id as number)}
+                                      >
+                                        Düzenle
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="material-assign-hint">çözüm yok</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
