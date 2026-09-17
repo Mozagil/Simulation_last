@@ -14,6 +14,10 @@ import {
   parseParamInputs,
   type JsonSchema,
 } from "../templates/schemaForm";
+import TemplateLoadDialog, {
+  applyLoadInputs,
+  loadInputsFromBcs,
+} from "./TemplateLoadDialog";
 import TemplateSchematic from "./TemplateSchematic";
 
 interface TemplatePanelProps {
@@ -21,6 +25,9 @@ interface TemplatePanelProps {
   geometryFilename: string | null;
   busy: boolean;
   onCreated: (result: CreateFromTemplateResponse) => Promise<void> | void;
+  /** Seçili şablon değişince haber ver — DOE paneli bunu izliyor, böylece
+   * kullanıcı tek yerden şablon seçiyor. */
+  onTemplateSelected?: (templateId: string) => void;
 }
 
 export default function TemplatePanel({
@@ -28,6 +35,7 @@ export default function TemplatePanel({
   geometryFilename,
   busy,
   onCreated,
+  onTemplateSelected,
 }: TemplatePanelProps) {
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -35,6 +43,10 @@ export default function TemplatePanel({
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Onay penceresi: parametreler doğrulandıktan sonra açılır, kullanıcı yük
+  // değerlerini girer. Geometri ancak onaydan sonra üretilir.
+  const [pending, setPending] = useState<{ params: Record<string, number | string> } | null>(null);
+  const [loadInputs, setLoadInputs] = useState<Record<string, string>>({});
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
   const fields = useMemo(
@@ -62,24 +74,45 @@ export default function TemplatePanel({
         setTemplates(list);
         if (list.length) {
           setSelectedId(list[0].id);
+          onTemplateSelected?.(list[0].id);
           fillDefaults(list[0]);
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Şablonlar alınamadı."));
   }, []);
 
-  async function handleCreate() {
+  function handleOpenDialog() {
     if (!selected) return;
     const parsed = parseParamInputs(inputs, enums.map((e) => e.name));
     if (typeof parsed === "string") {
       setError(parsed);
       return;
     }
+    setError(null);
+    setLoadInputs(loadInputsFromBcs(selected.default_bcs ?? []));
+    setPending({ params: parsed });
+  }
+
+  async function handleConfirm() {
+    if (!selected || !pending) return;
+    // Önce girdileri doğrula: şablonun (id'siz) BC listesi üzerinde. Geometri
+    // üretmeden hata vermek, yarım kayıt bırakmamak için.
+    const check = applyLoadInputs(selected.default_bcs ?? [], loadInputs);
+    if (typeof check === "string") {
+      setError(check);
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
-      const result = await createGeometryFromTemplate(selected.id, parsed);
-      await onCreated(result);
+      const result = await createGeometryFromTemplate(selected.id, pending.params);
+      // Sunucudan gelen BC'ler gerçek yüzey/kenar id'leriyle bağlı; kullanıcının
+      // girdiği yük değerlerini bunların üzerine uygula (sıra aynı şablondan gelir).
+      const bound = applyLoadInputs(result.default_bcs ?? [], loadInputs);
+      await onCreated(
+        typeof bound === "string" ? result : { ...result, default_bcs: bound },
+      );
+      setPending(null);
     } catch (e) {
       setError(e instanceof TemplateApiError ? e.message : "Şablon üretilemedi.");
     } finally {
@@ -115,6 +148,7 @@ export default function TemplatePanel({
           onChange={(e) => {
             const id = e.target.value;
             setSelectedId(id);
+            onTemplateSelected?.(id);
             const t = templates.find((x) => x.id === id);
             if (t) fillDefaults(t);
           }}
@@ -148,6 +182,8 @@ export default function TemplatePanel({
         <label key={f.name} className="mesh-field">
           <span>
             {f.label}
+            {/* Şemadaki harf: kullanıcı hangi ölçü olduğunu tahmin etmesin. */}
+            {f.symbol ? <em className="param-symbol">{f.symbol}</em> : null}
             {f.unit ? ` (${f.unit})` : ""}
           </span>
           <input
@@ -161,8 +197,8 @@ export default function TemplatePanel({
         </label>
       ))}
       <div className="template-panel-actions">
-        <button type="button" disabled={disabled || !selected} onClick={() => void handleCreate()}>
-          {creating ? "Üretiliyor…" : "Geometri üret"}
+        <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
+          Model üret
         </button>
         <button
           type="button"
@@ -172,10 +208,28 @@ export default function TemplatePanel({
           {downloading ? "İndiriliyor…" : "STEP indir"}
         </button>
       </div>
-      {error && (
+      {error && !pending && (
         <p className="error-message" role="alert">
           {error}
         </p>
+      )}
+      {selected && pending && (
+        <TemplateLoadDialog
+          template={selected}
+          params={inputs}
+          bcs={selected.default_bcs ?? []}
+          inputs={loadInputs}
+          busy={creating}
+          error={error}
+          onInputChange={(key, value) =>
+            setLoadInputs((prev) => ({ ...prev, [key]: value }))
+          }
+          onCancel={() => {
+            setPending(null);
+            setError(null);
+          }}
+          onConfirm={() => void handleConfirm()}
+        />
       )}
     </div>
   );

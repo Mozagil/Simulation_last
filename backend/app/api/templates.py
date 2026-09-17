@@ -18,6 +18,8 @@ from app.templates import (
     GeometryTemplate,
     TemplateError,
     UnknownTemplateError,
+    bind_region_bcs,
+    get_template,
     list_templates,
 )
 from app.templates.service import create_geometry_from_template
@@ -43,6 +45,11 @@ def _template_payload(t: GeometryTemplate) -> dict[str, Any]:
             for r in t.regions
         ],
         "has_analytic": t.analytic is not None,
+        # Bölge adıyla bağlı referans BC'ler (id'siz); DOE senaryosu için de girdi.
+        "default_bcs": [dict(bc) for bc in t.default_bcs],
+        # Oranlı mesh boyutu için: arayüz formu bu aralığı önceden doldurur.
+        "default_element_ratio": list(t.default_element_ratio),
+        "has_characteristic_length": t.characteristic_length is not None,
     }
 
 
@@ -72,8 +79,16 @@ def create_from_template(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     step_path = UPLOAD_DIR / geo.current_filename
+    # Varsayılan BC'ler bu geometrinin gerçek yüzey/kenar id'leriyle; arayüz
+    # bunları BC listesine hazır koyar, kullanıcı düzenler.
+    try:
+        default_bcs = bind_region_bcs(get_template(template_id), regions)
+    except TemplateError as exc:
+        logger.warning("default_bcs bağlanamadı (%s): %s", template_id, exc)
+        default_bcs = []
     return {
         "geometry_id": geo.id,
+        "default_bcs": default_bcs,
         "original_filename": geo.original_filename,
         "current_filename": geo.current_filename,
         "template_id": geo.template_id,

@@ -25,9 +25,9 @@ REGION_UDL = "yuk_yayili"
 class SimplySupportedBeamParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm"})
-    thickness: float = Field(10.0, gt=0, description="Kesit kalınlığı T (y, yük yönü)", json_schema_extra={"unit": "mm"})
-    width: float = Field(50.0, gt=0, description="Kesit genişliği W (z)", json_schema_extra={"unit": "mm"})
+    length: float = Field(500.0, gt=0, description="Kiriş uzunluğu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    thickness: float = Field(10.0, gt=0, description="Kesit kalınlığı T (y, yük yönü)", json_schema_extra={"unit": "mm", "symbol": "T"})
+    width: float = Field(50.0, gt=0, description="Kesit genişliği W (z)", json_schema_extra={"unit": "mm", "symbol": "W"})
 
     @model_validator(mode="after")
     def _beam_like(self) -> "SimplySupportedBeamParams":
@@ -117,5 +117,14 @@ SIMPLY_SUPPORTED_BEAM = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: kesit kalınlığı.
+    characteristic_length=lambda p: p.thickness,
+    default_element_ratio=(0.5, 1.2),
+    default_bcs=(
+        # Basit mesnet: sol uç uy=uz=0 ve ux=0 (sabit mesnet), sağ uç uy=uz=0 (kayıcı).
+        {"type": "displacement", "region": REGION_LEFT, "dofs": {"1": 0.0, "2": 0.0, "3": 0.0}},
+        {"type": "displacement", "region": REGION_RIGHT, "dofs": {"2": 0.0, "3": 0.0}},
+        {"type": "cload", "region": REGION_MID_LOAD, "fx": 0.0, "fy": -500.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "egilme"),
 )

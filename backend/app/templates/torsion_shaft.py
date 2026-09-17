@@ -22,8 +22,8 @@ REGION_TORQUE = "yuk_burulma"
 class TorsionShaftParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(100.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm"})
-    radius: float = Field(10.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm"})
+    length: float = Field(100.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    radius: float = Field(10.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm", "symbol": "R"})
 
     @model_validator(mode="after")
     def _slender(self) -> "TorsionShaftParams":
@@ -91,5 +91,15 @@ TORSION_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: mil yarıçapı.
+    characteristic_length=lambda p: p.radius,
+    default_element_ratio=(0.25, 0.5),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # NOT: CLOAD tek yönlü vektördür; çember üzerinde gerçek teğetsel dağılım
+        # (tork) için solver'da tork BC'si gerekir (bkz. ROADMAP 0.4.7). Şimdilik
+        # analitik tablonun varsaydığı büyüklük (T = F·R) ile başlangıç değeri.
+        {"type": "cload", "region": REGION_TORQUE, "fx": 0.0, "fy": 0.0, "fz": 500.0},
+    ),
     tags=("grup1", "analitik", "burulma"),
 )

@@ -14,6 +14,11 @@ export interface RunSummary {
   id: number;
   geometry_id: number;
   geometry_filename: string | null;
+  /** Şablondan üretilen geometrilerde şablon kimliği; yüklenen STEP'te null. */
+  template_id: string | null;
+  /** Şablon parametreleri (L, T, W …) — DOE'de hangi kombinasyonun hangi
+   * sonucu verdiğini okumak için. */
+  template_params: Record<string, number | string> | null;
   name: string | null;
   created_at: string;
   dimension: number;

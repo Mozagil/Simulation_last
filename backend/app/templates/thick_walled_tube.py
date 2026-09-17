@@ -19,9 +19,9 @@ REGION_OUTER = "dis_cidar"
 class ThickWalledTubeParams(BaseModel):
     """Tüm boyutlar mm."""
 
-    length: float = Field(100.0, gt=0, description="Boru boyu L (x)", json_schema_extra={"unit": "mm"})
-    inner_radius: float = Field(10.0, gt=0, description="İç yarıçap a", json_schema_extra={"unit": "mm"})
-    outer_radius: float = Field(20.0, gt=0, description="Dış yarıçap b", json_schema_extra={"unit": "mm"})
+    length: float = Field(100.0, gt=0, description="Boru boyu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    inner_radius: float = Field(10.0, gt=0, description="İç yarıçap a", json_schema_extra={"unit": "mm", "symbol": "a"})
+    outer_radius: float = Field(20.0, gt=0, description="Dış yarıçap b", json_schema_extra={"unit": "mm", "symbol": "b"})
 
     @model_validator(mode="after")
     def _thick_wall(self) -> "ThickWalledTubeParams":
@@ -101,5 +101,12 @@ THICK_WALLED_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: cidar kalınlığı — Lamé gradyanı cidar boyunca.
+    characteristic_length=lambda p: p.outer_radius - p.inner_radius,
+    default_element_ratio=(0.2, 0.5),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "pressure", "region": REGION_INNER, "magnitude": 10.0},
+    ),
     tags=("grup1", "analitik", "lame"),
 )

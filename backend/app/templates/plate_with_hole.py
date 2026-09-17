@@ -24,16 +24,16 @@ class PlateWithHoleParams(BaseModel):
     """Tüm boyutlar mm."""
 
     height: float = Field(
-        200.0, gt=0, description="Plaka uzunluğu H (çekme yönü, x)", json_schema_extra={"unit": "mm"}
+        200.0, gt=0, description="Plaka uzunluğu H (çekme yönü, x)", json_schema_extra={"unit": "mm", "symbol": "H"}
     )
     width: float = Field(
-        100.0, gt=0, description="Plaka genişliği W (y)", json_schema_extra={"unit": "mm"}
+        100.0, gt=0, description="Plaka genişliği W (y)", json_schema_extra={"unit": "mm", "symbol": "W"}
     )
     thickness: float = Field(
-        5.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm"}
+        5.0, gt=0, description="Kalınlık T (z)", json_schema_extra={"unit": "mm", "symbol": "T"}
     )
     diameter: float = Field(
-        20.0, gt=0, description="Delik çapı d", json_schema_extra={"unit": "mm"}
+        20.0, gt=0, description="Delik çapı d", json_schema_extra={"unit": "mm", "symbol": "d"}
     )
 
     @model_validator(mode="after")
@@ -137,5 +137,13 @@ PLATE_WITH_HOLE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: delik çapı — Kt burada belirleniyor.
+    characteristic_length=lambda p: p.diameter,
+    default_element_ratio=(0.12, 0.25),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # σ_brüt ≈ 100 MPa (W=100, T=5): F = 50 kN
+        {"type": "cload", "region": REGION_LOAD, "fx": 50000.0, "fy": 0.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "gerilme_yigilmasi"),
 )

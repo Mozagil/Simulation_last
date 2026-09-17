@@ -1,0 +1,46 @@
+/* header-brand.css — Workbench v4 reskin, adım 2/N.
+   Yeni, bağımsız dosya: mevcut index.css'e dokunmuyoruz, sadece yeni
+   sınıflar tanımlıyoruz (var olan hiçbir sınıfla çakışmıyor). theme.css
+   token'larını kullanır (--font-head, --ink, --border, --accent, vb.) —
+   bu yüzden main.tsx'te theme.css'ten SONRA import edilmeli. */
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.app-brand-title {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.app-brand-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* Faz 4 (surrogate/ML) planındaki ML Stüdyo için pasif yer tutucu.
+   Henüz bir rota/sayfa yok — bilinçli olarak tıklanamaz bir span, buton
+   DEĞİL (yanlışlıkla işlevmiş gibi görünmesin diye). */
+.ml-studio-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+}

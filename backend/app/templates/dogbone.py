@@ -29,22 +29,22 @@ class DogboneParams(BaseModel):
     """Tüm boyutlar mm. ASTM E8 sac tipi varsayılanları."""
 
     gauge_length: float = Field(
-        50.0, gt=0, description="Ölçü boyu L0 (x, paralel kesit)", json_schema_extra={"unit": "mm"}
+        50.0, gt=0, description="Ölçü boyu L0 (x, paralel kesit)", json_schema_extra={"unit": "mm", "symbol": "L0"}
     )
     gauge_width: float = Field(
-        12.5, gt=0, description="Ölçü genişliği b", json_schema_extra={"unit": "mm"}
+        12.5, gt=0, description="Ölçü genişliği b", json_schema_extra={"unit": "mm", "symbol": "b"}
     )
     thickness: float = Field(
-        3.0, gt=0, description="Kalınlık a (z)", json_schema_extra={"unit": "mm"}
+        3.0, gt=0, description="Kalınlık a (z)", json_schema_extra={"unit": "mm", "symbol": "a"}
     )
     grip_width: float = Field(
-        20.0, gt=0, description="Tutamak genişliği B", json_schema_extra={"unit": "mm"}
+        20.0, gt=0, description="Tutamak genişliği B", json_schema_extra={"unit": "mm", "symbol": "B"}
     )
     grip_length: float = Field(
-        40.0, gt=0, description="Tutamak boyu (her uç)", json_schema_extra={"unit": "mm"}
+        40.0, gt=0, description="Tutamak boyu (her uç)", json_schema_extra={"unit": "mm", "symbol": "Lg"}
     )
     fillet_radius: float = Field(
-        12.5, gt=0, description="Geçiş yarıçapı R", json_schema_extra={"unit": "mm"}
+        12.5, gt=0, description="Geçiş yarıçapı R", json_schema_extra={"unit": "mm", "symbol": "R"}
     )
 
     @model_validator(mode="after")
@@ -173,5 +173,13 @@ DOGBONE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: ölçü genişliği / omuz yarıçapının küçüğü.
+    characteristic_length=lambda p: min(p.gauge_width, p.fillet_radius),
+    default_element_ratio=(0.15, 0.35),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # σ_nom ≈ 200 MPa ölçü kesitinde (b=12.5, a=3): F = 7.5 kN
+        {"type": "cload", "region": REGION_LOAD, "fx": 7500.0, "fy": 0.0, "fz": 0.0},
+    ),
     tags=("grup1", "analitik", "cekme"),
 )

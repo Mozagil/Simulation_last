@@ -14,10 +14,10 @@ REGION_LOAD = "yuk_yuzeyi"
 class BoxTubeParams(BaseModel):
     """Tüm boyutlar mm. height = y (yük), width = z."""
 
-    length: float = Field(500.0, gt=0, description="Uzunluk L (x)", json_schema_extra={"unit": "mm"})
-    height: float = Field(60.0, gt=0, description="Dış yükseklik h (y)", json_schema_extra={"unit": "mm"})
-    width: float = Field(40.0, gt=0, description="Dış genişlik b (z)", json_schema_extra={"unit": "mm"})
-    wall: float = Field(4.0, gt=0, description="Cidar kalınlığı t", json_schema_extra={"unit": "mm"})
+    length: float = Field(500.0, gt=0, description="Uzunluk L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    height: float = Field(60.0, gt=0, description="Dış yükseklik h (y)", json_schema_extra={"unit": "mm", "symbol": "h"})
+    width: float = Field(40.0, gt=0, description="Dış genişlik b (z)", json_schema_extra={"unit": "mm", "symbol": "b"})
+    wall: float = Field(4.0, gt=0, description="Cidar kalınlığı t", json_schema_extra={"unit": "mm", "symbol": "t"})
 
     @model_validator(mode="after")
     def _hollow(self) -> "BoxTubeParams":
@@ -67,5 +67,12 @@ BOX_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: cidar kalınlığı.
+    characteristic_length=lambda p: p.wall,
+    default_element_ratio=(0.5, 1.2),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -1000.0, "fz": 0.0},
+    ),
     tags=("grup2", "analitik", "egilme", "profil"),
 )

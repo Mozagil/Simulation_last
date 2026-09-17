@@ -22,15 +22,15 @@ REGION_KEYWAY = "kama_yuvasi"
 class KeywayShaftParams(BaseModel):
     """Tüm boyutlar mm. Eksen x, daire yz, merkez orijin."""
 
-    length: float = Field(120.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm"})
-    radius: float = Field(12.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm"})
-    key_width: float = Field(5.0, gt=0, description="Kama genişliği w (z)", json_schema_extra={"unit": "mm"})
-    key_depth: float = Field(3.0, gt=0, description="Kama derinliği h (radyal)", json_schema_extra={"unit": "mm"})
+    length: float = Field(120.0, gt=0, description="Mil boyu L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    radius: float = Field(12.0, gt=0, description="Yarıçap R", json_schema_extra={"unit": "mm", "symbol": "R"})
+    key_width: float = Field(5.0, gt=0, description="Kama genişliği w (z)", json_schema_extra={"unit": "mm", "symbol": "w"})
+    key_depth: float = Field(3.0, gt=0, description="Kama derinliği h (radyal)", json_schema_extra={"unit": "mm", "symbol": "h"})
     fillet_radius: float = Field(
         0.0,
         ge=0,
         description="Kt için dip radyusu (0 → 0.02 D); geometride yok",
-        json_schema_extra={"unit": "mm"},
+        json_schema_extra={"unit": "mm", "symbol": "rf"},
     )
 
     @model_validator(mode="after")
@@ -131,5 +131,16 @@ KEYWAY_SHAFT = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: dip radyusu (0 girilirse Kt'de kullanılan 0.02·D
+    # varsayılanı). Yığılma kama dibinde; mesh oradaki gradyanı çözmeli.
+    # Dip radyusu geometride yok (yalnız Kt formülünde), o yüzden kama
+    # genişliği: kanal kesitini çözebilen en kaba ölçü.
+    characteristic_length=lambda p: p.key_width,
+    default_element_ratio=(0.5, 1.2),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        # NOT: bkz. torsion_shaft — gerçek tork BC'si 0.4.7'de.
+        {"type": "cload", "region": REGION_TORQUE, "fx": 0.0, "fy": 0.0, "fz": 500.0},
+    ),
     tags=("grup4", "analitik", "burulma", "gerilme_yigilmasi"),
 )

@@ -34,9 +34,17 @@ export interface DoeSpecPayload {
   template_id: string;
   seed: number;
   n_samples: number;
+  /** Taranacak parametreler: ad -> [min, max] */
   geometry: Record<string, [number, number]>;
+  /** Taranmayan, sabit verilen parametreler (sayı ya da enum). */
+  fixed_params?: Record<string, number | string>;
   element_size: [number, number];
+  /** Verilirse element_size yerine bu oran taranır: eleman = oran × şablonun
+   * karakteristik uzunluğu (kirişte kalınlık, plakada delik çapı). */
+  element_ratio?: [number, number];
   load_fy?: [number, number];
+  /** Senaryodaki tüm yük BC'lerini bu katsayı aralığıyla ölçekler. */
+  load_scale?: [number, number];
   material_ids: number[];
   bc_scenarios: { name: string; bcs: Record<string, unknown>[] }[];
   dimension?: number;
@@ -83,6 +91,8 @@ export interface DoeQualityInfo {
 }
 
 export async function startQualitySet(opts: {
+  /** Hangi şablonun referans seti; verilmezse ankastre kiriş. */
+  template_id?: string;
   material_ids?: number[];
   run_solver?: boolean;
   wait?: boolean;
@@ -91,6 +101,7 @@ export async function startQualitySet(opts: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      template_id: opts.template_id,
       material_ids: opts.material_ids,
       run_solver: opts.run_solver ?? false,
       wait: opts.wait ?? false,
@@ -104,4 +115,47 @@ export async function fetchDoeQuality(studyId: number): Promise<DoeQualityInfo> 
   const res = await fetch(`${API_BASE_URL}/doe/studies/${studyId}/quality`);
   if (!res.ok) throw new DoeApiError(await parseError(res, "Kalite taraması alınamadı"));
   return (await res.json()) as DoeQualityInfo;
+}
+
+export interface DoeResultRow {
+  index: number;
+  run_id: number | null;
+  geometry_id: number | null;
+  status: string;
+  /** quality.classify_case etiketi: ok / inp_only / analytic_warn / rigid_body … */
+  quality: string;
+  element_size: number;
+  material_id: number;
+  scenario: string;
+  /** Yalnız örnekler arasında DEĞİŞEN parametreler. */
+  params: Record<string, number | string | null>;
+  scalars: Record<string, number | null>;
+  dev_displacement_pct: number | null;
+  dev_von_mises_pct: number | null;
+  /** Karşılaştırma yapılamadıysa sebebi (yük yok, şablon analitiği yok …). */
+  analytic_skipped?: string | null;
+  message: string | null;
+}
+
+export interface DoeResultStat {
+  min: number;
+  mean: number;
+  max: number;
+  n: number;
+}
+
+export interface DoeResults {
+  study_id: number;
+  template_id: string;
+  param_columns: string[];
+  constant_params: Record<string, number | string | null>;
+  scalar_columns: Record<string, string>;
+  rows: DoeResultRow[];
+  stats: Record<string, DoeResultStat>;
+}
+
+export async function fetchDoeResults(studyId: number): Promise<DoeResults> {
+  const res = await fetch(`${API_BASE_URL}/doe/studies/${studyId}/results`);
+  if (!res.ok) throw new Error(`DOE sonuçları alınamadı (${res.status})`);
+  return (await res.json()) as DoeResults;
 }

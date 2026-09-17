@@ -349,14 +349,22 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Kuyruk + ilerleme takibi, hatalı run'ın toplu işi durdurmaması
 - [x] Yeniden üretilebilirlik: tohum (seed) ve parametre kaydı DB'de
 
+**0.5.4 eki — mesh çözünürlüğü ve malzeme taraması**
+- [x] `DoeSpec.element_ratio`: eleman boyutu = oran × şablonun karakteristik
+      uzunluğu (`GeometryTemplate.characteristic_length`). Gerekçe ölçüldü:
+      ankastre kirişte mutlak 6–14 mm ile aynı fizik %9.6–%21.8 gerilme sapması
+      veriyor ve oran 1.75'e çıkan örnek mesh yüzünden uyarı tetikliyor.
+- [x] 12 şablona karakteristik uzunluk + önerilen oran aralığı
+- [x] Çoklu malzeme: LHS kesikli boyut dengeli dağıtıyor (200 örnek, 2 malzeme → 100/100)
+
 **0.5.5 — Küçük veri seti ve veri kalitesi doğrulaması**
-- [x] ~200 run üret (API + kuyruk + tarayıcı hazır)
+- [x] Kalite seti her şablon için kurulabilir (analitiği olan 12 şablon);
+      aralıklar şablona özgü ve sabit — set bir referanstır, aynı tohum aynı
+      200 örneği üretir
+- [ ] ~200 run üret — **kod hazır, çalıştırılmadı** (ccx işaretli koşu gerekiyor)
 - [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
       sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
 - [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
-- [ ] **Operasyonel borç:** 200'lük kalite seti henüz gerçek ccx ile koşulmadı
-      (yerel Windows PATH'te `ccx` yok). Codespace'te Toplu tarama →
-      `ccx çalıştır` → `200'lük kalite seti`. Faz 1 bunu bloke etmez.
 
 **0.5.6 — Skaler baseline (model hedefi DEĞİL, boru hattı testi)**
 - [x] Random Forest ile maks. deplasman/gerilme tahmini
@@ -400,6 +408,100 @@ alan tahmini üretebiliyor; tahmin arayüzde kontur ve animasyon olarak görünt
 hata payı ölçülmüş ve ekranda gösteriliyor; eğitim uzayı dışındaki sorgular tahmin
 üretmek yerine işaretleniyor.
 
+## Faz 0.6 — Doğrusal olmayan davranış ve sonuç güvenilirliği
+
+**Neden bu faz:** Faz 0–0.5 boyunca her çözüm doğrusal elastik, küçük deformasyon
+ve `*STATIC` ile yapıldı. Bu varsayımların sınırına birkaç yerde zaten değiyoruz
+(aşağıda) ve surrogate'in öğrendiği hedeflerin bir kısmı mesh'ten bağımsız değil.
+Faz 1'e (crash) geçmeden önce bu tarafın sağlama alınması gerekiyor; crash zaten
+doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
+
+### Mimari kararlar
+
+- **Yakınsama denetimi diğer her şeyden önce gelir.** Doğrusal statikte çözüm
+  daima "yakınsar", bu yüzden bugün risk düşük. NLGEOM veya plastisite açılır
+  açılmaz yarı yakınsamış çözümler üretilir ve mevcut hat bunları geçerli
+  eğitim verisi sayar — kimse kontrol etmiyor. Sessiz veri zehirlenmesinin
+  en olası yolu bu.
+- **Tekil gerilme hedefi surrogate'i bozar.** Ankastre köşedeki von Mises
+  yakınsamaz; mesh sıklaştıkça artar. Düğüm başına von Mises ile eğitilen bir
+  GNN, tekillik çevresinde fiziği değil MESH'i öğrenir. Hedefin kendisi
+  mesh'ten bağımsız olmalı.
+- **CalculiX'te arc-length (Riks) yok.** Limit yük civarında yük kontrollü
+  çözüm yakınsamaz; çare deplasman kontrolü. Bu bir solver kısıtıdır,
+  çözüm ayarıyla aşılamaz.
+- **Doğrusal olmayan koşuda analitik referans geçersizleşir.** Kapalı form
+  çözümler küçük deformasyon + elastik varsayar. Karşılaştırma bu koşularda
+  ATLANMALI (uyarı vermek yerine "geçerli değil" demeli), yoksa kalite raporu
+  yanlış alarm üretir.
+
+### Bilinen sınır durumları (ölçüldü)
+
+- Doğrulama vakası: 500 mm kiriş, 24 mm uç deplasmanı = açıklığın %4.8'i.
+  Küçük deformasyon varsayımının sınırında; NLGEOM ile sonuç birkaç yüzde
+  daha rijit çıkar. Kalite setinde yük −800 N'a kadar taranıyor, yani bu
+  sınırı aşan örnekler ÜRETİLİYOR ve analitik referans sessizce geçersiz hale
+  geliyor.
+- Ankastre köşede VM sapması, mesh oranı sabitken bile geometriyle %6.7–%12.8
+  arasında geziyor (ölçüm: PR "oranlı mesh"). Kalanı tekillikten; mesh
+  ayarıyla kapatılamaz.
+
+### Adımlar
+
+**0.6.1 — Yakınsama denetimi (önce bu)**
+- [ ] CalculiX `.sta` / `.cvg` dosyalarının okunması: artım sayısı, cutback,
+      son yakınsamış artım, iterasyon sayısı
+- [ ] `AnalysisRun`'a yakınsama özeti (`converged`, `n_increments`, `n_cutbacks`)
+- [ ] Yakınsamamış / kısmi çözüm `solved` sayılmaz; DOE kalite taramasında
+      ayrı etiket (`not_converged`), eğitim verisine girmez
+- [ ] Regresyon testi: bilerek yakınsamayan bir vaka kurulup `solved` olmadığı
+      doğrulanır
+
+**0.6.2 — Tekillik ve mesh'ten bağımsız gerilme hedefi**
+- [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) — gerçek
+      parçalarda zaten var, tekilliği geometrik olarak kaldırır
+- [ ] Hot-spot ekstrapolasyonu: yüzeyde 0.4t ve 1.0t mesafelerinden okuyup
+      köşeye doğrultma (kaynak yorulmasındaki standart yaklaşım)
+- [ ] `scalars`'a hem tepe (`max_von_mises`) hem hot-spot (`hotspot_von_mises`)
+      yazılır; hangisinin mesh'e duyarlı olduğu belgelenir
+- [ ] Mesh yakınsama çalışması: aynı geometri 4–5 farklı oranda çözülüp
+      tepe ve hot-spot değerlerinin davranışı ölçülür (tepe yakınsamaz,
+      hot-spot yakınsamalı — kanıtlanmalı)
+- [ ] Surrogate hedefi hot-spot'a taşınır; tepe değer kayıtta kalır
+
+**0.6.3 — Büyük deformasyon (NLGEOM)**
+- [ ] `*STEP, NLGEOM` + artım kontrolü (`*STATIC` başlangıç/min/maks artım)
+- [ ] Analiz tipi seçimi: `linear` / `nlgeom` (mevcut `analysis_type` alanı)
+- [ ] Doğrulama: kiriş büyük deplasman vakası, literatür referansıyla
+      (uç yüklü ankastre kiriş büyük deformasyon kapalı formu mevcut)
+- [ ] Analitik karşılaştırma nlgeom koşularda "geçerli değil" olarak atlanır
+- [ ] Küçük deformasyon sınırını aşan DOE örneklerinin işaretlenmesi
+      (deplasman / karakteristik uzunluk oranı eşiği)
+
+**0.6.4 — Plastisite**
+- [ ] Malzeme modeline pekleşme eğrisi (`*PLASTIC`, izotropik; gerilme–plastik
+      şekil değiştirme tablosu). Mevcut `yield_strength` yalnız güvenlik
+      katsayısı için kullanılıyor, yeterli değil
+- [ ] Deplasman kontrollü yükleme seçeneği (limit yük civarında yük kontrolü
+      yakınsamaz; CalculiX'te Riks yok)
+- [ ] Yeni hedef skalerler: maks. eşdeğer plastik şekil değiştirme, limit yük
+      katsayısı. Plastik koşuda `max_von_mises` akma değerinde sabitlenir ve
+      surrogate hedefi olarak anlamsızlaşır
+- [ ] Doğrulama: tek eksenli çekme numunesi (dogbone) — akma sonrası davranış
+      malzeme eğrisiyle birebir eşleşmeli
+
+**0.6.5 — Surrogate tarafının uyarlanması**
+- [ ] Eğitim verisine yakınsama ve analiz tipi bayrakları; doğrusal ve
+      doğrusal olmayan koşular AYRI modeller (karıştırmak ikisini de bozar)
+- [ ] Doğrusal olmayan koşuda ekstrapolasyon koruması daha katı: yük seviyesi
+      eğitim aralığının dışındaysa tahmin reddedilir
+
+### Çıkış kriteri
+
+Yakınsamamış hiçbir çözüm eğitim verisine giremiyor; tekil olmayan (hot-spot)
+gerilme hedefi mesh yakınsaması gösteriyor; NLGEOM ve plastik koşular
+doğrulanmış referanslarla eşleşiyor.
+
 ## Faz 1 — Crash analizi (OpenRadioss + Gmsh)
 
 Ön koşul: Faz 0 tamamlanmış olmalı ve kullanıcı onayı alınmalı.
@@ -413,50 +515,18 @@ bölüm/sekmedir, mevcut Results/surrogate görünümünün üzerine yazılmaz.
 Regresyon: mevcut `test_reference_validation`, `test_templates*`,
 `test_doe`, `test_surrogate` yeşil kalmak zorundadır.
 
-**1.1 — OpenRadiossAdapter iskeleti**
-- [x] `SolverAdapter` uygulaması: starter `_0000.rad` + engine `_0001.rad`
-- [x] `/NODE`, `/TETRA4`, `/INIVEL`, `/RWALL`, `/MAT/LAW1` yazımı (parametre listesinden)
-- [x] İkili yoksa `SolverError` (CalculiX `/solve` değişmez)
-
-**1.2 — Gmsh → OpenRadioss mesh export**
-- [x] Aynı `.msh` (Faz 0 `generate_mesh`), ayrı export fonksiyonu
-- [x] tet10 köşeleri → `/TETRA4`; kenar-ortası düğüm yazılmaz; `.msh` üzerine yazılmaz
-- [x] `OpenRadiossAdapter.build_input` `mesh_path` kabul eder
-
-**1.3 — Barrier parametreleri**
-- [x] `CrashBarrierParams`: hız (`speed_m_s`), açı (`angle_deg`), rigid wall nokta+normal
-- [x] 0° = duvara dik; açı hız vektörünü üretir → `/INIVEL` + `/RWALL`
-- [x] Geçersiz şema `SolverError` (endpoint/UI yok — 1.7 / 1.8)
-
-**1.4 — OpenRadioss kurulumu (operasyonel)**
-- [x] Codespace image: resmi `OpenRadioss_linux64.zip` (`latest-20260728`) → `/opt/openradioss`
-- [x] `OPENRADIOSS_PATH` kök dizin (resmi) veya engine dosyası; starter+engine `submit`
-- [x] Windows yerelde ikili yok (200'lük ccx gibi); `vendor/openradioss` veya Codespace rebuild
-
-**1.5 — Post-process**
-- [x] Engine listing + `*T01.csv`: iç enerji, kinetik enerji, RWALL kuvvet
-- [x] İvme → g; HIC15 / HIC36 (FMVSS 208)
-- [x] Starter `/TH/RWALL` + `/TH/PART`; engine `/TH/TITLE` (binary T01: th_to_csv)
-
-**1.6 — Websocket ilerleme**
-- [x] `GET /crash/jobs/{id}` + `WS /crash/jobs/{id}/ws` (in-memory hub)
-- [x] Engine listing satırından cycle / time → yüzde (`t_end_ms`)
-- [x] Durability `/solve` ve DOE kuyruğu bağlanmaz
-
-**1.7 — Yeni crash endpoint**
-- [x] `POST /crash/solve` — 3D mesh + `CrashBarrierParams` → `.rad` (`uploads/crash/{job_id}/`)
-- [x] `run_solver` yoksa `rad_only`; ikili yoksa `failed`; arka plan + hub (CalculiX `/solve` aynı)
-
-**1.8 — Crash UI (ayrı bölüm/sekme)**
-- [x] Üst sekme **CRASH** (DURABILITY / MODAL yanında); Results/surrogate üzerine yazılmaz
-- [x] Bariyer hız/açı/duvar + `.rad üret / çöz` + job yüzde / HIC-enerji skalerleri
-
-**1.9 — Crash kartları (LAW / TYPE14) + senaryo şeması**
-- [x] `CrashModelParams`: LAW1|LAW2, Isolid, Ismstr, NIP; LAW2 a/b/n (σy malzeme veya override)
-- [x] `POST /crash/solve` `model` + `scenario` (`rigid_wall` | `plate_ball`) — `/solve` dokunulmaz
-- [x] Crash UI: senaryo SVG, malzeme kanunu, eleman kartı (öneri yok)
-- [ ] Plaka–küre: plaka şu an `/RWALL` (rijit). Deforme plaka + `/INTER` ayrı mikro-adım
-- [ ] Hex / çok parçalı mesh ayrı mikro-adım
+- [ ] `OpenRadiossAdapter` implementasyonu (Radioss block format `.rad`/`.inc` üretimi)
+- [ ] Gmsh mesh export'unun OpenRadioss formatına uyarlanması (Faz 0'da kullanılan aynı
+      mesh modülü, farklı export fonksiyonu)
+- [ ] Barrier geometrisinin/parametrelerinin (hız, açı, rigid wall pozisyonu) girdi
+      dosyasına yazılması
+- [ ] OpenRadioss'un sunucuya kurulumu (derleme ya da hazır binary — lisans sunucusu
+      GEREKMEZ, bkz. `LICENSING.md`)
+- [ ] Post-process: OpenRadioss çıktı dosyalarından (time-history, animasyon) enerji,
+      reaksiyon kuvveti, ivme, HIC gibi metriklerin çıkarılması
+- [ ] Job süresi uzun olduğu için websocket tabanlı ilerleme takibi
+- [ ] Aynı frontend/backend/db şeması Faz 0'dan yeniden kullanılır — sadece solver
+      adaptörü, mesh export fonksiyonu ve post-process modülü eklenir
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 
@@ -511,72 +581,6 @@ yapılmış olacak; burada analiz tipine özgü uyarlamaları kapsar.
 - [ ] Backend'e "hızlı tahmin" endpoint'i eklenmesi
 - [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
 - [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
-
-## Faz 4 — Surrogate model (tüm analiz tipleri için)
-
-Ön koşul: Faz 1/2/3'ten (hangileri tamamlandıysa) yeterli sayıda (en az birkaç yüz) analiz
-sonucu veritabanında birikmiş olmalı. Analiz tipi başına ayrı bir surrogate model eğitilir
-(durability, crash, kompozit, CFD — her birinin girdi/çıktı uzayı farklı).
-
-**Karar (bkz. sohbet geçmişi):** Full-field/mesh tabanlı (GNN) surrogate yoluna gidilecek.
-Bu, aşağıdaki alt fazlara bölünür.
-
-### 4a. Ön koşul — Full-field veri altyapısı (Faz 1'e ek, Faz 4b'den önce gerekli)
-- [ ] OpenRadioss animation dosyası (A001...) → VTK dönüştürme adaptörü
-      (`postprocess/openradioss_fullfield.py`) — OpenRadioss/Tools reposundaki converter
-      subprocess ile çağrılır
-- [ ] `ResultSet` şemasına `fullfield_ref` alanı eklenmesi (path + metadata: node_count,
-      timestep_count, format) — mevcut `scalars` alanı korunur, full-field ek katman
-      olarak eklenir
-- [ ] Full-field dosyaların depolanması (dosya sistemi/object storage, Postgres'e sadece
-      path yazılır)
-
-### 4b. Baseline (klasik, karşılaştırma referansı olarak kalır)
-- [ ] DOE (Latin Hypercube Sampling) ile parametre uzayının toplu taranması
-- [ ] Duyarlılık analizi (Sobol/Morris, SALib) — hangi parametrenin sonucu ne kadar
-      etkilediğinin ölçülmesi
-- [ ] Skaler özellik çıkarımı (+ gerekirse PCA ile eğri indirgeme)
-- [ ] Baseline model: scikit-learn Random Forest / Gradient Boosting
-- [ ] Değerlendirme: k-fold cross-validation, hata metrikleri (MAE/RMSE), güven aralığı
-
-### 4c. Full-field / mesh tabanlı surrogate (GNN)
-- [ ] Mesh graph oluşturma: node features (koordinat, kalınlık, malzeme) + edge index
-      (eleman bağlantısından)
-- [ ] Yeni bağımlılık: PyTorch Geometric (veya DGL) — CPU/CUDA kurulum farkına dikkat,
-      Codespaces'te test edilecek
-- [ ] Model mimarisi: GNN / neural operator (mimari seçimi ayrı bir onay noktası)
-- [ ] Değerlendirme: 4b'deki baseline ile karşılaştırmalı hata metrikleri
-- [ ] Model versiyonlama (MLflow ya da basit dosya tabanlı versiyonlama)
-
-### 4d. Servis entegrasyonu
-- [ ] Backend'e "hızlı tahmin" endpoint'i eklenmesi
-- [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
-- [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
-
-### a) Kendi crash/durability kıyaslama modellerimiz (lisans-temiz)
-- [ ] Basit parametrik crash test parçası (örn. kutu profil / bumper-beam benzeri) —
-      kendi geometrimiz, tamamen bize ait, hiçbir 3. parti lisans kısıtı taşımaz
-- [ ] Bu geometri üzerinde DOE ile CalculiX (durability) ve OpenRadioss (crash) için
-      ayrı ayrı senaryo seti üretimi
-- [ ] Bilinen analitik/literatür referans değerleriyle doğrulama (örn. Hertz temas
-      çözümü, basit çarpışma enerji dengesi) — akademik olarak "sonuçlar referans
-      problemlerle karşılaştırıldı" diyebilmek için
-- [ ] Bu modellerin (geometri + sonuç) projede kalıcı referans veri seti olarak
-      saklanması — lisans kısıtı yok, surrogate eğitim setine serbestçe girebilir
-
-### b) calculix/CalculiX-Examples (MIT) entegrasyonu — regression test harness
-- [ ] Depo MIT lisanslı, doğrudan kopyalanabilir — Contact, RVE, NonLinear, Thermal
-      klasörlerinden ilgili örneklerin seçilip repo içine (`/tests/fixtures/
-      calculix_examples/`) kopyalanması
-- [ ] `run_all.py`/`testall.py`'daki mantığın incelenip CalculiX adaptörünün
-      regression test suite'ine (pytest) adapte edilmesi
-- [ ] `RVE/Periodic`, `RVE/PlaneOrtho1` — Faz 2 (kompozit) için malzeme homojenizasyon
-      doğrulaması olarak kullanılması
-- [ ] `Contact/Hertz_2D`, `Contact/Hertz_axi` — kontak algoritması doğrulaması
-      (analitik Hertz çözümüyle karşılaştırma)
-- [ ] Attribution notu: `docs/LICENSING.md`'ye "test fixtures, calculix/
-      CalculiX-Examples (MIT, Prof. Martin Kraska, Brandenburg University of
-      Applied Sciences) kaynağından alınmıştır" notu eklenmesi
 
 ## Faz sırasını değiştirme
 

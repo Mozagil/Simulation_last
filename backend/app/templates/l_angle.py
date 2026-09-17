@@ -14,9 +14,9 @@ REGION_LOAD = "yuk_yuzeyi"
 class LAngleParams(BaseModel):
     """Tüm boyutlar mm. Eşit bacak: y ve z doğrultusunda `leg`."""
 
-    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm"})
-    leg: float = Field(40.0, gt=0, description="Bacak uzunluğu a (y ve z)", json_schema_extra={"unit": "mm"})
-    thickness: float = Field(5.0, gt=0, description="Kalınlık t", json_schema_extra={"unit": "mm"})
+    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    leg: float = Field(40.0, gt=0, description="Bacak uzunluğu a (y ve z)", json_schema_extra={"unit": "mm", "symbol": "a"})
+    thickness: float = Field(5.0, gt=0, description="Kalınlık t", json_schema_extra={"unit": "mm", "symbol": "t"})
 
     @model_validator(mode="after")
     def _angle(self) -> "LAngleParams":
@@ -57,5 +57,12 @@ L_ANGLE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: kanat kalınlığı.
+    characteristic_length=lambda p: p.thickness,
+    default_element_ratio=(0.5, 1.2),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -500.0, "fz": 0.0},
+    ),
     tags=("grup2", "analitik", "egilme", "profil"),
 )

@@ -17,9 +17,9 @@ REGION_LOAD = "yuk_yuzeyi"
 class CircularTubeParams(BaseModel):
     """Tüm boyutlar mm. Silindir ekseni x; merkez y=z=0."""
 
-    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm"})
-    outer_radius: float = Field(20.0, gt=0, description="Dış yarıçap R", json_schema_extra={"unit": "mm"})
-    inner_radius: float = Field(16.0, gt=0, description="İç yarıçap r", json_schema_extra={"unit": "mm"})
+    length: float = Field(400.0, gt=0, description="Boy L (x)", json_schema_extra={"unit": "mm", "symbol": "L"})
+    outer_radius: float = Field(20.0, gt=0, description="Dış yarıçap R", json_schema_extra={"unit": "mm", "symbol": "R"})
+    inner_radius: float = Field(16.0, gt=0, description="İç yarıçap r", json_schema_extra={"unit": "mm", "symbol": "r"})
 
     @model_validator(mode="after")
     def _tube(self) -> "CircularTubeParams":
@@ -62,5 +62,12 @@ CIRCULAR_TUBE = GeometryTemplate(
         ),
     ),
     analytic=_analytic,
+    # Karakteristik uzunluk: cidar kalınlığı.
+    characteristic_length=lambda p: p.outer_radius - p.inner_radius,
+    default_element_ratio=(0.5, 1.2),
+    default_bcs=(
+        {"type": "fixed", "region": REGION_FIXED},
+        {"type": "cload", "region": REGION_LOAD, "fx": 0.0, "fy": -1000.0, "fz": 0.0},
+    ),
     tags=("grup2", "analitik", "egilme", "profil"),
 )

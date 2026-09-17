@@ -8,11 +8,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import SessionLocal, get_db
 from app.doe.quality import scan_study
-from app.doe.quality_set import cantilever_quality_spec
+from app.doe.results import study_results
+from app.doe.quality_set import QUALITY_SET_N, QualitySetError, quality_spec
 from app.doe.runner import persist_study, run_study, study_progress
 from app.doe.sampling import DoeSpec
 from app.models.doe import DoeStudy
 from app.models.material import Material
+from app.templates import UnknownTemplateError
 
 router = APIRouter(prefix="/doe", tags=["doe"])
 
@@ -88,6 +90,8 @@ def resume_study(study_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 class QualitySetRequest(BaseModel):
+    #: Hangi şablonun referans seti; varsayılan Faz 0 doğrulama vakası.
+    template_id: str = "cantilever_beam"
     material_ids: list[int] | None = None
     run_solver: bool = False
     wait: bool = False
@@ -99,14 +103,24 @@ def start_quality_set(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Sabit tohumlu 200'lük ankastre kiriş seti (0.5.5)."""
+    """Sabit tohumlu 200'lük referans set (0.5.5) — şablon seçilebilir.
+
+    Aralıklar şablona özgü ve SABİT; kullanıcının form aralıkları kullanılmaz.
+    Kalite seti bir referanstır: aynı tohum aynı 200 örneği üretmeli ki farklı
+    zamanlardaki koşular karşılaştırılabilsin.
+    """
     ids = list(body.material_ids or [])
     if not ids:
         first = db.query(Material).order_by(Material.id).first()
         if first is None:
             raise HTTPException(status_code=422, detail="Malzeme kütüphanesi boş.")
         ids = [first.id]
-    spec = cantilever_quality_spec(ids, run_solver=body.run_solver)
+    try:
+        spec = quality_spec(body.template_id, ids, run_solver=body.run_solver)
+    except UnknownTemplateError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except QualitySetError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     study = persist_study(db, spec)
     if body.wait:
         study = run_study(db, study.id)
@@ -114,6 +128,18 @@ def start_quality_set(
         background_tasks.add_task(_run_in_background, study.id)
     loaded = _load_study(db, study.id)
     return study_progress(loaded or study)
+
+
+@router.get("/studies/{study_id}/results")
+def study_results_endpoint(study_id: int, db: Session = Depends(get_db)) -> dict:
+    """Örnek başına tek satır: parametreler + skalerler + analitik sapma.
+
+    Tek tek run'a girmeden dağılımı görmek için (0.5.5 okuma tarafı).
+    """
+    study = db.get(DoeStudy, study_id)
+    if study is None:
+        raise HTTPException(status_code=404, detail=f"DOE bulunamadı: id={study_id}")
+    return study_results(db, study)
 
 
 @router.get("/studies/{study_id}/quality")
