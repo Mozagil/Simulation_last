@@ -385,6 +385,21 @@ def _ccx_executable() -> str | None:
     return None
 
 
+def _ccx_run_env(ccx: str) -> dict[str, str]:
+    """conda-forge Windows ccx: libgfortran DLL'leri mingw-w64/bin'de."""
+    env = os.environ.copy()
+    exe = Path(ccx).resolve()
+    extras: list[str] = [str(exe.parent)]
+    mingw = exe.parent.parent / "mingw-w64" / "bin"
+    if mingw.is_dir():
+        extras.append(str(mingw))
+    prefix = exe.parent.parent.parent
+    if (prefix / "conda-meta").is_dir():
+        extras.append(str(prefix))
+    env["PATH"] = os.pathsep.join(extras + [env.get("PATH", "")])
+    return env
+
+
 def _sanitize_name(name: str) -> str:
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in name)[:64] or "MAT"
 
@@ -495,6 +510,7 @@ class CalculiXAdapter(SolverAdapter):
                 text=True,
                 timeout=600,
                 check=False,
+                env=_ccx_run_env(ccx),
             )
         except subprocess.TimeoutExpired as exc:
             raise SolverError("CalculiX zaman aşımı (600s).") from exc

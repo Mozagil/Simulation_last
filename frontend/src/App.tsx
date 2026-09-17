@@ -54,10 +54,12 @@ import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
-import type { SurrogatePredictResult } from "./api/surrogate";
+import {
+  fetchCorpusMembership,
+  type SurrogatePredictResult,
+} from "./api/surrogate";
 import TemplatePanel from "./components/TemplatePanel";
 import {
-  summarizeTemplateParams,
   symbolMapFromTemplates,
   type SymbolMap,
 } from "./templates/paramSummary";
@@ -84,6 +86,7 @@ import {
 } from "./api/components";
 import ButtonGroup from "./components/ButtonGroup";
 import GeometryViewer from "./components/GeometryViewer";
+import HistoryFooter, { type CorpusRole } from "./components/HistoryFooter";
 import type { GeometryViewerHandle } from "./components/GeometryViewer";
 import {
   type MeshGrowMode,
@@ -727,6 +730,11 @@ function App() {
   const [bcList, setBcList] = useState<BcListItem[]>([]);
   // Geçmiş satırlarında şablon parametrelerini şemadaki harfle göstermek için.
   const [paramSymbols, setParamSymbols] = useState<SymbolMap>({});
+  // Donmuş eğitim seti: rozetler hangi run'ın sete girdiğini gösterir.
+  const [corpusName, setCorpusName] = useState<string | null>(null);
+  const [corpusRoles, setCorpusRoles] = useState<Record<number, CorpusRole>>({});
+  // Set dondurma / manuel ekleme sonrası rozetleri tazelemek için.
+  const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
   // Geometri panelinde seçili şablon; DOE paneli bunu izliyor.
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
 
@@ -776,7 +784,6 @@ function App() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   // Yeniden boyutlandırılabilir bölmeler (px). Sürükle-bırak kollarıyla
   // ayarlanır; grid satır/eleman yüksekliğini doğrudan besler.
-  const [historyHeight, setHistoryHeight] = useState(300);
   const [treeHeight, setTreeHeight] = useState(260);
 
   /** Ortak dikey resize kolu mantığı. dir=-1 yukarı sürükleyince büyür. */
@@ -806,6 +813,35 @@ function App() {
     document.body.style.cursor = "row-resize";
     document.body.style.userSelect = "none";
   }
+
+  // Donmuş eğitim seti: rozetler panelde seçilen sete göre.
+  const handleCorpusChange = useCallback((name: string | null) => {
+    setCorpusName(name);
+    setCorpusRefreshKey((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!corpusName) {
+      setCorpusRoles({});
+      return;
+    }
+    let cancelled = false;
+    void fetchCorpusMembership(corpusName)
+      .then((m) => {
+        if (cancelled) return;
+        const roles: Record<number, CorpusRole> = {};
+        for (const id of m.auto) roles[id] = "auto";
+        for (const id of m.manual_pass) roles[id] = "manual_pass";
+        for (const id of m.manual_override) roles[id] = "manual_override";
+        setCorpusRoles(roles);
+      })
+      .catch(() => {
+        if (!cancelled) setCorpusRoles({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [corpusName, corpusRefreshKey, runsHistory.length]);
 
   // Malzeme kütüphanesini bir kez yükle.
   useEffect(() => {
@@ -2489,6 +2525,7 @@ function App() {
           refreshKey={runsHistory.length}
           geometryId={geometryId}
           runId={solveResult?.run_id ?? null}
+          onCorpusChange={handleCorpusChange}
           onPrediction={(result: SurrogatePredictResult) => {
             setSurrogateMeta({
               ood: result.out_of_domain,
@@ -3479,12 +3516,6 @@ function App() {
           onTemplateSelected={setActiveTemplateId}
         />
         </div>
-
-        <div className="geo-formats-card">
-          <span className="eyebrow">Desteklenen formatlar</span>
-          <p className="lead material-lead">STEP (.step, .stp) · IGES (.igs, .iges)</p>
-        </div>
-
           </div>
         )}
       </div>
@@ -4632,103 +4663,27 @@ function App() {
         </div>
       </aside>
 
-      <div className="history-footer" style={{ height: `${historyHeight}px` }}>
-        <div
-          className="resize-handle resize-handle-top"
-          role="separator"
-          aria-orientation="horizontal"
-          title="Sürükleyerek yüksekliği ayarla"
-          onMouseDown={(e) =>
-            startVerticalResize(e, historyHeight, setHistoryHeight, -1, 72, 640)
-          }
-        />
-        <span className="eyebrow">Faz 0 · Geçmiş</span>
-        <h1>Analiz Geçmişi ({runsHistory.length})</h1>
-        <p className="lead">
-          Satıra tıklayınca incelersiniz. Düzenle tüm adımları geri yükler; Sil kaydı kaldırır.
-          Karşılaştırmak için soldan 2 run işaretleyin.
-        </p>
-        {runsHistory.length === 0 ? (
-          <p className="material-assign-hint">Henüz kayıtlı analiz yok.</p>
-        ) : (
-          <ul className="history-list">
-            {runsHistory.map((r) => (
-              <li key={r.id} className="history-item">
-                <label className="history-item-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={compareSelection.includes(r.id)}
-                    onChange={() => toggleCompareSelection(r.id)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="history-item-body"
-                  onClick={() => {
-                    setReviewRunId(r.id);
-                    setViewMode("review");
-                  }}
-                >
-                  <div className="history-item-title">
-                    {r.name ?? `Run #${r.id}`}{" "}
-                    <span className={`history-status history-status-${r.status}`}>
-                      {r.status}
-                    </span>
-                  </div>
-                  <div className="history-item-sub">
-                    {r.geometry_filename} · {r.dimension === 2 ? "2D" : "3D"} ·{" "}
-                    {new Date(r.created_at).toLocaleString("tr-TR")}
-                  </div>
-                  {r.template_params && (
-                    <div className="history-item-params">
-                      {summarizeTemplateParams(r.template_id, r.template_params, paramSymbols)}
-                    </div>
-                  )}
-                  {r.scalars.max_von_mises !== undefined && (
-                    <div className="history-item-scalar">
-                      VM max: {r.scalars.max_von_mises.toExponential(2)} · Deplasman max:{" "}
-                      {r.scalars.max_displacement?.toExponential(2) ?? "—"}
-                    </div>
-                  )}
-                </button>
-                <div className="history-item-actions">
-                  <button
-                    type="button"
-                    className="history-action-button"
-                    disabled={busyAction !== null}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleOpenRunForEdit(r.id);
-                    }}
-                  >
-                    {busyAction === "load-run" ? "Yükleniyor…" : "Düzenle"}
-                  </button>
-                  <button
-                    type="button"
-                    className="history-action-button history-action-button-danger"
-                    disabled={busyAction !== null}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDeleteRun(r.id, r.name ?? `Run #${r.id}`);
-                    }}
-                  >
-                    Sil
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {compareSelection.length === 2 && (
-          <button
-            type="button"
-            className="material-assign-button"
-            onClick={() => setViewMode("compare")}
-          >
-            İki Case'i Karşılaştır (Split-Screen)
-          </button>
-        )}
-      </div>
+      <HistoryFooter
+        runs={runsHistory}
+        compareSelection={compareSelection}
+        busy={busyAction !== null}
+        editBusy={busyAction === "load-run"}
+        paramSymbols={paramSymbols}
+        corpusName={corpusName}
+        corpusRoles={corpusRoles}
+        onToggleCompare={toggleCompareSelection}
+        onReview={(id) => {
+          setReviewRunId(id);
+          setViewMode("review");
+        }}
+        onEdit={(id) => {
+          void handleOpenRunForEdit(id);
+        }}
+        onDelete={(id, name) => {
+          void handleDeleteRun(id, name);
+        }}
+        onCompare={() => setViewMode("compare")}
+      />
 
       <div className="status-bar">
         <span className="status-bar-group">

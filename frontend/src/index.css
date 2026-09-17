@@ -1160,7 +1160,6 @@ p {
   color: var(--accent);
 }
 
-.geo-formats-card,
 .geo-details-card {
   display: flex;
   flex-direction: column;
@@ -1225,31 +1224,95 @@ p {
 /* ---- adım 22/N: yükleme ve şablon yan yana ---- */
 .geo-upload-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 12px;
+  align-items: stretch;
   width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
-/* Ebeveyn (.viewer-placeholder-upload > *) tüm çocuklara 480px sınır
-   koyuyor — iki sütun ona sığmadığı için auto-fit tek sütuna düşüyordu.
-   Bu konteyner için sınırı genişletiyoruz. */
 .viewer-placeholder-upload > .geo-upload-columns {
-  max-width: 920px;
+  max-width: none;
 }
 
 .viewer-placeholder-upload .geo-upload-columns > * {
   margin: 0;
+  min-height: 0;
+}
+
+.geo-upload-columns .geo-dropzone {
+  justify-content: center;
+  min-height: 0;
+  height: 100%;
+  padding: 16px 14px;
 }
 
 .geo-upload-columns .template-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 0;
-  padding: 16px;
+  padding: 10px 12px 12px;
   border: 1px solid var(--border);
-  border-top: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
   text-align: left;
+  overflow: hidden;
+}
+
+.geo-upload-columns .template-panel .material-assignments-title {
+  margin: 0;
+}
+
+.geo-upload-columns .template-panel .material-lead {
+  margin: 0;
+  font-size: 12px;
+}
+
+.geo-upload-columns .template-schematic {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 120px;
+  margin: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geo-upload-columns .template-schematic svg {
+  width: 100%;
+  height: 100%;
+  max-height: 112px;
+}
+
+.geo-upload-columns .template-panel > .mesh-field {
+  flex-shrink: 0;
+}
+
+.geo-upload-columns .template-panel-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.geo-upload-columns .template-panel-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.geo-upload-columns .template-panel-actions {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* ---- adım 22/N: alt durum çubuğu (parça/yüzey/kenar/mesh sayıları) ---- */
@@ -2027,12 +2090,13 @@ p {
 .viewer-placeholder {
   width: 100%;
   height: 100%;
-  min-height: 480px;
+  min-height: 0;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px;
+  padding: 12px 14px;
 }
 
 .viewer-placeholder p {
@@ -2044,24 +2108,20 @@ p {
    bu varyant daha zengin icerik icin kaydirilabilir/genis. */
 .viewer-placeholder-upload {
   flex-direction: column;
-  align-items: flex-start;
-  overflow-y: auto;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
 }
 
 .viewer-placeholder-upload > * {
   width: 100%;
-  max-width: 480px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
 }
 
 .viewer-placeholder-upload p {
   max-width: none;
-}
-
-.viewer-placeholder-upload .geo-formats-card,
-.viewer-placeholder-upload .geo-details-card,
-.viewer-placeholder-upload .template-panel {
-  margin: 12px auto 0;
 }
 
 .model-tree-empty-hint {
@@ -2250,22 +2310,102 @@ p {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  min-height: 72px;
-  padding: 10px 14px;
+  min-height: 36px;
+  padding: 0 14px 8px;
   border-top: 1px solid var(--border);
   background: var(--surface-2);
   overflow: hidden;
 }
 
-.history-footer h1 {
-  margin: 2px 0 0;
-  font-size: 14px;
+.history-footer-collapsed {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
 }
 
-.history-footer .lead {
-  margin: 2px 0 8px;
-  font-size: 11.5px;
+.history-footer-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.history-footer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.history-footer-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--surface-3);
   color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.history-footer-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.history-footer-compare,
+.history-footer-toggle {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.history-footer-toggle {
+  margin-left: auto;
+}
+
+.history-footer-title:hover,
+.history-footer-toggle:hover {
+  color: var(--accent);
+}
+
+.history-footer-compare {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.history-footer-empty {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.history-footer .resize-handle-top {
+  margin: 0 -14px 0;
 }
 
 .history-footer .history-list {
@@ -2364,6 +2504,36 @@ p {
 .history-status-inp_only {
   background: var(--surface-3);
   color: var(--muted);
+}
+
+/* Donmuş eğitim setine üyelik rozeti. */
+.history-corpus {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.history-corpus-auto {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.history-corpus-manual_pass {
+  background: rgba(18, 165, 176, 0.12);
+  color: #0d7f8a;
+}
+
+.history-corpus-manual_override {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.history-corpus-outside {
+  background: var(--surface-3);
+  color: var(--muted);
+  border-color: var(--border);
 }
 
 .history-item-sub {
@@ -3135,6 +3305,14 @@ p {
   color: #c1121f;
 }
 
+.surrogate-pred-table {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
 .dataset-filter {
   display: flex;
   align-items: center;
@@ -3570,6 +3748,18 @@ p {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
+}
+
+.template-panel-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.template-panel-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .template-panel-actions {

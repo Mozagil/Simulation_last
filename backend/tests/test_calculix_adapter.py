@@ -1,5 +1,6 @@
 """CalculiX adaptör: .inp üretimi (ccx olmadan)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,22 @@ def test_ccx_executable_uses_ccx_path(tmp_path, monkeypatch):
     fake.write_bytes(b"x")
     monkeypatch.setenv("CCX_PATH", str(fake))
     assert _ccx_executable() == str(fake)
+
+
+def test_ccx_run_env_prepends_exe_dir_and_mingw(tmp_path):
+    from app.solvers.calculix import _ccx_run_env
+
+    mingw = tmp_path / "Library" / "mingw-w64" / "bin"
+    mingw.mkdir(parents=True)
+    ccx = tmp_path / "Library" / "bin" / "ccx.exe"
+    ccx.parent.mkdir(parents=True, exist_ok=True)
+    ccx.write_bytes(b"x")
+    (tmp_path / "conda-meta").mkdir()
+    env = _ccx_run_env(str(ccx))
+    parts = env["PATH"].split(os.pathsep)
+    assert str(ccx.parent) == parts[0]
+    assert str(mingw) == parts[1]
+    assert str(tmp_path.resolve()) == parts[2]
 
 
 def test_materials_inp_block_converts_si_to_consistent_mm_units():

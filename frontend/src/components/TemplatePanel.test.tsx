@@ -83,6 +83,7 @@ describe("TemplatePanel", () => {
     expect(await screen.findByDisplayValue("500")).toBeInTheDocument();
     expect(screen.getByDisplayValue("10")).toBeInTheDocument();
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
+    expect(screen.getByText("Test açıklama")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /ankastre kiriş/i }),
     ).toBeInTheDocument();

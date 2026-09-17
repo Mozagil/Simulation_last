@@ -128,4 +128,5 @@ def public_metrics(bundle: dict[str, Any]) -> dict[str, Any]:
         "feature_keys": bundle.get("feature_keys"),
         "target_keys": bundle.get("target_keys"),
         "bounds": bundle.get("bounds"),
+        "corpus": bundle.get("corpus"),
     }

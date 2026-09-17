@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.solve import RUNS_DIR
@@ -20,11 +20,22 @@ from app.ml.gnn import (
     save_gnn,
     train_gnn,
 )
-from app.ml.graph_data import GraphSample, iter_training_graphs, load_graph
+from app.ml.graph_data import GraphSample, load_graph
 from app.ml.ood import is_out_of_domain
+from app.ml.corpus import CorpusSpec, TrainingCorpus, evaluate_run, select_training_runs
+from app.ml.manifest import (
+    ManifestError,
+    add_runs,
+    list_manifests,
+    load_manifest,
+    reference_from_manifest,
+    save_manifest,
+    spec_from_manifest,
+)
 from app.ml.scalar_features import collect_scalar_table, features_from_dict, features_from_run
 from app.ml.scalar_rf import (
     DEFAULT_MODEL_PATH,
+    MIN_SAMPLES,
     load_scalar_rf,
     predict_scalar,
     public_metrics,
@@ -41,9 +52,94 @@ class ScalarPredictBody(BaseModel):
     features: dict[str, float]
 
 
+class ParamPredictBody(BaseModel):
+    """Yeni tasarım: şablon parametreleri + yük. Geometri/run zorunlu değil."""
+
+    length: float = Field(..., gt=0)
+    thickness: float = Field(..., gt=0)
+    width: float = Field(..., gt=0)
+    element_size: float = Field(default=8.0, gt=0)
+    youngs_modulus: float = Field(default=210e9, gt=0)
+    poisson_ratio: float = Field(default=0.3, gt=0, lt=0.5)
+    load_fx: float = 0.0
+    load_fy: float = 0.0
+    load_fz: float = 0.0
+    pressure_mpa: float = 0.0
+    dimension: int = Field(default=3, ge=2, le=3)
+    compare_run_id: int | None = None
+
+
+def _deviation_pct(pred: float, fea: float) -> float | None:
+    if abs(fea) < 1e-12:
+        return None
+    return 100.0 * (pred - fea) / fea
+
+
 class FieldPredictBody(BaseModel):
     run_id: int | None = None
     geometry_id: int | None = None
+
+
+class RunIdsBody(BaseModel):
+    run_ids: list[int] = Field(default_factory=list)
+    override: bool = False
+
+
+def _corpus_run_ids(db: Session, name: str | None, template_id: str | None) -> tuple[
+    list[int] | None, TrainingCorpus | None, dict[str, Any] | None
+]:
+    """Donmuş manifest varsa onun listesi, yoksa canlı süzgeç."""
+    if name:
+        try:
+            data = load_manifest(name)
+        except ManifestError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        ids = [int(v) for v in (data.get("run_ids") or [])]
+        return ids, None, data
+    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    return corpus.run_ids, corpus, None
+
+
+def _frozen_summary(data: dict[str, Any], n_used: int) -> dict[str, Any]:
+    return {
+        "source": "manifest",
+        "name": data.get("name"),
+        "frozen_at": data.get("frozen_at"),
+        "n_kept": n_used,
+        "run_ids": list(data.get("run_ids") or []),
+        "template_id": data.get("template_id"),
+        "youngs_modulus": data.get("youngs_modulus"),
+        "poisson_ratio": data.get("poisson_ratio"),
+        "mesh_ratio_median": data.get("mesh_ratio_median"),
+        "dropped": dict(data.get("dropped_at_freeze") or {}),
+        "flagged": dict(data.get("flagged_at_freeze") or {}),
+        "n_manual": len(data.get("manual_notes") or {}),
+    }
+
+
+def _too_few_frozen(kind: str, n: int, minimum: int, summary: dict[str, Any]) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail={
+            "message": f"{kind}: donmuş sette {n} örnek var (en az {minimum}).",
+            "corpus": summary,
+        },
+    )
+
+
+def _too_few(kind: str, n: int, minimum: int, corpus: TrainingCorpus) -> HTTPException:
+    dropped = corpus.dropped or {}
+    bits = ", ".join(f"{k}={v}" for k, v in sorted(dropped.items()) if v)
+    extra = f" Atılan: {bits}." if bits else ""
+    return HTTPException(
+        status_code=422,
+        detail={
+            "message": (
+                f"{kind}: süzgeç sonrası {n} örnek kaldı (en az {minimum}).{extra}"
+            ),
+            "corpus": corpus.as_public(),
+        },
+    )
 
 
 def _train_npz_for(run_id: int) -> Path:
@@ -73,12 +169,25 @@ def surrogate_status() -> dict[str, Any]:
 
 
 @router.post("/scalar/train")
-def train_scalar(db: Session = Depends(get_db)) -> dict[str, Any]:
-    X, y, ids = collect_scalar_table(db)
+def train_scalar(
+    db: Session = Depends(get_db),
+    template_id: str | None = None,
+    corpus_name: str | None = None,
+) -> dict[str, Any]:
+    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
+    X, y, ids = collect_scalar_table(db, run_ids=run_ids)
+    if len(ids) < MIN_SAMPLES:
+        if frozen is not None:
+            raise _too_few_frozen("RF", len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
+        assert corpus is not None
+        raise _too_few("RF", len(ids), MIN_SAMPLES, corpus)
     try:
         bundle = train_scalar_rf(X, y)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    bundle["corpus"] = (
+        _frozen_summary(frozen, len(ids)) if frozen is not None else corpus.as_public()
+    )
     save_scalar_rf(bundle, DEFAULT_MODEL_PATH)
     out = public_metrics(bundle)
     out["run_ids"] = ids
@@ -94,24 +203,219 @@ def scalar_predict(body: ScalarPredictBody) -> dict[str, Any]:
     return predict_scalar(bundle, x)
 
 
+@router.post("/predict/params")
+def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """ccx ve mesh yok: L/T/W + yük → RF skaler. İsteğe bağlı FEA kıyası."""
+    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
+    features = {
+        "length": body.length,
+        "thickness": body.thickness,
+        "width": body.width,
+        "element_size": body.element_size,
+        "youngs_modulus": body.youngs_modulus,
+        "poisson_ratio": body.poisson_ratio,
+        "load_fx": body.load_fx,
+        "load_fy": body.load_fy,
+        "load_fz": body.load_fz,
+        "pressure_mpa": body.pressure_mpa,
+        "dimension": float(body.dimension),
+    }
+    pred = predict_scalar(bundle, features_from_dict(features))
+    fea: dict[str, Any] | None = None
+    deviation: dict[str, float | None] | None = None
+    if body.compare_run_id is not None:
+        run = db.get(AnalysisRun, body.compare_run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Kıyas run yok.")
+        scalars = run.scalars or {}
+        try:
+            fea_disp = float(scalars["max_displacement"])
+            fea_vm = float(scalars["max_von_mises"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422, detail="Kıyas run'da FEA skalerleri yok."
+            ) from exc
+        fea = {
+            "run_id": run.id,
+            "geometry_id": run.geometry_id,
+            "max_displacement": fea_disp,
+            "max_von_mises": fea_vm,
+        }
+        preds = pred["predictions"]
+        deviation = {
+            "max_displacement_pct": _deviation_pct(preds["max_displacement"], fea_disp),
+            "max_von_mises_pct": _deviation_pct(preds["max_von_mises"], fea_vm),
+        }
+    ood = bool(pred["out_of_domain"])
+    return {
+        "kind": "scalar",
+        "source": "surrogate",
+        "out_of_domain": ood,
+        "predictions": pred["predictions"],
+        "features": features,
+        "fea": fea,
+        "deviation_pct": deviation,
+        "message": (
+            "Tahmin — ccx çalışmadı, tam çözüm değil."
+            + (" Eğitim uzayı dışı." if ood else "")
+            + (" FEA kıyası eklendi." if fea else "")
+        ),
+    }
+
+
 @router.post("/gnn/train")
-def train_field_gnn(db: Session = Depends(get_db)) -> dict[str, Any]:
-    samples = list(iter_training_graphs(RUNS_DIR))
+def train_field_gnn(
+    db: Session = Depends(get_db),
+    template_id: str | None = None,
+    corpus_name: str | None = None,
+) -> dict[str, Any]:
+    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
     runs = {r.id: r for r in db.query(AnalysisRun).all()}
-    for s in samples:
-        if s.run_id and s.run_id in runs:
-            s.element_size = runs[s.run_id].element_size
+    samples: list[GraphSample] = []
+    missing = 0
+    for rid in run_ids or []:
+        sample = load_graph(_train_npz_for(rid), run_id=rid)
+        if sample is None or sample.node_outputs is None:
+            missing += 1
+            continue
+        run = runs.get(rid)
+        if run is not None:
+            sample.element_size = run.element_size
+        samples.append(sample)
+
+    if frozen is not None:
+        summary = _frozen_summary(frozen, len(samples))
+        if missing:
+            summary["dropped"] = dict(summary["dropped"]) | {"missing_graph": missing}
+        if len(samples) < 2:
+            raise _too_few_frozen("GNN", len(samples), 2, summary)
+    else:
+        assert corpus is not None
+        if missing:
+            corpus.dropped["missing_graph"] = missing
+            corpus.n_kept = len(samples)
+        if len(samples) < 2:
+            raise _too_few("GNN", len(samples), 2, corpus)
+        summary = corpus.as_public()
+
     try:
         bundle = train_gnn(samples)
     except ValueError as ext:
         raise HTTPException(status_code=422, detail=str(ext)) from ext
+    bundle["corpus"] = summary
     save_gnn(bundle, DEFAULT_GNN_PATH)
     return {
         "kind": "field_gnn",
         "n_samples": bundle["n_samples"],
         "metrics": bundle["metrics"],
         "path": str(DEFAULT_GNN_PATH),
+        "corpus": summary,
     }
+
+
+@router.post("/corpus/freeze")
+def freeze_corpus(
+    name: str,
+    db: Session = Depends(get_db),
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    """Canlı süzgeç seçimini isimli bir manifeste dondurur."""
+    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    try:
+        payload = save_manifest(name, corpus)
+    except ManifestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"manifest": payload, "corpus": corpus.as_public()}
+
+
+@router.get("/corpus")
+def corpus_index() -> dict[str, Any]:
+    return {"manifests": list_manifests()}
+
+
+@router.get("/corpus/{name}")
+def corpus_detail(name: str) -> dict[str, Any]:
+    try:
+        return load_manifest(name)
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/corpus/{name}/membership")
+def corpus_membership(name: str) -> dict[str, Any]:
+    """Geçmiş rozetleri için: hangi run otomatik, hangisi elle eklendi."""
+    try:
+        data = load_manifest(name)
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    notes: dict[str, Any] = data.get("manual_notes") or {}
+    run_ids = [int(v) for v in (data.get("run_ids") or [])]
+    manual_pass: list[int] = []
+    manual_override: list[int] = []
+    for raw, note in notes.items():
+        try:
+            rid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if rid not in run_ids:
+            continue
+        if str((note or {}).get("gate")) == "override":
+            manual_override.append(rid)
+        else:
+            manual_pass.append(rid)
+    manual = set(manual_pass) | set(manual_override)
+    return {
+        "name": name,
+        "frozen_at": data.get("frozen_at"),
+        "auto": sorted(rid for rid in run_ids if rid not in manual),
+        "manual_pass": sorted(manual_pass),
+        "manual_override": sorted(manual_override),
+        "notes": notes,
+    }
+
+
+@router.post("/corpus/{name}/evaluate")
+def corpus_evaluate(
+    name: str,
+    body: RunIdsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Manuel run'ların karnesi. Hiçbir şey eklemez, yalnız sayı gösterir."""
+    try:
+        data = load_manifest(name)
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    spec = spec_from_manifest(data)
+    ref = reference_from_manifest(data)
+    verdicts = [evaluate_run(db, rid, spec, reference=ref) for rid in body.run_ids]
+    return {
+        "name": name,
+        "already_present": [
+            rid for rid in body.run_ids if rid in (data.get("run_ids") or [])
+        ],
+        "verdicts": [v.as_public() for v in verdicts],
+    }
+
+
+@router.post("/corpus/{name}/add")
+def corpus_add(
+    name: str,
+    body: RunIdsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Açık onayla ekleme. Süzgeci geçmeyen run yalnız override ile girer."""
+    try:
+        data = load_manifest(name)
+        spec = spec_from_manifest(data)
+        ref = reference_from_manifest(data)
+        verdicts = [evaluate_run(db, rid, spec, reference=ref) for rid in body.run_ids]
+        result = add_runs(name, verdicts, override=body.override)
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    result["verdicts"] = [v.as_public() for v in verdicts]
+    return result
 
 
 def _preview_from_prediction(sample: GraphSample, yhat: np.ndarray) -> dict[str, Any]:

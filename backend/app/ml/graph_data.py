@@ -25,23 +25,54 @@ class GraphSample:
     element_size: float | None = None
 
 
+#: kNN mesafe bloğu: satır sayısı × n float64 tutulur (n=40k'da ~330 MB).
+KNN_BLOCK = 1024
+
+
+def _knn_indices(coords: np.ndarray, k: int) -> np.ndarray:
+    """Her düğüm için en yakın k komşunun indeksi (kendisi hariç).
+
+    Tam (n, n) mesafe matrisi kurulmaz: 40k düğümlü bir mesh'te bu 36 GiB
+    istiyordu ve `/surrogate/gnn/train` bellek hatasıyla düşüyordu.
+    """
+    try:
+        from sklearn.neighbors import KDTree
+    except ImportError:  # pragma: no cover - sklearn zaten bağımlılık
+        KDTree = None
+
+    if KDTree is not None:
+        tree = KDTree(coords)
+        idx = tree.query(coords, k=k + 1, return_distance=False)
+        return np.asarray(idx[:, 1:], dtype=np.int64)
+
+    n = coords.shape[0]
+    sq = (coords**2).sum(axis=1)
+    out = np.empty((n, k), dtype=np.int64)
+    for start in range(0, n, KNN_BLOCK):
+        stop = min(start + KNN_BLOCK, n)
+        block = coords[start:stop]
+        d2 = sq[None, :] + (block**2).sum(axis=1)[:, None] - 2.0 * (block @ coords.T)
+        rows = np.arange(stop - start)
+        d2[rows, np.arange(start, stop)] = np.inf
+        out[start:stop] = np.argpartition(d2, kth=k - 1, axis=1)[:, :k]
+    return out
+
+
 def knn_edges(coords: np.ndarray, k: int = 6) -> np.ndarray:
     n = coords.shape[0]
     if n <= 1:
         return np.zeros((0, 2), dtype=np.int32)
     k = min(k, n - 1)
-    edges: set[tuple[int, int]] = set()
-    d2 = ((coords[:, None, :] - coords[None, :, :]) ** 2).sum(axis=2)
-    np.fill_diagonal(d2, np.inf)
-    nn = np.argpartition(d2, kth=k, axis=1)[:, :k]
-    for i in range(n):
-        for j in nn[i]:
-            a, b = (int(i), int(j)) if i < j else (int(j), int(i))
-            if a != b:
-                edges.add((a, b))
-    if not edges:
+    nn = _knn_indices(np.asarray(coords, dtype=np.float64), k)
+    rows = np.repeat(np.arange(n, dtype=np.int64), nn.shape[1])
+    cols = nn.reshape(-1)
+    a = np.minimum(rows, cols)
+    b = np.maximum(rows, cols)
+    keep = a != b
+    if not np.any(keep):
         return np.zeros((0, 2), dtype=np.int32)
-    return np.asarray(sorted(edges), dtype=np.int32)
+    pairs = np.unique(np.stack([a[keep], b[keep]], axis=1), axis=0)
+    return pairs.astype(np.int32)
 
 
 def edges_from_connectivity(conn: np.ndarray, n_nodes: int) -> np.ndarray:

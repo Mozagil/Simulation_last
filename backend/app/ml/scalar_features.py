@@ -93,15 +93,28 @@ def targets_from_run(run: AnalysisRun) -> np.ndarray | None:
     return np.asarray([disp, vm], dtype=np.float64)
 
 
-def collect_scalar_table(db: Session) -> tuple[np.ndarray, np.ndarray, list[int]]:
-    """Çözülmüş statik run'lar → X, Y, run_id listesi."""
-    rows = (
+def collect_scalar_table(
+    db: Session,
+    run_ids: list[int] | None = None,
+) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """Çözülmüş statik run'lar → X, Y, run_id listesi.
+
+    `run_ids` verilirse yalnız o küme (eğitim korpusu) alınır.
+    """
+    q = (
         db.query(AnalysisRun, Geometry)
         .join(Geometry, Geometry.id == AnalysisRun.geometry_id)
         .filter(AnalysisRun.status == "solved")
-        .order_by(AnalysisRun.id)
-        .all()
     )
+    if run_ids is not None:
+        if not run_ids:
+            return (
+                np.zeros((0, len(FEATURE_KEYS)), dtype=np.float64),
+                np.zeros((0, len(TARGET_KEYS)), dtype=np.float64),
+                [],
+            )
+        q = q.filter(AnalysisRun.id.in_(run_ids))
+    rows = q.order_by(AnalysisRun.id).all()
     xs: list[np.ndarray] = []
     ys: list[np.ndarray] = []
     ids: list[int] = []

@@ -239,6 +239,30 @@ def test_predict_api_returns_preview_schema_and_ood(db_session, tmp_path, monkey
         )
         assert ood.status_code == 200
         assert ood.json()["out_of_domain"] is True
+        params = client.post(
+            "/surrogate/predict/params",
+            json={
+                "length": 500.0,
+                "thickness": 10.0,
+                "width": 40.0,
+                "element_size": 8.0,
+                "load_fy": -500.0,
+                "compare_run_id": r.id,
+            },
+        )
+        assert params.status_code == 200, params.text
+        pbody = params.json()
+        assert pbody["kind"] == "scalar"
+        assert "max_displacement" in pbody["predictions"]
+        assert pbody["fea"]["run_id"] == r.id
+        assert pbody["fea"]["max_displacement"] == pytest.approx(20.0)
+        assert pbody["deviation_pct"]["max_displacement_pct"] is not None
+        no_run = client.post(
+            "/surrogate/predict/params",
+            json={"length": 500.0, "thickness": 10.0, "width": 40.0, "load_fy": -500.0},
+        )
+        assert no_run.status_code == 200
+        assert no_run.json()["fea"] is None
     finally:
         app.dependency_overrides.pop(get_db, None)
 

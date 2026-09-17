@@ -160,7 +160,12 @@ export default function TemplatePanel({
           ))}
         </select>
       </label>
-      {selected && <p className="filename">{selected.description}</p>}
+      {selected && (
+        <p className="template-panel-desc" title={selected.description}>
+          {selected.description}
+        </p>
+      )}
+      <div className="template-panel-fields">
       {enums.map((f) => (
         <label key={f.name} className="mesh-field">
           <span>{f.label}</span>
@@ -196,6 +201,7 @@ export default function TemplatePanel({
           />
         </label>
       ))}
+      </div>
       <div className="template-panel-actions">
         <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
           Model üret
