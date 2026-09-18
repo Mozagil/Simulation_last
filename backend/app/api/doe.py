@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import SessionLocal, get_db
+from app.doe.convergence import ConvergenceError, ConvergenceSpec, run_convergence
 from app.doe.quality import scan_study
 from app.doe.results import study_results
 from app.doe.quality_set import QUALITY_SET_N, QualitySetError, quality_spec
@@ -128,6 +129,25 @@ def start_quality_set(
         background_tasks.add_task(_run_in_background, study.id)
     loaded = _load_study(db, study.id)
     return study_progress(loaded or study)
+
+
+@router.post("/convergence")
+def run_convergence_endpoint(
+    spec: ConvergenceSpec,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Mesh yakınsama taraması (0.6.1) — tek geometri, artan çözünürlük.
+
+    Senkron çalışır: basamak sayısı azdır (tipik 5-8) ve ara sonuç saklanacak
+    bir tablo yok; bitince tablo tek parça döner. Basamaklar kabadan inceye
+    koşulur, biri patlarsa tarama devam eder.
+    """
+    try:
+        return run_convergence(db, spec)
+    except UnknownTemplateError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConvergenceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/studies/{study_id}/results")

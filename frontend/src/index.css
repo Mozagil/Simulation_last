@@ -3769,3 +3769,71 @@ p {
   margin-top: 10px;
 }
 
+
+/* --- Mesh yakınsama paneli (0.6.1) --------------------------------------- */
+
+.convergence-steps {
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+
+.convergence-results {
+  margin-top: 10px;
+}
+
+.convergence-charts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 10px;
+}
+
+.convergence-chart {
+  flex: 1 1 280px;
+  min-width: 240px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.convergence-chart figcaption {
+  font-family: var(--font-head);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.convergence-chart-unit {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.convergence-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.convergence-summary {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.convergence-summary strong {
+  color: var(--ink);
+}
+
+/* İki satırlı başlık: ikinci satır ilkinin altına yapışsın, üstüne değil. */
+.convergence-results .doe-table thead tr:nth-child(2) th {
+  top: 22px;
+}
+
+.convergence-results .doe-table tbody tr:hover {
+  cursor: default;
+}

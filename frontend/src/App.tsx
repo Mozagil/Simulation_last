@@ -51,6 +51,7 @@ import {
 import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
 import DatasetPanel from "./components/DatasetPanel";
+import ConvergencePanel from "./components/ConvergencePanel";
 import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
@@ -2513,6 +2514,7 @@ function App() {
 
         <div className="ml-studio-body">
         <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+        <ConvergencePanel templateId={activeTemplateId} />
         <DoePanel
           refreshKey={runsHistory.length}
           templateId={activeTemplateId}
