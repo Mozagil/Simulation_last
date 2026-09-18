@@ -1254,25 +1254,41 @@ def _bcs_inp_block(
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
             fz = float(bc.get("fz", 0.0))
-            # ÖLÇTÜK, DÜZELTTİK: yük bir YÜZEYE uygulanıyorsa toplam
-            # kuvveti düğümlere EŞİT bölmek yanlış. Kuadratik elemanlarda
-            # (C3D10 → yüzeyi tri6) düzgün yayılı yükün TUTARLI düğüm
-            # kuvvetleri eşit değildir: köşeler 0, kenar-ortaları A/3.
-            # Eşit bölmek yükleme yüzeyinde sahte yerel salınım üretir.
+            # Yük bir YÜZEYE uygulanıyorsa toplam kuvveti düğümlere EŞİT
+            # bölmek yanlış. Kuadratik elemanlarda (C3D10 → yüzeyi tri6)
+            # düzgün yayılı yükün TUTARLI düğüm kuvvetleri eşit değildir:
+            # köşeler 0, kenar-ortaları A/3. Eşit bölmek yükleme yüzeyinde
+            # sahte yerel salınım üretir.
             #
-            # Delikli plaka taramasında (study 10) bu, u_max'ı mesh'ten
-            # mesh'e %36 oynattı: beş mesh 0.0603–0.0609 mm'de uyuşurken
-            # ikisi 0.0656 ve 0.0848 verdi. Mesh kaliteleri iyiydi
-            # (Jacobian 0.75 / 0.84; "sağlam" olanınki 0.60), yani sebep
-            # mesh değildi. σ etkilenmedi çünkü tepe gerilme delikte.
-            # Kirişte görünmemişti: orada sehim 23 mm, salınım yanında
-            # önemsiz kalıyor.
+            # KONTROLLÜ A/B İLE ÖLÇÜLDÜ (delikli plaka H200 W100 t5 d20,
+            # S235, 30 kN, aynı 5 mesh, tek fark yük dağıtımı):
+            #
+            #   es    eşit bölme   tutarlı ağırlık
+            #   12    0.060882     0.059850
+            #    7    0.060795     0.059905
+            #    5    0.060623     0.059914
+            #   3.6   0.065623     0.059905
+            #   2.4   0.084794     0.059853
+            #   yayılma  %39.9        %0.11
+            #
+            # σ iki kolda da aynı (187–192 MPa, ince meshler) çünkü tepe
+            # gerilme delikte, yükleme yüzeyinden uzakta. Kirişte
+            # görünmemişti: orada sehim 23 mm, salınım yanında önemsiz.
             #
             # Basınca (*DSLOAD) çevirmek genel çözüm DEĞİL: basınç yüzeye
             # daima diktir, ankastre kirişte ise uç yükü yüzeye TEĞET.
             # Tutarlı düğüm ağırlıkları yön bağımsızdır, o yüzden bu yol.
             node_ids = _resolve_bc_node_ids(bc, nsets)
             weights = _consistent_face_weights(bc, face_weights)
+            # Tutarlı ağırlıkla yüklenen yüzeyler aşağıdaki eşit-bölme yüz
+            # döngüsünde ATLANMALI. Atlanmadığında yük iki kez yazılıyordu —
+            # ölçüldü: delikli plakada iki *CLOAD bloğu, her biri 30 000 N,
+            # toplam 60 000 N; u_max ve σ tam iki katına çıktı (σ 187 → 384).
+            weighted_faces = {
+                int(fid)
+                for fid in (bc.get("face_ids") or [])
+                if face_weights and face_weights.get(int(fid))
+            }
             if weights:
                 total_w = sum(weights.values())
                 if total_w > 0:
@@ -1299,6 +1315,8 @@ def _bcs_inp_block(
                     if abs(fz) > 0:
                         step_lines.append(f"{nid}, 3, {fz / n:.6g}")
             for fid in bc.get("face_ids") or []:
+                if int(fid) in weighted_faces:
+                    continue  # yukarıda tutarlı ağırlıkla yazıldı
                 nset = f"FACE_{int(fid)}"
                 ids = nsets.get(nset) or []
                 if not ids:

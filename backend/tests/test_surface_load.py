@@ -5,10 +5,10 @@ elemanlarda (C3D10 → yüzeyi tri6) bu yanlış: düzgün yayılı yükün tuta
 düğüm kuvvetleri köşelerde 0, kenar-ortalarında A/3'tür. Eşit bölmek
 yükleme yüzeyinde sahte yerel salınım üretiyordu.
 
-Ölçüm (delikli plaka, study 10): u_max mesh'ten mesh'e %36 oynadı —
-beş mesh 0.0603–0.0609 mm'de uyuşurken ikisi 0.0656 ve 0.0848 verdi.
-Mesh kaliteleri iyiydi (Jacobian 0.75 / 0.84; "sağlam" olanınki 0.60).
-σ etkilenmedi çünkü tepe gerilme delikte, yükleme yüzeyinden uzakta.
+Kontrollü A/B ile ölçüldü (delikli plaka, aynı 5 mesh, tek fark yük
+dağıtımı): u_max yayılması eşit bölmede %39.9 (0.0606–0.0848 mm),
+tutarlı ağırlıkta %0.11 (0.05985–0.05991 mm). σ iki kolda aynı, çünkü
+tepe gerilme delikte, yükleme yüzeyinden uzakta.
 """
 
 from __future__ import annotations
@@ -93,3 +93,61 @@ class TestFizikselDogruluk:
         assert not any(math.isclose(p, esit) for p in pay)
         # Gerçek pay 1/3, eşit bölmenin iki katı
         assert all(math.isclose(p, 1 / 3) for p in pay)
+
+
+# --- _bcs_inp_block'un GERÇEKTE yazdığı yük --------------------------------
+#
+# Yukarıdaki "toplam kuvvet korunur" testi toplamı ağırlıkların kendisinden
+# hesaplıyor; .inp'e ne yazıldığına bakmıyor. Bu yüzden şu hata kaçtı:
+# tutarlı-ağırlık bloğu eklendi ama eski eşit-bölme yüz döngüsü yerinde
+# kaldı, yük İKİ KEZ yazıldı. Delikli plakada ölçüldü: iki *CLOAD bloğu,
+# her biri 30 000 N, toplam 60 000 N; u_max ve σ tam iki katına çıktı.
+
+
+def _applied(step_block: str, dof: int) -> tuple[float, int]:
+    """*CLOAD satırlarından verilen dof'taki toplam kuvvet ve blok sayısı."""
+    from app.solvers.calculix import _bcs_inp_block  # noqa: F401
+
+    total = 0.0
+    blocks = 0
+    in_cload = False
+    for raw in step_block.splitlines():
+        s = raw.strip()
+        if s.startswith("*"):
+            in_cload = s.upper().startswith("*CLOAD")
+            blocks += int(in_cload)
+            continue
+        if in_cload and s:
+            nid, d, v = (x.strip() for x in s.split(","))
+            if int(d) == dof:
+                total += float(v)
+    return total, blocks
+
+
+class TestYazilanYuk:
+    F = 30000.0
+    NSETS = {"FACE_6": list(range(1, 10))}
+
+    def _step(self, face_weights):
+        from app.solvers.calculix import _bcs_inp_block
+
+        _model, step = _bcs_inp_block(
+            [{"type": "cload", "face_ids": [6], "fx": self.F, "fy": 0.0, "fz": 0.0}],
+            dict(self.NSETS),
+            {},
+            3,
+            face_weights,
+        )
+        return step
+
+    def test_tutarli_yol_yuku_bir_kez_yazar(self):
+        step = self._step({6: {4: 2.0, 5: 2.0, 6: 1.0}})
+        total, blocks = _applied(step, dof=1)
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
+
+    def test_agirlik_yoksa_esit_bolme_bir_kez_yazar(self):
+        step = self._step(None)
+        total, blocks = _applied(step, dof=1)
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
