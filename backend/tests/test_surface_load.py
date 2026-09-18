@@ -151,3 +151,93 @@ class TestYazilanYuk:
         total, blocks = _applied(step, dof=1)
         assert total == pytest.approx(self.F, rel=1e-5)
         assert blocks == 1
+
+
+class TestToplamKuvvetSozlesmesi:
+    """fx/fy/fz, seçimin TAMAMINA uygulanan toplam kuvvettir.
+
+    Eskiden her yüze/kenara ayrı ayrı tam F yazılıyordu (2 yüz → 2F), ama
+    tutarlı-ağırlık yolu toplam F veriyordu: aynı BC, yüz tri6 mı quad mı
+    olduğuna göre F ya da n·F uyguluyordu.
+    """
+
+    F = 1000.0
+
+    def _total(self, bc, nsets, face_weights=None):
+        from app.solvers.calculix import _bcs_inp_block
+
+        _m, step = _bcs_inp_block([bc], nsets, {}, 3, face_weights)
+        return _applied(step, dof=1)
+
+    def test_iki_agirliksiz_yuz_toplam_f(self):
+        total, blocks = self._total(
+            {"type": "cload", "face_ids": [6, 7], "fx": self.F},
+            {"FACE_6": [1, 2, 3], "FACE_7": [4, 5, 6]},
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
+
+    def test_iki_agirlikli_yuz_toplam_f(self):
+        total, blocks = self._total(
+            {"type": "cload", "face_ids": [6, 7], "fx": self.F},
+            {"FACE_6": [1, 2, 3], "FACE_7": [4, 5, 6]},
+            {6: {2: 1.0}, 7: {5: 3.0}},
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
+
+    def test_mesh_tipi_toplam_kuvveti_degistirmez(self):
+        """Aynı seçim: ağırlıklı (tri6) ve ağırlıksız (quad) aynı toplamı verir."""
+        bc = {"type": "cload", "face_ids": [6, 7], "fx": self.F}
+        nsets = {"FACE_6": [1, 2, 3], "FACE_7": [4, 5, 6]}
+        weighted, _ = self._total(bc, nsets, {6: {2: 1.0}, 7: {5: 1.0}})
+        plain, _ = self._total(bc, nsets, None)
+        assert weighted == pytest.approx(plain, rel=1e-5)
+
+    def test_karisik_agirlik_esit_bolmeye_duser_toplam_f(self):
+        total, blocks = self._total(
+            {"type": "cload", "face_ids": [6, 7], "fx": self.F},
+            {"FACE_6": [1, 2, 3], "FACE_7": [4, 5, 6]},
+            {6: {2: 1.0}},  # 7'nin ağırlığı yok
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
+
+    def test_iki_kenar_toplam_f(self):
+        total, blocks = self._total(
+            {"type": "cload", "edge_ids": [1, 2], "fx": self.F},
+            {"EDGE_1": [1, 2, 3], "EDGE_2": [3, 4]},
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)
+        assert blocks == 1
+
+    def test_yuz_arti_nokta_toplam_f(self):
+        total, _ = self._total(
+            {"type": "cload", "face_ids": [6], "node_ids": [9], "fx": self.F},
+            {"FACE_6": [1, 2, 3], "POINT_9": [8]},
+            {6: {2: 1.0}},
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)
+
+    def test_ortak_dugum_esit_bolmede_bir_kez_sayilir(self):
+        """İki yüzün ortak kenarındaki düğüm iki kez yük almamalı."""
+        from app.solvers.calculix import _bcs_inp_block
+
+        _m, step = _bcs_inp_block(
+            [{"type": "cload", "face_ids": [6, 7], "fx": self.F}],
+            {"FACE_6": [1, 2, 3], "FACE_7": [3, 4, 5]},
+            {},
+            3,
+            None,
+        )
+        lines = [ln for ln in step.splitlines() if ln.strip().startswith("3,")]
+        assert len(lines) == 1
+        total, _ = _applied(step, dof=1)
+        assert total == pytest.approx(self.F, rel=1e-5)
+
+    def test_tek_agirliksiz_yuz_davranisi_degismedi(self):
+        total, _ = self._total(
+            {"type": "cload", "face_ids": [6], "fx": self.F},
+            {"FACE_6": [1, 2, 3, 4]},
+        )
+        assert total == pytest.approx(self.F, rel=1e-5)

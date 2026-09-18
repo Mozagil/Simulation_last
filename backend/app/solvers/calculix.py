@@ -1278,72 +1278,48 @@ def _bcs_inp_block(
             # Basınca (*DSLOAD) çevirmek genel çözüm DEĞİL: basınç yüzeye
             # daima diktir, ankastre kirişte ise uç yükü yüzeye TEĞET.
             # Tutarlı düğüm ağırlıkları yön bağımsızdır, o yüzden bu yol.
+            # TOPLAM KUVVET SÖZLEŞMESİ: fx/fy/fz, seçimin TAMAMINA uygulanan
+            # toplam kuvvettir — kaç yüz/kenar/nokta seçildiğinden ve mesh
+            # tipinden bağımsız. Eskiden her yüze ve her kenara AYRI AYRI
+            # tam F yazılıyordu (2 yüz seçilince 2F); tutarlı-ağırlık yolu
+            # ise ağırlıkları birleştirip toplam F veriyordu. Yani aynı BC,
+            # yüzün tri6 mi quad mı olduğuna göre F ya da n·F uyguluyordu.
+            #
+            # Dağıtım:
+            #  * Seçim yalnız yüzlerden oluşuyor VE her yüzün tutarlı
+            #    ağırlığı varsa → tutarlı ağırlıklar (alanla orantılı,
+            #    kuadratikte köşeler 0).
+            #  * Aksi halde → yüz + kenar + nokta düğümlerinin BİRLEŞİMİNE
+            #    eşit bölme. Kaba ama toplamı doğru; karışık seçimde tutarlı
+            #    ağırlık ile düğüm sayısını aynı ölçekte birleştirmenin
+            #    anlamlı bir yolu yok.
             node_ids = _resolve_bc_node_ids(bc, nsets)
-            weights = _consistent_face_weights(bc, face_weights)
-            # Tutarlı ağırlıkla yüklenen yüzeyler aşağıdaki eşit-bölme yüz
-            # döngüsünde ATLANMALI. Atlanmadığında yük iki kez yazılıyordu —
-            # ölçüldü: delikli plakada iki *CLOAD bloğu, her biri 30 000 N,
-            # toplam 60 000 N; u_max ve σ tam iki katına çıktı (σ 187 → 384).
-            weighted_faces = {
-                int(fid)
-                for fid in (bc.get("face_ids") or [])
-                if face_weights and face_weights.get(int(fid))
-            }
-            if weights:
-                total_w = sum(weights.values())
-                if total_w > 0:
-                    step_lines.append("*CLOAD")
-                    for nid, w in sorted(weights.items()):
-                        frac = w / total_w
-                        if abs(fx) > 0:
-                            step_lines.append(f"{nid}, 1, {fx * frac:.6g}")
-                        if abs(fy) > 0:
-                            step_lines.append(f"{nid}, 2, {fy * frac:.6g}")
-                        if abs(fz) > 0:
-                            step_lines.append(f"{nid}, 3, {fz * frac:.6g}")
-            elif node_ids:
-                # Kenar/nokta yükü ya da yüzey ağırlığı hesaplanamadı —
-                # eşit bölme. Bu durumda yukarıdaki salınım riski var,
-                # ama alternatifi yükü hiç uygulamamak olurdu.
-                n = len(node_ids)
+            face_ids = [int(f) for f in (bc.get("face_ids") or [])]
+            edge_ids = [int(e) for e in (bc.get("edge_ids") or [])]
+            all_faces_weighted = bool(face_ids) and all(
+                face_weights and face_weights.get(f) for f in face_ids
+            )
+            share: dict[int, float] = {}
+            if all_faces_weighted and not edge_ids and not node_ids:
+                share = _consistent_face_weights(bc, face_weights)
+            else:
+                targets: list[int] = list(node_ids)
+                for fid in face_ids:
+                    targets.extend(nsets.get(f"FACE_{fid}") or [])
+                for eid in edge_ids:
+                    targets.extend(nsets.get(f"EDGE_{eid}") or [])
+                share = {nid: 1.0 for nid in dict.fromkeys(targets)}
+            total_w = sum(share.values())
+            if total_w > 0:
                 step_lines.append("*CLOAD")
-                for nid in node_ids:
+                for nid, w in sorted(share.items()):
+                    frac = w / total_w
                     if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
+                        step_lines.append(f"{nid}, 1, {fx * frac:.6g}")
                     if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
+                        step_lines.append(f"{nid}, 2, {fy * frac:.6g}")
                     if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
-            for fid in bc.get("face_ids") or []:
-                if int(fid) in weighted_faces:
-                    continue  # yukarıda tutarlı ağırlıkla yazıldı
-                nset = f"FACE_{int(fid)}"
-                ids = nsets.get(nset) or []
-                if not ids:
-                    continue
-                n = len(ids)
-                step_lines.append("*CLOAD")
-                for nid in ids:
-                    if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
-                    if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
-                    if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
-            for eid in bc.get("edge_ids") or []:
-                nset = f"EDGE_{int(eid)}"
-                ids = nsets.get(nset) or []
-                if not ids:
-                    continue
-                n = len(ids)
-                step_lines.append("*CLOAD")
-                for nid in ids:
-                    if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
-                    if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
-                    if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
+                        step_lines.append(f"{nid}, 3, {fz * frac:.6g}")
         elif btype == "pressure":
             mag = float(bc.get("magnitude", 0.0))
             if abs(mag) < 1e-30:
