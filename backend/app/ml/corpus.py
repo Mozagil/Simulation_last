@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import numpy as np
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.doe.quality import MIN_NODES, RIGID_DISP_MM
@@ -37,6 +38,16 @@ class CorpusSpec:
     max_u_over_L: float = DEFAULT_MAX_U_OVER_L
     mesh_ratio_band: float = DEFAULT_MESH_RATIO_BAND
     require_analytic_ok: bool = True
+    #: Verilirse yalnız bu DOE çalışmasının run'ları taranır.
+    #:
+    #: NEDEN: süzgeçler "tutarsız mı" diye bakar, "planladığım kutudan mı"
+    #: diye bakmaz. Elle çözülen tek tük doğrulama koşuları (bir T=20, bir
+    #: F=1000 N) süzgeci geçer ama eğitim kutusunu tek noktayla genişletir.
+    #: OOD koruması min–maks kutusu olduğu için (`ml/ood.py`) bu, korumayı
+    #: tam gerektiği yerde işlevsizleştirir: F=1000'de tek örnek varken
+    #: F=900 "eğitim uzayı içinde" sayılır. Ölçüldü: study 3 kutusu
+    #: F ≤ 220 N iken, süzgeç F=1000 N'lik bir koşuyu sete almıştı.
+    study_id: int | None = None
 
 
 @dataclass
@@ -66,6 +77,7 @@ class TrainingCorpus:
             "max_u_over_L": self.spec.max_u_over_L,
             "mesh_ratio_band": self.spec.mesh_ratio_band,
             "analysis_type": self.spec.analysis_type,
+            "study_id": self.spec.study_id,
         }
 
 
@@ -267,13 +279,21 @@ def select_training_runs(
 ) -> TrainingCorpus:
     spec = spec or CorpusSpec()
     dropped: dict[str, int] = {}
-    rows = (
+    query = (
         db.query(AnalysisRun, Geometry)
         .join(Geometry, Geometry.id == AnalysisRun.geometry_id)
         .filter(AnalysisRun.status == "solved")
-        .order_by(AnalysisRun.id)
-        .all()
     )
+    if spec.study_id is not None:
+        from app.models.doe import DoeCase
+
+        study_runs = (
+            db.query(DoeCase.run_id)
+            .filter(DoeCase.study_id == spec.study_id, DoeCase.run_id.isnot(None))
+            .subquery()
+        )
+        query = query.filter(AnalysisRun.id.in_(select(study_runs.c.run_id)))
+    rows = query.order_by(AnalysisRun.id).all()
     n_scanned = len(rows)
     kept: list[tuple[AnalysisRun, Geometry]] = []
     for run, geo in rows:

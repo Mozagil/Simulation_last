@@ -164,3 +164,58 @@ def test_scalar_train_api_filters_noise(db_session, tmp_path, monkeypatch):
         assert body["corpus"]["template_id"] == "cantilever_beam"
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_study_id_restricts_corpus_to_that_doe_box(db_session):
+    """Süzgeç 'tutarsız mı' der, 'planladığım kutudan mı' demez.
+
+    Gerçek vaka (study 3): DOE kutusu F ≤ 220 N iken, elle çözülen bir
+    doğrulama koşusu (F = 1000 N) süzgeci geçip sete girdi. OOD koruması
+    min–maks kutusu olduğu için tek bir aykırı örnek koruma sınırını
+    F=1000'e taşıyor ve F=900 "eğitim uzayı içinde" sayılıyor.
+    """
+    from app.models.doe import DoeCase, DoeStudy
+
+    study = DoeStudy(name="kutu", template_id="cantilever_beam", seed=1, spec={}, status="completed")
+    db_session.add(study)
+    db_session.flush()
+
+    in_box = [_run(db_session, disp=18.0 + i, fy=-200.0 - 5 * i) for i in range(8)]
+    for i, r in enumerate(in_box):
+        db_session.add(
+            DoeCase(
+                study_id=study.id,
+                index=i,
+                run_id=r.id,
+                geometry_params={"length": 500.0},
+                element_size=8.0,
+                material_id=1,
+                scenario_name="uc_yuk",
+                status="solved",
+            )
+        )
+    db_session.commit()
+
+    # Kutunun dışında, ama süzgecin hiçbir kuralını ihlal etmiyor:
+    # aynı aile, aynı malzeme, aynı mesh oranı, u/L küçük.
+    outlier = _run(db_session, disp=30.0, fy=-1000.0)
+
+    wide = select_training_runs(db_session)
+    assert outlier.id in wide.run_ids, "süzgeç tek başına kutu dışını elemez"
+
+    pinned = select_training_runs(db_session, CorpusSpec(study_id=study.id))
+    assert pinned.n_kept == 8
+    assert set(pinned.run_ids) == {r.id for r in in_box}
+    assert outlier.id not in pinned.run_ids
+    assert pinned.as_public()["study_id"] == study.id
+
+
+def test_study_id_survives_manifest_round_trip(tmp_path, db_session):
+    from app.ml.manifest import save_manifest, spec_from_manifest
+
+    corpus = select_training_runs(
+        db_session, CorpusSpec(template_id="cantilever_beam", study_id=42)
+    )
+    payload = save_manifest("kutu-test", corpus, root=tmp_path)
+    assert payload["spec"]["study_id"] == 42
+    assert spec_from_manifest(payload).study_id == 42

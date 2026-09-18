@@ -320,9 +320,18 @@ def freeze_corpus(
     name: str,
     db: Session = Depends(get_db),
     template_id: str | None = None,
+    study_id: int | None = None,
 ) -> dict[str, Any]:
-    """Canlı süzgeç seçimini isimli bir manifeste dondurur."""
-    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    """Canlı süzgeç seçimini isimli bir manifeste dondurur.
+
+    `study_id` verilirse yalnız o DOE çalışmasının run'ları taranır. Süzgeçler
+    "tutarsız mı" diye bakar, "planladığım kutudan mı" diye bakmaz; elle
+    çözülen doğrulama koşuları süzgeci geçip eğitim kutusunu tek noktayla
+    genişletebilir (bkz. `CorpusSpec.study_id`).
+    """
+    corpus = select_training_runs(
+        db, CorpusSpec(template_id=template_id, study_id=study_id)
+    )
     try:
         payload = save_manifest(name, corpus)
     except ManifestError as exc:

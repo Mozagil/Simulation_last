@@ -65,6 +65,7 @@ def save_manifest(
             "mesh_ratio_band": corpus.spec.mesh_ratio_band,
             "require_analytic_ok": corpus.spec.require_analytic_ok,
             "template_id": corpus.spec.template_id,
+            "study_id": corpus.spec.study_id,
         },
         "dropped_at_freeze": dict(corpus.dropped),
         "flagged_at_freeze": dict(corpus.flagged),
@@ -117,6 +118,7 @@ def spec_from_manifest(data: dict[str, Any]) -> CorpusSpec:
             if raw.get("require_analytic_ok") is not None
             else base.require_analytic_ok
         ),
+        study_id=(int(raw["study_id"]) if raw.get("study_id") is not None else None),
     )
 
 
