@@ -12,9 +12,17 @@ import {
   type CorpusListItem,
   type CorpusRunVerdict,
   type ParamPredictResult,
+  type ScalarModelInfo,
+  type ScalarModelKind,
   type SurrogatePredictResult,
   type SurrogateStatus,
 } from "../api/surrogate";
+
+/** Skaler model türlerinin okunur adı. */
+const MODEL_LABEL: Record<ScalarModelKind, string> = {
+  rf: "Random Forest",
+  loglinear: "Log-log lineer",
+};
 
 /** Süzgeç gerekçelerinin okunur karşılığı; karar kullanıcıya ait. */
 const REASON_TEXT: Record<string, string> = {
@@ -124,27 +132,37 @@ export default function SurrogatePanel({
     onCorpusChange?.(corpus || null);
   }, [corpus, onCorpusChange]);
 
+  // Hangi skaler modelin egitilecegi/kullanilacagi. Arac sessizce secmez:
+  // tahmin yanitindaki model_kind daima gosterilir.
+  const [scalarModel, setScalarModel] = useState<ScalarModelKind>("loglinear");
+
   async function handleTrainRf() {
     setBusy("rf");
     setError(null);
     setMessage(null);
     try {
-      const r = await trainScalarRf(corpus || null);
+      const r = await trainScalarRf(corpus || null, scalarModel);
       const info = r?.corpus;
       const droppedN = Object.values(info?.dropped ?? {}).reduce((a, b) => a + b, 0);
       const flaggedN = Object.values(info?.flagged ?? {}).reduce((a, b) => a + b, 0);
-      let msg = `RF eğitildi · ${r?.n_samples ?? "?"} örnek`;
+      let msg = `${MODEL_LABEL[scalarModel]} eğitildi · ${r?.n_samples ?? "?"} örnek`;
       msg += corpus ? ` · set ${corpus}` : " · canlı süzgeç";
       if (info?.template_id) msg += ` · ${info.template_id}`;
       if (droppedN > 0) msg += ` · atılan ${droppedN}`;
       if (flaggedN > 0) msg += ` · eşik üstü ${flaggedN}`;
-      msg += ` · test R² disp ${fmtR2(r?.metrics?.test?.max_displacement?.r2)}`;
+      // Holdout yoksa "test R²" YAZILMAZ. Eskiden bu satır eğitim R²'sini
+      // test R²'si diye gösteriyordu (n<12'de X_te = X_tr atanıyordu).
+      msg += r?.has_holdout
+        ? ` · test R² disp ${fmtR2(r?.metrics?.test?.max_displacement?.r2)}`
+        : ` · holdout yok (n<12) · eğitim R² disp ${fmtR2(
+            r?.metrics?.train?.max_displacement?.r2,
+          )}`;
       setMessage(msg);
       if (info?.youngs_modulus != null) setYoungs(String(info.youngs_modulus));
       if (info?.poisson_ratio != null) setPoisson(String(info.poisson_ratio));
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "RF eğitilemedi.");
+      setError(e instanceof Error ? e.message : "Skaler model eğitilemedi.");
     } finally {
       setBusy(null);
     }
@@ -273,7 +291,7 @@ export default function SurrogatePanel({
         pressure_mpa: 0,
         dimension: 3,
         compare_run_id: compareOpenRun && runId != null ? runId : undefined,
-      });
+      }, scalarModel);
       setParamResult(result);
       setMessage(result.message);
     } catch (e) {
@@ -284,9 +302,12 @@ export default function SurrogatePanel({
   }
 
   const rf = status?.scalar_rf;
+  const loglin = status?.scalar_loglinear;
+  const active: ScalarModelInfo | null | undefined =
+    scalarModel === "loglinear" ? loglin : rf;
   const gnn = status?.field_gnn;
   const canRunPredict = geometryId != null || runId != null;
-  const canParamsPredict = rf != null && busy === null;
+  const canParamsPredict = (rf != null || loglin != null) && busy === null;
   const pred = paramResult?.predictions;
   const fea = paramResult?.fea;
   const dev = paramResult?.deviation_pct;
@@ -301,20 +322,75 @@ export default function SurrogatePanel({
         modeli ayrı. Tahmin tam çözüm değildir.
       </p>
 
+      <label className="mesh-field">
+        <span>Skaler model</span>
+        <select
+          value={scalarModel}
+          disabled={busy !== null}
+          onChange={(e) => setScalarModel(e.target.value as ScalarModelKind)}
+        >
+          <option value="loglinear">
+            Log-log lineer{loglin ? ` · ${loglin.n_samples} örnek` : " · eğitilmedi"}
+          </option>
+          <option value="rf">
+            Random Forest{rf ? ` · ${rf.n_samples} örnek` : " · eğitilmedi"}
+          </option>
+        </select>
+      </label>
+
       <div className="dataset-stats">
         <div>
-          <strong>{rf?.n_samples ?? "—"}</strong>
-          <span>RF örnek</span>
+          <strong>{active?.n_samples ?? "—"}</strong>
+          <span>{MODEL_LABEL[scalarModel]} örnek</span>
         </div>
         <div>
-          <strong>{fmtR2(rf?.metrics?.test?.max_displacement?.r2)}</strong>
-          <span>test R² disp</span>
+          <strong>
+            {active?.has_holdout
+              ? fmtR2(active?.metrics?.test?.max_displacement?.r2)
+              : fmtR2(active?.metrics?.train?.max_displacement?.r2)}
+          </strong>
+          <span>{active?.has_holdout ? "test R² disp" : "eğitim R² disp (holdout yok)"}</span>
+        </div>
+        <div>
+          <strong>{fmtPct((active?.metrics?.test?.max_displacement?.mape ?? NaN) * 100)}</strong>
+          <span>test MAPE disp</span>
         </div>
         <div>
           <strong>{gnn?.n_samples ?? "—"}</strong>
           <span>GNN graf</span>
         </div>
       </div>
+
+      {scalarModel === "loglinear" && loglin?.exponents?.max_displacement && (
+        <details className="surrogate-exponents">
+          <summary>
+            Öğrenilen üsler — deplasman (log-log modelin katsayıları)
+          </summary>
+          <table className="doe-table">
+            <thead>
+              <tr>
+                <th>özellik</th>
+                <th>üs</th>
+                <th>okunabilir mi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loglin.exponents.max_displacement.map((e) => (
+                <tr key={e.feature} className={e.identifiable ? undefined : "doe-table-row-flagged"}>
+                  <td>{e.feature}</td>
+                  <td>{e.exponent.toFixed(4)}</td>
+                  <td>{e.identifiable ? "evet" : (e.reason ?? "hayır")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="filename">
+            Bir sütun korpus boyunca sabitse ya da başka bir sütunla eşdoğrusalsa
+            katsayısı &quot;üs&quot; olarak okunamaz — tahmin bundan zarar görmez,
+            yorum görür.
+          </p>
+        </details>
+      )}
 
       <p className="material-assignments-title">Eğitim seti</p>
       <div className="mesh-grid">
@@ -460,7 +536,7 @@ export default function SurrogatePanel({
           disabled={busy !== null}
           onClick={() => void handleTrainRf()}
         >
-          {busy === "rf" ? "Eğitiliyor…" : "RF eğit"}
+          {busy === "rf" ? "Eğitiliyor…" : `${MODEL_LABEL[scalarModel]} eğit`}
         </button>
         <button
           type="button"

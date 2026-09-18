@@ -17,15 +17,37 @@ export interface TrainingCorpusInfo {
   flagged?: Record<string, number>;
 }
 
+/** Skaler model turu. "auto": log-log varsa o, yoksa RF. */
+export type ScalarModelKind = "rf" | "loglinear";
+
+export interface ScalarExponent {
+  feature: string;
+  exponent: number;
+  /** false ise katsayi "us" diye okunamaz (sabit ya da esdogrusal sutun). */
+  identifiable: boolean;
+  reason: string | null;
+}
+
+export interface ScalarModelInfo {
+  n_samples?: number;
+  n_train?: number;
+  n_test?: number;
+  has_holdout?: boolean;
+  corpus?: TrainingCorpusInfo | null;
+  metrics?: {
+    train?: Record<string, { r2: number | null; mae: number; mape: number }>;
+    test?: Record<string, { r2: number | null; mae: number; mape: number }> | null;
+  };
+  exponents?: Record<string, ScalarExponent[]>;
+  constant_features?: string[];
+  collinear_features?: string[][];
+}
+
 export interface SurrogateStatus {
-  scalar_rf: {
-    n_samples?: number;
-    corpus?: TrainingCorpusInfo | null;
-    metrics?: {
-      train?: Record<string, { r2: number | null; mae: number; mape: number }>;
-      test?: Record<string, { r2: number | null; mae: number; mape: number }>;
-    };
-  } | null;
+  scalar_rf: ScalarModelInfo | null;
+  /** Log-log lineer model (0.6.3). Güç yasası hedeflerinde RF'ten çok daha
+   * isabetli; ikisi birlikte tutulur, biri diğerini silmez. */
+  scalar_loglinear: ScalarModelInfo | null;
   field_gnn: {
     n_samples?: number;
     corpus?: TrainingCorpusInfo | null;
@@ -84,12 +106,13 @@ function corpusQuery(corpusName?: string | null): string {
 
 export async function trainScalarRf(
   corpusName?: string | null,
-): Promise<SurrogateStatus["scalar_rf"]> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/scalar/train${corpusQuery(corpusName)}`, {
-    method: "POST",
-  });
+  model: ScalarModelKind = "rf",
+): Promise<(ScalarModelInfo & { model_kind?: ScalarModelKind }) | null> {
+  const q = corpusQuery(corpusName);
+  const url = `${API_BASE_URL}/surrogate/scalar/train${q ? `${q}&` : "?"}model=${model}`;
+  const res = await fetch(url, { method: "POST" });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Skaler eğitim başarısız"));
-  return (await res.json()) as SurrogateStatus["scalar_rf"];
+  return (await res.json()) as ScalarModelInfo & { model_kind?: ScalarModelKind };
 }
 
 export async function trainFieldGnn(
@@ -132,6 +155,8 @@ export interface ParamPredictRequest {
 
 export interface ParamPredictResult {
   kind: "scalar";
+  /** Tahmini gerçekte hangi model üretti — araç sessizce model değiştirmez. */
+  model_kind?: ScalarModelKind;
   source: string;
   out_of_domain: boolean;
   predictions: { max_displacement: number; max_von_mises: number };
@@ -239,8 +264,9 @@ export async function fetchCorpusMembership(name: string): Promise<CorpusMembers
 
 export async function predictFromParams(
   body: ParamPredictRequest,
+  model: ScalarModelKind | "auto" = "auto",
 ): Promise<ParamPredictResult> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params`, {
+  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params?model=${model}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

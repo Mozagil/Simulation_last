@@ -3837,3 +3837,34 @@ p {
 .convergence-results .doe-table tbody tr:hover {
   cursor: default;
 }
+
+/* --- Log-log model üs tablosu (0.6.3) ------------------------------------ */
+
+.surrogate-exponents {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.surrogate-exponents summary {
+  cursor: pointer;
+  font-family: var(--font-head);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+}
+
+.surrogate-exponents .doe-table {
+  margin-top: 6px;
+}
+
+.surrogate-exponents .doe-table td:first-child,
+.surrogate-exponents .doe-table th:first-child {
+  text-align: left;
+}
+
+.surrogate-exponents .doe-table tbody tr:hover {
+  cursor: default;
+}

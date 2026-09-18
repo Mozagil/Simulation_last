@@ -38,6 +38,7 @@ describe("SurrogatePanel", () => {
     vi.mocked(addRunsToCorpus).mockReset();
     vi.mocked(fetchSurrogateStatus).mockResolvedValue({
       scalar_rf: null,
+      scalar_loglinear: null,
       field_gnn: null,
     });
     vi.mocked(fetchCorpusList).mockResolvedValue([]);
@@ -71,7 +72,7 @@ describe("SurrogatePanel", () => {
       },
     });
     render(<SurrogatePanel geometryId={1} runId={4} onPrediction={onPrediction} />);
-    fireEvent.click(await screen.findByRole("button", { name: "RF eğit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Log-log lineer eğit" }));
     await waitFor(() => expect(trainScalarRf).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "Açık run tahmini" }));
     await waitFor(() => expect(predictSurrogate).toHaveBeenCalledTimes(1));
@@ -81,7 +82,8 @@ describe("SurrogatePanel", () => {
 
   it("parametreyle tahmin ccx/run istemez ve sayıları gösterir", async () => {
     vi.mocked(fetchSurrogateStatus).mockResolvedValue({
-      scalar_rf: { n_samples: 22, metrics: { test: { max_displacement: { r2: -3.9, mae: 1, mape: 1 } } } },
+      scalar_rf: { n_samples: 22, has_holdout: true, metrics: { test: { max_displacement: { r2: -3.9, mae: 1, mape: 1 } } } },
+      scalar_loglinear: null,
       field_gnn: null,
     });
     vi.mocked(predictFromParams).mockResolvedValue({
@@ -105,6 +107,8 @@ describe("SurrogatePanel", () => {
         load_fy: -400,
         compare_run_id: 4,
       }),
+      // İkinci argüman seçili model; panelin varsayılanı log-log.
+      "loglinear",
     );
     expect(await screen.findByText(/Tahmin u_max/)).toBeInTheDocument();
     expect(screen.getByText(/24.100 mm/)).toBeInTheDocument();
@@ -129,8 +133,10 @@ describe("SurrogatePanel", () => {
     await waitFor(() => expect(onCorpusChange).toHaveBeenCalledWith("kiris-v1"));
     expect(await screen.findByText(/Set donduruldu: kiris-v1 · 3 run/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "RF eğit" }));
-    await waitFor(() => expect(trainScalarRf).toHaveBeenCalledWith("kiris-v1"));
+    fireEvent.click(screen.getByRole("button", { name: "Log-log lineer eğit" }));
+    await waitFor(() =>
+      expect(trainScalarRf).toHaveBeenCalledWith("kiris-v1", "loglinear"),
+    );
     expect(await screen.findByText(/set kiris-v1/)).toBeInTheDocument();
   });
 
@@ -176,5 +182,49 @@ describe("SurrogatePanel", () => {
       expect(addRunsToCorpus).toHaveBeenCalledWith("kiris-v1", [263], true),
     );
     expect(await screen.findByText(/sete eklendi \(override\)/)).toBeInTheDocument();
+  });
+
+  it("model seçimi eğitimi ve tahmini o türe yönlendirir", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: { n_samples: 200, has_holdout: true, metrics: { test: { max_displacement: { r2: 0.895, mae: 0.59, mape: 0.189 } } } },
+      scalar_loglinear: {
+        n_samples: 200,
+        has_holdout: true,
+        metrics: { test: { max_displacement: { r2: 1.0, mae: 0.004, mape: 0.0016 } } },
+        exponents: {
+          max_displacement: [
+            { feature: "length", exponent: 2.9894, identifiable: true, reason: null },
+            {
+              feature: "youngs_modulus",
+              exponent: -0.0023,
+              identifiable: false,
+              reason: "korpus boyunca sabit",
+            },
+          ],
+        },
+        constant_features: ["youngs_modulus"],
+        collinear_features: [],
+      },
+      field_gnn: null,
+    });
+    vi.mocked(trainScalarRf).mockResolvedValue({ n_samples: 200, has_holdout: true });
+
+    render(<SurrogatePanel />);
+
+    // Varsayılan log-log: üsler görünür, sabit sütun okunamaz diye işaretli.
+    expect(await screen.findByText(/Öğrenilen üsler/)).toBeInTheDocument();
+    expect(screen.getByText("2.9894")).toBeInTheDocument();
+    expect(screen.getByText("korpus boyunca sabit")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log-log lineer eğit" }));
+    await waitFor(() =>
+      expect(trainScalarRf).toHaveBeenCalledWith(null, "loglinear"),
+    );
+
+    // RF'e geçilince üs tablosu kalkar ve eğitim o türe gider.
+    fireEvent.change(screen.getByLabelText("Skaler model"), { target: { value: "rf" } });
+    expect(screen.queryByText(/Öğrenilen üsler/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Random Forest eğit" }));
+    await waitFor(() => expect(trainScalarRf).toHaveBeenCalledWith(null, "rf"));
   });
 });

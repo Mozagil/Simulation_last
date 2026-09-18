@@ -42,6 +42,14 @@ from app.ml.scalar_rf import (
     save_scalar_rf,
     train_scalar_rf,
 )
+from app.ml.scalar_loglinear import (
+    DEFAULT_LOGLIN_PATH,
+    load_scalar_loglinear,
+    predict_scalar_loglinear,
+    public_metrics_loglinear,
+    save_scalar_loglinear,
+    train_scalar_loglinear,
+)
 from app.models.geometry import Geometry
 from app.models.run import AnalysisRun
 
@@ -150,12 +158,46 @@ def _inputs_npz_for(run_id: int) -> Path:
     return RUNS_DIR / str(run_id) / f"run{run_id}.inputs.npz"
 
 
+
+#: Skaler model türleri. "auto" varsa log-log'u seçer — ölçüldü, aynı
+#: korpusta doğrulama MAPE'si %16.15 yerine %0.09. Hangi türün kullanıldığı
+#: yanıtta `model_kind` ile DAİMA bildirilir; araç sessizce model değiştirmez.
+SCALAR_MODELS = ("rf", "loglinear")
+
+
+def _load_scalar_model(model: str) -> tuple[str, dict[str, Any]] | None:
+    """(tür, bundle) ya da None. `auto`: loglinear varsa o, yoksa rf."""
+    if model not in ("auto",) + SCALAR_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model 'auto', {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
+        )
+    if model in ("auto", "loglinear"):
+        bundle = load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
+        if bundle is not None:
+            return "loglinear", bundle
+        if model == "loglinear":
+            return None
+    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
+    return ("rf", bundle) if bundle is not None else None
+
+
+def _predict_with(kind: str, bundle: dict[str, Any], x) -> dict[str, Any]:
+    return (
+        predict_scalar_loglinear(bundle, x)
+        if kind == "loglinear"
+        else predict_scalar(bundle, x)
+    )
+
+
 @router.get("/status")
 def surrogate_status() -> dict[str, Any]:
     rf = load_scalar_rf(DEFAULT_MODEL_PATH)
     gnn = load_gnn(DEFAULT_GNN_PATH)
+    loglin = load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
     return {
         "scalar_rf": public_metrics(rf) if rf else None,
+        "scalar_loglinear": public_metrics_loglinear(loglin) if loglin else None,
         "field_gnn": (
             {
                 "kind": gnn["kind"],
@@ -173,42 +215,73 @@ def train_scalar(
     db: Session = Depends(get_db),
     template_id: str | None = None,
     corpus_name: str | None = None,
+    model: str = "rf",
 ) -> dict[str, Any]:
+    """Skaler surrogate eğitimi. `model`: "rf" | "loglinear".
+
+    İki tür AYNI korpustan, aynı metrik tanımıyla eğitilir; ikisi de kendi
+    dosyasına yazılır, biri diğerini silmez. Hangisinin kullanılacağı
+    tahmin anında seçilir.
+    """
+    if model not in SCALAR_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
+        )
+    label = "RF" if model == "rf" else "log-log"
     run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
     X, y, ids = collect_scalar_table(db, run_ids=run_ids)
     if len(ids) < MIN_SAMPLES:
         if frozen is not None:
-            raise _too_few_frozen("RF", len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
+            raise _too_few_frozen(label, len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
         assert corpus is not None
-        raise _too_few("RF", len(ids), MIN_SAMPLES, corpus)
+        raise _too_few(label, len(ids), MIN_SAMPLES, corpus)
     try:
-        bundle = train_scalar_rf(X, y)
+        bundle = (
+            train_scalar_rf(X, y) if model == "rf" else train_scalar_loglinear(X, y)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     bundle["corpus"] = (
         _frozen_summary(frozen, len(ids)) if frozen is not None else corpus.as_public()
     )
-    save_scalar_rf(bundle, DEFAULT_MODEL_PATH)
-    out = public_metrics(bundle)
+    if model == "rf":
+        save_scalar_rf(bundle, DEFAULT_MODEL_PATH)
+        out = public_metrics(bundle)
+    else:
+        save_scalar_loglinear(bundle, DEFAULT_LOGLIN_PATH)
+        out = public_metrics_loglinear(bundle)
+    out["model_kind"] = model
     out["run_ids"] = ids
     return out
 
 
 @router.post("/scalar/predict")
-def scalar_predict(body: ScalarPredictBody) -> dict[str, Any]:
-    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
-    if bundle is None:
+def scalar_predict(body: ScalarPredictBody, model: str = "auto") -> dict[str, Any]:
+    loaded = _load_scalar_model(model)
+    if loaded is None:
         raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
-    x = features_from_dict(body.features)
-    return predict_scalar(bundle, x)
+    kind, bundle = loaded
+    out = _predict_with(kind, bundle, features_from_dict(body.features))
+    out["model_kind"] = kind
+    return out
 
 
 @router.post("/predict/params")
-def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """ccx ve mesh yok: L/T/W + yük → RF skaler. İsteğe bağlı FEA kıyası."""
-    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
-    if bundle is None:
+def predict_from_params(
+    body: ParamPredictBody,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+) -> dict[str, Any]:
+    """ccx ve mesh yok: L/T/W + yük → skaler tahmin. İsteğe bağlı FEA kıyası.
+
+    `model`: "auto" (loglinear varsa o) | "rf" | "loglinear". Kullanılan tür
+    yanıtta `model_kind` ile döner.
+    """
+    loaded = _load_scalar_model(model)
+    if loaded is None:
         raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
+    model_kind, bundle = loaded
     features = {
         "length": body.length,
         "thickness": body.thickness,
@@ -222,7 +295,7 @@ def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -
         "pressure_mpa": body.pressure_mpa,
         "dimension": float(body.dimension),
     }
-    pred = predict_scalar(bundle, features_from_dict(features))
+    pred = _predict_with(model_kind, bundle, features_from_dict(features))
     fea: dict[str, Any] | None = None
     deviation: dict[str, float | None] | None = None
     if body.compare_run_id is not None:
@@ -251,6 +324,7 @@ def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -
     ood = bool(pred["out_of_domain"])
     return {
         "kind": "scalar",
+        "model_kind": model_kind,
         "source": "surrogate",
         "out_of_domain": ood,
         "predictions": pred["predictions"],
@@ -258,7 +332,8 @@ def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -
         "fea": fea,
         "deviation_pct": deviation,
         "message": (
-            "Tahmin — ccx çalışmadı, tam çözüm değil."
+            f"Tahmin ({'log-log' if model_kind == 'loglinear' else 'RF'})"
+            " — ccx çalışmadı, tam çözüm değil."
             + (" Eğitim uzayı dışı." if ood else "")
             + (" FEA kıyası eklendi." if fea else "")
         ),
