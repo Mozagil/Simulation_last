@@ -32,10 +32,11 @@ hatanın hepsini yakalar — en küçüğü bile %10 mertebesindeydi.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
+
+from app.solvers.calculix import _ccx_executable
 
 from app.mesh.base import MeshParams
 from app.mesh.gmsh_adapter import GmshMesherAdapter
@@ -63,9 +64,14 @@ EXPECTED_FREQS_HZ = (33.27, 165.49, 208.11)
 TOLERANCE = 0.05
 
 
+# Uygulamanın ccx'i bulduğu AYNI mantık (CCX_PATH → PATH → vendor). Eskiden
+# yalnız PATH'teki `ccx` aranıyordu; CCX_PATH ile kurulu makinede bu gerçek
+# çözüm testleri SESSİZCE atlanıyordu — "tüm testler yeşil" sayısı kiriş
+# fiziğini hiç kapsamıyordu. Tutarlı-yük değişikliği bu yüzden fizik
+# regresyonu görülmeden commit'lenebildi.
 requires_ccx = pytest.mark.skipif(
-    shutil.which("ccx") is None,
-    reason="CalculiX (ccx) kurulu değil — bu test gerçek çözüm gerektirir",
+    _ccx_executable() is None,
+    reason="CalculiX (ccx) bulunamadı (CCX_PATH / PATH / vendor) — bu test gerçek çözüm gerektirir",
 )
 
 
