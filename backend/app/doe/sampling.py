@@ -44,6 +44,13 @@ class DoeSpec(BaseModel):
     #: Geçersiz örnek (şablonun geometrik kısıtlarına takılan) elenip yerine
     #: yenisi çekilir. Kaç tur deneneceği; aşılırsa elde kalanla devam edilir.
     max_resample_passes: int = Field(12, ge=1, le=100)
+    #: Analitik ön eleme: örnek koşulmadan önce lineer-elastik bölgede mi
+    #: diye bakılır (bkz. doe/screening.py). Kapatmak için False.
+    screen_physics: bool = True
+    #: u/L üst sınırı (corpus kapısı 0.10; marjla 0.06 varsayılan).
+    screen_max_u_over_l: float = Field(0.06, gt=0, le=1.0)
+    #: Akma gerilmesinin kullanılabilir oranı (0.8 = %20 marj).
+    screen_yield_utilisation: float = Field(0.8, gt=0, le=2.0)
     material_ids: list[int] = Field(min_length=1)
     bc_scenarios: list[BcScenario] = Field(min_length=1)
     dimension: int = 3
@@ -197,7 +204,47 @@ def _params_valid(spec: DoeSpec, params: dict[str, Any]) -> bool:
     return True
 
 
-def sample_spec(spec: DoeSpec) -> list[DoeSample]:
+def _cload_magnitude(scenario: BcScenario) -> float:
+    """Senaryodaki cload bileşkesinin büyüklüğü (N) — analitik girdi."""
+    total = 0.0
+    for bc in scenario.bcs:
+        if str(bc.get("type") or "").lower() == "cload":
+            fx = float(bc.get("fx") or 0.0)
+            fy = float(bc.get("fy") or 0.0)
+            fz = float(bc.get("fz") or 0.0)
+            total += (fx * fx + fy * fy + fz * fz) ** 0.5
+    return total
+
+
+def _physics_ok(
+    spec: DoeSpec,
+    sample: DoeSample,
+    materials: dict[int, dict[str, Any]] | None,
+) -> bool:
+    """Analitik ön eleme. Malzeme bilgisi yoksa eleme yapılmaz."""
+    if not spec.screen_physics or not materials:
+        return True
+    mat = materials.get(sample.material_id)
+    if not mat:
+        return True
+    from app.doe.screening import screen_sample
+
+    res = screen_sample(
+        spec.template_id,
+        sample.geometry_params,
+        force_n=_cload_magnitude(sample.scenario),
+        youngs_modulus_pa=float(mat.get("youngs_modulus") or 210e9),
+        yield_strength_pa=mat.get("yield_strength"),
+        max_u_over_l=spec.screen_max_u_over_l,
+        yield_utilisation=spec.screen_yield_utilisation,
+    )
+    return res.ok
+
+
+def sample_spec(
+    spec: DoeSpec,
+    materials: dict[int, dict[str, Any]] | None = None,
+) -> list[DoeSample]:
     """Tohumla yinelenebilir LHS + kesikli malzeme/BC senaryosu.
 
     Şablonların geometrik kısıtları (ankastre kirişte `L ≥ 5T` gibi) parametreler
@@ -221,6 +268,8 @@ def sample_spec(spec: DoeSpec) -> list[DoeSample]:
         u = latin_hypercube(need, n_dim, rng)
         for row in u:
             sample = _sample_row(spec, row, geo_keys, len(out))
-            if _params_valid(spec, sample.geometry_params):
+            if _params_valid(spec, sample.geometry_params) and _physics_ok(
+                spec, sample, materials
+            ):
                 out.append(sample)
     return out

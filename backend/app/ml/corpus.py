@@ -37,6 +37,11 @@ class CorpusSpec:
     max_u_over_L: float = DEFAULT_MAX_U_OVER_L
     mesh_ratio_band: float = DEFAULT_MESH_RATIO_BAND
     require_analytic_ok: bool = True
+    #: Lineer mi nonlineer (NLGEOM) run'lar mı toplanacak. İkisi FARKLI
+    #: FİZİK: lineer çözüm denge denklemlerini deforme olmamış geometride
+    #: kurar. Aynı modele sokmak, iki farklı fonksiyonu tek fonksiyona
+    #: uydurmaya çalışmaktır — model ikisini de yanlış öğrenir.
+    nlgeom: bool = False
 
 
 @dataclass
@@ -160,6 +165,10 @@ def _row_reject(run: AnalysisRun, geo: Geometry, spec: CorpusSpec) -> str | None
         return "no_template"
     if _analysis_type(run) != spec.analysis_type:
         return "wrong_analysis"
+    # Eski run'larda bu bayrak yok; yokluğu "lineer" demektir (NLGEOM
+    # Faz 0.6'da eklendi, öncesinde her şey lineerdi).
+    if bool((run.scalars or {}).get("_nlgeom", False)) != bool(spec.nlgeom):
+        return "wrong_kinematics"
     if features_from_run(run, geo) is None or targets_from_run(run) is None:
         return "missing_features"
     scalars = run.scalars or {}

@@ -452,7 +452,12 @@ class CalculiXAdapter(SolverAdapter):
                 dimension=dimension,
             )
         elif analysis_type == "static":
-            step_block = _static_step_block(step_bc_block, dimension)
+            step_block = _static_step_block(
+                step_bc_block,
+                dimension,
+                nlgeom=bool(params.get("nlgeom")),
+                n_increments=int(params.get("n_increments") or 20),
+            )
         else:
             raise SolverError(
                 f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
@@ -1306,11 +1311,40 @@ def _output_qualifier(dimension: int) -> str:
     return ""
 
 
-def _static_step_block(step_bc_lines: str = "", dimension: int = 3) -> str:
+def _static_step_block(
+    step_bc_lines: str = "",
+    dimension: int = 3,
+    nlgeom: bool = False,
+    n_increments: int = 20,
+) -> str:
+    """Statik çözüm adımı. `nlgeom=True` ise büyük deformasyon.
+
+    NEDEN GEREKLİ: Lineer (küçük deformasyon) çözüm, denge denklemlerini
+    deforme OLMAMIŞ geometride kurar. u/L büyüdükçe bu varsayım bozulur;
+    çözücü hata vermez, sessizce yanlış cevap verir. Korpus kapısı bu
+    yüzden u/L > 0.10 olan run'ları eliyor (kirişte 23 run elendi).
+
+    NLGEOM ile CalculiX denge denklemlerini deforme geometride kurar ve
+    yükü artımlı uygular. Maliyeti: iterasyon gerektirir, lineer çözümden
+    belirgin şekilde yavaştır — bu yüzden varsayılan KAPALI.
+
+    `*STATIC` satırındaki dört alan: başlangıç artım, toplam adım süresi,
+    min artım, max artım. NLGEOM'da artımlı yükleme şart; lineer çözümde
+    tek artım yeterli olduğu için o satır sade bırakılıyor.
+    """
     out = _output_qualifier(dimension)
+    if nlgeom:
+        inc = max(1, int(n_increments))
+        first = 1.0 / inc
+        head = (
+            f"*STEP, NLGEOM, INC={max(100, inc * 5)}\n"
+            f"*STATIC\n"
+            f"{first:g}, 1.0, {first / 100:g}, {first:g}\n"
+        )
+    else:
+        head = "*STEP\n*STATIC\n"
     return (
-        "*STEP\n"
-        "*STATIC\n"
+        f"{head}"
         f"{step_bc_lines}"
         f"*NODE FILE{out}\n"
         "U\n"

@@ -24,8 +24,21 @@ class _NoopBackground:
         return None
 
 
+def _material_map(db: Session, spec: DoeSpec) -> dict[int, dict[str, Any]]:
+    """Ön eleme için malzeme özellikleri (E, akma)."""
+    out: dict[int, dict[str, Any]] = {}
+    for mid in spec.material_ids:
+        m = db.get(Material, mid)
+        if m is not None:
+            out[mid] = {
+                "youngs_modulus": m.youngs_modulus,
+                "yield_strength": m.yield_strength,
+            }
+    return out
+
+
 def persist_study(db: Session, spec: DoeSpec) -> DoeStudy:
-    samples = sample_spec(spec)
+    samples = sample_spec(spec, _material_map(db, spec))
     study = DoeStudy(
         name=spec.name or spec.template_id,
         template_id=spec.template_id,
@@ -118,7 +131,7 @@ def run_study(db: Session, study_id: int) -> DoeStudy:
         .order_by(DoeCase.index)
         .all()
     )
-    samples = {s.index: s for s in sample_spec(spec)}
+    samples = {s.index: s for s in sample_spec(spec, _material_map(db, spec))}
     failed = 0
     for case in cases:
         if case.status in ("solved", "inp_only"):

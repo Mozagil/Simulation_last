@@ -23,6 +23,7 @@ from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 from app.dataset.rebuild import discard_solver_input
+from app.postprocess.stress_probe import DEFAULT_STANDOFF_RATIO, recompute_from_sample
 from app.templates.compare import build_analytic_comparison, store_comparison_on_scalars
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,54 @@ def _analytic_comparison_for(
     return comparison
 
 
+def _stress_probe_for(
+    geo: Geometry | None,
+    run_id: int,
+    scalars: dict[str, Any],
+) -> None:
+    """Tekillikten uzakta ölçülen max von Mises'i skalerlere ekler.
+
+    NEDEN: `max_von_mises` ankastre köşe gibi TEKİL noktalardan okunuyor ve
+    mesh'ten mesh'e oynuyor. Ölçtük (convergence study_id=8, S235
+    L500/T10/W50, uçtan 500 N):
+
+        ham max σ  : gürültü tabanı %5.57 · teoriden +%10 sapma
+        1×T maskeli: gürültü tabanı %1.20 · teoriden −%0.8 sapma
+
+    Yani maskeli ölçüm hem 4.6× daha az gürültülü hem teoriye çok daha
+    yakın. Surrogate hedefi olarak bunu kullanmak, modelin doğruluk
+    tavanını %5.6'dan %1.2'ye çekiyor.
+
+    Karakteristik uzunluk şablondan gelir; şablonsuz (kullanıcı yüklemesi)
+    geometride atlanır — ne kadar uzaklaşacağımızı bilemeyiz.
+    """
+    if geo is None or not geo.template_id:
+        return
+    try:
+        from app.templates import get_template
+
+        tpl = get_template(geo.template_id)
+        if tpl.characteristic_length is None or not geo.template_params:
+            return
+        params = tpl.parse_params(geo.template_params)
+        char_len = float(tpl.characteristic_length(params))
+        if char_len <= 0:
+            return
+        probe = recompute_from_sample(
+            RUNS_DIR / str(run_id) / f"run{run_id}.train.npz",
+            characteristic_length=char_len,
+            standoff_ratio=DEFAULT_STANDOFF_RATIO,
+        )
+        if probe and probe.get("max_von_mises_away") is not None:
+            scalars["max_von_mises_away"] = probe["max_von_mises_away"]
+            scalars["stress_probe_standoff_mm"] = probe["standoff_mm"]
+            scalars["stress_probe_fraction_used"] = probe["fraction_used"]
+    except Exception as exc:  # noqa: BLE001
+        # Ölçüm başarısız olursa çözüm geçerliliğini yitirmez — ham
+        # max_von_mises yerinde duruyor.
+        logger.warning("stress probe hesaplanamadı (run %s): %s", run_id, exc)
+
+
 def _complete_ccx_job(run_id: int) -> None:
     db = SessionLocal()
     run = None
@@ -126,6 +175,7 @@ def _complete_ccx_job(run_id: int) -> None:
             analysis_type,
             scalars,
         )
+        _stress_probe_for(geo, run.id, scalars)
         run.status = "solved"
         run.message = f"ccx bitti ({status.state})"
         run.scalars = scalars
@@ -191,6 +241,14 @@ class SolveRequest(BaseModel):
     element_size: float | None = Field(default=None)
     element_scheme: str | None = Field(default=None)
     analysis_type: str = Field(default="static", description="static | modal")
+    #: Büyük deformasyon (geometrik nonlineerlik). Lineer çözüm denge
+    #: denklemlerini deforme OLMAMIŞ geometride kurar; u/L büyüdükçe bu
+    #: varsayım bozulur ve çözücü SESSİZCE yanlış cevap verir. Korpus
+    #: kapısı bu yüzden u/L > 0.10 run'ları eliyor. NLGEOM açıkken çözüm
+    #: iterasyonlu ve belirgin şekilde yavaştır — varsayılan kapalı.
+    nlgeom: bool = Field(default=False)
+    #: NLGEOM yükleme artım sayısı. Yakınsamıyorsa artırın.
+    n_increments: int = Field(default=20, ge=1, le=500)
     n_modes: int | None = Field(default=None, ge=1, le=200)
     freq_min: float | None = Field(default=None)
     freq_max: float | None = Field(default=None)
@@ -349,6 +407,8 @@ def solve_geometry(
                 "n_modes": n_modes,
                 "freq_min": body.freq_min,
                 "freq_max": body.freq_max,
+                "nlgeom": body.nlgeom,
+                "n_increments": body.n_increments,
             }
         )
     except SolverError as exc:
@@ -369,7 +429,10 @@ def solve_geometry(
     run.inp_path = str(artifact.path).replace("\\", "/")
     run.status = "inp_only"
     run.message = "modal inp üretildi" if analysis_type == "modal" else "inp üretildi"
-    run.scalars = {"_analysis_type": analysis_type}
+    # NLGEOM bayrağını kaydet: korpus ve karşılaştırma tarafı bir run'ın
+    # lineer mi nonlineer mi çözüldüğünü bilmek zorunda — ikisi aynı
+    # modele girmemeli.
+    run.scalars = {"_analysis_type": analysis_type, "_nlgeom": bool(body.nlgeom)}
     db.commit()
 
     result: dict[str, Any] = {
@@ -377,6 +440,7 @@ def solve_geometry(
         "run_id": run.id,
         "dimension": body.dimension,
         "analysis_type": analysis_type,
+        "nlgeom": body.nlgeom,
         "n_modes": n_modes if analysis_type == "modal" else None,
         "inp_path": run.inp_path,
         "inp_url": f"/files/runs/{run.id}/{artifact.path.name}",
@@ -426,6 +490,7 @@ def solve_geometry(
                 comparison = _analytic_comparison_for(
                     geo, materials, bcs, analysis_type, scalars
                 )
+                _stress_probe_for(geo, run.id, scalars)
                 result["scalars"] = scalars
                 if comparison is not None:
                     result["analytic_comparison"] = comparison
