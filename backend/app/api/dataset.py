@@ -80,6 +80,7 @@ def export_dataset_endpoint(
 @router.get("/summary")
 def dataset_summary(db: Session = Depends(get_db)) -> dict:
     """Dışa aktarmadan önce ne kadar veri olduğunu gösterir."""
+    from sqlalchemy import case
     from app.models.geometry import Geometry
     from app.models.material import Material
     from app.models.run import AnalysisRun
@@ -89,12 +90,42 @@ def dataset_summary(db: Session = Depends(get_db)) -> dict:
     if runs_root.is_dir():
         train_n = sum(1 for _ in runs_root.glob("*/*.train.npz"))
 
+    # Şablon kırılımı: tek bir "478 çözülmüş run" sayısı, ikinci şablon
+    # girdiğinde hangi verinin hangi modele ait olduğunu göstermiyor.
+    # Kiriş ve delikli plaka ayrı ayrı görünmeli.
+    from sqlalchemy import func
+
+    rows = (
+        db.query(
+            Geometry.template_id,
+            func.count(AnalysisRun.id),
+            func.sum(
+                case((AnalysisRun.status == "solved", 1), else_=0)
+            ),
+            func.sum(case((AnalysisRun.excluded.is_(True), 1), else_=0)),
+        )
+        .join(AnalysisRun, AnalysisRun.geometry_id == Geometry.id)
+        .group_by(Geometry.template_id)
+        .all()
+    )
+    by_template = [
+        {
+            "template_id": tpl,
+            "runs": int(total or 0),
+            "solved": int(solved or 0),
+            "excluded": int(excluded or 0),
+        }
+        for tpl, total, solved, excluded in rows
+    ]
+    by_template.sort(key=lambda r: (-r["solved"], str(r["template_id"])))
+
     return {
         "geometries": db.query(Geometry).count(),
         "materials": db.query(Material).count(),
         "analysis_runs": db.query(AnalysisRun).count(),
         "solved_runs": db.query(AnalysisRun).filter(AnalysisRun.status == "solved").count(),
         "training_samples": train_n,
+        "by_template": by_template,
     }
 
 

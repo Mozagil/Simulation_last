@@ -55,6 +55,72 @@ _GMSH_TO_CCX_2D = {
 _GMSH_TO_CCX_TET10_ORDER = (0, 1, 2, 3, 4, 5, 6, 7, 9, 8)
 
 
+
+#: CalculiX katı eleman yüz numaraları, KÖŞE düğüm indeksleriyle (0-tabanlı,
+#: CalculiX sırasına göre). Yüzey yükü (*DSLOAD) uygulanırken bir sınır
+#: üçgeninin hangi elemanın hangi yüzü olduğunu bulmak için kullanılır.
+#:
+#: NEDEN GEREKLİ — ölçtük: toplam kuvvet yüzey düğümlerine EŞİT bölünüyordu
+#: (`fx / n`). Kuadratik elemanlarda (C3D10) bu YANLIŞ: düzgün bir yüzey
+#: yükünün tutarlı düğüm kuvvetleri eşit değildir, köşe ve kenar-orta
+#: düğümleri farklı ağırlık alır. Sonuç: yükleme yüzeyinde sahte yerel
+#: salınım.
+#:
+#: Delikli plaka taramasında (study 10, 7 basamak) bu salınım u_max'ı
+#: mesh'ten mesh'e %36 oynattı — beş mesh 0.0603–0.0609 mm'de uyuşurken
+#: ikisi 0.0656 ve 0.0848 verdi. Mesh kaliteleri iyiydi (Jacobian 0.75 ve
+#: 0.84; "sağlam" olanınki 0.60), yani sebep mesh değildi. σ etkilenmedi
+#: çünkü tepe gerilme delikte, yükleme yüzeyinden uzakta.
+#:
+#: Kirişte fark edilmemişti: orada sehim 23 mm, aynı salınım yanında
+#: görünmez kalıyor. Plakada gerçek deplasman 0.06 mm olunca baskın hale
+#: geldi.
+#: gmsh 2B eleman tipi -> düğüm sayısı. Sınır üçgenlerini ana katı
+#: elemanla eşlerken bağlantı dizisini doğru adımlamak için.
+_SURF_NODES_PER: dict[int, int] = {
+    2: 3,   # tri3
+    3: 4,   # quad4
+    9: 6,   # tri6
+    16: 8,  # quad8
+}
+
+_CCX_SOLID_FACES: dict[str, tuple[tuple[int, ...], ...]] = {
+    # 4 ve 10 düğümlü tet: yüz köşeleri (CalculiX kılavuzu, C3D4/C3D10)
+    "C3D4": ((0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)),
+    "C3D10": ((0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)),
+    # 8 düğümlü hex: C3D8 yüzleri
+    "C3D8": (
+        (0, 1, 2, 3),
+        (4, 7, 6, 5),
+        (0, 4, 5, 1),
+        (1, 5, 6, 2),
+        (2, 6, 7, 3),
+        (3, 7, 4, 0),
+    ),
+}
+
+
+def _solid_face_lookup(
+    ccx_type: str, elem_id: int, conn: list[int]
+) -> list[tuple[frozenset[int], int, int]]:
+    """Bir katı elemanın her yüzü için (köşe kümesi, eleman id, yüz no).
+
+    Yüz numarası CalculiX'in 1-tabanlı P1..P6 gösterimidir. Köşe kümesi
+    sırasızdır; sınır üçgeni hangi sırayla gelirse gelsin eşleşsin diye.
+    """
+    faces = _CCX_SOLID_FACES.get(ccx_type)
+    if not faces:
+        return []
+    out: list[tuple[frozenset[int], int, int]] = []
+    for fi, idxs in enumerate(faces, start=1):
+        try:
+            corners = frozenset(conn[i] for i in idxs)
+        except IndexError:
+            continue
+        out.append((corners, elem_id, fi))
+    return out
+
+
 def _reorder_connectivity(conn: list[int], gmsh_etype: int) -> list[int]:
     """Gmsh eleman bağlantısını CalculiX'in beklediği sıraya çevirir.
 
@@ -433,7 +499,7 @@ class CalculiXAdapter(SolverAdapter):
         bcs = params.get("bcs") or []
         analysis_type = str(params.get("analysis_type") or "static").lower()
 
-        mesh_block, nsets, elsets = _mesh_to_inp_blocks(
+        mesh_block, nsets, elsets, face_weights = _mesh_to_inp_blocks(
             mesh_path, dimension, materials, shell_thickness
         )
         mat_block = _materials_inp_block(materials, dimension, shell_thickness)
@@ -441,7 +507,9 @@ class CalculiXAdapter(SolverAdapter):
         # step_bc_block: *CLOAD/*DLOAD (SADECE STEP İÇİNDE geçerli — gerçek
         # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
         # used within a STEP" hatasıyla durduğu doğrulandı).
-        model_bc_block, step_bc_block = _bcs_inp_block(bcs, nsets, elsets, dimension)
+        model_bc_block, step_bc_block = _bcs_inp_block(
+            bcs, nsets, elsets, dimension, face_weights
+        )
         if analysis_type == "modal":
             # Modal'da yükler (*CLOAD/*DLOAD) yazılmaz — özdeğer problemi
             # mesnet + kütle/rijitlik ister, kuvvet değil.
@@ -452,7 +520,12 @@ class CalculiXAdapter(SolverAdapter):
                 dimension=dimension,
             )
         elif analysis_type == "static":
-            step_block = _static_step_block(step_bc_block, dimension)
+            step_block = _static_step_block(
+                step_bc_block,
+                dimension,
+                nlgeom=bool(params.get("nlgeom")),
+                n_increments=int(params.get("n_increments") or 20),
+            )
         else:
             raise SolverError(
                 f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
@@ -787,8 +860,17 @@ def _mesh_to_inp_blocks(
     dimension: int,
     materials: list[dict[str, Any]],
     shell_thickness: float,
-) -> tuple[str, dict[str, list[int]], dict[str, list[int]]]:
-    """Gmsh mesh'ten *NODE / *ELEMENT / *NSET / *ELSET blokları."""
+) -> tuple[
+    str,
+    dict[str, list[int]],
+    dict[str, list[int]],
+    dict[int, dict[int, float]],
+]:
+    """Gmsh mesh'ten *NODE / *ELEMENT / *NSET / *ELSET blokları.
+
+    Dördüncü dönüş: yüzey tag -> {düğüm: ağırlık}. Yüzey yükünü tutarlı
+    dağıtmak için; eşit bölme kuadratik elemanlarda yanlış sonuç veriyor.
+    """
     _gmsh_lock.acquire()
     gmsh.initialize(interruptible=False)
     try:
@@ -797,6 +879,14 @@ def _mesh_to_inp_blocks(
 
         node_tags, coords, _ = gmsh.model.mesh.getNodes()
         tag_to_idx = {int(t): i + 1 for i, t in enumerate(node_tags)}  # 1-based inp
+        # Yüzey üçgeni alanı için düğüm koordinatları (1-based indekse göre).
+        coords_by_idx: dict[int, tuple[float, float, float]] = {
+            i + 1: (float(coords[3 * i]), float(coords[3 * i + 1]), float(coords[3 * i + 2]))
+            for i in range(len(node_tags))
+        }
+        # Yüzey tag -> {düğüm indeksi: ağırlık}. Yüzey yükünü tutarlı
+        # dağıtmak için; eşit bölme kuadratik elemanlarda yanlış.
+        face_weights: dict[int, dict[int, float]] = {}
         lines: list[str] = ["*HEADING", "CAE platform CalculiX job", "*NODE"]
         for i, tag in enumerate(node_tags):
             nid = i + 1
@@ -841,6 +931,9 @@ def _mesh_to_inp_blocks(
             # 2D: PART_n = kenar paylaşan kabuk (preview triangle_to_part ile aynı).
             # 3D: PART_n = volume sırası. FACE_EL_* her yüzey için ayrı kalır (DLOAD).
             face_to_part: dict[int, int] = {}
+            # köşe kümesi -> (eleman id, yerel yüz no). 3B katıda yüzey
+            # yükünü *DSLOAD ile yazabilmek için gerekli.
+
             if elem_dim == 2:
                 from app.mesh.gmsh_adapter import _surface_parts_by_coincident_nodes
 
@@ -889,6 +982,54 @@ def _mesh_to_inp_blocks(
                             continue
                         nt, _, _ = gmsh.model.mesh.getNodes(2, btag)
                         nsets[nset] = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+                        # Yüzey yükü için: bu sınır yüzeyinin üçgenlerini
+                        # ana katı elemanla eşle. gmsh sınır yüzeyini
+                        # meshlememiş olabilir (2B eleman üretilmemiş) —
+                        # o durumda liste boş kalır ve yük eski yoldan
+                        # (düğümlere bölünmüş CLOAD) uygulanır.
+                        # Yüzey yükünün TUTARLI düğüm ağırlıkları.
+                        # tri6'da düzgün yayılı yük için: köşeler 0,
+                        # kenar-ortaları A/3. tri3'te üçü de A/3.
+                        # Bu ağırlıklar yön bağımsızdır; teğet yükte de
+                        # geçerli (bkz. _bcs_inp_block cload dalı).
+                        try:
+                            s_types, _s_tags, s_nodes = gmsh.model.mesh.getElements(
+                                dim=2, tag=btag
+                            )
+                        except Exception:  # noqa: BLE001
+                            s_types, s_nodes = [], []
+                        w_map: dict[int, float] = {}
+                        for s_type, s_conn in zip(s_types, s_nodes):
+                            per = _SURF_NODES_PER.get(int(s_type))
+                            if per not in (3, 6):
+                                continue  # quad yüzler: şimdilik eşit bölme
+                            total = len(s_conn) // per
+                            for si in range(total):
+                                base = si * per
+                                tags = [int(s_conn[base + k]) for k in range(per)]
+                                if any(t not in tag_to_idx for t in tags):
+                                    continue
+                                idxs = [tag_to_idx[t] for t in tags]
+                                area = _tri_area(
+                                    coords_by_idx[idxs[0]],
+                                    coords_by_idx[idxs[1]],
+                                    coords_by_idx[idxs[2]],
+                                )
+                                if area <= 0:
+                                    continue
+                                if per == 6:
+                                    # Kuadratik: yalnız kenar-orta düğümler
+                                    for k in (3, 4, 5):
+                                        w_map[idxs[k]] = (
+                                            w_map.get(idxs[k], 0.0) + area / 3.0
+                                        )
+                                else:
+                                    for k in (0, 1, 2):
+                                        w_map[idxs[k]] = (
+                                            w_map.get(idxs[k], 0.0) + area / 3.0
+                                        )
+                        if w_map:
+                            face_weights[int(btag)] = w_map
                 else:
                     # 2D: yüzey kendisi
                     nset = f"FACE_{etag}"
@@ -926,7 +1067,7 @@ def _mesh_to_inp_blocks(
         # Kullanılmayan part_materials uyarısı yok — section'lar materials bloğunda
         _ = part_materials
         _ = shell_thickness
-        return "\n".join(lines) + "\n", nsets, elsets
+        return "\n".join(lines) + "\n", nsets, elsets, face_weights
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
@@ -1026,11 +1167,42 @@ def _resolve_bc_node_ids(
     return list(dict.fromkeys(resolved))
 
 
+
+def _tri_area(p0: tuple[float, float, float],
+              p1: tuple[float, float, float],
+              p2: tuple[float, float, float]) -> float:
+    ux, uy, uz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+    vx, vy, vz = p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]
+    cx = uy * vz - uz * vy
+    cy = uz * vx - ux * vz
+    cz = ux * vy - uy * vx
+    return 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
+
+
+def _consistent_face_weights(
+    bc: dict[str, Any],
+    face_weights: dict[int, dict[int, float]] | None,
+) -> dict[int, float]:
+    """BC'nin dokunduğu yüzeylerin tutarlı düğüm ağırlıklarını toplar.
+
+    Birden çok yüzey seçiliyse ağırlıklar toplanır — ortak kenardaki
+    düğüm iki yüzeyden de pay alır, doğrusu bu.
+    """
+    if not face_weights:
+        return {}
+    out: dict[int, float] = {}
+    for fid in bc.get("face_ids") or []:
+        for nid, w in (face_weights.get(int(fid)) or {}).items():
+            out[nid] = out.get(nid, 0.0) + w
+    return out
+
+
 def _bcs_inp_block(
     bcs: list[dict[str, Any]],
     nsets: dict[str, list[int]],
     elsets: dict[str, list[int]],
     dimension: int,
+    face_weights: dict[int, dict[int, float]] | None = None,
 ) -> tuple[str, str]:
     """BC kartlarını üretir — döndürür: (model_seviyesi, step_seviyesi).
 
@@ -1082,12 +1254,41 @@ def _bcs_inp_block(
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
             fz = float(bc.get("fz", 0.0))
+            # ÖLÇTÜK, DÜZELTTİK: yük bir YÜZEYE uygulanıyorsa toplam
+            # kuvveti düğümlere EŞİT bölmek yanlış. Kuadratik elemanlarda
+            # (C3D10 → yüzeyi tri6) düzgün yayılı yükün TUTARLI düğüm
+            # kuvvetleri eşit değildir: köşeler 0, kenar-ortaları A/3.
+            # Eşit bölmek yükleme yüzeyinde sahte yerel salınım üretir.
+            #
+            # Delikli plaka taramasında (study 10) bu, u_max'ı mesh'ten
+            # mesh'e %36 oynattı: beş mesh 0.0603–0.0609 mm'de uyuşurken
+            # ikisi 0.0656 ve 0.0848 verdi. Mesh kaliteleri iyiydi
+            # (Jacobian 0.75 / 0.84; "sağlam" olanınki 0.60), yani sebep
+            # mesh değildi. σ etkilenmedi çünkü tepe gerilme delikte.
+            # Kirişte görünmemişti: orada sehim 23 mm, salınım yanında
+            # önemsiz kalıyor.
+            #
+            # Basınca (*DSLOAD) çevirmek genel çözüm DEĞİL: basınç yüzeye
+            # daima diktir, ankastre kirişte ise uç yükü yüzeye TEĞET.
+            # Tutarlı düğüm ağırlıkları yön bağımsızdır, o yüzden bu yol.
             node_ids = _resolve_bc_node_ids(bc, nsets)
-            if node_ids:
-                # Toplam kuvvet seçili düğümlere EŞİT bölünür — tıpkı
-                # kenar/yüzey yükünde olduğu gibi. Eskiden her düğüme TAM
-                # kuvvet yazılıyordu, yani 3 düğüm seçince model 3F yük
-                # görüyordu.
+            weights = _consistent_face_weights(bc, face_weights)
+            if weights:
+                total_w = sum(weights.values())
+                if total_w > 0:
+                    step_lines.append("*CLOAD")
+                    for nid, w in sorted(weights.items()):
+                        frac = w / total_w
+                        if abs(fx) > 0:
+                            step_lines.append(f"{nid}, 1, {fx * frac:.6g}")
+                        if abs(fy) > 0:
+                            step_lines.append(f"{nid}, 2, {fy * frac:.6g}")
+                        if abs(fz) > 0:
+                            step_lines.append(f"{nid}, 3, {fz * frac:.6g}")
+            elif node_ids:
+                # Kenar/nokta yükü ya da yüzey ağırlığı hesaplanamadı —
+                # eşit bölme. Bu durumda yukarıdaki salınım riski var,
+                # ama alternatifi yükü hiç uygulamamak olurdu.
                 n = len(node_ids)
                 step_lines.append("*CLOAD")
                 for nid in node_ids:
@@ -1306,11 +1507,40 @@ def _output_qualifier(dimension: int) -> str:
     return ""
 
 
-def _static_step_block(step_bc_lines: str = "", dimension: int = 3) -> str:
+def _static_step_block(
+    step_bc_lines: str = "",
+    dimension: int = 3,
+    nlgeom: bool = False,
+    n_increments: int = 20,
+) -> str:
+    """Statik çözüm adımı. `nlgeom=True` ise büyük deformasyon.
+
+    NEDEN GEREKLİ: Lineer (küçük deformasyon) çözüm, denge denklemlerini
+    deforme OLMAMIŞ geometride kurar. u/L büyüdükçe bu varsayım bozulur;
+    çözücü hata vermez, sessizce yanlış cevap verir. Korpus kapısı bu
+    yüzden u/L > 0.10 olan run'ları eliyor (kirişte 23 run elendi).
+
+    NLGEOM ile CalculiX denge denklemlerini deforme geometride kurar ve
+    yükü artımlı uygular. Maliyeti: iterasyon gerektirir, lineer çözümden
+    belirgin şekilde yavaştır — bu yüzden varsayılan KAPALI.
+
+    `*STATIC` satırındaki dört alan: başlangıç artım, toplam adım süresi,
+    min artım, max artım. NLGEOM'da artımlı yükleme şart; lineer çözümde
+    tek artım yeterli olduğu için o satır sade bırakılıyor.
+    """
     out = _output_qualifier(dimension)
+    if nlgeom:
+        inc = max(1, int(n_increments))
+        first = 1.0 / inc
+        head = (
+            f"*STEP, NLGEOM, INC={max(100, inc * 5)}\n"
+            f"*STATIC\n"
+            f"{first:g}, 1.0, {first / 100:g}, {first:g}\n"
+        )
+    else:
+        head = "*STEP\n*STATIC\n"
     return (
-        "*STEP\n"
-        "*STATIC\n"
+        f"{head}"
         f"{step_bc_lines}"
         f"*NODE FILE{out}\n"
         "U\n"

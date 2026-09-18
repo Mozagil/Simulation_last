@@ -151,6 +151,8 @@ export interface ParamPredictRequest {
   pressure_mpa: number;
   dimension: number;
   compare_run_id?: number;
+  /** Akma kontrolü için — verilmezse kontrol atlanır. */
+  material_id?: number;
 }
 
 export interface ParamPredictResult {
@@ -172,6 +174,30 @@ export interface ParamPredictResult {
     max_von_mises_pct: number | null;
   } | null;
   message: string;
+  /** Hangi özellikler eğitim kutusu dışında — "uzay dışı" demek tek
+   *  başına kullanıcıya neyi düzelteceğini söylemiyor. */
+  domain_violations?: {
+    feature: string;
+    value: number;
+    min: number;
+    max: number;
+    side: "below" | "above";
+    factor: number | null;
+  }[];
+  /** Akma kontrolü. OOD'den AYRI: OOD istatistikseldir ("bu noktayı
+   *  görmedim"), bu fizikseldir ("sonuç doğru hesaplansa bile malzeme
+   *  plastik davranıyorsa geçersiz"). Biri diğerini yakalamaz. */
+  yield_check?: {
+    material: string;
+    sigma_mpa: number;
+    yield_mpa: number;
+    limit_mpa: number;
+    utilisation: number | null;
+    exceeds_yield: boolean;
+    exceeds_limit: boolean;
+    source: string;
+  } | null;
+
 }
 
 export interface CorpusMembership {

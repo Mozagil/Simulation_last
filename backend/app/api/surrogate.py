@@ -21,7 +21,8 @@ from app.ml.gnn import (
     train_gnn,
 )
 from app.ml.graph_data import GraphSample, load_graph
-from app.ml.ood import is_out_of_domain
+from app.ml.ood import domain_violations, is_out_of_domain
+from app.postprocess.stress_probe import DEFAULT_STANDOFF_RATIO
 from app.ml.corpus import CorpusSpec, TrainingCorpus, evaluate_run, select_training_runs
 from app.ml.manifest import (
     ManifestError,
@@ -32,7 +33,7 @@ from app.ml.manifest import (
     save_manifest,
     spec_from_manifest,
 )
-from app.ml.scalar_features import collect_scalar_table, features_from_dict, features_from_run
+from app.ml.scalar_features import FEATURE_KEYS, collect_scalar_table, features_from_dict, features_from_run
 from app.ml.scalar_rf import (
     DEFAULT_MODEL_PATH,
     MIN_SAMPLES,
@@ -51,6 +52,7 @@ from app.ml.scalar_loglinear import (
     train_scalar_loglinear,
 )
 from app.models.geometry import Geometry
+from app.models.material import Material
 from app.models.run import AnalysisRun
 
 router = APIRouter(prefix="/surrogate", tags=["surrogate"])
@@ -75,6 +77,11 @@ class ParamPredictBody(BaseModel):
     pressure_mpa: float = 0.0
     dimension: int = Field(default=3, ge=2, le=3)
     compare_run_id: int | None = None
+    #: Akma kontrolü için. Verilirse tahmin edilen σ malzemenin akma
+    #: sınırıyla karşılaştırılır; verilmezse bu kontrol atlanır.
+    material_id: int | None = None
+    #: Akmanın kaçta kaçına kadar "güvenli" sayılsın (0.8 = %20 marj).
+    yield_utilisation: float = Field(default=0.8, gt=0, le=2.0)
 
 
 def _deviation_pct(pred: float, fea: float) -> float | None:
@@ -295,7 +302,47 @@ def predict_from_params(
         "pressure_mpa": body.pressure_mpa,
         "dimension": float(body.dimension),
     }
-    pred = _predict_with(model_kind, bundle, features_from_dict(features))
+    vec = features_from_dict(features)
+    pred = _predict_with(model_kind, bundle, vec)
+
+    # HANGİ özellik uzay dışında — yalnız "uzay dışı" demek kullanıcıya
+    # neyi düzelteceğini söylemiyor. Ölçülen vaka: 20×2 kesit, L=100 mm →
+    # beş özellikten dördü kutunun dışındaydı, sadece yük içerideydi.
+    pred["domain_violations"] = domain_violations(
+        vec, bundle.get("bounds") or {}, tuple(FEATURE_KEYS)
+    )
+
+    # Akma kontrolü. OOD'den AYRI bir şey: OOD istatistikseldir ("bu
+    # noktayı görmedim"), akma fizikseldir ("sonuç doğru hesaplansa bile
+    # malzeme plastik davranıyorsa geçersiz"). Biri diğerini yakalamaz.
+    # Aynı ölçülen vakada tahmin teoriyle birebir tuttu (375.0 MPa) ama
+    # S235'in akması 235 → tasarım zaten geçersizdi.
+    # Bu kontrol DOE elemesinde vardı (`doe/screening.py`), tahmin
+    # tarafında yoktu.
+    pred["yield_check"] = None
+    if body.material_id is not None:
+        mat = db.get(Material, body.material_id)
+        if mat is not None and mat.yield_strength:
+            yield_mpa = float(mat.yield_strength) / 1e6
+            limit = yield_mpa * float(body.yield_utilisation)
+            preds = pred.get("predictions") or {}
+            sigma = preds.get("max_von_mises_away")
+            source = "max_von_mises_away"
+            if sigma is None:
+                sigma = preds.get("max_von_mises")
+                source = "max_von_mises"
+            if sigma is not None:
+                pred["yield_check"] = {
+                    "material": mat.name,
+                    "sigma_mpa": float(sigma),
+                    "yield_mpa": yield_mpa,
+                    "limit_mpa": limit,
+                    "utilisation": float(sigma) / yield_mpa if yield_mpa else None,
+                    "exceeds_yield": float(sigma) > yield_mpa,
+                    "exceeds_limit": float(sigma) > limit,
+                    "source": source,
+                }
+
     fea: dict[str, Any] | None = None
     deviation: dict[str, float | None] | None = None
     if body.compare_run_id is not None:
@@ -613,4 +660,78 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
             + (" Eğitim uzayı dışı." if ood else "")
             + (" Alan yok; skaler baseline." if kind == "scalar" else "")
         ),
+    }
+
+
+@router.post("/backfill-stress-probe")
+def backfill_stress_probe(
+    standoff_ratio: float = DEFAULT_STANDOFF_RATIO,
+    limit: int = 500,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Mevcut çözülmüş run'lara maskeli gerilme skalerini geriye dönük ekler.
+
+    Çözüm TEKRARLANMAZ — diskteki `.train.npz` okunur.
+
+    NEDEN: ham `max_von_mises` ankastre köşe gibi TEKİL noktalardan
+    okunuyor ve mesh'ten mesh'e oynuyor. Ölçtük (ankastre kiriş, 8
+    basamaklı tarama): ham gürültü tabanı %5.57 ve teoriden +%10 sapma;
+    kısıttan 1×T uzakta ölçülünce %1.20 ve −%0.8. Üstel de düzeliyor:
+    thickness −1.919 → −2.011 (teori −2).
+
+    Şablonsuz run'lar atlanır (karakteristik uzunluk bilinmiyor).
+    Yeni DOE koşusundan ÖNCE bir kez çalıştırılmalı ki eski ve yeni
+    örnekler aynı hedefi taşısın.
+    """
+    from app.api.solve import RUNS_DIR
+    from app.models.geometry import Geometry
+    from app.postprocess.stress_probe import recompute_from_sample
+    from app.templates import get_template
+
+    runs = (
+        db.query(AnalysisRun)
+        .filter(AnalysisRun.status == "solved")
+        .order_by(AnalysisRun.id.desc())
+        .limit(limit)
+        .all()
+    )
+    updated = skipped = failed = 0
+    for run in runs:
+        sc = dict(run.scalars or {})
+        if "max_von_mises_away" in sc:
+            skipped += 1
+            continue
+        geo = db.get(Geometry, run.geometry_id)
+        if geo is None or not geo.template_id or not geo.template_params:
+            skipped += 1
+            continue
+        try:
+            tpl = get_template(geo.template_id)
+            if tpl.characteristic_length is None:
+                skipped += 1
+                continue
+            char_len = float(
+                tpl.characteristic_length(tpl.parse_params(geo.template_params))
+            )
+            probe = recompute_from_sample(
+                RUNS_DIR / str(run.id) / f"run{run.id}.train.npz",
+                characteristic_length=char_len,
+                standoff_ratio=standoff_ratio,
+            )
+            if not probe or probe.get("max_von_mises_away") is None:
+                skipped += 1
+                continue
+            sc["max_von_mises_away"] = probe["max_von_mises_away"]
+            sc["stress_probe_standoff_mm"] = probe["standoff_mm"]
+            sc["stress_probe_fraction_used"] = probe["fraction_used"]
+            run.scalars = sc
+            updated += 1
+        except Exception:  # noqa: BLE001
+            failed += 1
+    db.commit()
+    return {
+        "updated": updated,
+        "skipped": skipped,
+        "failed": failed,
+        "standoff_ratio": standoff_ratio,
     }

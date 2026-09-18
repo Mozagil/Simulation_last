@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchMaterials } from "../api/materials";
 import {
   addRunsToCorpus,
   evaluateForCorpus,
@@ -101,6 +102,22 @@ export default function SurrogatePanel({
   const [poisson, setPoisson] = useState("0.3");
   const [fx, setFx] = useState("0");
   const [fy, setFy] = useState("-500");
+  // Akma kontrolü için malzeme. Boş bırakılırsa kontrol atlanır — E ve ν
+  // zaten ayrı alanlarda, bu yalnız akma sınırı için.
+  const [materialId, setMaterialId] = useState<string>("");
+  const [materials, setMaterials] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMaterials()
+      .then((list) => {
+        if (!cancelled) setMaterials(list.map((m) => ({ id: m.id, name: m.name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [fz, setFz] = useState("0");
   const [compareOpenRun, setCompareOpenRun] = useState(true);
   const autoPickedCorpus = useRef(false);
@@ -291,6 +308,7 @@ export default function SurrogatePanel({
         pressure_mpa: 0,
         dimension: 3,
         compare_run_id: compareOpenRun && runId != null ? runId : undefined,
+        material_id: materialId ? Number(materialId) : undefined,
       }, scalarModel);
       setParamResult(result);
       setMessage(result.message);
@@ -499,6 +517,21 @@ export default function SurrogatePanel({
           <input value={poisson} onChange={(e) => setPoisson(e.target.value)} />
         </label>
         <label className="mesh-field">
+          <span>Malzeme (akma kontrolü)</span>
+          <select
+            value={materialId}
+            onChange={(e) => setMaterialId(e.target.value)}
+            title="Tahmin edilen gerilme bu malzemenin akma sınırıyla karşılaştırılır"
+          >
+            <option value="">— seçilmedi —</option>
+            {materials.map((m) => (
+              <option key={m.id} value={String(m.id)}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mesh-field">
           <span>Fx (N)</span>
           <input value={fx} onChange={(e) => setFx(e.target.value)} />
         </label>
@@ -567,7 +600,69 @@ export default function SurrogatePanel({
             <strong>{fmtNum(pred.max_von_mises)} MPa</strong>
           </div>
           {paramResult?.out_of_domain && (
-            <p className="dataset-error">Eğitim uzayı dışı — sayı gösterilir, güvenilmez.</p>
+            <div className="predict-warning predict-warning-ood">
+              <strong>Eğitim uzayı dışı</strong>
+              {paramResult.domain_violations && paramResult.domain_violations.length > 0 ? (
+                <>
+                  <table className="predict-warning-table">
+                    <tbody>
+                      {paramResult.domain_violations.map((v) => (
+                        <tr key={v.feature}>
+                          <td>{v.feature}</td>
+                          <td className="predict-warning-num">{fmtNum(v.value)}</td>
+                          <td className="predict-warning-range">
+                            eğitim: {fmtNum(v.min)} … {fmtNum(v.max)}
+                          </td>
+                          <td>
+                            {v.factor
+                              ? `${v.factor.toFixed(1)}× ${v.side === "below" ? "küçük" : "büyük"}`
+                              : v.side === "below"
+                                ? "altında"
+                                : "üstünde"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <span className="predict-warning-note">
+                    Model bu aralıkta hiç örnek görmedi. Log-log model kuvvet
+                    yasası öğrendiği için sınırın dışında da makul sonuç
+                    verebilir, ama garanti yoktur — uzaklaştıkça bozulur ve
+                    bozulduğunu söylemez.
+                  </span>
+                </>
+              ) : (
+                <span className="predict-warning-note">
+                  Sayı gösterilir, güvenilmez.
+                </span>
+              )}
+            </div>
+          )}
+          {paramResult?.yield_check?.exceeds_limit && (
+            <div
+              className={
+                paramResult.yield_check.exceeds_yield
+                  ? "predict-warning predict-warning-yield"
+                  : "predict-warning"
+              }
+            >
+              <strong>
+                {paramResult.yield_check.exceeds_yield
+                  ? "Akma aşılıyor — sonuç geçersiz"
+                  : "Akmaya yaklaşıyor"}
+              </strong>
+              <span className="predict-warning-note">
+                {paramResult.yield_check.material}: tahmin{" "}
+                {fmtNum(paramResult.yield_check.sigma_mpa)} MPa, akma{" "}
+                {fmtNum(paramResult.yield_check.yield_mpa)} MPa
+                {paramResult.yield_check.utilisation != null &&
+                  ` (%${(paramResult.yield_check.utilisation * 100).toFixed(0)} kullanım)`}
+                .{" "}
+                {paramResult.yield_check.exceeds_yield
+                  ? "Malzeme plastik davranır; hem lineer FEA hem bu tahmin gerçeği temsil etmez. Yükü azaltın, kesiti büyütün ya da daha yüksek dayanımlı malzeme seçin."
+                  : "Elastik sınırın yakınında — tasarım marjı dar."}
+              </span>
+            </div>
           )}
           {fea && (
             <>

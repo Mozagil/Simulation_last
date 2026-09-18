@@ -124,6 +124,44 @@ export default function DatasetPanel({
         </div>
       )}
 
+      {summary?.by_template && summary.by_template.length > 0 && (
+        <>
+          <p className="material-assignments-title">Şablona göre</p>
+          <table className="dataset-template-table">
+            <thead>
+              <tr>
+                <th>şablon</th>
+                <th>çözülmüş</th>
+                <th>toplam</th>
+                <th>dışlanan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.by_template.map((row) => (
+                <tr key={row.template_id ?? "__none__"}>
+                  <td>
+                    {row.template_id ?? (
+                      <span className="dataset-template-none">
+                        şablonsuz (yüklenen geometri)
+                      </span>
+                    )}
+                  </td>
+                  <td className="dataset-template-num">{row.solved}</td>
+                  <td className="dataset-template-num">{row.runs}</td>
+                  <td className="dataset-template-num">
+                    {row.excluded > 0 ? row.excluded : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="material-assign-hint">
+            Her şablon ayrı bir model demektir — korpus tek şablondan
+            eğitilir. Arşiv ise hepsini birlikte taşır.
+          </p>
+        </>
+      )}
+
       <label className="dataset-filter">
         <input
           type="checkbox"

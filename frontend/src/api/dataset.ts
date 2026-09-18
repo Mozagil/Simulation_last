@@ -12,12 +12,22 @@
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
+/** Şablon başına veri kırılımı — tek bir toplam sayı, ikinci şablon
+ *  girdiğinde hangi verinin hangi modele ait olduğunu göstermiyor. */
+export interface DatasetTemplateRow {
+  template_id: string | null;
+  runs: number;
+  solved: number;
+  excluded: number;
+}
+
 export interface DatasetSummary {
   geometries: number;
   materials: number;
   analysis_runs: number;
   solved_runs: number;
   training_samples: number;
+  by_template?: DatasetTemplateRow[];
 }
 
 export interface DatasetImportResult {

@@ -138,6 +138,11 @@ def _exponents(
 
     out: dict[str, Any] = {}
     for key, model in models.items():
+        # Yeterli veri olmayan hedefin modeli None olur (bkz.
+        # train_scalar_loglinear hedef-bazlı maskeleme).
+        if model is None:
+            out[key] = None
+            continue
         out[key] = [
             {
                 "feature": name,
@@ -162,7 +167,27 @@ def train_scalar_loglinear(
 
     if X.shape[0] < MIN_SAMPLES:
         raise ValueError(f"En az {MIN_SAMPLES} çözülmüş örnek gerekir (var: {X.shape[0]}).")
-    if not np.all(y > 0.0):
+    # Hedef sütun sayısı TARGET_KEYS ile uyuşmalı. Eksikse NaN ile
+    # tamamlanır: çağıran yeni bir hedefi (ör. `max_von_mises_away`)
+    # bilmiyorsa ya da o skaler henüz hesaplanmamışsa patlamak yerine o
+    # hedef atlanır. Fazlaysa sessizce kırpmak veri kaybını gizler → hata.
+    y = np.asarray(y, dtype=np.float64)
+    if y.ndim != 2:
+        raise ValueError(f"y 2 boyutlu olmalı (geldi: {y.shape}).")
+    n_targets = len(TARGET_KEYS)
+    if y.shape[1] > n_targets:
+        raise ValueError(
+            f"y {y.shape[1]} sütunlu ama {n_targets} hedef tanımlı "
+            f"({', '.join(TARGET_KEYS)})."
+        )
+    if y.shape[1] < n_targets:
+        pad = np.full((y.shape[0], n_targets - y.shape[1]), np.nan)
+        y = np.hstack([y, pad])
+
+    # Pozitiflik kontrolü yalnız DOLU sütunlar için — NaN sütun
+    # "bu hedef yok" demek, "geçersiz veri" değil.
+    filled = ~np.isnan(y)
+    if not np.all(y[filled] > 0.0):
         raise ValueError(
             "Log-log model pozitif hedef ister; sette sıfır ya da negatif "
             "max_displacement/max_von_mises var."
@@ -184,14 +209,25 @@ def train_scalar_loglinear(
     pred_tr = np.zeros_like(y_tr)
     pred_te = np.zeros_like(y_te) if y_te is not None else None
     for i, key in enumerate(TARGET_KEYS):
+        # Hedef bazında maskeleme: bir skaler bazı run'larda yoksa (NaN)
+        # o run yalnız O hedef için atlanır, diğerleri kullanılmaya devam
+        # eder. Aksi halde tek eksik skaler tüm satırı düşürürdü.
+        ok = np.isfinite(y_tr[:, i])
+        if int(ok.sum()) < MIN_SAMPLES:
+            models[key] = None
+            pred_tr[:, i] = np.nan
+            if pred_te is not None:
+                pred_te[:, i] = np.nan
+            continue
         model = LinearRegression()
-        model.fit(A_tr, np.log(y_tr[:, i]))
+        model.fit(A_tr[ok], np.log(y_tr[ok, i]))
         models[key] = model
         # Tahmin LOG uzayında yapılır, metrikler ham birimde ölçülür —
         # RF ile kıyaslanabilir olması için (bkz. `split_metrics`).
-        pred_tr[:, i] = np.exp(model.predict(A_tr))
+        pred_tr[:, i] = np.where(ok, np.exp(model.predict(A_tr)), np.nan)
         if pred_te is not None and A_te is not None:
-            pred_te[:, i] = np.exp(model.predict(A_te))
+            ok_te = np.isfinite(y_te[:, i])
+            pred_te[:, i] = np.where(ok_te, np.exp(model.predict(A_te)), np.nan)
 
     constants = constant_columns(X)
     collinear = collinear_pairs(X)
@@ -241,7 +277,11 @@ def predict_scalar_loglinear(bundle: dict[str, Any], x: np.ndarray) -> dict[str,
     design = to_log_features(vec)
     preds: dict[str, float] = {}
     for key in bundle["target_keys"]:
-        preds[key] = float(np.exp(bundle["models"][key].predict(design)[0]))
+        # Model yoksa uydurma sayı yerine None — arayüz "—" gösterir.
+        m = (bundle.get("models") or {}).get(key)
+        preds[key] = (
+            float(np.exp(m.predict(design)[0])) if m is not None else None
+        )
     return {
         "kind": "scalar",
         "predictions": preds,

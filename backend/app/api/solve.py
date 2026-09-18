@@ -23,6 +23,7 @@ from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 from app.dataset.rebuild import discard_solver_input
+from app.postprocess.stress_probe import DEFAULT_STANDOFF_RATIO, recompute_from_sample
 from app.templates.compare import build_analytic_comparison, store_comparison_on_scalars
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,54 @@ def _analytic_comparison_for(
     return comparison
 
 
+def _stress_probe_for(
+    geo: Geometry | None,
+    run_id: int,
+    scalars: dict[str, Any],
+) -> None:
+    """Tekillikten uzakta ölçülen max von Mises'i skalerlere ekler.
+
+    NEDEN: `max_von_mises` ankastre köşe gibi TEKİL noktalardan okunuyor ve
+    mesh'ten mesh'e oynuyor. Ölçtük (convergence study_id=8, S235
+    L500/T10/W50, uçtan 500 N):
+
+        ham max σ  : gürültü tabanı %5.57 · teoriden +%10 sapma
+        1×T maskeli: gürültü tabanı %1.20 · teoriden −%0.8 sapma
+
+    Yani maskeli ölçüm hem 4.6× daha az gürültülü hem teoriye çok daha
+    yakın. Surrogate hedefi olarak bunu kullanmak, modelin doğruluk
+    tavanını %5.6'dan %1.2'ye çekiyor.
+
+    Karakteristik uzunluk şablondan gelir; şablonsuz (kullanıcı yüklemesi)
+    geometride atlanır — ne kadar uzaklaşacağımızı bilemeyiz.
+    """
+    if geo is None or not geo.template_id:
+        return
+    try:
+        from app.templates import get_template
+
+        tpl = get_template(geo.template_id)
+        if tpl.characteristic_length is None or not geo.template_params:
+            return
+        params = tpl.parse_params(geo.template_params)
+        char_len = float(tpl.characteristic_length(params))
+        if char_len <= 0:
+            return
+        probe = recompute_from_sample(
+            RUNS_DIR / str(run_id) / f"run{run_id}.train.npz",
+            characteristic_length=char_len,
+            standoff_ratio=DEFAULT_STANDOFF_RATIO,
+        )
+        if probe and probe.get("max_von_mises_away") is not None:
+            scalars["max_von_mises_away"] = probe["max_von_mises_away"]
+            scalars["stress_probe_standoff_mm"] = probe["standoff_mm"]
+            scalars["stress_probe_fraction_used"] = probe["fraction_used"]
+    except Exception as exc:  # noqa: BLE001
+        # Ölçüm başarısız olursa çözüm geçerliliğini yitirmez — ham
+        # max_von_mises yerinde duruyor.
+        logger.warning("stress probe hesaplanamadı (run %s): %s", run_id, exc)
+
+
 def _complete_ccx_job(run_id: int) -> None:
     db = SessionLocal()
     run = None
@@ -126,6 +175,7 @@ def _complete_ccx_job(run_id: int) -> None:
             analysis_type,
             scalars,
         )
+        _stress_probe_for(geo, run.id, scalars)
         run.status = "solved"
         run.message = f"ccx bitti ({status.state})"
         run.scalars = scalars
@@ -191,6 +241,14 @@ class SolveRequest(BaseModel):
     element_size: float | None = Field(default=None)
     element_scheme: str | None = Field(default=None)
     analysis_type: str = Field(default="static", description="static | modal")
+    #: Büyük deformasyon (geometrik nonlineerlik). Lineer çözüm denge
+    #: denklemlerini deforme OLMAMIŞ geometride kurar; u/L büyüdükçe bu
+    #: varsayım bozulur ve çözücü SESSİZCE yanlış cevap verir. Korpus
+    #: kapısı bu yüzden u/L > 0.10 run'ları eliyor. NLGEOM açıkken çözüm
+    #: iterasyonlu ve belirgin şekilde yavaştır — varsayılan kapalı.
+    nlgeom: bool = Field(default=False)
+    #: NLGEOM yükleme artım sayısı. Yakınsamıyorsa artırın.
+    n_increments: int = Field(default=20, ge=1, le=500)
     n_modes: int | None = Field(default=None, ge=1, le=200)
     freq_min: float | None = Field(default=None)
     freq_max: float | None = Field(default=None)
@@ -349,6 +407,8 @@ def solve_geometry(
                 "n_modes": n_modes,
                 "freq_min": body.freq_min,
                 "freq_max": body.freq_max,
+                "nlgeom": body.nlgeom,
+                "n_increments": body.n_increments,
             }
         )
     except SolverError as exc:
@@ -369,7 +429,10 @@ def solve_geometry(
     run.inp_path = str(artifact.path).replace("\\", "/")
     run.status = "inp_only"
     run.message = "modal inp üretildi" if analysis_type == "modal" else "inp üretildi"
-    run.scalars = {"_analysis_type": analysis_type}
+    # NLGEOM bayrağını kaydet: korpus ve karşılaştırma tarafı bir run'ın
+    # lineer mi nonlineer mi çözüldüğünü bilmek zorunda — ikisi aynı
+    # modele girmemeli.
+    run.scalars = {"_analysis_type": analysis_type, "_nlgeom": bool(body.nlgeom)}
     db.commit()
 
     result: dict[str, Any] = {
@@ -377,6 +440,7 @@ def solve_geometry(
         "run_id": run.id,
         "dimension": body.dimension,
         "analysis_type": analysis_type,
+        "nlgeom": body.nlgeom,
         "n_modes": n_modes if analysis_type == "modal" else None,
         "inp_path": run.inp_path,
         "inp_url": f"/files/runs/{run.id}/{artifact.path.name}",
@@ -426,6 +490,7 @@ def solve_geometry(
                 comparison = _analytic_comparison_for(
                     geo, materials, bcs, analysis_type, scalars
                 )
+                _stress_probe_for(geo, run.id, scalars)
                 result["scalars"] = scalars
                 if comparison is not None:
                     result["analytic_comparison"] = comparison
@@ -474,19 +539,46 @@ def solve_geometry(
 
 
 @router.get("/runs")
-def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Tüm analiz geçmişini listeler — en yeni önce.
+def list_runs(
+    template_id: str | None = None,
+    doe_study_id: int | None = None,
+    include_excluded: bool = True,
+    only_excluded: bool = False,
+    status: str | None = None,
+    limit: int | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Analiz geçmişi — en yeni önce, süzülebilir.
 
-    ROADMAP.md "7. Veritabanına kayıt + geçmiş" — frontend'de geçmiş
-    analizler listesi ve Faz 4 surrogate model eğitim verisi kaynağı.
-    Kullanıcı tek tek silebilir; otomatik temizlik yoktur.
+    900'e yakın run birikti ve ikinci şablon girince liste karışıyor.
+    Süzgeçler:
+
+    - `template_id`: yalnız o şablonun run'ları. Ankastre kiriş ile delikli
+      plaka sonuçları aynı listede karışmasın diye.
+    - `doe_study_id`: yalnız o DOE/kalite setinin run'ları — "şu 200'lük
+      set" diye bakmak için.
+    - `include_excluded` / `only_excluded`: elle dışlanmışları gizle ya da
+      YALNIZ onları göster (deneme/mükerrer koşuları gözden geçirmek için).
+    - `status`, `limit`: alışıldık süzgeçler.
+
+    Varsayılan davranış eskisiyle aynı: hiçbir parametre verilmezse tüm
+    run'lar döner.
     """
-    runs = (
-        db.query(AnalysisRun)
-        .options(joinedload(AnalysisRun.geometry))
-        .order_by(AnalysisRun.created_at.desc())
-        .all()
-    )
+    q = db.query(AnalysisRun).options(joinedload(AnalysisRun.geometry))
+    if template_id:
+        q = q.join(AnalysisRun.geometry).filter(Geometry.template_id == template_id)
+    if doe_study_id is not None:
+        q = q.filter(AnalysisRun.doe_study_id == doe_study_id)
+    if only_excluded:
+        q = q.filter(AnalysisRun.excluded.is_(True))
+    elif not include_excluded:
+        q = q.filter(AnalysisRun.excluded.is_(False))
+    if status:
+        q = q.filter(AnalysisRun.status == status)
+    q = q.order_by(AnalysisRun.created_at.desc())
+    if limit is not None and limit > 0:
+        q = q.limit(limit)
+    runs = q.all()
     return {
         "count": len(runs),
         "runs": [
@@ -505,10 +597,78 @@ def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
                 # sorusunun cevabı burada. Yüklenen STEP'te None.
                 "template_id": r.geometry.template_id if r.geometry else None,
                 "template_params": r.geometry.template_params if r.geometry else None,
+                "doe_study_id": r.doe_study_id,
+                "excluded": bool(r.excluded),
+                "exclude_reason": r.exclude_reason,
             }
             for r in runs
         ],
     }
+
+
+class RunExcludeRequest(BaseModel):
+    """Run'ı elle dışla / geri al."""
+
+    excluded: bool
+    reason: str | None = Field(
+        default=None,
+        description="Neden dışlandı: 'deneme', 'mükerrer', 'kalitesiz' vb.",
+    )
+
+
+@router.patch("/runs/{run_id}/exclude")
+def set_run_excluded(
+    run_id: int,
+    body: RunExcludeRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Deneme / mükerrer / kalitesiz koşuyu işaretler.
+
+    SİLMEZ — dosyalar diskte kalır, karar geri alınabilir. Dışlanan run
+    korpusa (eğitim setine) girmez; geçmişte istenirse gizlenir ya da
+    yalnız dışlananlar listelenebilir.
+
+    Silmek yerine işaretlemenin sebebi: bir run'ın "kalitesiz" olduğu
+    kararı sonradan yanlış çıkabilir. Silinen geri gelmez.
+    """
+    run = db.get(AnalysisRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run bulunamadı: id={run_id}")
+    run.excluded = bool(body.excluded)
+    run.exclude_reason = body.reason if body.excluded else None
+    db.commit()
+    return {
+        "id": run.id,
+        "excluded": run.excluded,
+        "exclude_reason": run.exclude_reason,
+    }
+
+
+@router.patch("/runs/exclude-bulk")
+def set_runs_excluded_bulk(
+    body: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Birden çok run'ı tek seferde işaretler.
+
+    Gövde: {"run_ids": [1,2,3], "excluded": true, "reason": "mükerrer"}
+    Bütün bir DOE setini elemek için pratik.
+    """
+    ids = [int(i) for i in (body.get("run_ids") or [])]
+    if not ids:
+        raise HTTPException(status_code=400, detail="run_ids boş.")
+    excluded = bool(body.get("excluded"))
+    reason = body.get("reason") if excluded else None
+    n = (
+        db.query(AnalysisRun)
+        .filter(AnalysisRun.id.in_(ids))
+        .update(
+            {"excluded": excluded, "exclude_reason": reason},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return {"updated": n, "excluded": excluded, "reason": reason}
 
 
 @router.get("/runs/{run_id}")

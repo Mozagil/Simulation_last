@@ -12,6 +12,7 @@ from app.api.geometry import GenerateMeshRequest, generate_mesh
 from app.api.solve import SolveBC, SolveRequest, solve_geometry
 from app.doe.regions import DoeBindError, bind_scenario_bcs, groups_by_name
 from app.doe.sampling import DoeSample, DoeSpec, sample_spec
+from app.models.run import AnalysisRun
 from app.models.doe import DoeCase, DoeStudy
 from app.models.material import Material, MaterialAssignment
 from app.templates.service import create_geometry_from_template
@@ -24,8 +25,21 @@ class _NoopBackground:
         return None
 
 
+def _material_map(db: Session, spec: DoeSpec) -> dict[int, dict[str, Any]]:
+    """Ön eleme için malzeme özellikleri (E, akma)."""
+    out: dict[int, dict[str, Any]] = {}
+    for mid in spec.material_ids:
+        m = db.get(Material, mid)
+        if m is not None:
+            out[mid] = {
+                "youngs_modulus": m.youngs_modulus,
+                "yield_strength": m.yield_strength,
+            }
+    return out
+
+
 def persist_study(db: Session, spec: DoeSpec) -> DoeStudy:
-    samples = sample_spec(spec)
+    samples = sample_spec(spec, _material_map(db, spec))
     study = DoeStudy(
         name=spec.name or spec.template_id,
         template_id=spec.template_id,
@@ -93,6 +107,12 @@ def _execute_sample(db: Session, spec: DoeSpec, sample: DoeSample, case: DoeCase
     )
     result = solve_geometry(geo.id, body, _NoopBackground(), db)  # type: ignore[arg-type]
     case.run_id = result.get("run_id")
+    # Run'dan geriye çalışmaya bakabilmek için bağı burada kuruyoruz —
+    # geçmişte "şu setin run'ları" diye süzmek bunu gerektiriyor.
+    if case.run_id is not None:
+        run_row = db.get(AnalysisRun, case.run_id)
+        if run_row is not None:
+            run_row.doe_study_id = case.study_id
     status = str(result.get("status") or "failed")
     if status == "solved":
         case.status = "solved"
@@ -118,7 +138,7 @@ def run_study(db: Session, study_id: int) -> DoeStudy:
         .order_by(DoeCase.index)
         .all()
     )
-    samples = {s.index: s for s in sample_spec(spec)}
+    samples = {s.index: s for s in sample_spec(spec, _material_map(db, spec))}
     failed = 0
     for case in cases:
         if case.status in ("solved", "inp_only"):

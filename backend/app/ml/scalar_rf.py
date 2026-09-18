@@ -38,6 +38,15 @@ def split_metrics(y_true: np.ndarray, y_pred: np.ndarray, keys: tuple[str, ...])
     for i, key in enumerate(keys):
         yt = y_true[:, i]
         yp = y_pred[:, i]
+        # Hedef-bazlı maskeleme sonrası bazı satırlar NaN olabilir (o run'da
+        # o skaler yok). Metrik yalnız dolu satırlardan hesaplanır; hiç
+        # dolu satır yoksa hedef için metrik None döner.
+        finite = np.isfinite(yt) & np.isfinite(yp)
+        if not finite.any():
+            out[key] = None
+            continue
+        yt = yt[finite]
+        yp = yp[finite]
         mae = float(mean_absolute_error(yt, yp))
         denom = np.maximum(np.abs(yt), 1e-12)
         mape = float(np.mean(np.abs(yt - yp) / denom))

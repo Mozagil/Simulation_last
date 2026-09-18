@@ -28,7 +28,12 @@ FEATURE_KEYS = (
     "dimension",
 )
 
-TARGET_KEYS = ("max_displacement", "max_von_mises")
+#: Hedefler. `max_von_mises_away` kısıttan 1×T uzakta ölçülen gerilme
+#: (bkz. postprocess/stress_probe.py). Ham `max_von_mises` ankastre
+#: köşedeki TEKİLLİKTEN okunuyor; ölçtük: gürültü tabanı %5.57 ve
+#: teoriden +%10 sapıyor. Maskeli ölçüm: %1.20 ve −%0.8. Ham değer
+#: geriye uyumluluk ve karşılaştırma için tutuluyor.
+TARGET_KEYS = ("max_displacement", "max_von_mises", "max_von_mises_away")
 
 
 def _cload_components(bcs: list[dict[str, Any]]) -> tuple[float, float, float]:
@@ -90,7 +95,14 @@ def targets_from_run(run: AnalysisRun) -> np.ndarray | None:
         vm = float(scalars["max_von_mises"])
     except (KeyError, TypeError, ValueError):
         return None
-    return np.asarray([disp, vm], dtype=np.float64)
+    # Maskeli gerilme yoksa NaN — run TAMAMEN düşmesin. Şablonsuz ya da
+    # backfill öncesi run'larda bu skaler olmayabilir; eğitim tarafı
+    # hedef bazında maskeliyor, diğer iki hedef yine kullanılır.
+    try:
+        away = float(scalars["max_von_mises_away"])
+    except (KeyError, TypeError, ValueError):
+        away = float("nan")
+    return np.asarray([disp, vm, away], dtype=np.float64)
 
 
 def collect_scalar_table(

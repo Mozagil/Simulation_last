@@ -48,6 +48,11 @@ class CorpusSpec:
     #: F=900 "eğitim uzayı içinde" sayılır. Ölçüldü: study 3 kutusu
     #: F ≤ 220 N iken, süzgeç F=1000 N'lik bir koşuyu sete almıştı.
     study_id: int | None = None
+    #: Lineer mi nonlineer (NLGEOM) run'lar mı toplanacak. İkisi FARKLI
+    #: FİZİK: lineer çözüm denge denklemlerini deforme olmamış geometride
+    #: kurar. Aynı modele sokmak, iki farklı fonksiyonu tek fonksiyona
+    #: uydurmaya çalışmaktır.
+    nlgeom: bool = False
 
 
 @dataclass
@@ -168,8 +173,16 @@ def _material_key(run: AnalysisRun) -> tuple[float, float]:
 
 
 def _row_reject(run: AnalysisRun, geo: Geometry, spec: CorpusSpec) -> str | None:
+    # Elle dışlanmış run'lar (deneme, mükerrer, kalitesiz) eğitime girmez.
+    # Otomatik kapılardan ÖNCE bakılıyor: kullanıcının kararı, otomatik
+    # ölçütlerden üstündür.
+    if bool(getattr(run, "excluded", False)):
+        return "manually_excluded"
     if (geo.template_id or "") == "":
         return "no_template"
+    # Eski run'larda bu bayrak yok; yokluğu "lineer" demektir.
+    if bool((run.scalars or {}).get("_nlgeom", False)) != bool(spec.nlgeom):
+        return "wrong_kinematics"
     if _analysis_type(run) != spec.analysis_type:
         return "wrong_analysis"
     if features_from_run(run, geo) is None or targets_from_run(run) is None:

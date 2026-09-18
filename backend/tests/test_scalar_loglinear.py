@@ -83,9 +83,16 @@ def test_recovers_beam_theory_exponents():
 def test_fits_power_law_almost_exactly():
     X, y = _beam_dataset(vary_e=True)
     bundle = train_scalar_loglinear(X, y)
-    for key in TARGET_KEYS:
-        assert bundle["metrics"]["test"][key]["r2"] == pytest.approx(1.0, abs=1e-6)
-        assert bundle["metrics"]["test"][key]["mape"] < 1e-6
+    # Veri seti 2 sütunlu; `max_von_mises_away` hedefi yoksa metriği
+    # None döner (uydurma sayı yerine). Dolu hedeflerin hepsi tam
+    # oturmalı — fizik saf kuvvet yasası.
+    scored = {
+        k: m for k, m in bundle["metrics"]["test"].items() if m is not None
+    }
+    assert scored, "hiçbir hedef puanlanmamış"
+    for key, m in scored.items():
+        assert m["r2"] == pytest.approx(1.0, abs=1e-6), key
+        assert m["mape"] < 1e-6, key
 
 
 def test_constant_feature_is_flagged_as_unidentifiable():

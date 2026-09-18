@@ -28,20 +28,50 @@ QUALITY_SET_SEED = 2026
 #: Şema varsayılanının çevresinde taranacak yarı-genişlik.
 _SPREAD = 0.2
 
-#: Elle ayarlanmış aralıklar. Ankastre kiriş Faz 0'ın doğrulama vakası;
-#: L/T ≥ 5 şablon kısıtı sağlansın diye alt/üst sınırlar seçilmiş
-#: (min L / max T = 450/12 = 37.5).
+#: Elle ayarlanmış aralıklar. Ankastre kiriş Faz 0'ın doğrulama vakası.
+#:
+#: ÖLÇTÜK, GÜNCELLEDİK (Faz 0.6): eski kutu — L (450,700), T (8,12),
+#: W (35,70), yük 0.4–1.6 × 500 N — lineer analizin geçerli olduğu bölgenin
+#: DIŞINA taşıyordu. Tipik bir örnek (F=500, L=575, W=52, T=10) çelikte
+#: σ ≈ 331 MPa veriyor; S235'in akması 235 MPa. Alüminyumda ise aynı
+#: referans vaka u/L = 0.146 ile büyük deformasyona giriyor.
+#: Sonuç: üretilen 22 kirişten yalnız 8'i korpus kapısından geçebiliyordu
+#: (no_template 14, large_displacement 13, analytic_warn 1).
+#:
+#: Yeni kutu 9000 örnekle simüle edildi: analitik ön eleme (doe/screening.py)
+#: ile kabul oranı %89.6, u = 0.07–41 mm, σ = 2–284 MPa. Kalın kesit ve
+#: düşük yük aralığı, örneklerin lineer-elastik bölgede kalmasını sağlıyor.
 _GEOMETRY_OVERRIDES: dict[str, dict[str, tuple[float, float]]] = {
     "cantilever_beam": {
-        "length": (450.0, 700.0),
-        "thickness": (8.0, 12.0),
-        "width": (35.0, 70.0),
+        "length": (400.0, 700.0),
+        "thickness": (8.0, 20.0),
+        "width": (30.0, 80.0),
+    },
+    # Delikli plaka — 6000 örnekle simüle edildi, analitik elemeyle kabul
+    # %80.8. Kt (gerilme yığılma faktörü) bu kutuda 2.13–2.81 arasında
+    # değişiyor; modelin öğrenmesi gereken asıl sinyal bu.
+    # d/W ≤ 0.5 kısıtı şablonun kendi doğrulamasından geliyor.
+    "plate_with_hole": {
+        "height": (150.0, 300.0),
+        "width": (70.0, 140.0),
+        "thickness": (4.0, 12.0),
+        "diameter": (12.0, 40.0),
     },
 }
 
 #: Yük katsayısı aralığı: şablonun varsayılan yükü bununla ölçeklenir.
 #: Yönü ve tipi korur, her şablonda çalışır (cload, pressure, bearing).
 _LOAD_SCALE = (0.4, 1.6)
+
+#: Şablona özel yük katsayısı. Ankastre kirişte varsayılan yük 500 N;
+#: (0.04, 0.8) → F = 20–400 N. Eski (0.4, 1.6) → 200–800 N idi ve üst uç
+#: akmayı kat kat aşıyordu.
+_LOAD_SCALE_OVERRIDES: dict[str, tuple[float, float]] = {
+    "cantilever_beam": (0.04, 0.8),
+    # Şablon varsayılanı 50 kN; (0.1, 1.2) → 5–60 kN. Üst uç çelikte
+    # akmaya yaklaşıyor, eleme gerisini hallediyor.
+    "plate_with_hole": (0.1, 1.2),
+}
 
 
 class QualitySetError(ValueError):
@@ -100,7 +130,7 @@ def quality_spec(
         # aynı fizik %9.6–%21.8 gerilme sapması veriyor ve bazı örnekler mesh
         # yüzünden uyarı tetikliyor — kalite raporu okunamaz hale geliyor.
         element_ratio=template.default_element_ratio,
-        load_scale=_LOAD_SCALE,
+        load_scale=_LOAD_SCALE_OVERRIDES.get(template.id, _LOAD_SCALE),
         material_ids=list(material_ids),
         bc_scenarios=[
             BcScenario(name="varsayilan", bcs=[dict(bc) for bc in template.default_bcs])

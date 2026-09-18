@@ -48,10 +48,17 @@ import {
   type SolveBC,
   type SolveResponse,
 } from "./api/materials";
-import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
+import {
+  deleteRun,
+  fetchRunDetail,
+  fetchRuns,
+  RunFetchError,
+  setRunExcluded,
+  type RunSummary,
+} from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
-import DatasetPanel from "./components/DatasetPanel";
 import ConvergencePanel from "./components/ConvergencePanel";
+import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
@@ -4685,6 +4692,31 @@ function App() {
           void handleDeleteRun(id, name);
         }}
         onCompare={() => setViewMode("compare")}
+        onSetExcluded={(id, excluded) => {
+          void (async () => {
+            try {
+              await setRunExcluded(
+                id,
+                excluded,
+                excluded ? "elle işaretlendi" : undefined,
+              );
+              // Listeyi tazele — rozet ve süzgeç sayıları güncellensin.
+              setRunsHistory((prev) =>
+                prev.map((r) =>
+                  r.id === id
+                    ? { ...r, excluded, exclude_reason: excluded ? "elle işaretlendi" : null }
+                    : r,
+                ),
+              );
+              // Korpus da değişti: dışlanan run eğitime girmez.
+              setCorpusRefreshKey((k) => k + 1);
+            } catch (err) {
+              setErrorMessage(
+                err instanceof Error ? err.message : "İşaretlenemedi.",
+              );
+            }
+          })();
+        }}
       />
 
       <div className="status-bar">
