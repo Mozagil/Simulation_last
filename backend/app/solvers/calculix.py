@@ -334,13 +334,31 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
     # elemandan AYRI bir değerle birden fazla kez gelir. Node başına TEK
     # değer değil, gelen tüm değerlerin toplamı+sayacı tutulur; sonda
     # componentwise ortalama alınır (cgx/Abaqus'un yaptığı "nodal averaging").
+    # Gerilme ARTIM BAŞINA ayrı tutulur. Eskiden tüm STRESS blokları tek
+    # toplamda birikiyordu: çok artımlı (NLGEOM) .frd'de sonuç yük
+    # geçmişinin ORTALAMASI oluyordu — ölçüldü, 20 artımlı doğrusal
+    # yüklemede tam yükün %52.5'i (103.5 MPa, ~197 olması gerekirken).
+    # Blok İÇİNDE ortalama korunur: aynı düğüm birden çok elemandan gelir.
     stress_sum: dict[int, list[float]] = {}
     stress_count: dict[int, int] = {}
+    stress_increments: list[dict[int, tuple[float, ...]]] = []
     disp_increments: list[dict[int, tuple[float, ...]]] = []
     current_disp: dict[int, tuple[float, ...]] = {}
 
     in_node_block = False
     current_result_type: str | None = None
+
+    def flush_stress() -> None:
+        nonlocal stress_sum, stress_count
+        if stress_sum:
+            stress_increments.append(
+                {
+                    nid: tuple(v / stress_count[nid] for v in acc)
+                    for nid, acc in stress_sum.items()
+                }
+            )
+        stress_sum = {}
+        stress_count = {}
 
     def flush_disp() -> None:
         nonlocal current_disp, displacement
@@ -360,6 +378,8 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             # örn: " -4  DISP        4    1" / " -4  STRESS      6    1"
             if current_result_type == "DISP":
                 flush_disp()
+            elif current_result_type == "STRESS":
+                flush_stress()
             rest = line[4:].split()
             current_result_type = rest[0] if rest else None
             in_node_block = False
@@ -369,6 +389,8 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
         if line.startswith(" -3"):
             if current_result_type == "DISP":
                 flush_disp()
+            elif current_result_type == "STRESS":
+                flush_stress()
             in_node_block = False
             current_result_type = None
             continue
@@ -398,15 +420,17 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
 
     if current_result_type == "DISP":
         flush_disp()
+    elif current_result_type == "STRESS":
+        flush_stress()
 
-    stress: dict[int, tuple[float, ...]] = {
-        nid: tuple(v / stress_count[nid] for v in acc) for nid, acc in stress_sum.items()
-    }
+    # Son artım = tam yük (statik). Tek artımlı lineer çözümde aynı sonuç.
+    stress: dict[int, tuple[float, ...]] = stress_increments[-1] if stress_increments else {}
 
     return {
         "node_coords": node_coords,
         "displacement": displacement,
         "disp_increments": disp_increments,
+        "stress_increments": stress_increments,
         "stress": stress,
     }
 
@@ -433,6 +457,15 @@ def _vendor_ccx_candidates() -> list[Path]:
         vendor / "ccx_static.exe",
         vendor / "ccx",
     ]
+
+
+def _deck_is_frequency(inp_path: Path) -> bool | None:
+    """Girdi destesi özdeğer (*FREQUENCY) adımı mı? Deste okunamazsa None."""
+    try:
+        text = inp_path.read_text(encoding="utf-8", errors="replace").upper()
+    except OSError:
+        return None
+    return "*FREQUENCY" in text
 
 
 def parse_ccx_sta(path: Path) -> dict[str, float] | None:
@@ -746,6 +779,18 @@ class CalculiXAdapter(SolverAdapter):
         increments = parsed.get("disp_increments") or (
             [displacement] if displacement else []
         )
+        # Çözüm tipi GİRDİ DESTESİNDEN okunur, .frd blok sayısından değil.
+        # Eskiden "birden çok DISP bloğu = modal" varsayılıyordu; NLGEOM
+        # statik çözümü de artım başına blok yazar (ölçüldü: 20 blok). Sonuç:
+        # deplasman ilk artımdan (yükün %5'i) okunuyor, eğitim örneği modal
+        # şemayla yazılıyor, görüntüleyici artımları "mod" diye gösteriyordu.
+        is_modal = _deck_is_frequency(job.artifact.path)
+        if is_modal is None:  # deste yoksa eski ipucuna düş
+            is_modal = bool(frequencies)
+        if not is_modal and increments:
+            # Statik: yalnız SON artım (tam yük). Lineerde zaten tek artım —
+            # çıktı birebir aynı kalır.
+            increments = increments[-1:]
         modes: list[dict[str, Any]] = []
         for i, inc in enumerate(increments):
             vecs = [list(inc.get(nid, (0.0, 0.0, 0.0))) for nid in node_order]
@@ -760,7 +805,7 @@ class CalculiXAdapter(SolverAdapter):
                 }
             )
 
-        # Varsayılan görüntü: ilk increment (modal'da 1. mod).
+        # Varsayılan görüntü: modal'da 1. mod; statikte tek eleman = son artım.
         if modes:
             disp_mag_array = modes[0]["displacement_magnitude"]
             disp_vector_array = modes[0]["displacement_vectors"]
@@ -807,7 +852,7 @@ class CalculiXAdapter(SolverAdapter):
         # aslında bir mod şekli olan anlamsız bir örnek çıkar — hiçbir yerde
         # hata vermeden. Bu yüzden modal kendi şemasına yazılır: mod başına
         # normalize edilmiş şekil + frekans.
-        _is_modal = bool(frequencies) or len(increments) > 1
+        _is_modal = is_modal
         try:
             from app.dataset import training_data as _td
 

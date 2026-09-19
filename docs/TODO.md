@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-19): 590 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-19): 592 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 88 frontend testi geçiyor
 
 ---
@@ -159,24 +159,35 @@ Yapılanlar:
 
 ## 4. NLGEOM (büyük deformasyon)
 
-### 4.0 ⚠ ÖNCE BU — NLGEOM sonuçları YANLIŞ okunuyor (ölçüldü 2026-09-19)
+### 4.0 NLGEOM sonuçları yanlış okunuyordu — ✅ kapandı (2026-09-19)
 
-Yakınsama deneyi sırasında bulundu. `parse_results` çok artımlı `.frd`'de:
-- **deplasmanı İLK artımdan** alıyor (`modes[0]` — modal için doğru,
-  statik NLGEOM için yanlış): raporlanan u = **2.669 mm**, tam yükte
-  gerçek u = **52.893 mm** → **20× küçük**
-- **gerilmeyi TÜM artımların ORTALAMASI** olarak hesaplıyor
-  (`stress_sum / stress_count` artımlar boyunca birikiyor): 103.5 MPa;
-  doğrusal yük artışında ortalama = tam yükün %52.5'i → ~0.525 × 197
-- Lineer çözümde tek artım olduğu için görünmüyordu. DB'de NLGEOM ile
-  çözülmüş run **yok** — kirlenmiş veri yok.
+Yakınsama deneyi sırasında bulundu, tek kök neden: çözüm tipi girdi
+destesinden değil `.frd`'deki blok sayısından tahmin ediliyordu ("birden
+çok DISP bloğu = modal"). NLGEOM statik çözüm artım başına blok yazar →
+- deplasman İLK artımdan okunuyordu (`modes[0]`): **2.669 mm**
+- gerilme artımlar boyunca ORTALANIYORDU: **103.5 MPa** (~0.525 × tam yük)
+- eğitim örneği **modal şemayla** yazılıyor, görüntüleyici artımları "mod"
+  diye gösterip ilk artımı açıyordu
 
-Düzeltme: statikte son artım; gerilme artım başına ayrı, son artım
-raporlanır. `test_nlgeom.py` yalnız kartı test ediyor, sonucu değil.
+Düzeltme: tip `*FREQUENCY` kartından okunur; statikte son artım; gerilme
+artım başına ayrı tutulur. Lineer çıktı birebir aynı (tek artım).
 
-Not: aynı koşuda NLGEOM u = 52.89 mm, kiriş teorisi 53.15 mm (−%0.5).
-Aşağıdaki "%5–15 daha küçük" beklentisi u/L ≈ 0.1 için yüksek görünüyor —
-aynı mesh'le lineer FEA koşup ölçmeden yargılanmamalı.
+| 6061-T6 kiriş L500 T8 W40, F=150 N | eski | **yeni** | lineer FEA (aynı mesh) |
+|---|---|---|---|
+| u_max | 2.669 | **52.893** | 53.388 mm |
+| σ_max | 103.5 | **196.5** | 197.7 MPa |
+
+Regresyon (gerçek ccx): aynı deste lineer ve küçük yüklü NLGEOM — ikisi
+%2 içinde olmalı. Eski kodda NLGEOM u = lineerin tam %10'u (10 artımın
+ilki) çıkıyordu; test eski kodda kalıyor, yenisinde geçiyor.
+
+**Aşağıdaki doğrulama planı için ölçüm:** bu vakada NLGEOM lineerden
+yalnız **%0.93** küçük (σ %0.61) — "%5–15" beklentisi u/L ≈ 0.1 için
+yanlıştı. Yön doğru (sertleşme), büyüklük küçük; uç yüklü konsolun
+klasik büyük sehim çözümüyle tutarlı (etki ~%9'a ancak lineer u/L ≈ 0.33'te
+çıkar). **"Fark yoksa kart uygulanmamış" ölçütü %1'lik farkla güvenilir
+değil** — doğrulama vakası daha narin seçilmeli (lineer u/L ≈ 0.3).
+Akmadan buna ulaşmak için malzeme/geometri yeniden hesaplanmalı.
 
 
 Backend **hazır**: `*STEP, NLGEOM` kartı, artımlı yükleme, `nlgeom` ve
@@ -194,8 +205,10 @@ ulaşmak için L/T ≈ 168 gerekiyor — çok narin. Alüminyum pratik:
 (akma 276, güvenli).
 
 Aynı vaka lineer ve NLGEOM koşulup karşılaştırılmalı. Beklenen: NLGEOM
-**daha küçük** deplasman (büyük deformasyonda yapı sertleşir), fark
-%5–15. Fark yoksa kart uygulanmamış demektir.
+**daha küçük** deplasman (büyük deformasyonda yapı sertleşir).
+~~Fark %5–15~~ — **ölçüldü: bu vakada %0.93** (bkz. 4.0). Bu büyüklükte
+fark kartın uygulandığını güvenilir biçimde göstermez; vaka daha narin
+seçilmeli (lineer u/L ≈ 0.3).
 
 ---
 
@@ -283,7 +296,7 @@ Migration eski run'ları doldurmadı; mevcut ~900 run "DOE dışı" görünüyor
 
 1. ~~**0.1** — yüzey yükü doğrulaması~~ ✅ kapandı
 2. ~~**3** — solver yakınsaması~~ ✅ kapandı
-   **4.0** — NLGEOM sonuç okuma hatası (yeni, küçük, NLGEOM'dan önce şart)
+   ~~**4.0** — NLGEOM sonuç okuma hatası~~ ✅ kapandı
 3. **5** — delikli plaka (yöntemin genelleşip genelleşmediği)
 4. **2.1** — korpusa göre arşiv (temiz veri indirilemiyor)
 5. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
