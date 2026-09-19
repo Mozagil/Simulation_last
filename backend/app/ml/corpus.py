@@ -149,10 +149,39 @@ def _u_over_L(run: AnalysisRun, geo: Geometry) -> float | None:
     return abs(disp) / L
 
 
+def _template_char_length(geo: Geometry) -> float | None:
+    """Şablonun KENDİ karakteristik uzunluğu — DOE mesh'i bununla kurar
+    (`element_ratio × karakteristik uzunluk`). Şablon tanımlamıyorsa None."""
+    if not geo.template_id:
+        return None
+    try:
+        from app.templates import get_template
+
+        template = get_template(geo.template_id)
+        if template.characteristic_length is None:
+            return None
+        length = float(template.characteristic_length(template.parse_params(geo.template_params or {})))
+    except Exception:  # noqa: BLE001 — bilinmeyen şablon / geçersiz parametre: eski yola düş
+        return None
+    return length if length > 0 else None
+
+
 def _mesh_ratio(run: AnalysisRun, geo: Geometry) -> float | None:
+    """Göreli mesh boyutu: es / karakteristik uzunluk.
+
+    Payda, DOE'nin mesh'i kurduğu uzunlukla AYNI olmalı. Eskiden her zaman
+    kalınlık kullanılıyordu; kirişte karakteristik uzunluk zaten kalınlık
+    olduğu için tesadüfen doğruydu. Delikli plakada karakteristik uzunluk
+    DELİK ÇAPI — ölçüldü: study 5'te es/T geniş dağıldığı için 114 geçerli
+    örneğin 45'i `mesh_outlier` diye atılıyordu (hepsi aynı 0.12–0.25 × d
+    bandında meshlenmişti).
+    """
     es = run.element_size
     if es is None or es <= 0:
         return None
+    char = _template_char_length(geo)
+    if char is not None:
+        return float(es) / char
     params = geo.template_params or {}
     try:
         thick = float(params.get("thickness") or 0.0)

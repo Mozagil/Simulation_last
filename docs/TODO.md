@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-19): 592 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-19): 594 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 88 frontend testi geçiyor
 
 ---
@@ -212,32 +212,53 @@ seçilmeli (lineer u/L ≈ 0.3).
 
 ---
 
-## 5. Delikli plaka eğitimi
+## 5. Delikli plaka eğitimi — veri ✅, ürün kararı bekliyor (2026-09-19)
 
-Kutu ve kalite seti girdisi **hazır** (`doe/quality_set.py`), koşulmadı.
+**Veri:** kalite seti study 5 — 200 örnek (S235 96 + S355 104), 198 çözüldü,
+2 başarısız (ikisi de `nonpositive jacobian` — bkz. 8.4). Kalite taraması
+198/198 ok, analitik uyarı 0. Korpus `plaka-v1`: 198/198 tutuldu.
+En büyük örnek 333 bin düğüm, 365 s, ccx bellek tepesi ~10 GB. Toplam
+~2 saat 10 dk (ilk tahmin 60 dk — orta boy örnekler kalibrasyondan yavaş).
 
-**Sıra:** 0.1 doğrulaması → 200 koşu → korpus → eğitim.
+**Bulunan ve düzeltilen hata:** korpus `mesh_ratio`'yu her zaman `es/T` ile
+hesaplıyordu; DOE mesh'i `oran × karakteristik uzunluk` (plakada **d**) ile
+kurar. Kirişte ikisi tesadüfen aynı. Plakada ara ölçümde 114 geçerli
+örneğin **45'i** `mesh_outlier` diye atılıyordu. Artık şablonun
+karakteristik uzunluğu kullanılıyor; kiriş korpusu birebir aynı (192).
 
-```
-H 150–300 · W 70–140 · T 4–12 · d 12–40 · yük 0.1–1.2 × 50 kN
-malzeme: S235 + S355
-```
-Simülasyonla ölçüldü: kabul %80.8, Kt = 2.13–2.81, `sample_spec`
-200/200 örnek üretiyor.
+**Model kıyası** (şablona uygun özellikler, ürün kodu DEĞİŞMEDİ — deney;
+198 örnek, 148/50, tohum 2026):
 
-**Beklenen sonuç kirişten FARKLI:** üsteller teoriye tam oturmayacak,
-çünkü σ = Kt(d/W)·F/((W−d)·T) saf kuvvet yasası değil — `log(W−d)` ne
-W'nin ne d'nin kuvveti, `Kt` de oranın doğrusal olmayan fonksiyonu.
+| model | u MAPE | u en kötü | σ MAPE | σ en kötü |
+|---|---|---|---|---|
+| RF ham | %19.3 | %100 | %15.3 | %51 |
+| log-log | %1.53 | %4.6 | %2.22 | %7.7 |
+| **log-log + RF artık** | **%0.60** | **%2.7** | %1.32 | %7.2 |
+| fizik özellikli (log(W−d), d/W) | %1.14 | %4.8 | **%1.29** | **%5.7** |
+| fizik + RF artık | %0.62 | %3.3 | %1.24 | %6.7 |
 
-**Asıl bakılacak:** MAPE ve RF artık katmanının katkısı.
-- yalnız log-log doğrusal: ~%5–10 beklenir (Kt'yi kaçırır)
-- +RF artık: ~%2–3
+- Tahmin ("log-log %5–10, +RF artık %2–3") **karamsar çıktı**: log-log
+  zaten %1.5–2.2; hibrit u'da %0.60.
+- **Hibrit tasarım doğrulandı** (u: %1.53 → %0.60). σ'da her şey ~%1.3'te
+  toplanıyor — mesh gürültü tabanının (±%1, bkz. yakınsama) üstünde çok az
+  yer var; şablona özel özellik mühendisliği yalnız en kötü durumu
+  iyileştiriyor (%7.7 → %5.7).
+- En kötü σ hataları mesh bandının KABA ucunda (es/d 0.22–0.25;
+  |hata|–es/d r=+0.33, d/W ile r=+0.18) → model biçimi değil
+  ayrıklaştırma gürültüsü.
+- log-log üsleri σ: W −1.16, T −1.01, F 0.996, d +0.21 — beklendiği gibi
+  teorik saf kuvvet yasası değil (Kt(d/W), log(W−d)).
 
-Bu fark çıkarsa hibrit tasarım doğrulanır → kalan 10 şablona güvenle
-geçilir. Çıkmazsa şablona özel özellik mühendisliği gerekir (ör. `d/W`
-oranını doğrudan girdi yapmak).
-
----
+**Ürüne almak için gereken kararlar (açık):**
+- [ ] **Özellik vektörü şablona özgü olmalı.** `FEATURE_KEYS` kirişe göre
+      (length/thickness/width): plakada `length=0`, **`diameter` ve
+      `height` hiç özellik değil**. Bugünkü ürünle plaka eğitilirse model
+      delik çapını görmez. Öneri: şablonun `params_schema` sayısal alanları
+      + mesh + malzeme + yük; bundle zaten `feature_keys` saklıyor.
+- [ ] **Model dosyaları şablon başına saklanmalı.** `scalar_rf.joblib` /
+      `scalar_loglinear.joblib` TEK ve global: plaka eğitimi kiriş
+      modelinin ÜZERİNE YAZAR.
+- [ ] Hibrit tür (`log-log + RF artık`) ürüne eklensin mi.
 
 ## 6. Hot-spot ekstrapolasyonu (Faz 0.6)
 
@@ -292,12 +313,21 @@ Migration eski run'ları doldurmadı; mevcut ~900 run "DOE dışı" görünüyor
 
 ---
 
+### 8.4 gmsh ters kuadratik eleman (`nonpositive jacobian`)
+Plaka DOE'sinde 200 örnekten 2'si (#62 d=24 W=77.5 es=3.82; #129 es=3.03)
+ccx'te `*ERROR in e_c3d: nonpositive jacobian` ile düştü — muhtemelen delik
+yüzeyindeki eğri kenar-orta düğümleri. Sistem doğru davrandı (`failed`,
+sessiz `solved` değil). gmsh yüksek-mertebe optimizasyonu
+(`Mesh.HighOrderOptimize`) bir mesh ayarı kararı — kullanıcıya ait.
+Ayrıca hata mesajı yalnız log yolunu gösteriyor; ccx'in `*ERROR` satırı
+mesaja taşınmalı.
+
 ## Öncelik sırası (öneri)
 
 1. ~~**0.1** — yüzey yükü doğrulaması~~ ✅ kapandı
 2. ~~**3** — solver yakınsaması~~ ✅ kapandı
    ~~**4.0** — NLGEOM sonuç okuma hatası~~ ✅ kapandı
-3. **5** — delikli plaka (yöntemin genelleşip genelleşmediği)
+3. ~~**5** — delikli plaka verisi + kıyas~~ ✅ — **ürün kararı bekliyor** (özellik vektörü, model saklama)
 4. **2.1** — korpusa göre arşiv (temiz veri indirilemiyor)
 5. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
 6. **4** — NLGEOM arayüz + veri seti

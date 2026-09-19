@@ -239,3 +239,54 @@ def test_yakinsamamis_cozum_korpusa_girmez(db_session):
     assert corpus.dropped.get("not_converged") == 1
     assert ok_nl.id in corpus.run_ids
     assert {r.id for r in kept} <= set(corpus.run_ids)
+
+
+def _plate_run(db, *, height, width, thickness, diameter, ratio, fx=20000.0, disp=0.03):
+    g = Geometry(
+        original_filename="p.step",
+        current_filename="p.step",
+        template_id="plate_with_hole",
+        template_params={"height": height, "width": width, "thickness": thickness, "diameter": diameter},
+    )
+    db.add(g)
+    db.flush()
+    r = AnalysisRun(
+        geometry_id=g.id,
+        dimension=3,
+        element_size=ratio * diameter,  # DOE: oran x karakteristik uzunluk (= d)
+        element_scheme="tet",
+        bcs=[{"type": "fixed", "face_ids": [1]}, {"type": "cload", "fx": fx}],
+        materials_snapshot=[{"youngs_modulus": 210e9, "poisson_ratio": 0.3, "density": 7850.0}],
+        status="solved",
+        scalars={"max_displacement": disp, "max_von_mises": 150.0, "node_count": 5000,
+                 "_analysis_type": "static"},
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+def test_mesh_orani_sablonun_karakteristik_uzunluguyla_hesaplanir(db_session):
+    """Plakada DOE mesh'i d ile kurar. Kalınlık çok değişse de es/d sabitse
+    hiçbiri mesh aykırısı değildir. Eskiden es/T kullanılıyordu: study 5'te
+    114 geçerli örneğin 45'i böyle atıldı."""
+    thicknesses = [4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 4.5, 11.0, 7.0, 9.0]
+    runs = [
+        _plate_run(db_session, height=200.0, width=100.0, thickness=t,
+                   diameter=12.0 + 2.5 * i, ratio=0.18)
+        for i, t in enumerate(thicknesses)
+    ]
+    corpus = select_training_runs(db_session, CorpusSpec(template_id="plate_with_hole"))
+    assert corpus.dropped.get("mesh_outlier", 0) == 0
+    assert set(corpus.run_ids) == {r.id for r in runs}
+    assert corpus.mesh_ratio_median == pytest.approx(0.18)
+
+
+def test_kiriste_mesh_orani_degismedi(db_session):
+    """Kirişte karakteristik uzunluk = kalınlık: eski ve yeni hesap aynı."""
+    from app.ml.corpus import _mesh_ratio
+
+    r = _run(db_session, thickness=10.0, element_size=8.0)
+    geo = db_session.get(Geometry, r.geometry_id)
+    assert _mesh_ratio(r, geo) == pytest.approx(0.8)
