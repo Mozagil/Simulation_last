@@ -219,3 +219,23 @@ def test_study_id_survives_manifest_round_trip(tmp_path, db_session):
     payload = save_manifest("kutu-test", corpus, root=tmp_path)
     assert payload["spec"]["study_id"] == 42
     assert spec_from_manifest(payload).study_id == 42
+
+
+def test_yakinsamamis_cozum_korpusa_girmez(db_session):
+    """TODO madde 3: adımı tamamlamamış çözüm eğitim setine girmemeli.
+
+    Kaydı olmayan (bu alan eklenmeden önce çözülmüş) run'lar DÜŞMEZ —
+    onlar lineer tek-artımlı; düşürmek mevcut kiriş setini boşaltırdı.
+    """
+    kept = [_run(db_session, disp=18.0 + i, fy=-400.0 - 10 * i) for i in range(8)]
+    bad = _run(db_session, disp=20.5)
+    bad.scalars = dict(bad.scalars) | {"_solver_converged": 0.0, "_final_step_time": 0.15}
+    ok_nl = _run(db_session, disp=21.5)
+    ok_nl.scalars = dict(ok_nl.scalars) | {"_solver_converged": 1.0, "_n_cutbacks": 2.0}
+    db_session.commit()
+
+    corpus = select_training_runs(db_session)
+    assert bad.id not in corpus.run_ids
+    assert corpus.dropped.get("not_converged") == 1
+    assert ok_nl.id in corpus.run_ids
+    assert {r.id for r in kept} <= set(corpus.run_ids)

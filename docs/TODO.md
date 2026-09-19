@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-19): 576 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-19): 590 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 88 frontend testi geçiyor
 
 ---
@@ -127,23 +127,57 @@ tutuyor (`uploads/models/`), süzgeç oradan kurulabilir.
 
 ---
 
-## 3. Solver yakınsaması (Faz 0.6)
+## 3. Solver yakınsaması (Faz 0.6) — ✅ kapandı (2026-09-19)
 
-CalculiX `.sta` ve `.cvg` dosyaları **zaten üretiliyor**
-(`uploads/runs/{id}/run{id}.sta`), ama **okunmuyor**. Sıfırdan üretmek
-değil, var olanı parse etmek gerekiyor.
+**Ölçüm önceki varsayımı düzeltti.** "Yakınsamamış çözüm `solved`
+sayılıyor" iddiası ölçülen vakalarda **doğru değildi**: ccx yakınsamadığında
+sıfır olmayan kod döndürüyor (201) ve kod bunu zaten `failed` sayıyordu.
+Gerçek ccx deneyi (NLGEOM kiriş, 6061-T6 L500 T8 W40):
 
-- [ ] `.sta` / `.cvg` parse: artım sayısı, cutback, yakınsama durumu
-- [ ] `AnalysisRun.scalars`'a özet (`converged`, `n_increments`,
-      `n_cutbacks`)
-- [ ] **Yakınsamamış çözüm `solved` sayılmamalı** — şu an sayılıyor,
-      yani başarısız bir çözüm eğitim setine girebiliyor
-- [ ] Korpus kapısına ekle
-- [ ] Regresyon testi: bilerek yakınsamayan bir vaka `solved` olmamalı
+| vaka | exit | .frd | son adım zamanı |
+|---|---|---|---|
+| normal | 0 | 20 artım | 1.0 |
+| artım limiti (INC=3) | 201 | 3 artım (**kısmi ama var**) | 0.15 |
+| yük ×200 | 0 | 29 artım, 2 cutback | 1.0 |
+| ıraksama | 201 | 1 blok | 0.0 |
 
----
+Yapılanlar:
+- [x] `.sta` okuyucu (`parse_ccx_sta`): artım, cutback (`ATT` sütunundaki
+      `U`), iterasyon, son adım zamanı. `.cvg` ayrıca okunmadı — gereken
+      özet `.sta`'da var.
+- [x] `scalars`'a özet: `_solver_converged`, `_n_increments`,
+      `_n_cutbacks`, `_n_iterations`, `_final_step_time`
+- [x] Savunma: exit=0 ama statik adım 1.0'a ulaşmadıysa `SolverError`
+      (modal/`*FREQUENCY` hariç). Ölçülen vakalarda tetiklenmedi — ccx
+      zaten 201 veriyor — ama sessiz başarısızlığın bedeli yüksek.
+- [x] Hata mesajına özet: "Adım zamanı 0.15/1.0, 3 artım, 0 cutback."
+- [x] Korpus kapısı `not_converged` (kaydı olmayan eski lineer run'lar
+      düşmez)
+- [x] Regresyon: gerçek ccx ile bilerek yakınsamayan tek-eleman vaka
+      `SolverError` veriyor; `.sta` fikstürleri gerçek çıktılar
+      (`tests/fixtures/ccx_sta/`)
 
 ## 4. NLGEOM (büyük deformasyon)
+
+### 4.0 ⚠ ÖNCE BU — NLGEOM sonuçları YANLIŞ okunuyor (ölçüldü 2026-09-19)
+
+Yakınsama deneyi sırasında bulundu. `parse_results` çok artımlı `.frd`'de:
+- **deplasmanı İLK artımdan** alıyor (`modes[0]` — modal için doğru,
+  statik NLGEOM için yanlış): raporlanan u = **2.669 mm**, tam yükte
+  gerçek u = **52.893 mm** → **20× küçük**
+- **gerilmeyi TÜM artımların ORTALAMASI** olarak hesaplıyor
+  (`stress_sum / stress_count` artımlar boyunca birikiyor): 103.5 MPa;
+  doğrusal yük artışında ortalama = tam yükün %52.5'i → ~0.525 × 197
+- Lineer çözümde tek artım olduğu için görünmüyordu. DB'de NLGEOM ile
+  çözülmüş run **yok** — kirlenmiş veri yok.
+
+Düzeltme: statikte son artım; gerilme artım başına ayrı, son artım
+raporlanır. `test_nlgeom.py` yalnız kartı test ediyor, sonucu değil.
+
+Not: aynı koşuda NLGEOM u = 52.89 mm, kiriş teorisi 53.15 mm (−%0.5).
+Aşağıdaki "%5–15 daha küçük" beklentisi u/L ≈ 0.1 için yüksek görünüyor —
+aynı mesh'le lineer FEA koşup ölçmeden yargılanmamalı.
+
 
 Backend **hazır**: `*STEP, NLGEOM` kartı, artımlı yükleme, `nlgeom` ve
 `n_increments` parametreleri, korpusta lineer/nonlineer ayrımı
@@ -248,12 +282,13 @@ Migration eski run'ları doldurmadı; mevcut ~900 run "DOE dışı" görünüyor
 ## Öncelik sırası (öneri)
 
 1. ~~**0.1** — yüzey yükü doğrulaması~~ ✅ kapandı
-2. **3** — solver yakınsaması (yakınsamamış çözümler eğitime giriyor)
+2. ~~**3** — solver yakınsaması~~ ✅ kapandı
+   **4.0** — NLGEOM sonuç okuma hatası (yeni, küçük, NLGEOM'dan önce şart)
 3. **5** — delikli plaka (yöntemin genelleşip genelleşmediği)
 4. **2.1** — korpusa göre arşiv (temiz veri indirilemiyor)
 5. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
 6. **4** — NLGEOM arayüz + veri seti
 7. **6, 7, 8** — iyileştirmeler
 
-**Crash'e (Faz 1) geçmeden önce en az 0.1 (✅) ve 3 kapanmalı** — ikisi de
+**Crash'e (Faz 1) geçmeden önce en az 0.1 (✅) ve 3 (✅) kapanmalı** — crash de çok artımlı `.frd` üretecek; 4.0 aynı sınıftan — ikisi de
 solver altyapısını ilgilendiriyor, crash aynı altyapıyı kullanacak.

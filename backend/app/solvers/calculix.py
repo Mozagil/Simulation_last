@@ -435,6 +435,56 @@ def _vendor_ccx_candidates() -> list[Path]:
     ]
 
 
+def parse_ccx_sta(path: Path) -> dict[str, float] | None:
+    """CalculiX `.sta` özetini okur — çözümün adımı gerçekten tamamlayıp
+    tamamlamadığının tek güvenilir kaydı.
+
+    Satır biçimi: STEP INC ATT ITRS TOT_TIME STEP_TIME INC_TIME. `ATT`
+    sütununda `U` son eki yakınsamayan ve geri alınan denemedir (cutback);
+    o satırın STEP_TIME'ı ilerlemez. Ölçülen gerçek ccx çıktıları
+    `tests/fixtures/ccx_sta/` altında.
+
+    Döner: `_n_increments` (yakınsayan artım), `_n_cutbacks`, `_n_iterations`,
+    `_final_step_time` (yakınsayan son artımın adım zamanı), `_solver_converged`
+    (1.0: adım zamanı 1.0'a ulaştı). Dosya yoksa ya da satır yoksa None.
+    Tek adımlı iş varsayılır — bu platformun girdileri tek `*STEP` yazar.
+    """
+    if not path.is_file():
+        return None
+    rows: list[tuple[bool, float, int]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) < 7 or not parts[0].isdigit():
+            continue
+        try:
+            itrs = int(parts[3])
+            step_time = float(parts[5])
+        except ValueError:
+            continue
+        rows.append((parts[2].upper().endswith("U"), step_time, itrs))
+    if not rows:
+        return None
+    converged = [r for r in rows if not r[0]]
+    final_time = max((r[1] for r in converged), default=0.0)
+    return {
+        "_n_increments": float(len(converged)),
+        "_n_cutbacks": float(len(rows) - len(converged)),
+        "_n_iterations": float(sum(r[2] for r in rows)),
+        "_final_step_time": final_time,
+        "_solver_converged": 1.0 if final_time >= 1.0 - 1e-6 else 0.0,
+    }
+
+
+def _sta_note(summary: dict[str, float] | None) -> str:
+    if not summary:
+        return ""
+    return (
+        f" Adım zamanı {summary['_final_step_time']:.3g}/1.0, "
+        f"{int(summary['_n_increments'])} artım, "
+        f"{int(summary['_n_cutbacks'])} cutback."
+    )
+
+
 def _ccx_executable() -> str | None:
     env = os.environ.get("CCX_PATH")
     if env:
@@ -595,9 +645,26 @@ class CalculiXAdapter(SolverAdapter):
         handle = JobHandle(job_id=job_id, work_dir=work_dir, artifact=artifact)
         handle._exit_code = proc.returncode  # type: ignore[attr-defined]
         handle._log_path = log_path  # type: ignore[attr-defined]
+        summary = parse_ccx_sta(work_dir / f"{job_name}.sta")
+        handle._sta_summary = summary  # type: ignore[attr-defined]
         if proc.returncode != 0:
+            # Ölçüldü: NLGEOM'da artım limiti ve ıraksama ikisi de exit=201
+            # veriyor ve .frd KISMİ artımlarla yine yazılıyor — .frd'nin
+            # varlığı başarı göstergesi değil.
             raise SolverError(
-                f"CalculiX hata (exit={proc.returncode}). Log: {log_path}"
+                f"CalculiX hata (exit={proc.returncode}).{_sta_note(summary)} Log: {log_path}"
+            )
+        # Savunma: exit=0 ama statik adım 1.0'a ulaşmamış. Ölçülen vakalarda
+        # ccx bu durumda sıfır olmayan kod döndürdü; yine de yakınsamamış bir
+        # çözümün sessizce `solved` olup eğitime girmesinin bedeli yüksek.
+        # Modal (*FREQUENCY) artım yazmaz, bu denetim yalnız *STATIC içindir.
+        is_static = "*STATIC" in artifact.path.read_text(
+            encoding="utf-8", errors="replace"
+        ).upper()
+        if is_static and summary is not None and summary["_solver_converged"] < 1.0:
+            raise SolverError(
+                "CalculiX statik adımı tamamlamadı (exit=0)."
+                f"{_sta_note(summary)} Log: {log_path}"
             )
         return handle
 
@@ -804,6 +871,7 @@ class CalculiXAdapter(SolverAdapter):
                     else {}
                 ),
                 **freq_scalars,
+                **(parse_ccx_sta(job.work_dir / f"{job.artifact.path.stem}.sta") or {}),
             },
             curves={"frequencies": frequencies} if frequencies else {},
             raw_result_path=frd,

@@ -34,6 +34,7 @@ const REASON_TEXT: Record<string, string> = {
   analytic_warn: "analitik sapma uyarısı var",
   wrong_analysis: "statik değil",
   rigid_body: "rijit cisim / yakınsamamış",
+  not_converged: "çözücü adımı tamamlamadı (yakınsamadı)",
   degenerate_mesh: "dejenere mesh",
   missing_features: "özellik veya hedef eksik",
   no_template: "şablon parametresi yok",

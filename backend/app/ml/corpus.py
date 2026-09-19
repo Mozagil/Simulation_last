@@ -187,6 +187,15 @@ def _row_reject(run: AnalysisRun, geo: Geometry, spec: CorpusSpec) -> str | None
         return "wrong_analysis"
     if features_from_run(run, geo) is None or targets_from_run(run) is None:
         return "missing_features"
+    # Çözücü adımı tamamlamadıysa sonuç ara bir yük seviyesine aittir.
+    # Anahtar yoksa (bu alan eklenmeden önce çözülmüş run'lar) dokunulmaz —
+    # o run'lar lineer tek-artımlı; kaydı olmayanı düşürmek 200 örneklik
+    # kiriş setini boşaltırdı.
+    try:
+        if float((run.scalars or {}).get("_solver_converged", 1.0)) < 1.0:
+            return "not_converged"
+    except (TypeError, ValueError):
+        return "bad_scalars"
     scalars = run.scalars or {}
     disp = scalars.get("max_displacement")
     try:
