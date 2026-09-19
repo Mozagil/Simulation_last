@@ -59,6 +59,10 @@ export interface ExportFilters {
   geometryId?: number;
   /** Çözülmemiş run'ları dışarıda bırak — sonuç dosyaları yoktur. */
   onlySolved?: boolean;
+  /** Donmuş eğitim setinin adı: yalnız o setin run'ları + setin TANIMI.
+   * "Yalnız çözülmüş" süzgeci elle dışlananları ve korpus süzgecinden
+   * düşenleri de alıyordu; temiz eğitim seti böyle indirilemiyordu. */
+  corpusName?: string;
 }
 
 export async function downloadDataset(filters: ExportFilters = {}): Promise<void> {
@@ -67,6 +71,7 @@ export async function downloadDataset(filters: ExportFilters = {}): Promise<void
   if (filters.runIds?.length) q.set("run_ids", filters.runIds.join(","));
   if (filters.geometryId != null) q.set("geometry_id", String(filters.geometryId));
   if (filters.onlySolved) q.set("only_solved", "true");
+  if (filters.corpusName) q.set("corpus_name", filters.corpusName);
 
   const res = await fetch(`${API_BASE_URL}/dataset/export?${q.toString()}`);
   if (!res.ok) {

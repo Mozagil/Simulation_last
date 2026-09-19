@@ -5,6 +5,7 @@ import {
   importDataset,
   type DatasetSummary,
 } from "../api/dataset";
+import { fetchCorpusList, type CorpusListItem } from "../api/surrogate";
 
 /**
  * Veri seti paneli — birikmiş analiz verisinin görünürlüğü ve yedeklenmesi.
@@ -27,6 +28,10 @@ export default function DatasetPanel({
   selectedRunIds?: number[];
 }) {
   const [summary, setSummary] = useState<DatasetSummary | null>(null);
+  // Donmuş eğitim setleri: temiz veriyi indirmenin tek yolu. "Yalnız
+  // çözülmüş" süzgeci elle dışlananları ve süzgeçten düşenleri de alıyor.
+  const [corpora, setCorpora] = useState<CorpusListItem[]>([]);
+  const [corpus, setCorpus] = useState<string>("");
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +39,15 @@ export default function DatasetPanel({
   // işe yaramazlar. Varsayılan olarak dışarıda bırakılıyor.
   const [onlySolved, setOnlySolved] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    void fetchCorpusList()
+      .then((list) => {
+        setCorpora(list);
+        setCorpus((prev) => prev || (list.length ? list[list.length - 1].name : ""));
+      })
+      .catch(() => setCorpora([]));
+  }, []);
 
   const reload = useCallback(() => {
     fetchDatasetSummary()
@@ -45,16 +59,18 @@ export default function DatasetPanel({
     reload();
   }, [reload, refreshKey]);
 
-  async function handleExport(runIds?: number[]) {
+  async function handleExport(runIds?: number[], corpusName?: string) {
     setBusy("export");
     setError(null);
     setMessage(null);
     try {
-      await downloadDataset({ onlySolved, runIds });
+      await downloadDataset({ onlySolved, runIds, corpusName });
       setMessage(
-        runIds?.length
-          ? `${runIds.length} run indirildi.`
-          : "Arşiv indirildi. Bu ortam dışında bir yerde saklayın.",
+        corpusName
+          ? `"${corpusName}" eğitim seti indirildi (setin tanımı da arşivde).`
+          : runIds?.length
+            ? `${runIds.length} run indirildi.`
+            : "Arşiv indirildi. Bu ortam dışında bir yerde saklayın.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Dışa aktarma başarısız.");
@@ -171,6 +187,20 @@ export default function DatasetPanel({
         Yalnız çözülmüş run'lar
       </label>
 
+      {corpora.length > 0 && (
+        <label className="mesh-field">
+          <span>Eğitim seti</span>
+          <select value={corpus} onChange={(e) => setCorpus(e.target.value)}>
+            {corpora.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name} · {c.n_runs} run
+                {c.template_id ? ` · ${c.template_id}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <div className="dataset-actions">
         <button
           type="button"
@@ -180,6 +210,17 @@ export default function DatasetPanel({
         >
           {busy === "export" ? "Hazırlanıyor…" : "Tümünü indir"}
         </button>
+        {corpus && (
+          <button
+            type="button"
+            className="material-assign-button"
+            disabled={busy !== null}
+            onClick={() => void handleExport(undefined, corpus)}
+            title="Yalnız bu donmuş setin run'ları + setin tanımı"
+          >
+            Eğitim setini indir ({corpus})
+          </button>
+        )}
         {selectedRunIds && selectedRunIds.length > 0 && (
           <button
             type="button"

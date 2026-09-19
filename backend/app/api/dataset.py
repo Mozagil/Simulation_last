@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.api.geometry import UPLOAD_DIR
 from app.db.session import get_db
 from app.dataset.archive import export_dataset, import_dataset
+from app.ml.manifest import ManifestError
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def export_dataset_endpoint(
     run_ids: str | None = None,
     geometry_id: int | None = None,
     only_solved: bool = False,
+    corpus_name: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Analiz geçmişini + çözüm dosyalarını tek arşiv olarak indirir.
@@ -39,7 +41,8 @@ def export_dataset_endpoint(
     `include_files=false` yalnız metaveri alır — hızlıdır ama surrogate
     eğitimi için yetersizdir, `.frd` alan verisi gitmez.
 
-    Filtreler: `run_ids` (virgülle ayrılmış), `geometry_id`, `only_solved`.
+    Filtreler: `run_ids` (virgülle ayrılmış), `geometry_id`, `only_solved`,
+    `corpus_name` (donmuş eğitim seti; setin tanımı da arşive konur).
     Hiçbiri verilmezse tüm geçmiş alınır.
     """
     parsed_ids: list[int] | None = None
@@ -52,7 +55,12 @@ def export_dataset_endpoint(
             ) from exc
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    suffix = "-secili" if parsed_ids else ("-cozulmus" if only_solved else "")
+    if corpus_name:
+        suffix = f"-set-{corpus_name}"
+    elif parsed_ids:
+        suffix = "-secili"
+    else:
+        suffix = "-cozulmus" if only_solved else ""
     out = Path(tempfile.gettempdir()) / f"dataset{suffix}-{stamp}.tar.gz"
     try:
         manifest = export_dataset(
@@ -63,7 +71,10 @@ def export_dataset_endpoint(
             run_ids=parsed_ids,
             geometry_id=geometry_id,
             only_solved=only_solved,
+            corpus_name=corpus_name,
         )
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         logger.exception("Veri seti dışa aktarılamadı")
         raise HTTPException(status_code=500, detail=f"Dışa aktarma başarısız: {exc}") from exc

@@ -133,6 +133,7 @@ def export_dataset(
     run_ids: list[int] | None = None,
     geometry_id: int | None = None,
     only_solved: bool = False,
+    corpus_name: str | None = None,
 ) -> dict[str, Any]:
     """Analiz geçmişini ve ilgili dosyaları tek bir tar.gz'e yazar.
 
@@ -146,6 +147,12 @@ def export_dataset(
         BC'lerle bakılan durumları bir arada taşımak için.
       * `only_solved` — çözülmemiş run'ları dışarıda bırakır. Bunların
         sonuç dosyası yoktur, arşivi büyütmekten başka işe yaramazlar.
+      * `corpus_name` — DONDURULMUŞ eğitim setinin run'ları. Eskiden temiz
+        eğitim setini indirmenin yolu yoktu: yalnız "çözülmüş run" süzgeci
+        vardı, o da elle dışlananları ve süzgeçten düşenleri de alıyordu.
+        Setin TANIMI da (`corpus/corpus_<ad>.json`) arşive konur; içe
+        aktarmada geri yazılır, böylece aynı set başka ortamda yeniden
+        dondurmaya gerek kalmadan kullanılabilir.
 
     Geometri, malzeme ve atamalar HER ZAMAN tamamıyla alınır: run'lar onlara
     yabancı anahtarla bağlı ve eksik bir geometri içe aktarmada run'ı yetim
@@ -155,6 +162,18 @@ def export_dataset(
     groups = db.query(PhysicalGroup).order_by(PhysicalGroup.id).all()
     materials = db.query(Material).order_by(Material.id).all()
     assignments = db.query(MaterialAssignment).order_by(MaterialAssignment.id).all()
+
+    corpus_manifest: dict[str, Any] | None = None
+    if corpus_name:
+        from app.ml.manifest import load_manifest
+
+        corpus_manifest = load_manifest(corpus_name)
+        corpus_ids = [int(v) for v in (corpus_manifest.get("run_ids") or [])]
+        # İki süzgeç birlikte verilirse KESİŞİM alınır: kullanıcı hem seti
+        # hem alt kümeyi kastetmiş olur, biri diğerini sessizce ezmemeli.
+        run_ids = (
+            [i for i in run_ids if i in set(corpus_ids)] if run_ids else corpus_ids
+        )
 
     run_q = db.query(AnalysisRun)
     if run_ids:
@@ -188,6 +207,14 @@ def export_dataset(
         dump("materials", materials, _MATERIAL_COLS)
         dump("material_assignments", assignments, _MATERIAL_ASSIGNMENT_COLS)
         dump("analysis_runs", runs, _RUN_COLS)
+
+        if corpus_manifest is not None:
+            cdir = stage / "corpus"
+            cdir.mkdir()
+            (cdir / f"corpus_{corpus_name}.json").write_text(
+                json.dumps(corpus_manifest, ensure_ascii=False, indent=1),
+                encoding="utf-8",
+            )
 
         copied_files = 0
         if include_files:
@@ -226,6 +253,7 @@ def export_dataset(
                 "run_ids": list(run_ids) if run_ids else None,
                 "geometry_id": geometry_id,
                 "only_solved": only_solved,
+                "corpus_name": corpus_name,
             },
         }
         (stage / "manifest.json").write_text(
@@ -315,6 +343,22 @@ def import_dataset(
             db.flush()
             geo_map[row["id"]] = g.id
             added["geometries"] += 1
+        # --- Donmuş eğitim seti tanımı (varsa) ---
+        restored_corpora: list[str] = []
+        cdir = stage / "corpus"
+        if cdir.is_dir():
+            from app.ml.manifest import MANIFEST_DIR
+
+            for f in sorted(cdir.glob("corpus_*.json")):
+                dst = MANIFEST_DIR / f.name
+                # Var olanın üzerine YAZILMAZ: yereldeki set kullanıcının
+                # kendi kürasyonunu taşıyor olabilir.
+                if dst.exists():
+                    continue
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
+                restored_corpora.append(f.stem.removeprefix("corpus_"))
+
         for f in (stage / "files" / "geometries").glob("*"):
             if f.is_file():
                 dst = uploads_dir / f.name
@@ -415,6 +459,9 @@ def import_dataset(
         "format_version": manifest.get("format_version"),
         "source_created_at": manifest.get("created_at"),
         "added": added,
+        # Geri yazılan donmuş set tanımları. Aynı adlı set zaten varsa
+        # ÜZERİNE YAZILMAZ ve burada görünmez.
+        "restored_corpora": restored_corpora,
     }
     logger.info("Veri seti içe aktarıldı: %s", result)
     return result
