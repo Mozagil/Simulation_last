@@ -202,3 +202,17 @@ def test_status_sablona_gore_doner(store_root):
     assert st["scalar_hybrid"]["n_samples"] == 7
     assert st["scalar_rf"] is None
     assert st["templates"] == {PLATE: ["hybrid"]}
+
+
+def test_mesajda_kullanilan_tur_dogru_yazilir(db, store_root):
+    """Mesaj eskiden yalnız log-log/RF ayrımı yapıyordu: hibrit tahmin
+    "Tahmin (RF)" diye görünüyordu (tarayıcıda görüldü)."""
+    store.save_model(PLATE, "hybrid", _fake_plate_bundle(), root=store_root)
+    body = ParamPredictBody(
+        template_id=PLATE,
+        params={"height": 200, "width": 100, "thickness": 5, "diameter": 20},
+        element_size=3.6, load_fx=30000,
+    )
+    out = predict_from_params(body=body, db=db, model="auto")
+    assert out["model_kind"] == "hybrid"
+    assert out["message"].startswith("Tahmin (hibrit)")

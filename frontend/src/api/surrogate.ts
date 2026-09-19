@@ -18,7 +18,12 @@ export interface TrainingCorpusInfo {
 }
 
 /** Skaler model turu. "auto": log-log varsa o, yoksa RF. */
-export type ScalarModelKind = "rf" | "loglinear";
+/** Skaler model türleri. Ölçülen test MAPE (u/σ):
+ *   korpus   rf             loglinear     hybrid
+ *   kiriş    %18.87/%11.69  %0.16/%1.97   %0.17/%1.86
+ *   plaka    %19.56/%16.08  %1.53/%2.22   %0.29/%1.30
+ */
+export type ScalarModelKind = "rf" | "loglinear" | "hybrid";
 
 export interface ScalarExponent {
   feature: string;
@@ -44,10 +49,16 @@ export interface ScalarModelInfo {
 }
 
 export interface SurrogateStatus {
+  /** Durumun hangi şablon için okunduğu (null: eski global dosyalar). */
+  template_id?: string | null;
+  /** Şablon -> eğitilmiş model türleri. */
+  templates?: Record<string, ScalarModelKind[]>;
   scalar_rf: ScalarModelInfo | null;
   /** Log-log lineer model (0.6.3). Güç yasası hedeflerinde RF'ten çok daha
    * isabetli; ikisi birlikte tutulur, biri diğerini silmez. */
   scalar_loglinear: ScalarModelInfo | null;
+  /** Log-log iskelet + RF artık katmanı (0.6.4). */
+  scalar_hybrid: ScalarModelInfo | null;
   field_gnn: {
     n_samples?: number;
     corpus?: TrainingCorpusInfo | null;
@@ -94,8 +105,11 @@ async function parseError(res: Response, fallback: string): Promise<string> {
   return `${fallback} (HTTP ${res.status}).`;
 }
 
-export async function fetchSurrogateStatus(): Promise<SurrogateStatus> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/status`);
+export async function fetchSurrogateStatus(
+  templateId?: string | null,
+): Promise<SurrogateStatus> {
+  const q = templateId ? `?template_id=${encodeURIComponent(templateId)}` : "";
+  const res = await fetch(`${API_BASE_URL}/surrogate/status${q}`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Surrogate durumu alınamadı"));
   return (await res.json()) as SurrogateStatus;
 }
@@ -139,9 +153,14 @@ export async function predictSurrogate(body: {
 }
 
 export interface ParamPredictRequest {
-  length: number;
-  thickness: number;
-  width: number;
+  /** Hangi şablonun modeli kullanılacak. */
+  template_id?: string;
+  /** Şablonun KENDİ alanları (plakada height/width/thickness/diameter). */
+  params?: Record<string, number>;
+  /** Kirişin üç alanı doğrudan da gönderilebilir (eski istemciler). */
+  length?: number;
+  thickness?: number;
+  width?: number;
   element_size: number;
   youngs_modulus: number;
   poisson_ratio: number;
@@ -157,6 +176,8 @@ export interface ParamPredictRequest {
 
 export interface ParamPredictResult {
   kind: "scalar";
+  template_id?: string;
+  feature_keys?: string[];
   /** Tahmini gerçekte hangi model üretti — araç sessizce model değiştirmez. */
   model_kind?: ScalarModelKind;
   source: string;

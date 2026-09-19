@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchMaterials } from "../api/materials";
+import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
+import { numberFieldsFromSchema, type JsonSchema } from "../templates/schemaForm";
 import {
   addRunsToCorpus,
   evaluateForCorpus,
@@ -23,7 +25,11 @@ import {
 const MODEL_LABEL: Record<ScalarModelKind, string> = {
   rf: "Random Forest",
   loglinear: "Log-log lineer",
+  hybrid: "Hibrit (log-log + RF artık)",
 };
+
+/** Varsayılan tür: ölçülen en isabetli model (plakada u %0.29 / σ %1.30). */
+const DEFAULT_MODEL: ScalarModelKind = "hybrid";
 
 /** Süzgeç gerekçelerinin okunur karşılığı; karar kullanıcıya ait. */
 const REASON_TEXT: Record<string, string> = {
@@ -75,12 +81,15 @@ export default function SurrogatePanel({
   refreshKey,
   geometryId,
   runId,
+  templateId,
   onPrediction,
   onCorpusChange,
 }: {
   refreshKey?: number;
   geometryId?: number | null;
   runId?: number | null;
+  /** Geometri panelinde seçili şablon; tahmin formu buna geçer. */
+  templateId?: string | null;
   onPrediction?: (result: SurrogatePredictResult) => void;
   onCorpusChange?: (name: string | null) => void;
 }) {
@@ -95,9 +104,11 @@ export default function SurrogatePanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [paramResult, setParamResult] = useState<ParamPredictResult | null>(null);
-  const [length, setLength] = useState("500");
-  const [thickness, setThickness] = useState("10");
-  const [width, setWidth] = useState("50");
+  // Tahmin formu ŞABLONA göre kurulur: alanlar şemadan gelir. Eskiden
+  // L/T/W sabitti; plakada height/diameter girilemiyordu.
+  const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
+  const [predictTemplate, setPredictTemplate] = useState<string>("cantilever_beam");
+  const [params, setParams] = useState<Record<string, string>>({});
   const [elementSize, setElementSize] = useState("8");
   const [youngs, setYoungs] = useState("2.1e11");
   const [poisson, setPoisson] = useState("0.3");
@@ -107,6 +118,25 @@ export default function SurrogatePanel({
   // zaten ayrı alanlarda, bu yalnız akma sınırı için.
   const [materialId, setMaterialId] = useState<string>("");
   const [materials, setMaterials] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    void fetchTemplates()
+      .then(setTemplates)
+      .catch(() => undefined);
+  }, []);
+
+  // Geometri panelindeki şablon değişince tahmin formu da ona geçer.
+  useEffect(() => {
+    if (templateId) setPredictTemplate(templateId);
+  }, [templateId]);
+
+  useEffect(() => {
+    const t = templates.find((x) => x.id === predictTemplate);
+    if (!t) return;
+    const fields = numberFieldsFromSchema(t.params_schema as JsonSchema);
+    setParams(Object.fromEntries(fields.map((f) => [f.name, String(f.defaultValue)])));
+    setParamResult(null);
+  }, [templates, predictTemplate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +154,7 @@ export default function SurrogatePanel({
   const autoPickedCorpus = useRef(false);
 
   const reload = useCallback(() => {
-    fetchSurrogateStatus()
+    fetchSurrogateStatus(predictTemplate)
       .then(setStatus)
       .catch((e) => setError(e instanceof Error ? e.message : "Durum alınamadı."));
     fetchCorpusList()
@@ -140,7 +170,7 @@ export default function SurrogatePanel({
         });
       })
       .catch(() => setCorpora([]));
-  }, []);
+  }, [predictTemplate]);
 
   useEffect(() => {
     reload();
@@ -152,7 +182,7 @@ export default function SurrogatePanel({
 
   // Hangi skaler modelin egitilecegi/kullanilacagi. Arac sessizce secmez:
   // tahmin yanitindaki model_kind daima gosterilir.
-  const [scalarModel, setScalarModel] = useState<ScalarModelKind>("loglinear");
+  const [scalarModel, setScalarModel] = useState<ScalarModelKind>(DEFAULT_MODEL);
 
   async function handleTrainRf() {
     setBusy("rf");
@@ -297,9 +327,10 @@ export default function SurrogatePanel({
     setParamResult(null);
     try {
       const result = await predictFromParams({
-        length: num(length),
-        thickness: num(thickness),
-        width: num(width),
+        template_id: predictTemplate,
+        params: Object.fromEntries(
+          Object.entries(params).map(([k, v]) => [k, num(v)]),
+        ),
         element_size: num(elementSize),
         youngs_modulus: num(youngs),
         poisson_ratio: num(poisson),
@@ -322,11 +353,35 @@ export default function SurrogatePanel({
 
   const rf = status?.scalar_rf;
   const loglin = status?.scalar_loglinear;
-  const active: ScalarModelInfo | null | undefined =
-    scalarModel === "loglinear" ? loglin : rf;
+  const hybrid = status?.scalar_hybrid;
+  const byKind: Record<ScalarModelKind, ScalarModelInfo | null | undefined> = {
+    rf,
+    loglinear: loglin,
+    hybrid,
+  };
+  const active = byKind[scalarModel];
   const gnn = status?.field_gnn;
   const canRunPredict = geometryId != null || runId != null;
-  const canParamsPredict = (rf != null || loglin != null) && busy === null;
+  // Tahmin, SEÇİLİ türün o şablonda eğitilmiş olmasını ister — başka türe
+  // sessizce düşmek kullanıcıyı yanıltırdı.
+  const canParamsPredict = active != null && busy === null;
+  // Seçili tür bu şablonda eğitilmemişse, mevcut en iyi türe GEÇ. Sessiz
+  // değil: seçici güncellenir, kullanıcı hangi modelin kullanıldığını
+  // görür. Aksi halde buton gerekçesiz devre dışı kalıyordu.
+  useEffect(() => {
+    if (!status) return;
+    if (byKind[scalarModel] != null) return;
+    const fallback = (["hybrid", "loglinear", "rf"] as ScalarModelKind[]).find(
+      (k) => byKind[k] != null,
+    );
+    if (fallback) setScalarModel(fallback);
+    // byKind status'tan türetiliyor; bağımlılık olarak status yeterli.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  const predictFields = numberFieldsFromSchema(
+    (templates.find((t) => t.id === predictTemplate)?.params_schema ?? {}) as JsonSchema,
+  );
   const pred = paramResult?.predictions;
   const fea = paramResult?.fea;
   const dev = paramResult?.deviation_pct;
@@ -348,12 +403,12 @@ export default function SurrogatePanel({
           disabled={busy !== null}
           onChange={(e) => setScalarModel(e.target.value as ScalarModelKind)}
         >
-          <option value="loglinear">
-            Log-log lineer{loglin ? ` · ${loglin.n_samples} örnek` : " · eğitilmedi"}
-          </option>
-          <option value="rf">
-            Random Forest{rf ? ` · ${rf.n_samples} örnek` : " · eğitilmedi"}
-          </option>
+          {(["hybrid", "loglinear", "rf"] as ScalarModelKind[]).map((k) => (
+            <option key={k} value={k}>
+              {MODEL_LABEL[k]}
+              {byKind[k] ? ` · ${byKind[k]?.n_samples} örnek` : " · eğitilmedi"}
+            </option>
+          ))}
         </select>
       </label>
 
@@ -380,7 +435,7 @@ export default function SurrogatePanel({
         </div>
       </div>
 
-      {scalarModel === "loglinear" && loglin?.exponents?.max_displacement && (
+      {scalarModel !== "rf" && active?.exponents?.max_displacement && (
         <details className="surrogate-exponents">
           <summary>
             Öğrenilen üsler — deplasman (log-log modelin katsayıları)
@@ -394,7 +449,7 @@ export default function SurrogatePanel({
               </tr>
             </thead>
             <tbody>
-              {loglin.exponents.max_displacement.map((e) => (
+              {active.exponents.max_displacement.map((e) => (
                 <tr key={e.feature} className={e.identifiable ? undefined : "doe-table-row-flagged"}>
                   <td>{e.feature}</td>
                   <td>{e.exponent.toFixed(4)}</td>
@@ -494,17 +549,34 @@ export default function SurrogatePanel({
       <p className="material-assignments-title">Yeni tasarım (ccx yok)</p>
       <div className="mesh-grid">
         <label className="mesh-field">
-          <span>L (mm)</span>
-          <input value={length} onChange={(e) => setLength(e.target.value)} />
+          <span>Şablon</span>
+          <select
+            value={predictTemplate}
+            onChange={(e) => setPredictTemplate(e.target.value)}
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {status?.templates?.[t.id]?.length
+                  ? ` · ${status.templates[t.id].length} model`
+                  : " · model yok"}
+              </option>
+            ))}
+          </select>
         </label>
-        <label className="mesh-field">
-          <span>T (mm)</span>
-          <input value={thickness} onChange={(e) => setThickness(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>W (mm)</span>
-          <input value={width} onChange={(e) => setWidth(e.target.value)} />
-        </label>
+        {predictFields.map((f) => (
+          <label className="mesh-field" key={f.name}>
+            <span>
+              {f.symbol ? `${f.symbol} · ` : ""}
+              {f.label}
+              {f.unit ? ` (${f.unit})` : ""}
+            </span>
+            <input
+              value={params[f.name] ?? String(f.defaultValue)}
+              onChange={(e) => setParams((p) => ({ ...p, [f.name]: e.target.value }))}
+            />
+          </label>
+        ))}
         <label className="mesh-field">
           <span>Eleman (mm)</span>
           <input value={elementSize} onChange={(e) => setElementSize(e.target.value)} />

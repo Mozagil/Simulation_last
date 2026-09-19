@@ -193,6 +193,9 @@ def _inputs_npz_for(run_id: int) -> Path:
 #: kullanıldığı yanıtta `model_kind` ile DAİMA bildirilir; araç sessizce
 #: model değiştirmez.
 SCALAR_MODELS = ("rf", "loglinear", "hybrid")
+#: Kullanıcıya gösterilen ad. Mesaj metni eskiden yalnız log-log ile
+#: diğerlerini ayırıyordu: hibrit tahmin "Tahmin (RF)" diye görünüyordu.
+MODEL_LABELS = {"rf": "RF", "loglinear": "log-log", "hybrid": "hibrit"}
 _AUTO_ORDER = ("hybrid", "loglinear", "rf")
 
 #: Modeli log uzayında tahmin eden türler (hibrit = log-log + RF artık).
@@ -490,7 +493,7 @@ def predict_from_params(
         "fea": fea,
         "deviation_pct": deviation,
         "message": (
-            f"Tahmin ({'log-log' if model_kind == 'loglinear' else 'RF'})"
+            f"Tahmin ({MODEL_LABELS[model_kind]})"
             " — ccx çalışmadı, tam çözüm değil."
             + (" Eğitim uzayı dışı." if ood else "")
             + (" FEA kıyası eklendi." if fea else "")

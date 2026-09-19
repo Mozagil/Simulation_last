@@ -2533,6 +2533,7 @@ function App() {
         <SurrogatePanel
           refreshKey={runsHistory.length}
           geometryId={geometryId}
+          templateId={activeTemplateId}
           runId={solveResult?.run_id ?? null}
           onCorpusChange={handleCorpusChange}
           onPrediction={(result: SurrogatePredictResult) => {
