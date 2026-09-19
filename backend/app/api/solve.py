@@ -203,6 +203,12 @@ def _complete_ccx_job(run_id: int) -> None:
 
 class SolveBC(BaseModel):
     type: str
+    #: İsimli bölge (`ankastre_uc`, `yuk_yuzeyi` …). Şablondan üretilen
+    #: geometrilerde yüzey numarası parametreye göre kayar; isim sabittir.
+    #: ÖNCEDEN: bu alan modelde yoktu, pydantic sessizce atıyordu — bölge
+    #: adıyla gönderilen BC hiçbir yere bağlanmıyor, model YÜKSÜZ çözülüyor
+    #: ve hata verilmiyordu. Artık burada çözülür (bkz. `_bind_regions`).
+    region: str | None = None
     face_ids: list[int] | None = None
     edge_ids: list[int] | None = None
     node_ids: list[int] | None = None
@@ -225,6 +231,57 @@ class SolveBC(BaseModel):
     axis: list[float] | None = None
     normal: list[float] | None = None
     ref_node_id: int | None = None
+
+
+#: Hedef (yüzey/kenar/düğüm) GEREKTİREN BC tipleri. `gravity` hacim
+#: yüküdür, `rigid_body` referans düğümle çalışır — ikisi de listede yok.
+_TARGETED_BC_TYPES = ("fixed", "cload", "pressure", "displacement", "sliding", "bearing")
+
+
+def _bind_regions(
+    db: Session, geometry_id: int, bcs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """`region` adlarını yüzey/kenar id'lerine çevirir.
+
+    DOE ve yakınsama yolları bunu zaten yapıyordu (`bind_scenario_bcs`);
+    `/solve` yapmıyordu ve bölge adıyla gelen BC sessizce düşüyordu.
+    """
+    if not any(bc.get("region") for bc in bcs):
+        return bcs
+    from app.doe.regions import DoeBindError, bind_scenario_bcs, groups_by_name
+
+    try:
+        return bind_scenario_bcs(groups_by_name(db, geometry_id), bcs)
+    except DoeBindError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _require_targets(bcs: list[dict[str, Any]]) -> None:
+    """Hedefi olmayan BC sessizce yok sayılmaz.
+
+    Hedefsiz bir `cload` modeli YÜKSÜZ çözer: ccx hata vermez, sonuç sıfır
+    deplasman çıkar ve bu "çalıştı" gibi görünür.
+    """
+    empty = [
+        f"#{i} {bc.get('type')}"
+        for i, bc in enumerate(bcs)
+        if str(bc.get("type") or "").lower() in _TARGETED_BC_TYPES
+        and not (
+            bc.get("face_ids")
+            or bc.get("edge_ids")
+            or bc.get("node_ids")
+            or bc.get("mesh_node_ids")
+        )
+    ]
+    if empty:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Şu sınır koşulları hiçbir yüzey/kenar/düğüme bağlı değil: "
+                f"{', '.join(empty)}. Yüzey seçin ya da `region` adı verin — "
+                "hedefsiz BC sessizce yok sayılırsa model yüksüz çözülür."
+            ),
+        )
 
 
 class SolveRequest(BaseModel):
@@ -302,6 +359,8 @@ def solve_geometry(
     ]
 
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
+    bcs = _bind_regions(db, geometry_id, bcs)
+    _require_targets(bcs)
     # KRİTİK: eskiden bcs boşsa sessizce `face_ids=[]` ile bir "fixed" BC
     # (aslında hiçbir düğümü sabitlemeyen, no-op) + gravity kullanılıyordu.
     # Bu, cismi hiçbir yerde sabitlemeden yerçekimine bırakıyordu — rijit
