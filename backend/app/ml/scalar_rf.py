@@ -1,7 +1,7 @@
-﻿"""Skaler Random Forest baseline (0.5.6).
+"""Skaler Random Forest baseline (0.5.6).
 
-AmaÃ§: veri boru hattÄ±nÄ±n ucuza doÄŸrulanmasÄ±. Skaler surrogate Ã¼rÃ¼n hedefi
-deÄŸildir â€” kontur buradan Ã§izilmez.
+Amaç: veri boru hattının ucuza doğrulanması. Skaler surrogate ürün hedefi
+değildir — kontur buradan çizilmez.
 """
 
 from __future__ import annotations
@@ -19,28 +19,28 @@ from app.ml.ood import bounds_from_matrix, is_out_of_domain
 from app.ml.scalar_features import FEATURE_KEYS, TARGET_KEYS
 
 MIN_SAMPLES = 8
-#: AyrÄ± bir holdout ayÄ±rmak iÃ§in gereken en az Ã¶rnek.
+#: Ayrı bir holdout ayırmak için gereken en az örnek.
 #:
-#: AltÄ±nda test seti AYRILMAZ ve test metriÄŸi RAPORLANMAZ. Daha Ã¶nce bu
-#: durumda `X_te = X_tr` atanÄ±yordu; sonuÃ§, `metrics["test"]` adÄ± altÄ±nda
-#: eÄŸitim RÂ²'sinin raporlanmasÄ±ydÄ±. Ã–lÃ§Ã¼ldÃ¼: 8 Ã¶rneklik sette "test RÂ² =
-#: 0.739" gÃ¶steriliyordu, o sayÄ± modelin kendi eÄŸitim verisindeki
-#: baÅŸarÄ±sÄ±ydÄ± ve genelleme hakkÄ±nda hiÃ§bir ÅŸey sÃ¶ylemiyordu. Sessiz yanlÄ±ÅŸ
-#: sayÄ±, eksik sayÄ±dan kÃ¶tÃ¼dÃ¼r.
+#: Altında test seti AYRILMAZ ve test metriği RAPORLANMAZ. Daha önce bu
+#: durumda `X_te = X_tr` atanıyordu; sonuç, `metrics["test"]` adı altında
+#: eğitim R²'sinin raporlanmasıydı. Ölçüldü: 8 örneklik sette "test R² =
+#: 0.739" gösteriliyordu, o sayı modelin kendi eğitim verisindeki
+#: başarısıydı ve genelleme hakkında hiçbir şey söylemiyordu. Sessiz yanlış
+#: sayı, eksik sayıdan kötüdür.
 MIN_HOLDOUT_SAMPLES = 12
 DEFAULT_MODEL_PATH = Path("uploads") / "models" / "scalar_rf.joblib"
 
 
 def split_metrics(y_true: np.ndarray, y_pred: np.ndarray, keys: tuple[str, ...]) -> dict[str, Any]:
-    """Hedef basina R2 / MAE / MAPE. `scalar_loglinear` da bunu kullanir â€”
+    """Hedef basina R2 / MAE / MAPE. `scalar_loglinear` da bunu kullanir —
     iki model turunun sayilari ayni tanimla uretilmezse kiyaslanamaz."""
     out: dict[str, Any] = {}
     for i, key in enumerate(keys):
         yt = y_true[:, i]
         yp = y_pred[:, i]
-        # Hedef-bazlÄ± maskeleme sonrasÄ± bazÄ± satÄ±rlar NaN olabilir (o run'da
-        # o skaler yok). Metrik yalnÄ±z dolu satÄ±rlardan hesaplanÄ±r; hiÃ§
-        # dolu satÄ±r yoksa hedef iÃ§in metrik None dÃ¶ner.
+        # Hedef-bazlı maskeleme sonrası bazı satırlar NaN olabilir (o run'da
+        # o skaler yok). Metrik yalnız dolu satırlardan hesaplanır; hiç
+        # dolu satır yoksa hedef için metrik None döner.
         finite = np.isfinite(yt) & np.isfinite(yp)
         if not finite.any():
             out[key] = None
@@ -62,12 +62,19 @@ def train_scalar_rf(
     X: np.ndarray,
     y: np.ndarray,
     *,
+    feature_keys: list[str] | tuple[str, ...] | None = None,
     seed: int = 2026,
     n_estimators: int = 80,
     test_size: float = 0.25,
 ) -> dict[str, Any]:
+    """`feature_keys`: X'in sütun adları (şablona özgü; yoksa eski kiriş)."""
+    feature_keys = list(feature_keys) if feature_keys is not None else list(FEATURE_KEYS)
+    if X.shape[1] != len(feature_keys):
+        raise ValueError(
+            f"X {X.shape[1]} sütunlu ama {len(feature_keys)} özellik anahtarı verildi."
+        )
     if X.shape[0] < MIN_SAMPLES:
-        raise ValueError(f"En az {MIN_SAMPLES} Ã§Ã¶zÃ¼lmÃ¼ÅŸ Ã¶rnek gerekir (var: {X.shape[0]}).")
+        raise ValueError(f"En az {MIN_SAMPLES} çözülmüş örnek gerekir (var: {X.shape[0]}).")
     # Hedef sutun sayisi TARGET_KEYS ile uyusmali. Eksikse NaN ile
     # tamamlanir: cagiran yeni bir hedefi (max_von_mises_away) bilmiyorsa
     # ya da o skaler henuz hesaplanmamissa patlamak yerine o hedef
@@ -90,7 +97,7 @@ def train_scalar_rf(
             X, y, test_size=test_size, random_state=seed
         )
     else:
-        # Holdout yok: eÄŸitim verisi test verisi olarak GEÃ‡Ä°RÄ°LMEZ.
+        # Holdout yok: eğitim verisi test verisi olarak GEÇİRİLMEZ.
         X_tr, y_tr = X, y
         X_te = y_te = None
 
@@ -119,7 +126,7 @@ def train_scalar_rf(
 
     bundle = {
         "kind": "scalar_rf",
-        "feature_keys": list(FEATURE_KEYS),
+        "feature_keys": feature_keys,
         "target_keys": list(TARGET_KEYS),
         "models": models,
         "bounds": bounds_from_matrix(X),
@@ -177,8 +184,8 @@ def public_metrics(bundle: dict[str, Any]) -> dict[str, Any]:
         "n_samples": bundle.get("n_samples"),
         "n_train": bundle.get("n_train"),
         "n_test": bundle.get("n_test"),
-        # Eski bundle'larda alan yok; o dosyalar test=train ile yazÄ±lmÄ±ÅŸtÄ±,
-        # bu yÃ¼zden varsayÄ±lan False (holdout yok) doÄŸru yorumdur.
+        # Eski bundle'larda alan yok; o dosyalar test=train ile yazılmıştı,
+        # bu yüzden varsayılan False (holdout yok) doğru yorumdur.
         "has_holdout": bool(bundle.get("has_holdout", False)),
         "metrics": bundle.get("metrics"),
         "feature_keys": bundle.get("feature_keys"),
