@@ -33,7 +33,16 @@ from app.ml.manifest import (
     save_manifest,
     spec_from_manifest,
 )
-from app.ml.scalar_features import FEATURE_KEYS, collect_scalar_table, features_from_dict, features_from_run
+from app.ml.model_store import list_models, load_model, save_model
+from app.ml.scalar_features import (
+    FEATURE_KEYS,
+    MixedTemplateError,
+    collect_scalar_table,
+    collect_template_table,
+    feature_keys_for,
+    features_from_dict,
+    features_from_run,
+)
 from app.ml.scalar_rf import (
     DEFAULT_MODEL_PATH,
     MIN_SAMPLES,
@@ -49,6 +58,7 @@ from app.ml.scalar_loglinear import (
     predict_scalar_loglinear,
     public_metrics_loglinear,
     save_scalar_loglinear,
+    train_scalar_hybrid,
     train_scalar_loglinear,
 )
 from app.models.geometry import Geometry
@@ -63,11 +73,18 @@ class ScalarPredictBody(BaseModel):
 
 
 class ParamPredictBody(BaseModel):
-    """Yeni tasarım: şablon parametreleri + yük. Geometri/run zorunlu değil."""
+    """Yeni tasarım: şablon parametreleri + yük. Geometri/run zorunlu değil.
 
-    length: float = Field(..., gt=0)
-    thickness: float = Field(..., gt=0)
-    width: float = Field(..., gt=0)
+    `params` şablonun KENDİ alanlarını taşır (plakada height/width/
+    thickness/diameter). Kirişin üç alanı ayrıca doğrudan alan olarak da
+    kabul edilir — eski istemciler değişmeden çalışsın diye.
+    """
+
+    template_id: str = "cantilever_beam"
+    params: dict[str, float] = Field(default_factory=dict)
+    length: float | None = Field(default=None, gt=0)
+    thickness: float | None = Field(default=None, gt=0)
+    width: float | None = Field(default=None, gt=0)
     element_size: float = Field(default=8.0, gt=0)
     youngs_modulus: float = Field(default=210e9, gt=0)
     poisson_ratio: float = Field(default=0.3, gt=0, lt=0.5)
@@ -166,45 +183,100 @@ def _inputs_npz_for(run_id: int) -> Path:
 
 
 
-#: Skaler model türleri. "auto" varsa log-log'u seçer — ölçüldü, aynı
-#: korpusta doğrulama MAPE'si %16.15 yerine %0.09. Hangi türün kullanıldığı
-#: yanıtta `model_kind` ile DAİMA bildirilir; araç sessizce model değiştirmez.
-SCALAR_MODELS = ("rf", "loglinear")
+#: Skaler model türleri. Ölçüldü (aynı 150/50 ayrım, test MAPE u/σ):
+#:
+#:   korpus   rf             loglinear      hybrid
+#:   kiriş    %18.87/%11.69  %0.16/%1.97    %0.17/%1.86
+#:   plaka    %19.56/%16.08  %1.53/%2.22    %0.29/%1.30
+#:
+#: `auto` sırası bu ölçüme dayanır: hibrit → log-log → RF. Hangi türün
+#: kullanıldığı yanıtta `model_kind` ile DAİMA bildirilir; araç sessizce
+#: model değiştirmez.
+SCALAR_MODELS = ("rf", "loglinear", "hybrid")
+_AUTO_ORDER = ("hybrid", "loglinear", "rf")
+
+#: Modeli log uzayında tahmin eden türler (hibrit = log-log + RF artık).
+_LOGLINEAR_KINDS = ("loglinear", "hybrid")
 
 
-def _load_scalar_model(model: str) -> tuple[str, dict[str, Any]] | None:
-    """(tür, bundle) ya da None. `auto`: loglinear varsa o, yoksa rf."""
+def _load_scalar_model(
+    model: str, template_id: str | None = None
+) -> tuple[str, dict[str, Any]] | None:
+    """(tür, bundle) ya da None.
+
+    `template_id` verilirse model ŞABLON KLASÖRÜNDEN okunur (yoksa eski
+    global dosya, korpusu o şablonsa — bkz. `ml/model_store`). Verilmezse
+    eski davranış: global dosyalar.
+    """
     if model not in ("auto",) + SCALAR_MODELS:
         raise HTTPException(
             status_code=422,
             detail=f"model 'auto', {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
         )
-    if model in ("auto", "loglinear"):
-        bundle = load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
+    kinds = _AUTO_ORDER if model == "auto" else (model,)
+    for kind in kinds:
+        bundle = (
+            load_model(template_id, kind)
+            if template_id
+            else _load_legacy_global(kind)
+        )
         if bundle is not None:
-            return "loglinear", bundle
-        if model == "loglinear":
-            return None
-    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
-    return ("rf", bundle) if bundle is not None else None
+            return kind, bundle
+    return None
+
+
+def _load_legacy_global(kind: str) -> dict[str, Any] | None:
+    """Şablon verilmeyen eski çağrılar için global dosyalar."""
+    if kind == "rf":
+        return load_scalar_rf(DEFAULT_MODEL_PATH)
+    if kind == "loglinear":
+        return load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
+    return None  # hibrit yalnız şablon klasöründe
 
 
 def _predict_with(kind: str, bundle: dict[str, Any], x) -> dict[str, Any]:
     return (
         predict_scalar_loglinear(bundle, x)
-        if kind == "loglinear"
+        if kind in _LOGLINEAR_KINDS
         else predict_scalar(bundle, x)
     )
 
 
+def _bundle_keys(bundle: dict[str, Any], template_id: str | None) -> tuple[str, ...]:
+    """Tahmin vektörünün sütun adları. Bundle'ın KENDİ anahtarları esastır:
+    şablon şeması sonradan değişse bile model eğitildiği sırayı bekler."""
+    keys = bundle.get("feature_keys")
+    return tuple(keys) if keys else feature_keys_for(template_id)
+
+
 @router.get("/status")
-def surrogate_status() -> dict[str, Any]:
-    rf = load_scalar_rf(DEFAULT_MODEL_PATH)
+def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
+    """Eğitilmiş modellerin durumu.
+
+    `template_id` verilirse o şablonun modelleri; verilmezse eski global
+    dosyalar (geriye uyum). `templates` alanı hangi şablonda hangi türlerin
+    eğitildiğini listeler.
+    """
     gnn = load_gnn(DEFAULT_GNN_PATH)
-    loglin = load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
+
+    def _summary(kind: str) -> dict[str, Any] | None:
+        bundle = (
+            load_model(template_id, kind) if template_id else _load_legacy_global(kind)
+        )
+        if bundle is None:
+            return None
+        return (
+            public_metrics(bundle)
+            if kind == "rf"
+            else public_metrics_loglinear(bundle)
+        )
+
     return {
-        "scalar_rf": public_metrics(rf) if rf else None,
-        "scalar_loglinear": public_metrics_loglinear(loglin) if loglin else None,
+        "template_id": template_id,
+        "templates": list_models(),
+        "scalar_rf": _summary("rf"),
+        "scalar_loglinear": _summary("loglinear"),
+        "scalar_hybrid": _summary("hybrid"),
         "field_gnn": (
             {
                 "kind": gnn["kind"],
@@ -224,41 +296,56 @@ def train_scalar(
     corpus_name: str | None = None,
     model: str = "rf",
 ) -> dict[str, Any]:
-    """Skaler surrogate eğitimi. `model`: "rf" | "loglinear".
+    """Skaler surrogate eğitimi. `model`: "rf" | "loglinear" | "hybrid".
 
-    İki tür AYNI korpustan, aynı metrik tanımıyla eğitilir; ikisi de kendi
+    Türler AYNI korpustan, aynı metrik tanımıyla eğitilir; her biri kendi
     dosyasına yazılır, biri diğerini silmez. Hangisinin kullanılacağı
     tahmin anında seçilir.
+
+    Model ŞABLON KLASÖRÜNE kaydedilir (`uploads/models/<şablon>/`): farklı
+    şablonların özellik vektörleri farklıdır, tek global dosya plaka
+    eğitiminde kiriş modelinin üzerine yazıyordu.
     """
     if model not in SCALAR_MODELS:
         raise HTTPException(
             status_code=422,
             detail=f"model {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
         )
-    label = "RF" if model == "rf" else "log-log"
+    label = {"rf": "RF", "loglinear": "log-log", "hybrid": "hibrit"}[model]
     run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
-    X, y, ids = collect_scalar_table(db, run_ids=run_ids)
+    try:
+        X, y, ids, keys, corpus_template = collect_template_table(db, list(run_ids or []))
+    except MixedTemplateError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if corpus_template is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Korpusta şablonlu run yok; model şablon başına saklandığı için "
+                "eğitim yapılamaz."
+            ),
+        )
     if len(ids) < MIN_SAMPLES:
         if frozen is not None:
             raise _too_few_frozen(label, len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
         assert corpus is not None
         raise _too_few(label, len(ids), MIN_SAMPLES, corpus)
+    trainer = {
+        "rf": train_scalar_rf,
+        "loglinear": train_scalar_loglinear,
+        "hybrid": train_scalar_hybrid,
+    }[model]
     try:
-        bundle = (
-            train_scalar_rf(X, y) if model == "rf" else train_scalar_loglinear(X, y)
-        )
+        bundle = trainer(X, y, feature_keys=keys)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     bundle["corpus"] = (
         _frozen_summary(frozen, len(ids)) if frozen is not None else corpus.as_public()
     )
-    if model == "rf":
-        save_scalar_rf(bundle, DEFAULT_MODEL_PATH)
-        out = public_metrics(bundle)
-    else:
-        save_scalar_loglinear(bundle, DEFAULT_LOGLIN_PATH)
-        out = public_metrics_loglinear(bundle)
+    save_model(corpus_template, model, bundle)
+    out = public_metrics(bundle) if model == "rf" else public_metrics_loglinear(bundle)
     out["model_kind"] = model
+    out["template_id"] = corpus_template
     out["run_ids"] = ids
     return out
 
@@ -280,19 +367,32 @@ def predict_from_params(
     db: Session = Depends(get_db),
     model: str = "auto",
 ) -> dict[str, Any]:
-    """ccx ve mesh yok: L/T/W + yük → skaler tahmin. İsteğe bağlı FEA kıyası.
+    """ccx ve mesh yok: şablon parametreleri + yük → skaler tahmin.
 
-    `model`: "auto" (loglinear varsa o) | "rf" | "loglinear". Kullanılan tür
-    yanıtta `model_kind` ile döner.
+    `model`: "auto" (hibrit → log-log → RF) | "rf" | "loglinear" | "hybrid".
+    Kullanılan tür yanıtta `model_kind` ile döner. Model şablon başına
+    saklanır; `body.template_id` hangi modelin okunacağını belirler.
     """
-    loaded = _load_scalar_model(model)
+    loaded = _load_scalar_model(model, body.template_id)
     if loaded is None:
-        raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"'{body.template_id}' için eğitilmiş skaler model yok; önce eğit.",
+        )
     model_kind, bundle = loaded
+    keys = _bundle_keys(bundle, body.template_id)
     features = {
-        "length": body.length,
-        "thickness": body.thickness,
-        "width": body.width,
+        # Şablonun kendi alanları; kirişin L/T/W'si ayrıca doğrudan gelebilir.
+        **{k: float(v) for k, v in (body.params or {}).items()},
+        **{
+            k: float(v)
+            for k, v in (
+                ("length", body.length),
+                ("thickness", body.thickness),
+                ("width", body.width),
+            )
+            if v is not None
+        },
         "element_size": body.element_size,
         "youngs_modulus": body.youngs_modulus,
         "poisson_ratio": body.poisson_ratio,
@@ -302,14 +402,23 @@ def predict_from_params(
         "pressure_mpa": body.pressure_mpa,
         "dimension": float(body.dimension),
     }
-    vec = features_from_dict(features)
+    missing = [k for k in keys if k not in features]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"'{body.template_id}' modeli şu alanları bekliyor: "
+                f"{', '.join(missing)}. `params` içinde gönderin."
+            ),
+        )
+    vec = features_from_dict(features, keys)
     pred = _predict_with(model_kind, bundle, vec)
 
     # HANGİ özellik uzay dışında — yalnız "uzay dışı" demek kullanıcıya
     # neyi düzelteceğini söylemiyor. Ölçülen vaka: 20×2 kesit, L=100 mm →
     # beş özellikten dördü kutunun dışındaydı, sadece yük içerideydi.
     pred["domain_violations"] = domain_violations(
-        vec, bundle.get("bounds") or {}, tuple(FEATURE_KEYS)
+        vec, bundle.get("bounds") or {}, keys
     )
 
     # Akma kontrolü. OOD'den AYRI bir şey: OOD istatistikseldir ("bu
@@ -372,6 +481,8 @@ def predict_from_params(
     return {
         "kind": "scalar",
         "model_kind": model_kind,
+        "template_id": body.template_id,
+        "feature_keys": list(keys),
         "source": "surrogate",
         "out_of_domain": ood,
         "predictions": pred["predictions"],
@@ -593,7 +704,9 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
     run = _resolve_run(db, body)
     geo = db.get(Geometry, run.geometry_id)
     gnn = load_gnn(DEFAULT_GNN_PATH)
-    rf = load_scalar_rf(DEFAULT_MODEL_PATH)
+    # Skaler yedek run'ın KENDİ şablonunun modelinden gelir.
+    loaded = _load_scalar_model("auto", geo.template_id if geo is not None else None)
+    rf = loaded[1] if loaded else None
     if gnn is None and rf is None:
         raise HTTPException(status_code=404, detail="Eğitilmiş model yok.")
 
@@ -624,11 +737,14 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
                 "max_von_mises_true": float(sample.node_outputs[:, 3].max()),
                 "max_von_mises_pred": float(yhat[:, 3].max()),
             }
-    elif rf is not None:
-        x = features_from_run(run, geo)
+    elif rf is not None and loaded is not None:
+        scalar_kind = loaded[0]
+        x = features_from_run(
+            run, geo, _bundle_keys(rf, geo.template_id if geo is not None else None)
+        )
         if x is None:
             raise HTTPException(status_code=422, detail="Bu run için skaler özellik çıkarılamadı.")
-        scalar = predict_scalar(rf, x)
+        scalar = _predict_with(scalar_kind, rf, x)
         ood = bool(scalar["out_of_domain"])
         preview = {
             "node_ids": [],
