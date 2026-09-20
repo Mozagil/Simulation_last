@@ -192,6 +192,59 @@ def _read_inp_nodes(inp_path: Path) -> list[tuple[float, float, float]]:
     return nodes
 
 
+def _read_inp_elements(inp_path: Path) -> tuple[list[list[int]], list[str]]:
+    """`.inp` içindeki `*ELEMENT` bloklarından eleman bağlantısı ve tipleri.
+
+    GNN eğitimi için gerekli: mesh grafının kenarları eleman bağlantısından
+    kurulur. Bu bilgi daha önce hiç taşınmıyordu (`connectivity=None`), graf
+    koordinatlardan k-NN ile kuruluyordu — yani mesh grafı değil nokta bulutu
+    komşuluğuydu.
+
+    `_read_inp_nodes` ile aynı gerekçe: dosyayı biz yazdığımız için biçim
+    kesin. Düğüm numaraları 1-based ve `*NODE` sırasıyla aynı.
+
+    Dönen bağlantı CalculiX sırasındadır (tet10'da kenar-ortası düğümler
+    gmsh'ten farklı yerde — `_reorder_connectivity`).
+    """
+    conn: list[list[int]] = []
+    types: list[str] = []
+    etype: str | None = None
+    try:
+        with inp_path.open(encoding="utf-8") as fh:
+            pending = ""
+            for raw in fh:
+                line = (pending + raw.strip()) if pending else raw.strip()
+                pending = ""
+                if not line:
+                    continue
+                if line.startswith("*"):
+                    etype = None
+                    upper = line.upper()
+                    if upper.startswith("*ELEMENT") and "OUTPUT" not in upper:
+                        for part in line.split(",")[1:]:
+                            key, _, value = part.partition("=")
+                            if key.strip().upper() == "TYPE":
+                                etype = value.strip().upper()
+                    continue
+                if etype is None:
+                    continue
+                if line.endswith(","):  # Abaqus/CCX devam satırı
+                    pending = line
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                try:
+                    nodes = [int(v) for v in parts[1:] if v]
+                except ValueError:
+                    continue
+                if not nodes:
+                    continue
+                conn.append(nodes)
+                types.append(etype)
+    except OSError:
+        return [], []
+    return conn, types
+
+
 
 def _collapse_shell_expansion(
     node_coords: dict[int, tuple[float, ...]],
@@ -637,8 +690,12 @@ class CalculiXAdapter(SolverAdapter):
                 shell_thickness,
                 _resolve_bc_node_ids,
             )
+            _conn, _etypes = _read_inp_elements(inp_path)
             _td.write_inputs(
-                inp_path.with_suffix(".inputs.npz"), _X, None
+                inp_path.with_suffix(".inputs.npz"),
+                _X,
+                _td.pad_connectivity(_conn),
+                element_types=_etypes,
             )
         except Exception as exc:  # noqa: BLE001 — veri seti üretimi çözümü bozmasın
             logger.warning("Eğitim girdileri yazılamadı: %s", exc)

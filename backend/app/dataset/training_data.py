@@ -162,7 +162,39 @@ def build_node_inputs(
     return X
 
 
-def write_inputs(path: Path, X: np.ndarray, connectivity: np.ndarray | None) -> None:
+#: Bağlantı dizisinde kullanılmayan sütunlar bununla doldurulur.
+CONNECTIVITY_PAD = -1
+
+
+def pad_connectivity(conn: list[list[int]] | None) -> np.ndarray:
+    """Değişken uzunluklu eleman listelerini tek dikdörtgen diziye çevirir.
+
+    Bir mesh'te farklı eleman tipleri bir arada olabilir (örn. çok parçalı
+    modelde C3D10 + C3D8). Kısa satırlar `CONNECTIVITY_PAD` ile doldurulur;
+    okuyan taraf negatif değerleri atar.
+    """
+    if not conn:
+        return np.zeros((0, 0), dtype=np.int32)
+    width = max(len(e) for e in conn)
+    out = np.full((len(conn), width), CONNECTIVITY_PAD, dtype=np.int32)
+    for i, elem in enumerate(conn):
+        out[i, : len(elem)] = elem
+    return out
+
+
+def _element_type_array(element_types: list[str] | np.ndarray | None) -> np.ndarray:
+    """Eleman tipleri (`C3D10`, `S4` …) — kenar tablosu buna göre seçilir."""
+    if element_types is None:
+        return np.zeros((0,), dtype="<U8")
+    return np.asarray(element_types, dtype="<U8")
+
+
+def write_inputs(
+    path: Path,
+    X: np.ndarray,
+    connectivity: np.ndarray | None,
+    element_types: list[str] | np.ndarray | None = None,
+) -> None:
     """Girdi matrisini ve graf bağlantısını `.inp` yanına yazar."""
     np.savez_compressed(
         path,
@@ -170,8 +202,14 @@ def write_inputs(path: Path, X: np.ndarray, connectivity: np.ndarray | None) -> 
         node_inputs=X,
         input_channels=np.array(NODE_INPUT_CHANNELS),
         connectivity=connectivity if connectivity is not None else np.zeros((0, 0), np.int32),
+        element_types=_element_type_array(element_types),
     )
-    logger.info("Eğitim girdileri yazıldı: %s (%d düğüm)", path, X.shape[0])
+    logger.info(
+        "Eğitim girdileri yazıldı: %s (%d düğüm, %d eleman)",
+        path,
+        X.shape[0],
+        0 if connectivity is None else int(np.asarray(connectivity).shape[0]),
+    )
 
 
 def normalize_mode_shape(vectors: np.ndarray) -> tuple[np.ndarray, float]:
@@ -224,6 +262,10 @@ def write_modal_sample(
     with np.load(inputs_path, allow_pickle=False) as z:
         X = z["node_inputs"]
         connectivity = z["connectivity"]
+        element_types = (
+            z["element_types"] if "element_types" in z.files
+            else _element_type_array(None)
+        )
 
     n = X.shape[0]
     if len(node_order) != n:
@@ -257,6 +299,7 @@ def write_modal_sample(
         mode_scale_factors=scales,
         mode_output_channels=np.array(MODE_OUTPUT_CHANNELS),
         connectivity=connectivity,
+        element_types=element_types,
         node_ids=np.array(node_order, dtype=np.int32),
     )
     info = {
@@ -296,6 +339,10 @@ def write_training_sample(
     with np.load(inputs_path, allow_pickle=False) as z:
         X = z["node_inputs"]
         connectivity = z["connectivity"]
+        element_types = (
+            z["element_types"] if "element_types" in z.files
+            else _element_type_array(None)
+        )
 
     n = X.shape[0]
     if len(node_order) != n:
@@ -323,6 +370,7 @@ def write_training_sample(
         input_channels=np.array(NODE_INPUT_CHANNELS),
         output_channels=np.array(NODE_OUTPUT_CHANNELS),
         connectivity=connectivity,
+        element_types=element_types,
         node_ids=np.array(node_order, dtype=np.int32),
     )
     info = {
