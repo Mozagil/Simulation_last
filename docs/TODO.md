@@ -5,8 +5,8 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-19): 594 backend testi geçiyor (1 atlandı, ccx ile
-> ilgisiz) — gerçek ccx fizik testleri dahil; 88 frontend testi geçiyor
+> Son durum (2026-09-20): 645 backend testi geçiyor (1 atlandı, ccx ile
+> ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
 
@@ -108,14 +108,23 @@ etiketi konmalı, ya da devre dışı bırakılmalı.
 
 ## 2. Veri ayıklama ve arşiv
 
-### 2.1 Korpusa göre arşiv (EKSİK)
-**Tümünü indir** korpusa göre süzmüyor; yalnız "çözülmüş run'lar"
-filtresi var. Temiz eğitim setini (dondurulmuş korpustaki run'lar)
-indirmek mümkün değil.
+### 2.1 Korpusa göre arşiv — ✅ kapandı (2026-09-20)
 
-**Yapılacak:** Arşiv ucuna korpus adı parametresi + panelde "yalnız
-eğitim seti" seçeneği. Korpus manifesti `run_ids` listesini zaten
-tutuyor (`uploads/models/`), süzgeç oradan kurulabilir.
+`GET /dataset/export?corpus_name=<ad>`: donmuş setin run'ları. `run_ids`
+ile birlikte verilirse KESİŞİM alınır; bilinmeyen set 404. Setin TANIMI
+da arşive konur (`corpus/corpus_<ad>.json`), içe aktarmada geri yazılır —
+ama aynı adlı set varsa ÜZERİNE YAZILMAZ (yereldeki set kullanıcının
+kendi kürasyonunu taşıyor olabilir); geri yazılanlar `restored_corpora`
+ile döner. Panelde "Eğitim seti" seçici + "Eğitim setini indir" düğmesi;
+donmuş set yoksa ikisi de çıkmaz.
+
+Doğrulandı (çalışan sunucu): `plaka-v1` arşivi tam 198 run içeriyor —
+korpusun tamamı, fazlası değil.
+
+**Bilinen sınır:** arşiv, süzgeçten bağımsız olarak TÜM geometrileri alır
+(run'lar geometrilere yabancı anahtarla bağlı; eksik geometri içe
+aktarmada yetim run bırakır). Şu an 2369 geometri var → metaveri kısmı
+~148 KB. Sete göre süzmek istenirse içe aktarmada yetim kontrolü gerekir.
 
 ### 2.2 Mevcut olanlar (çalışıyor, sadece kullanılması gerek)
 - Geçmişte her satırda **Dışla** butonu (silmez, eğitimden çıkarır)
@@ -212,7 +221,7 @@ seçilmeli (lineer u/L ≈ 0.3).
 
 ---
 
-## 5. Delikli plaka eğitimi — veri ✅, ürün kararı bekliyor (2026-09-19)
+## 5. Delikli plaka eğitimi — ✅ kapandı (veri + kıyas + ürüne alma)
 
 **Veri:** kalite seti study 5 — 200 örnek (S235 96 + S355 104), 198 çözüldü,
 2 başarısız (ikisi de `nonpositive jacobian` — bkz. 8.4). Kalite taraması
@@ -249,16 +258,26 @@ karakteristik uzunluğu kullanılıyor; kiriş korpusu birebir aynı (192).
 - log-log üsleri σ: W −1.16, T −1.01, F 0.996, d +0.21 — beklendiği gibi
   teorik saf kuvvet yasası değil (Kt(d/W), log(W−d)).
 
-**Ürüne almak için gereken kararlar (açık):**
-- [ ] **Özellik vektörü şablona özgü olmalı.** `FEATURE_KEYS` kirişe göre
-      (length/thickness/width): plakada `length=0`, **`diameter` ve
-      `height` hiç özellik değil**. Bugünkü ürünle plaka eğitilirse model
-      delik çapını görmez. Öneri: şablonun `params_schema` sayısal alanları
-      + mesh + malzeme + yük; bundle zaten `feature_keys` saklıyor.
-- [ ] **Model dosyaları şablon başına saklanmalı.** `scalar_rf.joblib` /
-      `scalar_loglinear.joblib` TEK ve global: plaka eğitimi kiriş
-      modelinin ÜZERİNE YAZAR.
-- [ ] Hibrit tür (`log-log + RF artık`) ürüne eklensin mi.
+**Ürüne alındı (2026-09-20, A/B/C adımları):**
+- [x] **Özellik vektörü şablona özgü.** Şablonun sayısal şema alanları +
+      kategorik göstergeler (`notch_kind=u/v`) + ortak kuyruk. Kiriş için
+      eski vektörle BİREBİR aynı: kaydedilmiş kiriş modeli yeni kodla da
+      aynı tahmini verdi (u 6.543).
+- [x] **Model dosyaları şablon başına** (`uploads/models/<şablon>/`).
+      Eski global dosyalar silinmedi; korpusu hangi şablonsa yalnız ona
+      salt okunur yedek.
+- [x] **Hibrit tür eklendi.** Artık katmanına geometri ikili oranları
+      otomatik giriyor (şablona özgü elle özellik yok): plakada ham
+      özelliklerle u %0.64 / σ %1.86, oranlarla %0.29 / %1.30.
+- [x] Panel: şablon seçici, şemadan üretilen form, üç model türü, seçili
+      tür o şablonda yoksa mevcut türe görünür geçiş.
+
+**Korpus dışı doğrulama** (yakınsama run 631, FEA u=0.059905 σ=188.49):
+rf u +0.84% σ −14.33% · loglinear +1.72% / +1.63% · **hybrid −0.09% / +0.17%**
+
+**Eğitilmiş modeller:** kiriş ve plaka için üçer tür kayıtlı.
+
+**Sıradaki:** kalan 10 şablon için aynı yol (DOE → korpus → eğitim).
 
 ## 6. Hot-spot ekstrapolasyonu (Faz 0.6)
 
@@ -287,13 +306,21 @@ Roadmap'te planlanan daha doğru yöntem henüz yapılmadı:
 
 ## 8. Küçük ama gerçek sorunlar
 
-### 8.1 `/solve` `region` alanını sessizce yok sayıyor
-Bölge adıyla BC verilirse (`{"type":"cload","region":"yuk_cekme",...}`)
-`/solve` onu görmezden geliyor ve model **yüksüz** çözülüyor. Hata
-vermiyor. Bölge→yüzey bağlamayı `bind_scenario_bcs` yapıyor ve yalnız
-DOE/convergence yolunda çağrılıyor.
+### 8.1 `/solve` `region` alanını sessizce yok sayıyor — ✅ kapandı (2026-09-20)
 
-**Yapılacak:** ya `region` desteklensin ya da açık hata verilsin.
+Kök neden: `region` SolveBC modelinde YOKTU, pydantic sessizce atıyordu.
+Eski kodda canlı olarak yeniden üretildi: bölge adıyla fixed + cload →
+HTTP 200, `.inp`'te `*CLOAD` bloğu yok, toplam Fy = 0 (yüksüz "başarılı"
+model).
+
+Düzeltme: `SolveBC.region` + `/solve` de bölgeleri çözüyor (DOE ile aynı
+`bind_scenario_bcs`); bilinmeyen bölge 422 + mevcut bölgelerin listesi.
+Ayrıca `_require_targets`: hiçbir yüzey/kenar/düğüme bağlanmayan
+fixed/cload/pressure/displacement/sliding/bearing 422 — hedefsiz yük
+ccx'te hata vermez, sıfır deplasmanlı "başarılı" sonuç üretir. `gravity`
+(hacim yükü) ve `rigid_body` (referans düğüm) muaf.
+
+Doğrulandı: bölge adıyla toplam Fy = −150.00 N (beklenen −150).
 
 ### 8.2 Test malzemesi çöpü
 DB'de 16 adet `TestCustomSteel_*` malzemesi birikmiş (id 34–49) —
@@ -327,11 +354,14 @@ mesaja taşınmalı.
 1. ~~**0.1** — yüzey yükü doğrulaması~~ ✅ kapandı
 2. ~~**3** — solver yakınsaması~~ ✅ kapandı
    ~~**4.0** — NLGEOM sonuç okuma hatası~~ ✅ kapandı
-3. ~~**5** — delikli plaka verisi + kıyas~~ ✅ — **ürün kararı bekliyor** (özellik vektörü, model saklama)
-4. **2.1** — korpusa göre arşiv (temiz veri indirilemiyor)
-5. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
-6. **4** — NLGEOM arayüz + veri seti
-7. **6, 7, 8** — iyileştirmeler
+3. ~~**5** — delikli plaka verisi + kıyas + ürüne alma~~ ✅ kapandı
+4. ~~**2.1** — korpusa göre arşiv~~ ✅ kapandı
+5. ~~**8.1** — /solve region~~ ✅ kapandı
+6. **8.3** — `doe_study_id` geriye dönük (küçük, mevcut setler klasörlenir)
+7. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
+8. **4** — NLGEOM arayüz + veri seti
+9. **6, 7, 8.2** — iyileştirmeler
+10. **5 (devam)** — kalan 10 şablon için DOE + eğitim
 
 **Crash'e (Faz 1) geçmeden önce en az 0.1 (✅) ve 3 (✅) kapanmalı** — crash de çok artımlı `.frd` üretecek; 4.0 aynı sınıftan — ikisi de
 solver altyapısını ilgilendiriyor, crash aynı altyapıyı kullanacak.
