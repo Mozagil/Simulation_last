@@ -379,7 +379,7 @@ mesaja taşınmalı.
 3. ~~**5** — delikli plaka verisi + kıyas + ürüne alma~~ ✅ kapandı
 4. ~~**2.1** — korpusa göre arşiv~~ ✅ kapandı
 5. ~~**8.1** — /solve region~~ ✅ kapandı
-6. **8.3** — `doe_study_id` geriye dönük (küçük, mevcut setler klasörlenir)
+6. ~~**8.3** — `doe_study_id` geriye dönük~~ ✅ kapandı
 7. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
 8. **4** — NLGEOM arayüz + veri seti
 9. **6, 7, 8.2** — iyileştirmeler
