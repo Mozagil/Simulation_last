@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-20): 645 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-20): 653 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -333,10 +333,32 @@ Eğitimi etkilemiyor (korpus `no_template` ile atıyor) ama geçmişi ve
 veri seti sayılarını kirletiyor. `tests/db_guard.py` bunu önlemek için
 yazılmış olabilir — bağlı mı kontrol edilmeli.
 
-### 8.3 `doe_study_id` geriye dönük boş
-Migration eski run'ları doldurmadı; mevcut ~900 run "DOE dışı" görünüyor.
-`DoeCase` tablosundan eşleyen bir betik 5 dakikalık iş — mevcut setler
-(#5, #6, #8, #9) de klasörlenebilir hale gelir.
+### ~~8.3 `doe_study_id` geriye dönük boş~~ — KAPANDI (2026-09-20)
+Sütunu ekleyen `b9c0d1e2f3a4` mevcut satırları doldurmamıştı. Bağ zaten
+veride (`doe_cases.run_id`), yalnız run tarafından geriye bakılamıyordu.
+
+`app/doe/backfill.py` + veri migration'ı `c0d1e2f3a4b5`: boş olanı
+doldurur, **dolu değeri asla ezmez**, bir run iki çalışmaya bağlıysa
+dokunmaz (belirsiz), tekrar çalıştırılabilir. Elle de koşulabilir:
+`python -m app.doe.backfill [--dry-run]`.
+
+Dev DB'de ölçüm (TODO'daki "#5, #6, #8, #9" numaraları tutmuyordu):
+
+| çalışma | ad | dolduruldu |
+|---|---|---|
+| 1 | kalite-200 cantilever | 200 |
+| 2 | cantilever_beam LHS | 20 |
+| 3 | kiris-egitim-v2 | 200 |
+| 4 | kiris-dogrulama | 12 |
+| 5 | kalite-200 plate_with_hole | (zaten doluydu) 200 |
+
+Toplam 432 run dolduruldu, **çelişki 0**. Kalan 377 boş run gerçekten
+DOE dışı (elle açılmış + 8.2'deki test artıkları) — uydurma çalışma
+atanmadı. `GET /geometry/runs?doe_study_id=N` beşi de süzüyor (canlı
+doğrulandı: 200/20/200/12/200 kayıt).
+
+Testler: `tests/test_doe_backfill.py` (8) — ezmeme, belirsiz run,
+idempotenlik, DOE dışı run boş kalır, `--dry-run` yazmaz.
 
 ---
 
