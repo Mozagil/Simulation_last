@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-22): 684 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-23): 707 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -114,18 +114,51 @@ skaleriyle birebir tuttu (**uyuşmayan 0**). Testler: `test_mesh_graph.py`
 Yan düzeltme: `.env`'i yalnız `app.main` yüklüyordu; CLI/alembic gibi API
 dışı girişler sessizce varsayılan DB adresine düşüyordu (`app/db/session.py`).
 
-### 1.2 Normalizasyon yok
-Ham kanallar aynı katmana giriyor:
+### ~~1.2 Normalizasyon yok~~ — KAPANDI (2026-09-23)
+Ham kanallar aynı katmana giriyordu (x,y,z: 0…700 · bayraklar: 0/1 · E:
+210000 · yoğunluk: 7.85e−9). `app/ml/normalization.py` → `ChannelScaler`:
+ölçek EĞİTİM setinden çıkarılır, model dosyasında saklanır, tahminde ters
+çevrilir. Dışarıya her zaman fiziksel birim (mm, MPa) döner — metrikler
+eski ölçümlerle karşılaştırılabilir kalsın diye.
 
-| kanal | aralık |
-|---|---|
-| x, y, z | 0 … 700 |
-| fixed_ux/uy/uz | 0 / 1 |
-| youngs_modulus_mpa | 210000 |
-| density_tonne_mm3 | 7.85e−9 |
+**Yazarken çıkan iki gerçek sorun (ikisi de ölçüldü):**
 
-E ve koordinatlar gizli katmanı dolduruyor; BC bayrakları ve yoğunluk
-sayısal olarak yok hükmünde. Çıktı tarafı da normalize değil.
+1. `poisson_ratio` fiziksel olarak sabit (0.3) ama float32 saklamadan
+   std = 9.1e−8 geliyor. Saf z-skoru buna BÖLÜYOR ve yuvarlama gürültüsünü
+   ±1 mertebesinde bir girdiye çeviriyordu. Bağıl eşik (`CONSTANT_REL`)
+   eklendi.
+2. Kanal başına bağımsız ölçek fiziği bozuyor. x/y/z ölçekleri 169 / 5.3 /
+   18.9 çıkıyordu: narin kiriş küpe dönüşüyor, **eğilmeyi belirleyen en-boy
+   oranı siliniyor**. Aynı şey çıktıda: `u_z` bu yük durumunda fiziksel
+   olarak sıfır (std 7e−4 mm), kendi std'siyle bölününce sayısal gürültü
+   `u_y` kadar önemli görünüyor. Çözüm: aynı birimi paylaşan bileşenler
+   (`NODE_INPUT_GROUPS`, `NODE_OUTPUT_GROUPS`) ORTAK ölçek alıyor.
+
+**A/B ölçümü** — study 3'ten 88 graf (64 eğitim / 24 holdout), aynı tohum,
+tek değişken ölçekleme. Taban = "eğitim ortalamasını söyle":
+
+| holdout metriği | taban | eski (ham) | yeni (normalize) |
+|---|---|---|---|
+| u_y RMSE (mm) | 1.840 | 1.241 | **1.211** |
+| von Mises RMSE (MPa) | 17.90 | 15.84 | 15.87 |
+| skaler u_max (mm) | 3.72 | **2.45** | 2.76 |
+| skaler vm_max (MPa) | 44.32 | 33.02 | **28.32** |
+
+**Dürüst sonuç: normalizasyon tek başına neredeyse fark etmiyor** (iki
+metrik iyileşti, biri kötüleşti, biri aynı). Beklenen de buydu: encoder
+hâlâ DONUK rastgele projeksiyon, çıkış katmanı en küçük kareler — darboğaz
+ölçek değil, 1.3'teki eğitimin olmayışı. Normalizasyon 1.3'ün ÖN KOŞULU
+(1e−9…1e5 arası kanallarla gradyan eğitimi yürümez), tek başına çözüm
+değil. Bu satır "yapıldı, iyileşti" diye okunmamalı.
+
+Model her iki hâlde de tabandan iyi (u_y'de %34, vm'de %11) — yani "hep
+ortalamayı söyle"den ayırt edilebiliyor, ama mühendislik için kullanılabilir
+değil.
+
+Testler: `test_normalization.py` (16) + `test_gnn_normalization.py` (7) —
+sabit kanal, float32 gürültüsü, narinlik korunumu, npz gidiş-dönüşü,
+ölçeksiz eski model, ölçek uygulanmazsa sonucun değişmesi.
+707 backend testi geçiyor.
 
 ### 1.3 Gerçek eğitim yok
 `train_gnn`: son katmana en küçük kareler + process ağırlıklarına **6

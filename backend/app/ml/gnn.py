@@ -14,8 +14,15 @@ from typing import Any
 
 import numpy as np
 
-from app.dataset.training_data import NODE_INPUT_CHANNELS, NODE_OUTPUT_CHANNELS
+from app.dataset.training_data import (
+    NODE_INPUT_CHANNELS,
+    NODE_INPUT_GROUPS,
+    NODE_OUTPUT_CHANNELS,
+    NODE_OUTPUT_GROUPS,
+    channel_group_indices,
+)
 from app.ml.graph_data import GraphSample
+from app.ml.normalization import ChannelScaler
 from app.ml.ood import bounds_from_matrix
 
 DEFAULT_GNN_PATH = Path("uploads") / "models" / "field_gnn.npz"
@@ -137,7 +144,56 @@ class NumpyMeshGNN:
         return model
 
 
-def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, Any]:
+def normalized_samples(
+    samples: list[GraphSample], x_scaler: ChannelScaler, y_scaler: ChannelScaler
+) -> list[GraphSample]:
+    """Girdi/çıktısı ölçeklenmiş kopyalar; graf yapısı paylaşılır."""
+    out: list[GraphSample] = []
+    for s in samples:
+        out.append(
+            GraphSample(
+                run_id=s.run_id,
+                node_inputs=x_scaler.transform(s.node_inputs).astype(np.float32),
+                node_outputs=(
+                    None
+                    if s.node_outputs is None
+                    else y_scaler.transform(s.node_outputs).astype(np.float32)
+                ),
+                edges=s.edges,
+                node_ids=s.node_ids,
+                element_size=s.element_size,
+                edge_source=s.edge_source,
+            )
+        )
+    return out
+
+
+def predict_physical(
+    model: NumpyMeshGNN,
+    sample: GraphSample,
+    x_scaler: ChannelScaler,
+    y_scaler: ChannelScaler,
+) -> np.ndarray:
+    """HAM girdiden fiziksel birimli tahmin (mm, MPa).
+
+    Ölçekleme yalnız modelin içinde kalır: çağıranlar her zaman fiziksel
+    birim görür, metrikler eski ölçümlerle karşılaştırılabilir kalır.
+    """
+    z = model.forward(x_scaler.transform(sample.node_inputs), sample.edges)
+    return y_scaler.inverse_transform(z)
+
+
+def _field_rmse(
+    samples: list[GraphSample],
+    model: NumpyMeshGNN,
+    x_scaler: ChannelScaler | None = None,
+    y_scaler: ChannelScaler | None = None,
+) -> dict[str, Any]:
+    """Hata metrikleri FİZİKSEL birimde (mm, MPa) — `samples` ham olmalı."""
+    n_in = samples[0].node_inputs.shape[1] if samples else 0
+    n_out = len(NODE_OUTPUT_CHANNELS)
+    x_scaler = x_scaler or ChannelScaler.identity(n_in)
+    y_scaler = y_scaler or ChannelScaler.identity(n_out)
     sq = np.zeros(len(NODE_OUTPUT_CHANNELS))
     n = 0
     scalar_sq = np.zeros(2)
@@ -146,7 +202,7 @@ def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, An
     for s in samples:
         if s.node_outputs is None:
             continue
-        pred = model.forward(s.node_inputs, s.edges)
+        pred = predict_physical(model, s, x_scaler, y_scaler)
         y = s.node_outputs
         diff = pred - y
         sq += (diff ** 2).mean(axis=0)
@@ -187,9 +243,22 @@ def train_gnn(
     if len(samples) < 2:
         raise ValueError("GNN için en az 2 graf örnek gerekir.")
     in_dim = samples[0].node_inputs.shape[1]
+
+    # Ölçek EĞİTİM setinden çıkarılır; eğitim tamamen normalize uzayda
+    # yapılır, dışarıya fiziksel birim döner (bkz. `predict_physical`).
+    x_scaler = ChannelScaler.fit(
+        (s.node_inputs for s in samples),
+        channel_group_indices(NODE_INPUT_CHANNELS, NODE_INPUT_GROUPS),
+    )
+    y_scaler = ChannelScaler.fit(
+        (s.node_outputs for s in samples if s.node_outputs is not None),
+        channel_group_indices(NODE_OUTPUT_CHANNELS, NODE_OUTPUT_GROUPS),
+    )
+    scaled = normalized_samples(samples, x_scaler, y_scaler)
+
     model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=2, out_dim=len(NODE_OUTPUT_CHANNELS), seed=seed)
-    model.fit_output_ls(samples)
-    model.sgd_process(samples, steps=sgd_steps, lr=1e-4)
+    model.fit_output_ls(scaled)
+    model.sgd_process(scaled, steps=sgd_steps, lr=1e-4)
     globals_ = []
     for s in samples:
         # OOD için global özet: bbox + ortalama yük/E (kanal 7-12)
@@ -203,10 +272,16 @@ def train_gnn(
         )
         globals_.append(g)
     G = np.vstack(globals_)
-    metrics = _field_rmse(samples, model)
+    metrics = _field_rmse(samples, model, x_scaler, y_scaler)
     return {
         "kind": "field_gnn",
         "model": model,
+        "x_scaler": x_scaler,
+        "y_scaler": y_scaler,
+        "normalization": {
+            "inputs": x_scaler.summary(NODE_INPUT_CHANNELS),
+            "outputs": y_scaler.summary(NODE_OUTPUT_CHANNELS),
+        },
         "bounds": bounds_from_matrix(G),
         "n_samples": len(samples),
         "metrics": metrics,
@@ -221,6 +296,10 @@ def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     model: NumpyMeshGNN = bundle["model"]
     payload = model.to_npz()
+    for key, prefix in (("x_scaler", "x"), ("y_scaler", "y")):
+        scaler = bundle.get(key)
+        if scaler is not None:
+            payload.update(scaler.to_npz(prefix))
     payload["bounds_min"] = np.asarray(bundle["bounds"]["min"], dtype=np.float64)
     payload["bounds_max"] = np.asarray(bundle["bounds"]["max"], dtype=np.float64)
     payload["n_samples"] = np.int32(bundle["n_samples"])
@@ -235,6 +314,7 @@ def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
                 "kind": "field_gnn",
                 "n_samples": bundle["n_samples"],
                 "metrics": bundle["metrics"],
+                "normalization": bundle.get("normalization"),
                 "input_channels": bundle["input_channels"],
                 "output_channels": bundle["output_channels"],
             },
@@ -253,6 +333,8 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
     with np.load(dest, allow_pickle=False) as z:
         data = {k: z[k] for k in z.files}
     model = NumpyMeshGNN.from_npz(data)
+    x_scaler = ChannelScaler.from_npz(data, "x", int(data["W_enc"].shape[0]))
+    y_scaler = ChannelScaler.from_npz(data, "y", int(data["W_out"].shape[1]))
     import json
 
     metrics = {}
@@ -262,6 +344,9 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
     return {
         "kind": "field_gnn",
         "model": model,
+        "x_scaler": x_scaler,
+        "y_scaler": y_scaler,
+        "normalization": metrics.get("normalization") if isinstance(metrics, dict) else None,
         "bounds": {
             "min": [float(v) for v in data.get("bounds_min", [])],
             "max": [float(v) for v in data.get("bounds_max", [])],
@@ -284,5 +369,10 @@ def global_features_for_ood(X: np.ndarray) -> np.ndarray:
 
 
 def predict_field(bundle: dict[str, Any], sample: GraphSample) -> np.ndarray:
+    """Fiziksel birimli düğüm alanı. Ölçek modelle birlikte saklanır;
+    uygulanmazsa model sessizce saçmalar."""
     model: NumpyMeshGNN = bundle["model"]
-    return model.forward(sample.node_inputs, sample.edges)
+    n_in = sample.node_inputs.shape[1]
+    x_scaler = bundle.get("x_scaler") or ChannelScaler.identity(n_in)
+    y_scaler = bundle.get("y_scaler") or ChannelScaler.identity(len(NODE_OUTPUT_CHANNELS))
+    return predict_physical(model, sample, x_scaler, y_scaler)

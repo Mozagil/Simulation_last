@@ -50,6 +50,32 @@ NODE_INPUT_CHANNELS = (
 
 NODE_OUTPUT_CHANNELS = ("u_x", "u_y", "u_z", "von_mises_mpa")
 
+#: AYNI fiziksel büyüklüğün bileşenleri — ölçeklenirken BİRLİKTE ele alınır.
+#: Kanal başına bağımsız ölçek fiziği bozuyor (ölçüldü, TODO 1.2):
+#:   * x/y/z ayrı ayrı ölçeklenince (169 / 5.3 / 18.9) narin bir kiriş küpe
+#:     dönüşüyor — eğilmeyi belirleyen en-boy oranı siliniyor.
+#:   * u_z bu yük durumunda fiziksel olarak sıfır (std 7e-4 mm); kendi
+#:     std'siyle bölününce saf sayısal gürültü, u_y kadar önemli görünüyor.
+NODE_INPUT_GROUPS = (
+    ("x", "y", "z"),
+    ("fixed_ux", "fixed_uy", "fixed_uz"),
+    ("load_fx", "load_fy", "load_fz"),
+)
+NODE_OUTPUT_GROUPS = (("u_x", "u_y", "u_z"),)
+
+
+def channel_group_indices(
+    channels: tuple[str, ...], groups: tuple[tuple[str, ...], ...]
+) -> tuple[tuple[int, ...], ...]:
+    """Kanal adlarını sütun indekslerine çevirir; bilinmeyen ad atlanır."""
+    idx = {name: i for i, name in enumerate(channels)}
+    out = []
+    for g in groups:
+        members = tuple(idx[n] for n in g if n in idx)
+        if len(members) > 1:
+            out.append(members)
+    return tuple(out)
+
 #: Modal çıktı kanalları — mod BAŞINA düğüm bazlı şekil.
 MODE_OUTPUT_CHANNELS = ("u_x", "u_y", "u_z")
 
