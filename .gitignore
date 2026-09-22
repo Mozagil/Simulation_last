@@ -34,3 +34,7 @@ uploads/
 
 # Agent tarafindan uretilen yama arsivleri (repo'ya girmez)
 *.zip
+
+# Elle yapilan API denemelerinin ciktilari (curl -o ...) — is degil, artik
+conv.json
+openapi.json
