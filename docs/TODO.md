@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-23): 707 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-23): 714 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -437,10 +437,28 @@ idempotenlik, DOE dışı run boş kalır, `--dry-run` yazmaz.
 Plaka DOE'sinde 200 örnekten 2'si (#62 d=24 W=77.5 es=3.82; #129 es=3.03)
 ccx'te `*ERROR in e_c3d: nonpositive jacobian` ile düştü — muhtemelen delik
 yüzeyindeki eğri kenar-orta düğümleri. Sistem doğru davrandı (`failed`,
-sessiz `solved` değil). gmsh yüksek-mertebe optimizasyonu
-(`Mesh.HighOrderOptimize`) bir mesh ayarı kararı — kullanıcıya ait.
-Ayrıca hata mesajı yalnız log yolunu gösteriyor; ccx'in `*ERROR` satırı
-mesaja taşınmalı.
+sessiz `solved` değil).
+
+**Hata mesajı kısmı KAPANDI (2026-09-23).** `_ccx_error_lines` ccx log'undaki
+`*ERROR` bloklarını koşu mesajına taşıyor. Gerçek koşularda ölçüldü:
+
+| | mesaj |
+|---|---|
+| eski | `CalculiX hata (exit=201). Log: uploads\runs\809\run809.ccx.log` |
+| yeni | `… *ERROR in e_c3d: nonpositive jacobian determinant in element 38 …` |
+
+Sabit sütun boşlukları sıkıştırılıyor; log stdout+stderr birleşimi olduğu
+ve ccx aynı satırı ikisine de yazdığı için yinelenen blok eleniyor (run
+809 ve 876'da görüldü). `*WARNING` mesaja girmez, en fazla 2 blok / 240
+karakter. Testler: `test_ccx_error_message.py` (7). 714 backend testi
+geçiyor.
+
+**AÇIK KALAN — mühendislik kararı sende:** ters jacobian'ın kendisi.
+`Mesh.HighOrderOptimize` bir mesh ayarı; `CLAUDE.md` kuralı 4 gereği agent
+kendiliğinden açmaz. Seçenekler: (a) olduğu gibi bırak, DOE'de binde 10
+örnek düşer ve sebebi artık mesajda görünür; (b) şablon/mesh ayarlarına
+açık bir "yüksek mertebe optimizasyonu" anahtarı eklensin (varsayılan
+kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
 
 ## Öncelik sırası (öneri)
 

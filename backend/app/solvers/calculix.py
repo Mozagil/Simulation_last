@@ -571,6 +571,53 @@ def _sta_note(summary: dict[str, float] | None) -> str:
     )
 
 
+#: Hata mesajına taşınacak en fazla `*ERROR` bloğu ve toplam karakter.
+CCX_ERROR_BLOCKS = 2
+CCX_ERROR_CHARS = 240
+
+
+def _ccx_error_lines(log_text: str) -> str:
+    """ccx log'undaki `*ERROR` bloklarını tek satıra toplar.
+
+    NEDEN: hata mesajı yalnız log DOSYA YOLUNU gösteriyordu. Kullanıcı
+    "neden düştü" sorusunun cevabını görmek için sunucudaki dosyayı açmak
+    zorundaydı; DOE'de 200 koşudan 2'si böyle düşüyor ve sebebi arayüzde
+    hiç görünmüyordu.
+
+    ccx biçimi (gerçek log'dan):
+        *ERROR in e_c3d: nonpositive jacobian
+              determinant in element          38
+    Devam satırları girintilidir ve `*` ile başlamaz.
+    """
+    blocks: list[str] = []
+    lines = log_text.splitlines()
+    i = 0
+    while i < len(lines) and len(blocks) < CCX_ERROR_BLOCKS:
+        if lines[i].strip().startswith("*ERROR"):
+            # ccx sabit sütun genişliği kullanıyor: "element          38"
+            parts = [" ".join(lines[i].split())]
+            i += 1
+            while i < len(lines):
+                nxt = lines[i].strip()
+                if not nxt or nxt.startswith("*"):
+                    break
+                parts.append(" ".join(nxt.split()))
+                i += 1
+            # Aynı hata hem stdout hem stderr'de geliyor (log ikisinin
+            # birleşimi); mesaj kendini tekrar etmesin.
+            block = " ".join(parts)
+            if block not in blocks:
+                blocks.append(block)
+            continue
+        i += 1
+    if not blocks:
+        return ""
+    text = " | ".join(blocks)
+    if len(text) > CCX_ERROR_CHARS:
+        text = text[: CCX_ERROR_CHARS - 1].rstrip() + "…"
+    return text
+
+
 def _ccx_executable() -> str | None:
     env = os.environ.get("CCX_PATH")
     if env:
@@ -728,10 +775,10 @@ class CalculiXAdapter(SolverAdapter):
         except subprocess.TimeoutExpired as exc:
             raise SolverError("CalculiX zaman aşımı (600s).") from exc
 
-        log_path.write_text(
-            (proc.stdout or "") + "\n" + (proc.stderr or ""),
-            encoding="utf-8",
-        )
+        log_text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        log_path.write_text(log_text, encoding="utf-8")
+        ccx_error = _ccx_error_lines(log_text)
+        error_note = f" {ccx_error}" if ccx_error else ""
         handle = JobHandle(job_id=job_id, work_dir=work_dir, artifact=artifact)
         handle._exit_code = proc.returncode  # type: ignore[attr-defined]
         handle._log_path = log_path  # type: ignore[attr-defined]
@@ -742,7 +789,8 @@ class CalculiXAdapter(SolverAdapter):
             # veriyor ve .frd KISMİ artımlarla yine yazılıyor — .frd'nin
             # varlığı başarı göstergesi değil.
             raise SolverError(
-                f"CalculiX hata (exit={proc.returncode}).{_sta_note(summary)} Log: {log_path}"
+                f"CalculiX hata (exit={proc.returncode})."
+                f"{error_note}{_sta_note(summary)} Log: {log_path}"
             )
         # Savunma: exit=0 ama statik adım 1.0'a ulaşmamış. Ölçülen vakalarda
         # ccx bu durumda sıfır olmayan kod döndürdü; yine de yakınsamamış bir
@@ -754,7 +802,7 @@ class CalculiXAdapter(SolverAdapter):
         if is_static and summary is not None and summary["_solver_converged"] < 1.0:
             raise SolverError(
                 "CalculiX statik adımı tamamlamadı (exit=0)."
-                f"{_sta_note(summary)} Log: {log_path}"
+                f"{error_note}{_sta_note(summary)} Log: {log_path}"
             )
         return handle
 
