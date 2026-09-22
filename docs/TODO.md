@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-20): 653 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-22): 684 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -68,13 +68,51 @@ koşmaya gerek yok.**
 Arayüzde **"GNN eğit"** butonu var ve bir dosya üretiyor, ama yaptığı iş
 eğitim sayılmaz. Kullanıcıya çalışıyormuş izlenimi veriyor.
 
-### 1.1 Mesh bağlantısı yazılmıyor
-`calculix.py` → `write_inputs(path, X, None)`. Connectivity **daima
-None**; diskteki tüm `.train.npz` dosyalarında `connectivity.shape=(0,0)`.
-Graf koordinatlardan **k-NN (k=6)** ile kuruluyor — yani "MeshGraphNet"
-dediğimiz şey mesh grafı değil, nokta bulutu komşuluğu.
+### ~~1.1 Mesh bağlantısı yazılmıyor~~ — KAPANDI (2026-09-22)
+`calculix.py` → `write_inputs(path, X, None)` yüzünden connectivity **daima
+None**'dı; diskteki tüm `.train.npz` dosyalarında `shape=(0,0)`. Graf
+koordinatlardan k-NN (k=6) ile kuruluyordu — "MeshGraphNet" dediğimiz şey
+mesh grafı değil, nokta bulutu komşuluğuydu.
 
-Eleman bağlantısı `.inp` dosyasında zaten var, sadece geçirilmiyor.
+**Yazım (9658f13).** `_read_inp_elements` `.inp`'ten bağlantı + eleman tipi
+okur; `pad_connectivity` karışık tipleri tek diziye koyar (−1 dolgu); tipler
+`.inputs.npz` → `.train.npz` zincirinde taşınır. `ELEMENT_EDGES` tablosu
+(C3D4/C3D10/C3D8/S3/S4) ile **klik değil gerçek eleman kenarları**: C3D10'da
+klik 45 kenar üretip mesh'te komşu OLMAYAN karşılıklı kenar-ortası düğümleri
+bağlıyordu; doğrusu 12 kenar (köşe–orta–köşe). `GraphSample.edge_source` =
+`"mesh"` | `"knn"`, eski dosyalar dürüstçe ayrışır.
+
+Ölçüm (99_d3.msh, 8386 düğüm, 4007 C3D10):
+
+| graf | kenar |
+|---|---|
+| gerçek mesh | 13 848 |
+| klik (tipsiz) | 89 613 |
+| eski k-NN (k=6) | 27 917 |
+
+Eski grafın kenarlarının yalnız **%33.6'sı** mesh'te gerçekten vardı;
+gerçek kenarların **%67.8'i** grafta vardı. Model yapının gerçek
+bağlantısını hiç görmemiş.
+
+**Geriye doldurma (206015f).** Düzeltme yalnız yeni koşuları kapsıyordu.
+`app/dataset/connectivity_backfill.py` bağlantıyı mesh'ten yeniden
+ÇIKARMAZ, üretim yolunu (`rebuild_input_for_run` → `build_input`) çağırır.
+Güvenlik kilidi: mesh dosyaları `{stem}_d3.msh` adıyla ÜZERİNE yazıldığı
+için düğüm koordinatları birebir karşılaştırılır (tol 1e-3 mm), uymazsa
+dosyaya dokunulmaz.
+
+Dev veri sonucu: **1473 dosya yazıldı** (957 run), 34 run `mesh_uyusmuyor`,
+10 zaten doluydu. Eğitim dosyaları: **518 mesh grafı / 34 k-NN** (%94).
+Uyuşmayan 34'ün hepsi yakınsama taramaları (aynı geometri 7 kez yeniden
+mesh'lenmiş, diskte yalnız sonuncusu var) — kilit olmasaydı bu dosyalara
+YANLIŞ graf yazılacaktı ve hiçbir metrikte görünmezdi.
+
+Bütünlük: 552 eğitim dosyasında `node_outputs`'tan hesaplanan u_max, DB
+skaleriyle birebir tuttu (**uyuşmayan 0**). Testler: `test_mesh_graph.py`
+(20) + `test_connectivity_backfill.py` (11). 684 backend testi geçiyor.
+
+Yan düzeltme: `.env`'i yalnız `app.main` yüklüyordu; CLI/alembic gibi API
+dışı girişler sessizce varsayılan DB adresine düşüyordu (`app/db/session.py`).
 
 ### 1.2 Normalizasyon yok
 Ham kanallar aynı katmana giriyor:
