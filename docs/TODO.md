@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-23): 714 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-23): 723 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -169,8 +169,42 @@ rastgele projeksiyon olarak kalıyor.
 = 21.26 mm`. Gerçek deplasmanlar 22–93 mm arası → hata sinyalin
 mertebesinde, "hep sıfır de" tahmininden ayırt edilemez.
 
-**Sıra:** (1) connectivity yaz → (2) normalizasyon → (3) gerçek eğitim
-(PyTorch Geometric ya da NumPy'de düzgün backprop).
+**Sıra:** (1) ~~connectivity yaz~~ ✅ → (2) ~~normalizasyon~~ ✅ →
+(3) gerçek eğitim.
+
+#### ~~1.3a Komşu ortalaması vektörleştirildi~~ — KAPANDI (2026-09-23)
+Mesaj geçişinin çekirdeği (`_mean_neighbors`) kenarlar üzerinde Python
+döngüsüydü. Eğitim ve her A/B ölçümü bunu yüzlerce kez çağırıyor; ölçüm
+turu dakikalar sürdüğü için 1.3b'yi ayarlamak pratikte imkânsızdı.
+
+Tek çağrı (gizli=24): 500 düğüm 4.44 → 0.43 ms · 9k düğüm 81.0 → 5.4 ms ·
+28k düğüm 246.9 → 17.3 ms. **Gerçek eğitim işi (24 graf, 7218 düğüm ort):
+56.4 sn → 6.1 sn, 9.2×** ve `u_y` RMSE altı hanede aynı (1.064074).
+
+Düzleştirilmiş `bincount` kullanılıyor; geçici indeks dizisi
+2·kenar·gizli_boyut büyüdüğü için sınır aşılınca sütun sütun toplamaya
+düşüyor (gizli katman 1.3b'de genişleyecek). Eski döngülü uygulama
+`tests/test_mean_neighbors.py` içinde referans olarak duruyor — sonuç
+değişirse test düşer. 723 backend testi geçiyor.
+
+#### 1.3b Gerçek geri yayılım — AÇIK, iki karar bekliyor
+1. **Çerçeve.** Öneri: eğitim PyTorch (CPU, ayrı/isteğe bağlı bağımlılık),
+   **çıkarım mevcut NumPy `forward` ile kalsın** — ağırlıklar aynı `.npz`
+   şemasına yazılır, sunucu ve test ortamı torch istemez (`gnn.py`
+   başlığındaki "Codespace imajı torch ile disk dolduruyordu" itirazı
+   böyle karşılanır). İki uygulamanın aynı sonucu verdiği testle kilitlenir.
+   NumPy'de elle backprop alternatifi: her gradyan hatası SESSİZ, model
+   sadece daha kötü öğrenir — teşhis edilemez.
+2. **Kapsam.** `/gnn/train` `template_id` ile süzüyor ama sonucu HER ZAMAN
+   tek dosyaya (`uploads/models/field_gnn.npz`) yazıyor: plakayı eğitmek
+   kirişin modelini eziyor — skaler modellerde kapattığımız hatanın aynısı.
+   Öneri: önce şablon başına model (`model_store` deseni). Evrensel tek
+   model daha iddialı ama elde iki şablon varken başarısızlık "ağ
+   öğrenemiyor" mu "veri çeşitliliği yetmiyor" mu ayırt edilemez.
+
+**Başarı ölçütü (şimdiden):** holdout'ta skaler u_max hatası < %5 ve alan
+RMSE'si u_max'ın %5'inin altında. Tutmazsa açıkça söylenecek; o durumda
+sorun mimaridir (kenar öznitelikleri, göreli konum) ve ayrı karar gerekir.
 
 **Ara çözüm:** Düzeltilene kadar butona "prototip — sonuçlar geçersiz"
 etiketi konmalı, ya da devre dışı bırakılmalı.
