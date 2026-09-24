@@ -502,8 +502,31 @@ yeniden hesapla) — ayrı mikro-adım.
       (kiriş 281/281, plaka 219/219), 84 şablonsuz atlandı, 0 hata. Aynı
       geçişte 263 run'a eksik `_away` de yazıldı. Test:
       `test_backfill_near_peak.py` (2).
-- [ ] `max_von_mises_near_peak`'i hedef listesine (`TARGET_KEYS`) ekleyip
-      kıyas ölç
+- [x] `max_von_mises_near_peak` hedef listesinde (`TARGET_KEYS`, 4. hedef) —
+      YAPILDI (2026-09-24). Eksikse NaN, run düşmez; eski 3 hedefli model
+      dosyaları bundle'ın kendi `target_keys`'iyle okunmaya devam eder.
+      Test: `test_target_near_peak.py` (3).
+
+  **Kıyas (holdout, bellekte eğitildi — diskteki modeller değişmedi):**
+
+  | korpus | model | vm (ham) MAPE | vm_away MAPE | vm_near_peak MAPE |
+  |---|---|---|---|---|
+  | set kiris-v2 (200) | loglinear | 2.0% | **0.7%** | 2.4% |
+  | | hybrid | 1.9% | **0.6%** | 2.3% |
+  | set plaka-v1 (198) | loglinear | 2.2% | 2.2% | 7.6% |
+  | | hybrid | **1.3%** | **1.3%** | 7.8% |
+  | canlı kiriş (222) | hybrid | 2.1% | **0.6%** | 2.5% |
+  | canlı plaka (201) | hybrid | **1.8%** | **1.8%** | 7.8% |
+
+  RF her hedefte %11–17 (ayırt etmiyor). **Sonuç: `near_peak` hiçbir
+  korpusta en iyi değil.** Kirişte `_away`'in ~4 katı hata; plakada ham
+  değerin ~4–6 katı. Plakada delik kenarı TEKİLLİK DEĞİL (sonlu Kt) —
+  yakınsamış mesh'te ham tepe fiziksel olarak doğru ve düzgün tahmin
+  ediliyor; `near_peak` ise farklı bir büyüklüğü (tepeden 0.5×L uzakta)
+  ve tepe düğümün mesh'e bağlı konumu yüzünden daha gürültülü okuyor
+  (yukarıdaki yayılım ölçümü: %7.8 — tahmin hatasıyla aynı mertebe).
+  Hedef olarak duruyor (zararsız, NaN toleranslı) ama akma kontrolü
+  hâlâ `_away` → ham sırasını kullanıyor; değiştirilmedi.
 - [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) —
       gerçek yapılarda keskin köşe yok, tekilliğin asıl kaynağı bu
 

@@ -71,7 +71,14 @@ def feature_keys_for(template_id: str | None) -> tuple[str, ...]:
 #: köşedeki TEKİLLİKTEN okunuyor; ölçtük: gürültü tabanı %5.57 ve
 #: teoriden +%10 sapıyor. Maskeli ölçüm: %1.20 ve −%0.8. Ham değer
 #: geriye uyumluluk ve karşılaştırma için tutuluyor.
-TARGET_KEYS = ("max_displacement", "max_von_mises", "max_von_mises_away")
+#: `max_von_mises_near_peak` tepe noktadan 0.5×L uzakta (TODO 6b) — kısıt
+#: maskesinin etkisiz kaldığı şablonlarda (delikli plaka) da çalışır.
+TARGET_KEYS = (
+    "max_displacement",
+    "max_von_mises",
+    "max_von_mises_away",
+    "max_von_mises_near_peak",
+)
 
 
 def _cload_components(bcs: list[dict[str, Any]]) -> tuple[float, float, float]:
@@ -163,11 +170,16 @@ def targets_from_run(run: AnalysisRun) -> np.ndarray | None:
     # Maskeli gerilme yoksa NaN — run TAMAMEN düşmesin. Şablonsuz ya da
     # backfill öncesi run'larda bu skaler olmayabilir; eğitim tarafı
     # hedef bazında maskeliyor, diğer iki hedef yine kullanılır.
-    try:
-        away = float(scalars["max_von_mises_away"])
-    except (KeyError, TypeError, ValueError):
-        away = float("nan")
-    return np.asarray([disp, vm, away], dtype=np.float64)
+    def _optional(key: str) -> float:
+        try:
+            return float(scalars[key])
+        except (KeyError, TypeError, ValueError):
+            return float("nan")
+
+    return np.asarray(
+        [disp, vm, _optional("max_von_mises_away"), _optional("max_von_mises_near_peak")],
+        dtype=np.float64,
+    )
 
 
 def collect_scalar_table(
