@@ -256,6 +256,24 @@ describe("SurrogatePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Random Forest eğit" }));
     await waitFor(() => expect(trainScalarRf).toHaveBeenCalledWith(null, "rf"));
   });
+
+  it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null,
+      scalar_loglinear: null,
+      scalar_hybrid: null,
+      templates: {},
+      field_gnn: {
+        n_samples: 88,
+        metrics: { holdout: { scalar_rmse: { max_displacement: 1.791 } }, engine: "torch" },
+      },
+    });
+    render(<SurrogatePanel geometryId={1} runId={4} />);
+    expect(await screen.findByRole("button", { name: "GNN eğit (prototip)" })).toBeInTheDocument();
+    const note = screen.getByTestId("gnn-prototype-note");
+    expect(note).toHaveTextContent(/prototip — sonuçlar geçersiz/);
+    await waitFor(() => expect(note).toHaveTextContent(/holdout u_max RMSE: 1\.79/));
+  });
 });
 
 const PLATE = {

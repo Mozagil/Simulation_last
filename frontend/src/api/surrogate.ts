@@ -66,6 +66,12 @@ export interface SurrogateStatus {
       node_rmse?: Record<string, number>;
       scalar_rmse?: Record<string, number>;
       rmse_by_element_size?: Record<string, number>;
+      /** Az örnekte holdout ayrılmaz → null ("yok" ≠ "sıfır"). */
+      holdout?: {
+        node_rmse?: Record<string, number>;
+        scalar_rmse?: Record<string, number>;
+      } | null;
+      engine?: string;
     };
   } | null;
 }

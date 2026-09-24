@@ -187,27 +187,48 @@ düşüyor (gizli katman 1.3b'de genişleyecek). Eski döngülü uygulama
 `tests/test_mean_neighbors.py` içinde referans olarak duruyor — sonuç
 değişirse test düşer. 723 backend testi geçiyor.
 
-#### 1.3b Gerçek geri yayılım — AÇIK, iki karar bekliyor
-1. **Çerçeve.** Öneri: eğitim PyTorch (CPU, ayrı/isteğe bağlı bağımlılık),
-   **çıkarım mevcut NumPy `forward` ile kalsın** — ağırlıklar aynı `.npz`
-   şemasına yazılır, sunucu ve test ortamı torch istemez (`gnn.py`
-   başlığındaki "Codespace imajı torch ile disk dolduruyordu" itirazı
-   böyle karşılanır). İki uygulamanın aynı sonucu verdiği testle kilitlenir.
-   NumPy'de elle backprop alternatifi: her gradyan hatası SESSİZ, model
-   sadece daha kötü öğrenir — teşhis edilemez.
-2. **Kapsam.** `/gnn/train` `template_id` ile süzüyor ama sonucu HER ZAMAN
-   tek dosyaya (`uploads/models/field_gnn.npz`) yazıyor: plakayı eğitmek
-   kirişin modelini eziyor — skaler modellerde kapattığımız hatanın aynısı.
-   Öneri: önce şablon başına model (`model_store` deseni). Evrensel tek
-   model daha iddialı ama elde iki şablon varken başarısızlık "ağ
-   öğrenemiyor" mu "veri çeşitliliği yetmiyor" mu ayırt edilemez.
+#### 1.3b Gerçek geri yayılım — KOD YAPILDI (2026-09-24), BAŞARI ÖLÇÜTÜ TUTMADI
+**Çerçeve kararı uygulandı (`9935b8a`):** eğitim PyTorch (`app/ml/gnn_torch.py`,
+`requirements-ml.txt`, isteğe bağlı), çıkarım NumPy `forward`'da kaldı.
+Ağırlıklar aynı `.npz` şemasında; iki uygulamanın eşitliği testle kilitli
+(bağıl 1e-12). torch venv'i 563 MB → 1.2 GB yapıyor — sunucu/CI kurmuyor.
+Adam, graf başına mini-batch, erken durdurma, en iyi turun ağırlıkları.
+`metrics["engine"]` hangi motorun koştuğunu söyler ("numpy" eğitim değildir).
+Testler: `tests/test_gnn_torch.py` (16).
 
-**Başarı ölçütü (şimdiden):** holdout'ta skaler u_max hatası < %5 ve alan
-RMSE'si u_max'ın %5'inin altında. Tutmazsa açıkça söylenecek; o durumda
-sorun mimaridir (kenar öznitelikleri, göreli konum) ve ayrı karar gerekir.
+**Ölçülen** (study 3, 88 graf, 70 eğitim / 18 holdout — holdout):
 
-**Ara çözüm:** Düzeltilene kadar butona "prototip — sonuçlar geçersiz"
-etiketi konmalı, ya da devre dışı bırakılmalı.
+| | taban | numpy | torch |
+|---|---|---|---|
+| u_y RMSE (mm) | 1.331 | 0.965 | 0.862 |
+| von Mises RMSE (MPa) | 16.84 | 15.08 | 14.77 |
+| u_max RMSE (mm) | 1.919 | 3.022 | 1.791 |
+| vm_max RMSE (MPa) | 41.89 | 28.26 | 32.18 |
+
+Kayıp 0.769 → 0.476, encoder artık güncelleniyor, erken durdurma 9. turda.
+
+**Başarı ölçütü:** holdout'ta skaler u_max hatası < %5 ve alan RMSE'si
+u_max'ın %5'inin altında. **TUTMADI:** u_max RMSE 1.79 mm, eşik 0.121 mm —
+~15 kat uzak, taban çizgisinin (1.92) ancak biraz altında.
+
+**Şüphe (ölçülmedi):** 2 mesaj geçişi adımı ~7000 düğümlü kirişte ankastre
+ucun bilgisini serbest uca taşıyamıyor; deplasman global bir büyüklük.
+`hidden`/`n_proc` taraması başlamadı. → **Mimari kararı gerekiyor (1.3c).**
+
+**Ara çözüm — YAPILDI (2026-09-24):** panelde buton "GNN eğit (prototip)",
+altında "GNN alan modeli prototip — sonuçlar geçersiz" notu ve son eğitimin
+holdout u_max RMSE'si (`metrics.holdout`) gösteriliyor. Buton devre dışı
+BIRAKILMADI — ölçüm turları için eğitim hâlâ gerekli.
+
+**Hâlâ açık — kapsam:** `/gnn/train` `template_id` ile süzüyor ama sonucu
+HER ZAMAN tek dosyaya (`uploads/models/field_gnn.npz`) yazıyor: plakayı
+eğitmek kirişin modelini eziyor. Öneri: şablon başına model (`model_store`
+deseni). 1.3c ölçümlerinden önce yapılmalı, yoksa kıyaslar karışır.
+
+#### 1.3c GNN mimarisi — AÇIK, karar bekliyor
+Seçenekler: (a) `n_proc`/`hidden` taraması (kod değişmez, yalnız ölçüm);
+(b) kenar öznitelikleri / göreli konum; (c) global bağlam (graf düzeyi
+havuzlama → her düğüme geri yayın); (d) çok ölçekli (kaba graf) mesaj geçişi.
 
 ---
 
@@ -577,7 +598,7 @@ kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
 4. ~~**2.1** — korpusa göre arşiv~~ ✅ kapandı
 5. ~~**8.1** — /solve region~~ ✅ kapandı
 6. ~~**8.3** — `doe_study_id` geriye dönük~~ ✅ kapandı
-7. **1** — GNN (en büyük iş, kontur tahmini için zorunlu)
+7. **1** — GNN (en büyük iş, kontur tahmini için zorunlu) — 1.1, 1.2, 1.3a, 1.3b kodu ✅; ölçüt tutmadı → 1.3c mimari kararı
 8. **4** — NLGEOM arayüz + veri seti
 9. **6, 7, 8.2** — iyileştirmeler
 10. **5 (devam)** — kalan 10 şablon için DOE + eğitim

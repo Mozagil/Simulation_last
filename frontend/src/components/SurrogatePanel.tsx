@@ -361,6 +361,7 @@ export default function SurrogatePanel({
   };
   const active = byKind[scalarModel];
   const gnn = status?.field_gnn;
+  const gnnHoldoutUmax = gnn?.metrics?.holdout?.scalar_rmse?.max_displacement;
   const canRunPredict = geometryId != null || runId != null;
   // Tahmin, SEÇİLİ türün o şablonda eğitilmiş olmasını ister — başka türe
   // sessizce düşmek kullanıcıyı yanıltırdı.
@@ -650,7 +651,7 @@ export default function SurrogatePanel({
           disabled={busy !== null}
           onClick={() => void handleTrainGnn()}
         >
-          {busy === "gnn" ? "Eğitiliyor…" : "GNN eğit"}
+          {busy === "gnn" ? "Eğitiliyor…" : "GNN eğit (prototip)"}
         </button>
         <button
           type="button"
@@ -660,6 +661,16 @@ export default function SurrogatePanel({
         >
           {busy === "pred" ? "Tahmin…" : "Açık run tahmini"}
         </button>
+      </div>
+
+      {/* TODO 1.3b: başarı ölçütü (holdout u_max hatası < %5) tutmadı. */}
+      <div className="predict-warning" role="note" data-testid="gnn-prototype-note">
+        <strong>GNN alan modeli prototip — sonuçlar geçersiz</strong>
+        <span className="predict-warning-note">
+          Başarı ölçütü (holdout u_max hatası &lt; %5) karşılanmadı. Açık run
+          tahmini GNN varken kontur olarak onun çıktısını gösterir.
+          {gnnHoldoutUmax != null && ` Son eğitim holdout u_max RMSE: ${fmtNum(gnnHoldoutUmax)} mm.`}
+        </span>
       </div>
 
       {pred && (
