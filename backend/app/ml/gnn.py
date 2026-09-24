@@ -22,6 +22,7 @@ from app.dataset.training_data import (
     channel_group_indices,
 )
 from app.ml.graph_data import GraphSample
+from app.ml.gnn_torch import DEFAULT_PATIENCE, torch_available, train_torch_gnn
 from app.ml.normalization import ChannelScaler
 from app.ml.ood import bounds_from_matrix
 
@@ -260,16 +261,58 @@ def _field_rmse(
     }
 
 
+#: Bu sayıdan az doğrulama grafı anlamlı bir holdout metriği vermez —
+#: skaler modellerdeki `MIN_HOLDOUT_SAMPLES` ile aynı gerekçe: az örnekle
+#: hesaplanan "test hatası" güven verir ama ölçmez.
+MIN_HOLDOUT_GRAPHS = 4
+DEFAULT_HOLDOUT_FRACTION = 0.2
+
+
+def split_holdout(
+    samples: list[GraphSample], fraction: float, seed: int
+) -> tuple[list[GraphSample], list[GraphSample]]:
+    """(eğitim, holdout). Yeterli örnek yoksa holdout BOŞ döner.
+
+    Örnek sayısı azken holdout ayırmak iki kötülüğü birden yapar: eğitimi
+    zayıflatır ve ölçemediği bir sayıyı "test hatası" diye sunar.
+    """
+    n_holdout = int(round(len(samples) * fraction))
+    if n_holdout < MIN_HOLDOUT_GRAPHS or len(samples) - n_holdout < MIN_HOLDOUT_GRAPHS:
+        return list(samples), []
+    order = np.random.default_rng(seed).permutation(len(samples))
+    idx = [int(i) for i in order]
+    holdout = [samples[i] for i in idx[:n_holdout]]
+    train = [samples[i] for i in idx[n_holdout:]]
+    return train, holdout
+
+
 def train_gnn(
     samples: list[GraphSample],
     *,
     seed: int = 2026,
     hidden: int = 24,
+    n_proc: int = 2,
     sgd_steps: int = 6,
+    engine: str = "auto",
+    epochs: int = 200,
+    lr: float = 1e-3,
+    patience: int = DEFAULT_PATIENCE,
+    holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
 ) -> dict[str, Any]:
+    """`engine`: "torch" (gerçek geri yayılım) | "numpy" (eski, en küçük
+    kareler + kaba gradyan) | "auto" (torch varsa torch).
+
+    Hangi motorun kullanıldığı `metrics["engine"]` ile raporlanır: "numpy"
+    çıktısı bir EĞİTİM DEĞİLDİR, encoder donuk kalır.
+    """
     if len(samples) < 2:
         raise ValueError("GNN için en az 2 graf örnek gerekir.")
     in_dim = samples[0].node_inputs.shape[1]
+
+    if engine not in ("auto", "torch", "numpy"):
+        raise ValueError(f"Bilinmeyen engine={engine!r} (auto|torch|numpy).")
+    if engine == "auto":
+        engine = "torch" if torch_available() else "numpy"
 
     # Ölçek EĞİTİM setinden çıkarılır; eğitim tamamen normalize uzayda
     # yapılır, dışarıya fiziksel birim döner (bkz. `predict_physical`).
@@ -281,11 +324,23 @@ def train_gnn(
         (s.node_outputs for s in samples if s.node_outputs is not None),
         channel_group_indices(NODE_OUTPUT_CHANNELS, NODE_OUTPUT_GROUPS),
     )
-    scaled = normalized_samples(samples, x_scaler, y_scaler)
+    train_samples, holdout_samples = split_holdout(samples, holdout_fraction, seed)
+    scaled = normalized_samples(train_samples, x_scaler, y_scaler)
+    scaled_holdout = normalized_samples(holdout_samples, x_scaler, y_scaler)
 
-    model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=2, out_dim=len(NODE_OUTPUT_CHANNELS), seed=seed)
-    model.fit_output_ls(scaled)
-    model.sgd_process(scaled, steps=sgd_steps, lr=1e-4)
+    out_dim = len(NODE_OUTPUT_CHANNELS)
+    history: dict[str, Any] | None = None
+    if engine == "torch":
+        weights, hist = train_torch_gnn(
+            scaled, scaled_holdout, hidden=hidden, n_proc=n_proc, out_dim=out_dim,
+            seed=seed, epochs=epochs, lr=lr, patience=patience,
+        )
+        model = NumpyMeshGNN.from_npz(weights)
+        history = hist.as_public()
+    else:
+        model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=n_proc, out_dim=out_dim, seed=seed)
+        model.fit_output_ls(scaled)
+        model.sgd_process(scaled, steps=sgd_steps, lr=1e-4)
     globals_ = []
     for s in samples:
         # OOD için global özet: bbox + ortalama yük/E (kanal 7-12)
@@ -299,7 +354,19 @@ def train_gnn(
         )
         globals_.append(g)
     G = np.vstack(globals_)
-    metrics = _field_rmse(samples, model, x_scaler, y_scaler)
+    # Ana metrikler EĞİTİM kümesinde (eski davranış, biçim korunuyor);
+    # holdout ayrı alanda — yoksa None, "yok" ile "sıfır" karışmasın.
+    metrics = _field_rmse(train_samples, model, x_scaler, y_scaler)
+    metrics["engine"] = engine
+    metrics["history"] = history
+    metrics["holdout"] = (
+        _field_rmse(holdout_samples, model, x_scaler, y_scaler)
+        if holdout_samples
+        else None
+    )
+    metrics["architecture"] = {"hidden": hidden, "n_proc": n_proc}
+    metrics["n_train"] = len(train_samples)
+    metrics["n_holdout"] = len(holdout_samples)
     return {
         "kind": "field_gnn",
         "model": model,

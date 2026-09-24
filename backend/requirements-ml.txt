@@ -1,0 +1,9 @@
+# GNN alan modelinin EĞİTİMİ için — isteğe bağlı.
+#
+# Sunucu ve test ortamı bunu KURMAZ: eğitilmiş ağırlıklar `.npz` şemasına
+# yazılır, çıkarım `app/ml/gnn.py` içindeki NumPy `forward` ile yapılır.
+# Gerekçe `gnn.py` başlığında: torch, Codespace imajında diski dolduruyordu.
+#
+# Kurulum (yalnız eğitim yapılan makinede):
+#   pip install -r requirements-ml.txt --index-url https://download.pytorch.org/whl/cpu
+torch==2.12.1+cpu
