@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-23): 723 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-24): 758 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -391,9 +391,63 @@ Ham `max_von_mises` tekil noktalardan okunuyor. Kısmi çözüm olarak
 %1.20, teoriden +%10 → −%0.8, `thickness` üsteli −1.919 → −2.011
 (teori −2).
 
-Roadmap'te planlanan daha doğru yöntem henüz yapılmadı:
-- [ ] Yüzeyde 0.4t ve 1.0t mesafelerinden okuyup yüzeye ekstrapolasyon
-- [ ] `scalars`'a hem tepe hem hot-spot değeri
+### Ekstrapolasyon YAPILDI ve ÖLÇÜMLE ELENDİ (2026-09-24)
+
+`app/postprocess/stress_probe.py` → `hot_spot_stress`: [0.4t, 1.0t]
+penceresi bitişik dilimlere bölünür, her dilimde yüzey zarfı için maksimum
+alınır, noktalara en küçük karelerle doğru geçirilip d=0'a uzatılır.
+Mesafe varsayılan olarak TEPE düğümden ölçülür (`origin="peak"`).
+
+Yazarken çıkan üç düzeltme:
+1. Klasik iki noktalı IIW formülü (σ_hs = 1.67σ₁ − 0.67σ₂) tek nokta
+   gürültüsünü ~1.8 katına çıkarıyor → pencere çok dilimden örneklenip
+   regresyonla geçiliyor.
+2. İlk tasarımda sabit yarı genişlikli bantlar ÖRTÜŞÜYORDU; aynı düğüm
+   birkaç okuma noktası olarak sayılıyordu → bitişik dilimler.
+3. Mesafeyi kısıttan ölçmek yanlış: **delikli plakada yığılma delikte,
+   kısıt uzakta**. IIW'de de mesafeler hot-spot'un kendisinden ölçülür.
+
+**Ölçüm — aynı geometrinin farklı mesh'leri, yayılma % (düşük = iyi):**
+
+| yöntem | tüm mesh'ler | yakınsamış mesh'ler |
+|---|---|---|
+| ham tepe (`max_von_mises`) | %10.5 | %3.9 |
+| **kaçınma (`max_von_mises_away`)** | **%7.8** | **%1.9** |
+| hot-spot ekstrapolasyon | %65.1 | %38.0 |
+| nokta yöntemi (tepeden 0.5t) | %13.7 | %7.8 |
+| çizgi yöntemi (tepeden 0–1t ort.) | %13.8 | %10.6 |
+| %99.5 yüzdelik | %20.8 | %10.2 |
+
+**Ekstrapolasyon açık ara en kötüsü.** Sebep ölçüldü, tahmin değil:
+`fit_r2` 0.00–0.68 arasında — pencerede gerilme mesafeye göre doğrusal
+DEĞİL. Fizik basit: 500 mm'lik kirişte kökten 4–10 mm uzaklıkta gerilme
+yalnız ~%1 değişiyor, mesh gürültüsü ise ±%5. Eğim gürültüden ibaret
+olunca d=0'a uzatmak onu büyütüyor. Yöntem kaynak dikişi/çentik gibi
+pencerede DİK ve düzenli gradyan olan vakalar için tasarlanmış; bizim
+tekilliğimiz ankastre köşe artefaktı.
+
+İkinci sebep: mesafe 3B Öklid, yani bir dilim tepe noktanın çevresindeki
+KÜRESEL kabuk — IIW'deki gibi yüzey boyunca tek bir yol izlenmiyor.
+
+**İki gerçek bulgu:**
+- `max_von_mises_away` PLAKADA HİÇ İŞE YARAMIYOR: yayılması ham tepeyle
+  birebir aynı (%11.4/%11.4), çünkü maske kısıta göre kurulu ama yığılma
+  delikte. Kiriş dışındaki şablonlarda bu hedef bir şey düzeltmiyor.
+- Yakınsamış mesh'lerde ham tepe zaten yalnız %3.9 oynuyor. Asıl kaldıraç
+  farklı bir gerilme ölçütü değil, **mesh inceliği** (yakınsama paneli
+  madde 3'te kapandı).
+
+Kod duruyor (19 test, `fit_r2` ve `increasing_away` teşhisleriyle) ama
+`scalars`'a EKLENMEDİ ve eğitim hedefi yapılmadı: %38 gürültülü bir sayıyı
+hedef listesine koymak yanıltıcı olurdu.
+
+**KARAR SENDE:** (a) olduğu gibi bırak — `max_von_mises_away` kirişte iyi,
+plakada işe yaramıyor; (b) maskeyi kısıt yerine TEPE düğüme göre kur, o
+zaman plakada da çalışır (nokta yöntemi, yakınsamış mesh'te %7.8);
+(c) gerilme hedefini yalnız yakınsamış mesh'lerle eğit.
+
+### Kalan
+- [ ] `scalars`'a hem tepe hem seçilecek dayanıklı değer
 - [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) —
       gerçek yapılarda keskin köşe yok, tekilliğin asıl kaynağı bu
 

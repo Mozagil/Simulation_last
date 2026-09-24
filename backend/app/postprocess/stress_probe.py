@@ -126,6 +126,162 @@ def stress_away_from_constraint(
     }
 
 
+#: IIW yüzey ekstrapolasyonu: kalınlığın 0.4 ve 1.0 katı mesafelerden
+#: okunup tekilliğin bulunduğu noktaya doğrusal uzatılır.
+DEFAULT_HOTSPOT_RATIOS = (0.4, 1.0)
+
+#: Pencere kaç BİTİŞİK dilime bölünüp örneklenecek. 2 ≈ klasik IIW iki
+#: noktalı okuması. ÖLÇÜLDÜ: iki nokta gürültüyü BÜYÜTÜYOR — uzatma
+#: σ_hs = 1.67σ₁ − 0.67σ₂ olduğundan tek nokta gürültüsü ~1.8 katına
+#: çıkıyor, üstelik her dilimde maksimum alındığı için yukarı yanlı.
+#: Pencereyi daha çok dilimden örnekleyip en küçük karelerle doğru
+#: geçirmek aynı fiziği kullanır, gürültüyü ortalar.
+#:
+#: Dilimler BİTİŞİKTİR, üst üste binmez: sabit yarı genişlikli bantlar
+#: kullanıldığında (ilk deneme) bantlar örtüşüyor ve aynı düğüm birkaç
+#: okuma noktası olarak sayılıyordu.
+DEFAULT_HOTSPOT_BINS = 6
+
+
+def hot_spot_stress(
+    node_inputs: np.ndarray,
+    node_outputs: np.ndarray,
+    thickness_mm: float,
+    ratios: tuple[float, float] = DEFAULT_HOTSPOT_RATIOS,
+    n_bins: int = DEFAULT_HOTSPOT_BINS,
+    origin: str = "peak",
+) -> dict[str, Any]:
+    """Tekilliğe doğrusal ekstrapolasyonla hot-spot gerilmesi.
+
+    `max_von_mises_away` tekillikten KAÇIYOR: gürültüyü kesiyor ama gerçek
+    tepe değerin altında kalıyor (1×T'de teorik bedel %2). Hot-spot yöntemi
+    bunun yerine [0.4t, 1.0t] penceresinden okuyup tekilliğin olduğu noktaya
+    UZATIR — hem mesh gürültüsünden uzak kalır hem kaçınmanın getirdiği
+    sistematik düşüklüğü geri kazanır. Pencere IIW yüzey ekstrapolasyonundan:
+    içeride alan doğrusaldır, dışarısı tekilliğe girer.
+
+    Pencere `n_bins` BİTİŞİK dilime bölünür; her dilimde yüzey zarfını
+    yakalamak için MAKSİMUM alınır, sonra bu noktalara en küçük karelerle
+    doğru geçirilip d=0'da değerlendirilir. `n_bins=2` klasik iki noktalı
+    IIW okumasına karşılık gelir ama gürültüyü ~1.8 katına çıkarır
+    (ölçüldü) — varsayılan daha fazladır.
+
+    Nominal mesafe değil, okunan düğümün GERÇEK mesafesi kullanılır: mesh
+    düğümleri nominal noktaya oturmaz, nominal kabul sistematik hata katar.
+
+    `origin`: mesafe nereden ölçülür.
+      * "peak" (varsayılan) — en yüksek gerilmeli düğüm. IIW'de mesafeler
+        hot-spot'un KENDİSİNDEN ölçülür ve yığılma her zaman kısıtta
+        değildir: delikli plakada tekillik deliğin kenarında, kısıt
+        uzakta. Kısıttan ölçmek o şablonda anlamsız bir yöne uzatır
+        (ölçüldü: `fit_r2` 0.01–0.05'e düşüyor).
+      * "constraint" — en yakın kısıtlı düğüm. Ankastre kök gibi
+        tekilliğin kısıttan doğduğu vakalarda ikisi çakışır.
+
+    SINIR: bin içindeki maksimum düğüm iki bin'de farklı yüzeylerde olabilir
+    (tek bir yüzey yolu izlenmiyor). Kesitte tek bir yığılma olan şablonlarda
+    geçerli; çok bölgeli yığılmalarda okuma noktaları eşleşmeyebilir.
+
+    SINIR 2: yöntem, pencere içinde gerilmenin mesafeye göre DOĞRUSAL ve
+    belirgin eğimli olmasını varsayar (kaynak dikişi, çentik). Uzun bir
+    kirişte kökten 0.4–1.0×T uzaklıkta gerilme yalnız ~%1 değişir; eğim
+    mesh gürültüsünün altında kalır ve uzatma gürültüyü büyütür. `fit_r2`
+    bunu görünür kılar — düşükse sayıya güvenilmez.
+    """
+    t = float(thickness_mm)
+    if not np.isfinite(t) or t <= 0:
+        return {"hot_spot_mpa": None, "points": [], "warning": "Geçersiz kalınlık."}
+    if int(n_bins) < 2:
+        return {"hot_spot_mpa": None, "points": [], "warning": "En az 2 okuma noktası gerekir."}
+
+    vm = node_outputs[:, _OUT["von_mises_mpa"]].astype(np.float64)
+    if origin == "peak":
+        if vm.size == 0:
+            return {"hot_spot_mpa": None, "points": [], "warning": "Düğüm yok."}
+        xyz = node_inputs[:, [_IDX["x"], _IDX["y"], _IDX["z"]]].astype(np.float64)
+        tepe = int(np.argmax(vm))
+        dist = np.linalg.norm(xyz - xyz[tepe], axis=1)
+    elif origin == "constraint":
+        dist = distance_to_constraint(node_inputs)
+    else:
+        return {
+            "hot_spot_mpa": None,
+            "points": [],
+            "warning": f"Bilinmeyen origin={origin!r} (peak|constraint).",
+        }
+    if not np.isfinite(dist).any():
+        return {
+            "hot_spot_mpa": None,
+            "points": [],
+            "thickness_mm": t,
+            "warning": "Kısıtlı düğüm yok — mesafe tanımsız.",
+        }
+
+    lo, hi = float(ratios[0]) * t, float(ratios[1]) * t
+    kenarlar = np.linspace(lo, hi, int(n_bins) + 1)
+    points: list[dict[str, Any]] = []
+    for i in range(int(n_bins)):
+        alt, ust = kenarlar[i], kenarlar[i + 1]
+        # Son dilim üst sınırı da kapsar; aksi hâlde tam 1.0t'deki düğüm düşer.
+        dilim = (dist >= alt) & (dist <= ust if i == int(n_bins) - 1 else dist < ust)
+        if not dilim.any():
+            continue
+        idx = int(np.argmax(np.where(dilim, vm, -np.inf)))
+        points.append(
+            {
+                "bin": i,
+                "range_mm": (float(alt), float(ust)),
+                "distance_mm": float(dist[idx]),
+                "sigma_mpa": float(vm[idx]),
+                "n_nodes": int(dilim.sum()),
+            }
+        )
+
+    if len(points) < 2:
+        return {
+            "hot_spot_mpa": None,
+            "points": points,
+            "thickness_mm": t,
+            "warning": (
+                f"Pencerede ({ratios[0]:g}–{ratios[1]:g})×t = "
+                f"{lo:.4g}–{hi:.4g} mm yalnız {len(points)} dilim doldu. "
+                f"Mesh bu kalınlık için çok kaba."
+            ),
+        }
+
+    d = np.array([p["distance_mm"] for p in points])
+    s = np.array([p["sigma_mpa"] for p in points])
+    if float(np.ptp(d)) < 1e-9:
+        return {
+            "hot_spot_mpa": None,
+            "points": points,
+            "thickness_mm": t,
+            "warning": "Okuma noktaları aynı mesafede — uzatma tanımsız.",
+        }
+
+    slope, intercept = np.polyfit(d, s, 1)
+    tahmin = slope * d + intercept
+    ss_res = float(((s - tahmin) ** 2).sum())
+    ss_tot = float(((s - s.mean()) ** 2).sum())
+
+    return {
+        "hot_spot_mpa": float(intercept),
+        "points": points,
+        "thickness_mm": t,
+        "origin": origin,
+        "window_mm": (lo, hi),
+        "n_bins_used": len(points),
+        "slope_mpa_per_mm": float(slope),
+        # Pencere içinde alan doğrusal olmalı. r² düşükse yöntemin
+        # varsayımı tutmuyor demektir; sayı yine döner ama güvenilmez.
+        "fit_r2": float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0,
+        # Gerilme uzaklaştıkça ARTIYORSA tepe nokta kısıtta değildir;
+        # uzatma o durumda tepe değeri değil, daha düşük bir sayı verir.
+        "increasing_away": bool(slope > 0),
+        "max_von_mises_all": float(vm.max()) if vm.size else None,
+    }
+
+
 def recompute_from_sample(
     train_npz: Path,
     characteristic_length: float,
