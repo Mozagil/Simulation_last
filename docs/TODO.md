@@ -354,7 +354,26 @@ Eksikler:
       kısalma da yakalanıyor (lineer çözüm bunu hiç göremez). 20 artım,
       yakınsadı, cutback yok. Regresyon: `test_nlgeom.py::
       test_nlgeom_buyuk_sehim_kesin_cozumle_tutar` (gerçek ccx, ~85 s).
-- [ ] NLGEOM veri seti yok (u/L 0.10–0.30 bandı için ayrı DOE + ayrı model)
+- [x] **NLGEOM DOE tanımı — HAZIR (2026-09-25), henüz KOŞULMADI.**
+      `docs/doe/nlgeom_kiris_v1.json`: kiriş, 6061-T6 (id 4), 150 örnek,
+      L 900–1200 · T 4–6.5 · W 25–50 · Fy −100…−2 N, es/T 0.7–1.0,
+      NLGEOM 20 artım. Ön eleme lineer u/L 0.10–0.34 ⇔ α = FL²/EI 0.3–1.0,
+      akma %80. Kuru örnekleme: **150/150** geçti, α 0.30–1.02 düzgün
+      dağılmış (7 kovada 15–30), σ 44–219 MPa, es/T ≤ 1.0.
+      Kod: `DoeSpec.nlgeom` / `n_increments` / `screen_min_u_over_l`
+      (varsayılan 0 → lineer DOE'ler değişmez), runner çözücüye iletir.
+      Test: `test_doe_nlgeom.py` (5).
+      Koşu (Codespace önerilir — yerelde ccx büyük mesh'te ~18 GB'a çıktı;
+      örnek başı ~1–2 dk, toplam ~4–5 sa):
+      `POST /doe/studies` gövde = JSON dosyası → `POST /doe/studies/{id}/run`.
+- [ ] **KORPUS NLGEOM'U HENÜZ KABUL ETMİYOR — eğitimden ÖNCE düzeltilmeli.**
+      `CorpusSpec(nlgeom=True)` kinematiği ayırıyor ama iki lineer kapı
+      yine uygulanıyor: (1) `large_displacement` u/L > 0.10'u atar — bu
+      setin TAMAMI 0.10 üstü; (2) `require_analytic_ok` lineer analitikten
+      sapan (`analytic_warn`) run'ları atar — NLGEOM tanım gereği ~%10
+      sapar. Öneri: nlgeom korpusunda u/L kapısı bandın üstüne (≈0.5),
+      analitik kapısı kapalı ya da büyük sehim referansına (B–D) bağlı.
+- [ ] NLGEOM ayrı model: eğitim + kıyas (korpus düzeltmesinden sonra)
 
 **Doğrulama vakası** (hesaplandı): çelikte akmadan büyük deformasyona
 ulaşmak için L/T ≈ 168 gerekiyor — çok narin. Alüminyum pratik:

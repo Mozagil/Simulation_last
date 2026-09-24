@@ -94,6 +94,7 @@ def screen_sample(
     yield_strength_pa: float | None,
     max_u_over_l: float = DEFAULT_MAX_U_OVER_L,
     yield_utilisation: float = DEFAULT_YIELD_UTILISATION,
+    min_u_over_l: float = 0.0,
 ) -> ScreenResult:
     """Analitik çözümle örneğin lineer-elastik bölgede olup olmadığına bakar.
 
@@ -136,6 +137,15 @@ def screen_sample(
         return ScreenResult(
             False,
             reason=f"büyük deformasyon: u/L={u_over_l:.3f} > {max_u_over_l}",
+            u_over_l=u_over_l,
+            sigma_mpa=sigma,
+            u_mm=u,
+        )
+
+    if min_u_over_l > 0 and u_over_l is not None and u_over_l < min_u_over_l:
+        return ScreenResult(
+            False,
+            reason=f"küçük deformasyon: u/L={u_over_l:.3f} < {min_u_over_l}",
             u_over_l=u_over_l,
             sigma_mpa=sigma,
             u_mm=u,

@@ -103,6 +103,8 @@ def _execute_sample(db: Session, spec: DoeSpec, sample: DoeSample, case: DoeCase
         element_size=sample.element_size,
         element_scheme=spec.element_scheme,
         analysis_type=spec.analysis_type,
+        nlgeom=spec.nlgeom,
+        n_increments=spec.n_increments,
         bcs=[SolveBC.model_validate(bc) for bc in bound],
     )
     result = solve_geometry(geo.id, body, _NoopBackground(), db)  # type: ignore[arg-type]
