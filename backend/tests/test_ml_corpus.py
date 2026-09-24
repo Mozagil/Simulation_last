@@ -90,7 +90,7 @@ def test_corpus_keeps_one_family_one_material_linear_mesh(db_session):
     _run(db_session, E=69e9, disp=22.0)
     _run(db_session, warned=True, disp=19.0)
     _run(db_session, disp=90.0)  # u/L = 0.18
-    _run(db_session, element_size=40.0, disp=19.0)
+    _run(db_session, element_size=40.0, disp=19.0)   # es/t = 4.0 → yakınsamamış
     _run(db_session, analysis_type="modal", disp=19.0)
 
     corpus = select_training_runs(db_session)
@@ -102,7 +102,7 @@ def test_corpus_keeps_one_family_one_material_linear_mesh(db_session):
     assert corpus.dropped["other_material"] == 2
     assert corpus.dropped["analytic_warn"] == 1
     assert corpus.dropped["large_displacement"] == 1
-    assert corpus.dropped["mesh_outlier"] == 1
+    assert corpus.dropped["mesh_too_coarse"] == 1
     assert corpus.dropped["wrong_analysis"] == 1
 
     X, y, ids = collect_scalar_table(db_session, run_ids=corpus.run_ids)
@@ -290,3 +290,53 @@ def test_kiriste_mesh_orani_degismedi(db_session):
     r = _run(db_session, thickness=10.0, element_size=8.0)
     geo = db_session.get(Geometry, r.geometry_id)
     assert _mesh_ratio(r, geo) == pytest.approx(0.8)
+
+
+# --- yakınsama kapısı (TODO 6) -------------------------------------------------
+
+
+def test_kaba_mesh_elenir_hepsi_kabaysa_da(db_session):
+    """`mesh_ratio_band` bir TUTARLILIK bandı: korpusun tamamı kabaysa
+    hepsini geçirir. ÖLÇÜLDÜ: es/t 0.8'den 1.0'a çıkınca gerilme yayılımı
+    %3.45'ten %9.53'e fırlıyor — yakınsamamış koşu hedefin kendisini
+    oynatıyor."""
+    for i in range(8):
+        _run(db_session, element_size=25.0, disp=18.0 + i)   # es/t = 2.5
+
+    corpus = select_training_runs(db_session)
+
+    assert corpus.n_kept == 0
+    assert corpus.dropped["mesh_too_coarse"] == 8
+
+
+def test_ince_mesh_kalir(db_session):
+    for i in range(8):
+        _run(db_session, element_size=5.0, disp=18.0 + i)    # es/t = 0.5
+    corpus = select_training_runs(db_session)
+    assert corpus.n_kept == 8
+    assert "mesh_too_coarse" not in corpus.dropped
+
+
+def test_kapi_kapatilabilir(db_session):
+    """Mühendislik kararı kullanıcıya ait: eşik gevşetilebilir."""
+    for i in range(8):
+        _run(db_session, element_size=25.0, disp=18.0 + i)
+
+    corpus = select_training_runs(db_session, CorpusSpec(max_mesh_ratio=None))
+
+    assert corpus.n_kept == 8
+    assert corpus.as_public()["max_mesh_ratio"] is None
+
+
+def test_kapi_ve_bant_farkli_isler_yapar(db_session):
+    """Kapı mutlak incelik, bant medyandan sapma. İkisi ayrı sayılmalı."""
+    for i in range(8):
+        _run(db_session, element_size=8.0, disp=18.0 + i)     # es/t = 0.8 (medyan)
+    _run(db_session, element_size=40.0, disp=19.0)            # kaba → kapı
+    _run(db_session, element_size=1.0, disp=19.5)             # ince ama aykırı → bant
+
+    corpus = select_training_runs(db_session)
+
+    assert corpus.dropped["mesh_too_coarse"] == 1
+    assert corpus.dropped["mesh_outlier"] == 1
+    assert corpus.n_kept == 8

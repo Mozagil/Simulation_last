@@ -30,6 +30,29 @@ DEFAULT_MAX_U_OVER_L = 0.10
 #: Göreli eleman boyutu (es / kalınlık veya L) medyandan sapma üstü.
 DEFAULT_MESH_RATIO_BAND = 0.50
 
+#: YAKINSAMA KAPISI: es / karakteristik uzunluk bunun üstündeyse koşu
+#: eğitime girmez. `mesh_ratio_band` bir TUTARLILIK bandıdır (medyandan
+#: sapma) — korpusun tamamı kabaysa hepsini geçirir. Bu ise mutlak bir
+#: incelik eşiği.
+#:
+#: ÖLÇÜLDÜ (ankastre kiriş, aynı geometrinin 8 mesh'i, gerilme yayılımı):
+#:
+#:     eşik (es/t)   kalan   ham tepe   kaçınma
+#:        ≤ 1.0        8       %9.53     %4.14
+#:        ≤ 0.6        7       %7.19     %1.65
+#:        ≤ 0.5        5       %3.45     %0.99
+#:        ≤ 0.3        3       %3.45     %0.99
+#:
+#: Diz 0.5'te; altında iyileşme yok. Ölçüm meshin KENDİ ortalama kenar
+#: uzunluğuyla yapıldı (tet10'da nominal eleman boyutunun ~yarısı), o
+#: yüzden nominal `es` cinsinden eşik 1.0'dır.
+#:
+#: SINIR: kalibrasyon yalnız ankastre kirişte yapıldı (plakanın yakınsama
+#: koşularında mesh dosyası üzerine yazıldığı için bağlantı yok — TODO 1.1c).
+#: Plakada karakteristik uzunluk DELİK ÇAPI ve DOE 0.12–0.25×d bandında
+#: meshliyor, yani bu eşik orada hiçbir koşuyu elemez.
+DEFAULT_MAX_MESH_RATIO = 1.0
+
 
 @dataclass
 class CorpusSpec:
@@ -37,6 +60,8 @@ class CorpusSpec:
     analysis_type: str = "static"
     max_u_over_L: float = DEFAULT_MAX_U_OVER_L
     mesh_ratio_band: float = DEFAULT_MESH_RATIO_BAND
+    #: Yakınsama kapısı — bkz. `DEFAULT_MAX_MESH_RATIO`. None = kapı yok.
+    max_mesh_ratio: float | None = DEFAULT_MAX_MESH_RATIO
     require_analytic_ok: bool = True
     #: Verilirse yalnız bu DOE çalışmasının run'ları taranır.
     #:
@@ -81,6 +106,7 @@ class TrainingCorpus:
             "flagged": dict(self.flagged),
             "max_u_over_L": self.spec.max_u_over_L,
             "mesh_ratio_band": self.spec.mesh_ratio_band,
+            "max_mesh_ratio": self.spec.max_mesh_ratio,
             "analysis_type": self.spec.analysis_type,
             "study_id": self.spec.study_id,
         }
@@ -285,6 +311,34 @@ def _soft_drop_large(
     return [(run, geo) for _, run, geo in remain]
 
 
+def _drop_coarse_mesh(
+    kept: list[tuple[AnalysisRun, Geometry]],
+    spec: CorpusSpec,
+    dropped: dict[str, int],
+) -> list[tuple[AnalysisRun, Geometry]]:
+    """Yakınsamamış (fazla kaba) koşuları eğitimden çıkarır.
+
+    `_soft_drop_mesh`'ten FARKI: o medyana göre aykırı olanı atar, bu
+    mutlak eşiği uygular. İkisi farklı soruları yanıtlıyor — "hepsi aynı
+    incelikte mi" ve "yeterince ince mi".
+
+    Yumuşak değil SERT: az örnek kalsa bile kaba koşu geri alınmaz. Kaba
+    mesh'in gerilmesi hedefin kendisini ±%9 oynatıyor; onu eğitime koymak
+    modelin doğruluk tavanını düşürür.
+    """
+    limit = spec.max_mesh_ratio
+    if limit is None:
+        return kept
+    out: list[tuple[AnalysisRun, Geometry]] = []
+    for run, geo in kept:
+        ratio = _mesh_ratio(run, geo)
+        if ratio is not None and ratio > limit:
+            _drop(dropped, "mesh_too_coarse")
+            continue
+        out.append((run, geo))
+    return out
+
+
 def _soft_drop_mesh(
     kept: list[tuple[AnalysisRun, Geometry]],
     spec: CorpusSpec,
@@ -371,6 +425,9 @@ def select_training_runs(
     kept = _keep_majority(kept, lambda rg: _material_key(rg[0]), "other_material", dropped)
 
     kept = _soft_drop_large(kept, spec, dropped, min_keep)
+    # Önce mutlak incelik kapısı, sonra tutarlılık bandı: aksi hâlde band
+    # medyanı kaba koşularla kurulur ve kapı yanlış yere düşer.
+    kept = _drop_coarse_mesh(kept, spec, dropped)
     kept = _soft_drop_mesh(kept, spec, dropped, min_keep)
 
     flagged: dict[str, int] = {}
