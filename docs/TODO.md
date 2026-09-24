@@ -220,10 +220,17 @@ altında "GNN alan modeli prototip — sonuçlar geçersiz" notu ve son eğitimi
 holdout u_max RMSE'si (`metrics.holdout`) gösteriliyor. Buton devre dışı
 BIRAKILMADI — ölçüm turları için eğitim hâlâ gerekli.
 
-**Hâlâ açık — kapsam:** `/gnn/train` `template_id` ile süzüyor ama sonucu
-HER ZAMAN tek dosyaya (`uploads/models/field_gnn.npz`) yazıyor: plakayı
-eğitmek kirişin modelini eziyor. Öneri: şablon başına model (`model_store`
-deseni). 1.3c ölçümlerinden önce yapılmalı, yoksa kıyaslar karışır.
+**Kapsam — KAPANDI (2026-09-24):** `/gnn/train` sonucu artık
+`uploads/models/<şablon>/field_gnn.npz`'ye yazıyor (`model_store.gnn_path`);
+plaka eğitimi kiriş modelini ezmiyor. Korpus tek şablonlu olmalı (karışık
+→ 422, şablonsuz → 422); şablonsuz run'lar atılıp `dropped.no_template`
+olarak raporlanıyor. `.json` meta'ya `template_id` + `corpus` yazılıyor.
+`/status?template_id=` o şablonun GNN'ini, `/predict` run'ın KENDİ
+şablonunun GNN'ini kullanıyor. Eski global dosya yalnız meta'sındaki şablon
+eşleşirse okunuyor. **Bugünkü diskteki eski dosya (8 graf) şablon kaydı
+taşımadığı için hiçbir şablona verilmiyor.** Açık run tahmini, şablon
+başına GNN eğitilene kadar skaler modele düşüyor. Dosya silinmedi.
+Testler: `test_gnn_template_store.py` (7).
 
 #### 1.3c GNN mimarisi — AÇIK, karar bekliyor
 Seçenekler: (a) `n_proc`/`hidden` taraması (kod değişmez, yalnız ölçüm);
@@ -588,6 +595,17 @@ kendiliğinden açmaz. Seçenekler: (a) olduğu gibi bırak, DOE'de binde 10
 örnek düşer ve sebebi artık mesajda görünür; (b) şablon/mesh ayarlarına
 açık bir "yüksek mertebe optimizasyonu" anahtarı eklensin (varsayılan
 kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
+
+## Ara maddeler — ana maddeler (6, 4) bitince yapılacak (2026-09-24)
+
+- [ ] **Panel eğitim isteğine şablon göndermiyor.** `trainFieldGnn` ve
+      `trainScalarRf` `template_id` yollamıyor; canlı süzgeçle eğitim iki
+      şablon diskteyken "birden çok şablon" (422) veriyor, yalnız donmuş
+      set çalışıyor. Çözüm: paneldeki seçili şablonu isteğe ekle (frontend).
+- [ ] **1.3c GNN mimarisi.** Önce (a) `n_proc`/`hidden` taraması (yalnız
+      ölçüm), sonra sonuca göre (b)/(c)/(d). Şablon başına GNN yeniden
+      eğitilmeli — diskteki eski `field_gnn.npz` şablon kaydı taşımadığı
+      için artık hiçbir şablona verilmiyor.
 
 ## Öncelik sırası (öneri)
 

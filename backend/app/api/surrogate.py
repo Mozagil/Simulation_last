@@ -33,7 +33,13 @@ from app.ml.manifest import (
     save_manifest,
     spec_from_manifest,
 )
-from app.ml.model_store import list_models, load_model, save_model
+from app.ml.model_store import (
+    gnn_path,
+    list_models,
+    load_model,
+    load_template_gnn,
+    save_model,
+)
 from app.ml.scalar_features import (
     FEATURE_KEYS,
     MixedTemplateError,
@@ -260,7 +266,8 @@ def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
     dosyalar (geriye uyum). `templates` alanı hangi şablonda hangi türlerin
     eğitildiğini listeler.
     """
-    gnn = load_gnn(DEFAULT_GNN_PATH)
+    # GNN de şablon başına (TODO 1.3b kapsam); şablonsuz çağrı eski global dosya.
+    gnn = load_template_gnn(template_id) if template_id else load_gnn(DEFAULT_GNN_PATH)
 
     def _summary(kind: str) -> dict[str, Any] | None:
         bundle = (
@@ -283,6 +290,7 @@ def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
         "field_gnn": (
             {
                 "kind": gnn["kind"],
+                "template_id": gnn.get("template_id"),
                 "n_samples": gnn.get("n_samples"),
                 "metrics": gnn.get("metrics"),
             }
@@ -507,11 +515,41 @@ def train_field_gnn(
     template_id: str | None = None,
     corpus_name: str | None = None,
 ) -> dict[str, Any]:
+    """Alan modeli (GNN) eğitimi.
+
+    Model ŞABLON KLASÖRÜNE yazılır (`uploads/models/<şablon>/field_gnn.npz`):
+    eskiden tek global dosyaya yazılıyor, plaka eğitimi kiriş modelini
+    eziyordu. Korpus tek şablonlu olmak zorunda; şablonsuz run'lar atılır
+    (`dropped.no_template`) — hangi şablonun modeline girdikleri belirsiz.
+    """
     run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
+    run_template = dict(
+        db.query(AnalysisRun.id, Geometry.template_id)
+        .join(Geometry, AnalysisRun.geometry_id == Geometry.id)
+        .filter(AnalysisRun.id.in_(list(run_ids or []) or [-1]))
+        .all()
+    )
+    templates = sorted({t for t in run_template.values() if t})
+    if len(templates) > 1:
+        raise HTTPException(
+            status_code=422, detail=f"Korpusta birden çok şablon var: {templates}"
+        )
+    if not templates:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Korpusta şablonlu run yok; model şablon başına saklandığı için "
+                "eğitim yapılamaz."
+            ),
+        )
+    corpus_template = templates[0]
+    no_template = [rid for rid in run_ids or [] if not run_template.get(rid)]
     runs = {r.id: r for r in db.query(AnalysisRun).all()}
     samples: list[GraphSample] = []
     missing = 0
     for rid in run_ids or []:
+        if not run_template.get(rid):
+            continue
         sample = load_graph(_train_npz_for(rid), run_id=rid)
         if sample is None or sample.node_outputs is None:
             missing += 1
@@ -525,12 +563,17 @@ def train_field_gnn(
         summary = _frozen_summary(frozen, len(samples))
         if missing:
             summary["dropped"] = dict(summary["dropped"]) | {"missing_graph": missing}
+        if no_template:
+            summary["dropped"] = dict(summary["dropped"]) | {"no_template": len(no_template)}
         if len(samples) < 2:
             raise _too_few_frozen("GNN", len(samples), 2, summary)
     else:
         assert corpus is not None
         if missing:
             corpus.dropped["missing_graph"] = missing
+        if no_template:
+            corpus.dropped["no_template"] = corpus.dropped.get("no_template", 0) + len(no_template)
+        if missing or no_template:
             corpus.n_kept = len(samples)
         if len(samples) < 2:
             raise _too_few("GNN", len(samples), 2, corpus)
@@ -541,12 +584,14 @@ def train_field_gnn(
     except ValueError as ext:
         raise HTTPException(status_code=422, detail=str(ext)) from ext
     bundle["corpus"] = summary
-    save_gnn(bundle, DEFAULT_GNN_PATH)
+    bundle["template_id"] = corpus_template
+    dest = save_gnn(bundle, gnn_path(corpus_template))
     return {
         "kind": "field_gnn",
+        "template_id": corpus_template,
         "n_samples": bundle["n_samples"],
         "metrics": bundle["metrics"],
-        "path": str(DEFAULT_GNN_PATH),
+        "path": str(dest),
         "corpus": summary,
     }
 
@@ -706,9 +751,11 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
     """Alan tahmini (GNN) veya skaler yedek (RF). Viewer preview JSON şeması."""
     run = _resolve_run(db, body)
     geo = db.get(Geometry, run.geometry_id)
-    gnn = load_gnn(DEFAULT_GNN_PATH)
-    # Skaler yedek run'ın KENDİ şablonunun modelinden gelir.
-    loaded = _load_scalar_model("auto", geo.template_id if geo is not None else None)
+    run_template = geo.template_id if geo is not None else None
+    # Alan modeli de skaler yedek de run'ın KENDİ şablonunun modelinden gelir.
+    # Şablonsuz run'a GNN verilmez: hangi şablonun ağı olacağı belirsiz.
+    gnn = load_template_gnn(run_template) if run_template else None
+    loaded = _load_scalar_model("auto", run_template)
     rf = loaded[1] if loaded else None
     if gnn is None and rf is None:
         raise HTTPException(status_code=404, detail="Eğitilmiş model yok.")

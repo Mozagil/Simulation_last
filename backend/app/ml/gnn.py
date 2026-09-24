@@ -411,6 +411,9 @@ def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
                 "normalization": bundle.get("normalization"),
                 "input_channels": bundle["input_channels"],
                 "output_channels": bundle["output_channels"],
+                # Kapsam: hangi şablonun verisiyle eğitildiği (ml/model_store).
+                "template_id": bundle.get("template_id"),
+                "corpus": bundle.get("corpus"),
             },
             indent=2,
         ),
@@ -449,6 +452,8 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
         "metrics": metrics.get("metrics") if isinstance(metrics, dict) else {},
         "input_channels": metrics.get("input_channels") if isinstance(metrics, dict) else list(NODE_INPUT_CHANNELS),
         "output_channels": metrics.get("output_channels") if isinstance(metrics, dict) else list(NODE_OUTPUT_CHANNELS),
+        "template_id": metrics.get("template_id") if isinstance(metrics, dict) else None,
+        "corpus": metrics.get("corpus") if isinstance(metrics, dict) else None,
     }
 
 

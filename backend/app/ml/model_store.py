@@ -103,3 +103,40 @@ def list_models(*, root: Path | None = None) -> dict[str, list[str]]:
             if tpl and _TEMPLATE_RE.match(tpl) and kind not in out.get(tpl, []):
                 out.setdefault(tpl, []).append(kind)
     return out
+
+
+# --- Alan modeli (GNN) --------------------------------------------------------
+# Aynı sorun GNN'de de vardı (TODO 1.3b "kapsam"): `/gnn/train` şablona göre
+# süzüyor ama sonucu hep `uploads/models/field_gnn.npz`'ye yazıyordu — plaka
+# eğitimi kiriş modelini eziyordu. Dosya biçimi joblib değil `.npz` + `.json`
+# (`ml/gnn.save_gnn`); düzen skalerlerle aynı: `<template_id>/field_gnn.npz`.
+
+GNN_FILE = "field_gnn.npz"
+
+
+def gnn_path(template_id: str, *, root: Path | None = None) -> Path:
+    if not _TEMPLATE_RE.match(template_id or ""):
+        raise ModelStoreError(f"Geçersiz şablon adı: {template_id!r}")
+    return (root or MODELS_ROOT) / template_id / GNN_FILE
+
+
+def load_template_gnn(
+    template_id: str, *, root: Path | None = None
+) -> dict[str, Any] | None:
+    """Şablonun GNN'i; yoksa ve eşleşiyorsa eski global dosya; yoksa None.
+
+    Eski global dosya YALNIZ meta'sındaki şablon bu şablonsa döner. Şablon
+    kaydı olmayan eski dosya hiçbir şablona verilmez — hangi veriyle
+    eğitildiği bilinmiyor.
+    """
+    from app.ml.gnn import load_gnn
+
+    dest = gnn_path(template_id, root=root)
+    if dest.is_file():
+        return load_gnn(dest)
+    legacy = (root or MODELS_ROOT) / GNN_FILE
+    bundle = load_gnn(legacy) if legacy.is_file() else None
+    if bundle is not None and _bundle_template(bundle) == template_id:
+        bundle.setdefault("legacy_path", str(legacy))
+        return bundle
+    return None
