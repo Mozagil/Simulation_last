@@ -63,7 +63,9 @@ def test_list_templates_includes_cantilever_schema():
     assert "keyway_shaft" in ids
     beam = next(t for t in body["templates"] if t["id"] == "cantilever_beam")
     assert beam["has_analytic"] is True
-    assert set(beam["params_schema"]["properties"]) == {"length", "thickness", "width"}
+    assert set(beam["params_schema"]["properties"]) == {
+        "length", "thickness", "width", "root_fillet", "wall_thickness", "wall_margin",
+    }
     region_names = {r["name"] for r in beam["regions"]}
     assert region_names == {"ankastre_uc", "yuk_yuzeyi"}
 

@@ -63,10 +63,16 @@ def test_unknown_template_raises():
 
 def test_params_schema_is_json_schema_with_units():
     schema = get_template("cantilever_beam").params_schema()
-    assert set(schema["properties"]) == {"length", "thickness", "width"}
-    for prop in schema["properties"].values():
+    assert set(schema["properties"]) == {
+        "length", "thickness", "width", "root_fillet", "wall_thickness", "wall_margin",
+    }
+    for name, prop in schema["properties"].items():
         assert prop["type"] == "number"
-        assert prop["exclusiveMinimum"] == 0
+        # r = 0 geçerli (duvar yok); diğer boyutlar kesin pozitif.
+        if name == "root_fillet":
+            assert prop["minimum"] == 0
+        else:
+            assert prop["exclusiveMinimum"] == 0
         assert prop["unit"] == "mm"
 
 
@@ -91,7 +97,10 @@ def test_invalid_params_rejected(raw):
 
 def test_defaults_are_reference_case():
     p = get_template("cantilever_beam").parse_params({})
-    assert p.model_dump() == REF_PARAMS
+    # Kök filleti varsayılanda kapalı → geometri referans vakayla aynı.
+    assert p.model_dump() == REF_PARAMS | {
+        "root_fillet": 0.0, "wall_thickness": 20.0, "wall_margin": 20.0,
+    }
 
 
 # --- kurucu + bölgeler --------------------------------------------------------

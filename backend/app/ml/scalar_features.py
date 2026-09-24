@@ -105,11 +105,27 @@ def _pressure(bcs: list[dict[str, Any]]) -> float:
     return 0.0
 
 
+def _schema_defaults(template_id: str) -> dict[str, Any]:
+    try:
+        from app.templates import get_template
+
+        props = get_template(template_id).params_schema().get("properties") or {}
+    except Exception:  # noqa: BLE001 — bilinmeyen şablon: varsayılan yok
+        return {}
+    return {name: prop["default"] for name, prop in props.items() if "default" in prop}
+
+
 def feature_values_from_run(
     run: AnalysisRun, geometry: Geometry | None
 ) -> dict[str, float] | None:
     """Run'ın tüm aday özellik değerleri (ad -> sayı). Malzeme E yoksa None."""
     params = (geometry.template_params if geometry is not None else None) or {}
+    # Şablona sonradan eklenen alan eski run'ın kaydında yok. 0 değil,
+    # şablonun VARSAYILANI yazılır: varsayılan eski geometriyi üretir
+    # (ör. kiriş `root_fillet=0` → duvar yok), yani eski run o değerle
+    # çözülmüş demektir. 0 yazılsaydı aynı geometri iki vektör taşırdı.
+    if geometry is not None and geometry.template_id and params:
+        params = {**_schema_defaults(geometry.template_id), **params}
     mats = run.materials_snapshot or []
     if not mats:
         return None

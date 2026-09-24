@@ -253,9 +253,14 @@ def _predict_with(kind: str, bundle: dict[str, Any], x) -> dict[str, Any]:
 
 def _bundle_keys(bundle: dict[str, Any], template_id: str | None) -> tuple[str, ...]:
     """Tahmin vektörünün sütun adları. Bundle'ın KENDİ anahtarları esastır:
-    şablon şeması sonradan değişse bile model eğitildiği sırayı bekler."""
+    şablon şeması sonradan değişse bile model eğitildiği sırayı bekler.
+
+    Anahtar saklamayan bundle şablon öncesi döneme ait — yalnız kiriş vardı,
+    eski kiriş vektörü (`FEATURE_KEYS`). Şablonun bugünkü şemasına düşmek
+    yanlış olurdu: kirişe kök filleti alanları eklendi (TODO 6).
+    """
     keys = bundle.get("feature_keys")
-    return tuple(keys) if keys else feature_keys_for(template_id)
+    return tuple(keys) if keys else FEATURE_KEYS
 
 
 @router.get("/status")

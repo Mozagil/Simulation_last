@@ -41,8 +41,21 @@ PLATE_KEYS = feature_keys_for("plate_with_hole")
 
 
 def test_kiris_anahtarlari_eski_vektorle_birebir_ayni():
-    """Kaydedilmiş kiriş modelleri ve eski bundle'lar bu sırayı varsayar."""
-    assert feature_keys_for("cantilever_beam") == FEATURE_KEYS
+    """Eski kiriş vektörü = geometri (L, T, W) + ortak anahtarlar. Kök filleti
+    alanları (TODO 6) geometri bloğunun SONUNA eklendi; kayıtlı modeller
+    kendi `feature_keys`'ini taşır, anahtarsız eski bundle `FEATURE_KEYS`'e
+    düşer (`api.surrogate._bundle_keys`)."""
+    keys = feature_keys_for("cantilever_beam")
+    fillet = ("root_fillet", "wall_thickness", "wall_margin")
+    assert tuple(k for k in keys if k not in fillet) == FEATURE_KEYS
+    assert keys[3:6] == fillet
+
+
+def test_anahtarsiz_eski_bundle_eski_kiris_vektorunu_kullanir():
+    from app.api.surrogate import _bundle_keys
+
+    assert _bundle_keys({}, "cantilever_beam") == FEATURE_KEYS
+    assert _bundle_keys({"feature_keys": ["a", "b"]}, "cantilever_beam") == ("a", "b")
 
 
 def test_plaka_delik_capini_ve_yuksekligi_gorur():

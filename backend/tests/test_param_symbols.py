@@ -31,6 +31,7 @@ def test_known_symbols_match_schematic():
     by_id = {t.id: t.params_schema()["properties"] for t in list_templates()}
     assert {k: v["symbol"] for k, v in by_id["cantilever_beam"].items()} == {
         "length": "L", "thickness": "T", "width": "W",
+        "root_fillet": "r", "wall_thickness": "tw", "wall_margin": "m",
     }
     assert {k: v["symbol"] for k, v in by_id["i_beam"].items()} == {
         "length": "L", "height": "h", "flange_width": "b", "web": "tw", "flange": "tf",

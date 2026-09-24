@@ -527,8 +527,38 @@ yeniden hesapla) — ayrı mikro-adım.
   (yukarıdaki yayılım ölçümü: %7.8 — tahmin hatasıyla aynı mertebe).
   Hedef olarak duruyor (zararsız, NaN toleranslı) ama akma kontrolü
   hâlâ `_away` → ham sırasını kullanıyor; değiştirilmedi.
-- [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) —
-      gerçek yapılarda keskin köşe yok, tekilliğin asıl kaynağı bu
+- [x] **Kiriş kök filleti — YAPILDI (2026-09-25), tekillik YAKINSAMADI.**
+      Düz kutuda kökte geometrik köşe yok (tekillik BC kenarından), fillet
+      ancak destek modellenince konabiliyor. Yeni alanlar: `root_fillet` (r,
+      0 → duvar yok, geometri eskisiyle birebir), `wall_thickness` (20),
+      `wall_margin` (20). r > 0: x<0'da duvar bloğu + birleşim kenarlarına
+      fillet, ankastre duvarın ARKA yüzüne taşınır.
+      Yan düzeltmeler: eski run'da olmayan şablon alanı özellik vektörüne 0
+      değil şablon VARSAYILANIYLA girer (`_schema_defaults`); anahtarsız eski
+      bundle `FEATURE_KEYS`'e düşer. Testler: `test_cantilever_root_fillet.py`
+      (4) + 3 şema testi güncellendi.
+
+      **Gerçek ccx, 500×10×50, 500 N, düz tet (C3D10), global eleman boyu:**
+
+      | es | r=0 düğüm | r=0 u / vm | r=5 düğüm | r=5 u / vm |
+      |---|---|---|---|---|
+      | 8.0 | 7 255 | 23.92 / 330.6 | 9 496 | 23.59 / 308.9 |
+      | 5.0 | 21 185 | 23.96 / 337.0 | 27 724 | 23.67 / 329.5 |
+      | 3.5 | 52 327 | 23.74 / 330.0 | 71 305 | 23.70 / 354.9 |
+      | 2.5 | 126 150 | 23.69 / 322.7 | 167 817 | 23.71 / 367.7 |
+      | 1.8 | — | — | 424 240 | — / 395.0 |
+
+      Deplasman iki durumda da teoriye (23.81) yakın. **r=5'te vm monoton
+      ARTIYOR** (309 → 395, son adımda +%7). Tepe yeri ölçüldü: duvar arka
+      yüzü ~14 MPa (BC tekilliği gerçekten gitti), tepe FİLLET BÖLGESİNDE,
+      kesit köşesinde (5,0,0) / (4.2,0,50) — iki kök filletinin kirişin
+      KESKİN boyuna kenarıyla buluştuğu nokta. Kiriş bölgesi (x>5) de yavaş
+      artıyor (308 → 322). Olası iki sebep, ayrılmadı: (1) fillet global
+      eleman boyuyla çözünmüyor (r/es = 2.8'de bile), yerel inceltme gerek;
+      (2) köşe birleşim noktası kendisi tekil (boyuna kenarlar keskin).
+      İkisi de mühendislik kararı (yerel mesh inceltme / boyuna kenar
+      radyusu) — agent karar vermedi.
+- [ ] Omuz geçişi filleti — kademeli mil (madde 7) ile birlikte
 
 ---
 
