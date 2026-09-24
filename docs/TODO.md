@@ -337,8 +337,23 @@ Backend **hazır**: `*STEP, NLGEOM` kartı, artımlı yükleme, `nlgeom` ve
 (`CorpusSpec.nlgeom`, `scalars["_nlgeom"]`).
 
 Eksikler:
-- [ ] **Arayüzde açma/kapama yok** — yalnız API'den erişilebiliyor
-- [ ] Hiç koşulmadı, tek bir doğrulama bile yapılmadı
+- [x] **Arayüzde açma/kapama** — YAPILDI (2026-09-25, `b23e487`): statik
+      çözüm panelinde "NLGEOM (büyük deformasyon)" + artım sayısı (1–500).
+      Kapalıyken istek eskisiyle aynı. Test: `api/materials.nlgeom.test.ts` (3).
+- [x] **Doğrulama — YAPILDI (2026-09-25), kesin çözümle tutuyor.** Vaka
+      α = FL²/(EI) = 1 (6061-T6, L1000 T6.4 W40, F = 60.2 N, σ ≈ 220 MPa <
+      akma 276). Referans: Bisshopp & Drucker büyük sehim çözümü.
+
+      | | lineer teori | kesin (B–D) | FEA lineer | FEA NLGEOM es=3.2 (80k) | FEA NLGEOM es=6.4 (18k) |
+      |---|---|---|---|---|---|
+      | uç δ/L | 0.3333 | **0.3017** | 0.3325 | **0.3011** | **0.3017** |
+      | uç Δx/L | 0 | **−0.0564** | 0.0000 | **−0.0562** | **−0.0564** |
+
+      NLGEOM lineerden %9.4 küçük (önceki vakadaki %0.93'ün aksine kartın
+      uygulandığı açıkça görülüyor), kesin çözümden %0.2 içinde; yatay
+      kısalma da yakalanıyor (lineer çözüm bunu hiç göremez). 20 artım,
+      yakınsadı, cutback yok. Regresyon: `test_nlgeom.py::
+      test_nlgeom_buyuk_sehim_kesin_cozumle_tutar` (gerçek ccx, ~85 s).
 - [ ] NLGEOM veri seti yok (u/L 0.10–0.30 bandı için ayrı DOE + ayrı model)
 
 **Doğrulama vakası** (hesaplandı): çelikte akmadan büyük deformasyona

@@ -154,3 +154,65 @@ def test_nlgeom_statik_sayilir_modal_degil(tmp_path):
     assert preview["modes"][0]["frequency_hz"] is None
     assert preview["max_displacement"] == pytest.approx(nl.scalars["max_displacement"])
     assert max(preview["von_mises"]) > 0.0
+
+
+# --- TODO 4: büyük sehim doğrulaması (Bisshopp–Drucker) ------------------------
+
+
+@_requires_ccx
+def test_nlgeom_buyuk_sehim_kesin_cozumle_tutar(tmp_path):
+    """Uç yüklü konsol, α = FL²/(EI) = 1. Lineer teori δ/L = 1/3; kesin büyük
+    sehim çözümü (Bisshopp & Drucker, 1945) δ/L = 0.3017, Δx/L = 0.0564.
+
+    Önceki vaka (u/L ≈ 0.1) NLGEOM ile lineer arasında yalnız %0.93 fark
+    veriyordu — kartın uygulandığını ayırt etmeye yetmiyordu. Burada fark
+    ~%10 ve kesin çözüm var. Ölçülen (2026-09-25): es=3.2 (80k düğüm)
+    0.3011 / −0.0562; es=6.4 (18k düğüm) 0.3017 / −0.0564.
+    """
+    import gzip
+
+    import numpy as np
+
+    from app.mesh.base import MeshParams
+    from app.mesh.gmsh_adapter import GmshMesherAdapter
+    from app.solvers.calculix import _parse_frd
+    from app.templates import get_template
+    from app.templates.base import build_template
+
+    E, L, T, W = 68.9e3, 1000.0, 6.4, 40.0  # 6061-T6; σ ≈ 220 MPa < akma 276
+    inertia = W * T**3 / 12
+    force = E * inertia / L**2  # α = 1
+    t = get_template("cantilever_beam")
+    built = build_template(t, t.parse_params({"length": L, "thickness": T, "width": W}),
+                           tmp_path / "b.step")
+    ad = GmshMesherAdapter()
+    mesh = ad.generate_mesh(ad.import_geometry(built.step_path),
+                            MeshParams(element_size=6.4, dimension=3, element_scheme="tet"))
+    ccx = CalculiXAdapter()
+    job = ccx.submit(ccx.build_input({
+        "mesh_path": mesh.mesh_path, "dimension": 3, "output_dir": tmp_path / "run",
+        "job_name": "bd",
+        "materials": [{"part_id": 0, "name": "6061-T6", "youngs_modulus": E * 1e6,
+                       "poisson_ratio": 0.33, "density": 2700.0}],
+        "bcs": [{"type": "fixed", "face_ids": built.regions["ankastre_uc"]},
+                {"type": "cload", "face_ids": built.regions["yuk_yuzeyi"],
+                 "fx": 0.0, "fy": -force, "fz": 0.0}],
+        "nlgeom": True, "n_increments": 20,
+    }))
+    for _ in range(100000):
+        status = ccx.poll_status(job)
+        if status.state in ("done", "failed"):
+            break
+    assert status.state == "done", status
+    res = ccx.parse_results(job)
+    assert res.scalars["_solver_converged"] == 1.0
+
+    frd = tmp_path / "bd.frd"
+    frd.write_bytes(gzip.decompress(res.raw_result_path.read_bytes()))
+    d = _parse_frd(frd)
+    ids = list(d["displacement"])
+    xyz = np.array([d["node_coords"][i] for i in ids])
+    u = np.array([d["displacement"][i] for i in ids])
+    tip = np.abs(xyz[:, 0] - L) < 1e-6
+    assert -u[tip, 1].mean() / L == pytest.approx(0.3017, rel=0.015)
+    assert u[tip, 0].mean() / L == pytest.approx(-0.0564, rel=0.05)
