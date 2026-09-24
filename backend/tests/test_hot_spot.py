@@ -225,3 +225,49 @@ def test_ham_tepe_de_raporlanir():
     X, Y = _kiris()
     out = hot_spot_stress(X, Y, T)
     assert out["max_von_mises_all"] == pytest.approx(SIGMA_KOK)
+
+
+# --- tepe merkezli ölçüt (TODO 6, seçenek b) -----------------------------------
+
+
+def test_tepe_merkezli_olcut_kisit_gerektirmez():
+    """Asıl gerekçe: delikli plakada yığılma delikte, kısıt uzakta —
+    kısıt maskesi orada hiçbir şey düzeltmiyor (ölçüldü: %11.4/%11.4)."""
+    from app.postprocess.stress_probe import stress_near_peak
+
+    n = 600
+    x = np.linspace(0.0, L, n)
+    X = np.zeros((n, len(NODE_INPUT_CHANNELS)))
+    X[:, IX["x"]] = x
+    delik = L / 2
+    Y = np.zeros((n, len(NODE_OUTPUT_CHANNELS)))
+    Y[:, OX["von_mises_mpa"]] = SIGMA_KOK - EGIM * np.abs(x - delik)
+
+    out = stress_near_peak(X, Y, T)
+
+    assert out["max_von_mises_near_peak"] is not None
+    assert out["peak_xyz"][0] == pytest.approx(delik, abs=1.0)
+    # Kabuk 5 ± 2.5 mm; maksimum İÇ KENARDAN gelir: 300 − 0.6×2.5 = 298.5
+    assert out["max_von_mises_near_peak"] == pytest.approx(298.5, abs=1.0)
+    assert out["max_von_mises_near_peak"] < out["max_von_mises_all"]
+
+
+def test_tepe_merkezli_olcut_kaba_meshte_uyarir():
+    from app.postprocess.stress_probe import stress_near_peak
+
+    X = np.zeros((2, len(NODE_INPUT_CHANNELS)))
+    Y = np.zeros((2, len(NODE_OUTPUT_CHANNELS)))
+    X[:, IX["x"]] = [0.0, 400.0]
+    Y[:, OX["von_mises_mpa"]] = [300.0, 10.0]
+
+    out = stress_near_peak(X, Y, T)
+
+    assert out["max_von_mises_near_peak"] is None
+    assert "çok kaba" in out["warning"]
+
+
+def test_tepe_merkezli_gecersiz_uzunluk():
+    from app.postprocess.stress_probe import stress_near_peak
+
+    X, Y = _kiris()
+    assert stress_near_peak(X, Y, 0.0)["max_von_mises_near_peak"] is None

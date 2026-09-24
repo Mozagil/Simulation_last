@@ -135,6 +135,11 @@ def _stress_probe_for(
             scalars["max_von_mises_away"] = probe["max_von_mises_away"]
             scalars["stress_probe_standoff_mm"] = probe["standoff_mm"]
             scalars["stress_probe_fraction_used"] = probe["fraction_used"]
+        # Ayrı koşul: kısıt maskesi boş dönse bile tepe merkezli ölçüt
+        # hesaplanabilir (ve tersi). İkisi farklı sorulara bakıyor.
+        if probe and probe.get("max_von_mises_near_peak") is not None:
+            scalars["max_von_mises_near_peak"] = probe["max_von_mises_near_peak"]
+            scalars["peak_probe_offset_mm"] = probe["peak_offset_mm"]
     except Exception as exc:  # noqa: BLE001
         # Ölçüm başarısız olursa çözüm geçerliliğini yitirmez — ham
         # max_von_mises yerinde duruyor.

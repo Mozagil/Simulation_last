@@ -126,6 +126,85 @@ def stress_away_from_constraint(
     }
 
 
+#: Tepe merkezli okuma mesafesi, karakteristik uzunluğun katı olarak.
+#: Kritik mesafe (theory of critical distances) nokta yönteminin uyarlaması:
+#: tekilliğin kendisi yerine ondan sabit bir FİZİKSEL mesafedeki gerilme.
+DEFAULT_PEAK_OFFSET_RATIO = 0.5
+
+#: Okuma kabuğunun yarı kalınlığı. Kabuk sıfıra yaklaşırsa kaba mesh'te
+#: düğüm bulunamaz, çok genişlerse tekilliğin kendisi içeri girer.
+DEFAULT_PEAK_BAND_RATIO = 0.25
+
+
+def stress_near_peak(
+    node_inputs: np.ndarray,
+    node_outputs: np.ndarray,
+    characteristic_mm: float,
+    offset_ratio: float = DEFAULT_PEAK_OFFSET_RATIO,
+    band_ratio: float = DEFAULT_PEAK_BAND_RATIO,
+) -> dict[str, Any]:
+    """Tekilliğin TEPE NOKTASINDAN sabit mesafedeki en yüksek gerilme.
+
+    NEDEN: `max_von_mises_away` maskeyi KISITA göre kuruyor. Ankastre
+    kirişte doğru — tekillik kısıttan doğuyor. Delikli plakada YANLIŞ:
+    yığılma deliğin kenarında, kısıt uzakta. Ölçüldü: plakada
+    `max_von_mises_away` ham tepeyle BİREBİR aynı yayılımı veriyor
+    (%11.4 / %11.4), yani hiçbir şey düzeltmiyor.
+
+    Bu ölçüt kısıta değil, gerilmenin en yüksek olduğu düğüme dayanır;
+    hangi şablon olursa olsun tekilliği bulur. Yayılım ölçümü (yakınsamış
+    mesh'ler): ham tepe %3.9 · kısıt maskesi %1.9 (kirişte) / etkisiz
+    (plakada) · tepe merkezli %7.8.
+
+    OKUMA YANLILIĞI: kabuk içindeki MAKSİMUM alınır, gerilme tepe noktadan
+    uzaklaştıkça azaldığı için bu değer kabuğun İÇ KENARINDAN gelir —
+    yani gerçekte `(offset − band) × L` mesafesinden okunur. Kabuk
+    daraltılırsa okuma nominal mesafeye yaklaşır ama kaba mesh'te boş
+    kalma riski artar.
+
+    SINIR: tepe düğümün KONUMU da mesh'e bağlıdır. Kaba mesh'te tepe
+    yanlış yerde olabilir; ölçüt o zaman yanlış bölgeden okur. Yakınsama
+    kapısıyla (`CorpusSpec.max_mesh_ratio`) birlikte kullanılmalı.
+    """
+    L = float(characteristic_mm)
+    if not np.isfinite(L) or L <= 0:
+        return {"max_von_mises_near_peak": None, "warning": "Geçersiz karakteristik uzunluk."}
+
+    vm = node_outputs[:, _OUT["von_mises_mpa"]].astype(np.float64)
+    if vm.size == 0:
+        return {"max_von_mises_near_peak": None, "warning": "Düğüm yok."}
+
+    xyz = node_inputs[:, [_IDX["x"], _IDX["y"], _IDX["z"]]].astype(np.float64)
+    peak = int(np.argmax(vm))
+    dist = np.linalg.norm(xyz - xyz[peak], axis=1)
+
+    target = offset_ratio * L
+    half = band_ratio * L
+    shell = np.abs(dist - target) <= half
+    n_used = int(shell.sum())
+    if n_used == 0:
+        return {
+            "max_von_mises_near_peak": None,
+            "n_nodes_used": 0,
+            "offset_mm": target,
+            "warning": (
+                f"{offset_ratio:g}×L = {target:.4g} mm kabuğunda düğüm yok "
+                f"(±{half:.4g} mm). Mesh çok kaba."
+            ),
+        }
+
+    return {
+        "max_von_mises_near_peak": float(vm[shell].max()),
+        "max_von_mises_all": float(vm.max()),
+        "peak_xyz": [float(v) for v in xyz[peak]],
+        "offset_mm": target,
+        "band_mm": half,
+        "n_nodes_used": n_used,
+        "fraction_used": float(n_used / vm.size),
+        "characteristic_mm": L,
+    }
+
+
 #: IIW yüzey ekstrapolasyonu: kalınlığın 0.4 ve 1.0 katı mesafelerden
 #: okunup tekilliğin bulunduğu noktaya doğrusal uzatılır.
 DEFAULT_HOTSPOT_RATIOS = (0.4, 1.0)
@@ -313,4 +392,13 @@ def recompute_from_sample(
     out = stress_away_from_constraint(X, Y, standoff)
     out["standoff_ratio"] = standoff_ratio
     out["characteristic_length"] = characteristic_length
+
+    # Tepe merkezli ölçüt: kısıt maskesi yığılmanın kısıtta OLMADIĞI
+    # şablonlarda (delikli plaka) hiçbir şey düzeltmiyor — ölçüldü.
+    near = stress_near_peak(X, Y, characteristic_length)
+    out["max_von_mises_near_peak"] = near.get("max_von_mises_near_peak")
+    out["peak_offset_mm"] = near.get("offset_mm")
+    out["peak_fraction_used"] = near.get("fraction_used")
+    if near.get("warning"):
+        out["peak_warning"] = near["warning"]
     return out

@@ -5,7 +5,7 @@
 > varsayıp üstüne inşa etme.
 >
 > Branch: `feature/surrogate-accuracy` · `main`'e merge edilmedi
-> Son durum (2026-09-24): 758 backend testi geçiyor (1 atlandı, ccx ile
+> Son durum (2026-09-24): 765 backend testi geçiyor (1 atlandı, ccx ile
 > ilgisiz) — gerçek ccx fizik testleri dahil; 95 frontend testi geçiyor
 
 ---
@@ -441,13 +441,33 @@ Kod duruyor (19 test, `fit_r2` ve `increasing_away` teşhisleriyle) ama
 `scalars`'a EKLENMEDİ ve eğitim hedefi yapılmadı: %38 gürültülü bir sayıyı
 hedef listesine koymak yanıltıcı olurdu.
 
-**KARAR SENDE:** (a) olduğu gibi bırak — `max_von_mises_away` kirişte iyi,
-plakada işe yaramıyor; (b) maskeyi kısıt yerine TEPE düğüme göre kur, o
-zaman plakada da çalışır (nokta yöntemi, yakınsamış mesh'te %7.8);
-(c) gerilme hedefini yalnız yakınsamış mesh'lerle eğit.
+### Seçilen yol: (c) + (b) — YAPILDI (2026-09-24)
+
+**(c) Yakınsama kapısı** — `CorpusSpec.max_mesh_ratio` (varsayılan 1.0).
+Mevcut `mesh_ratio_band` bir TUTARLILIK bandıydı (medyandan sapma):
+korpusun tamamı kabaysa hepsini geçiriyordu. Yeni kapı mutlak incelik
+eşiği. Eşik ölçümle seçildi (yukarıdaki diz tablosu), maliyeti diskteki
+538 eğitim dosyasının 33'ü (**%6.1**). Kapı serttir — az örnek kalsa bile
+kaba koşu geri alınmaz; `max_mesh_ratio=None` ile kapatılabilir.
+
+**(b) Tepe merkezli ölçüt** — `stress_near_peak`: mesafe kısıta değil,
+gerilmenin en yüksek olduğu düğüme göre ölçülür; hangi şablon olursa olsun
+tekilliği bulur. `scalars`'a `max_von_mises_near_peak` +
+`peak_probe_offset_mm` olarak yazılıyor (`/solve` sonrası, `.train.npz`
+üzerinden — eski koşulara da geriye dönük uygulanabilir).
+
+Okuma yanlılığı belgelendi: kabuk içindeki maksimum alındığı ve gerilme
+uzaklaştıkça azaldığı için değer kabuğun İÇ kenarından gelir, yani
+gerçekte `(offset − band) × L` mesafesinden okunur.
+
+Hedef listesine (`TARGET_KEYS`) HENÜZ eklenmedi: yeni ölçüt yalnız bundan
+sonraki koşularda yazılıyor, mevcut 538 dosyada yok. Eğitim hedefi yapmadan
+önce geriye dönük doldurma gerekir (1.1c'deki gibi, `.train.npz`'den
+yeniden hesapla) — ayrı mikro-adım.
 
 ### Kalan
-- [ ] `scalars`'a hem tepe hem seçilecek dayanıklı değer
+- [ ] `max_von_mises_near_peak`'i mevcut koşulara geriye doldur, sonra
+      hedef listesine ekleyip kıyas ölç
 - [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) —
       gerçek yapılarda keskin köşe yok, tekilliğin asıl kaynağı bu
 
