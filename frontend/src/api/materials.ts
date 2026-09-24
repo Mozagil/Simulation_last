@@ -188,6 +188,12 @@ export type SolveBC = {
   ref_node_id?: number;
 };
 
+/** NLGEOM artım sayısı: backend `n_increments` sınırı 1–500 (tam sayı). */
+export function isValidIncrements(raw: string): boolean {
+  const n = Number(raw);
+  return raw.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= 500;
+}
+
 /** CalculiX .inp üret (+ isteğe bağlı ccx). */
 export async function solveGeometry(
   geometryId: number,
@@ -203,6 +209,9 @@ export async function solveGeometry(
     n_modes?: number;
     freq_min?: number;
     freq_max?: number;
+    /** Büyük deformasyon (`*STEP, NLGEOM`). Kapalıyken alan hiç gönderilmez. */
+    nlgeom?: boolean;
+    n_increments?: number;
     wait?: boolean;
   },
 ): Promise<SolveResponse> {
@@ -221,6 +230,8 @@ export async function solveGeometry(
       ...(opts.n_modes != null ? { n_modes: opts.n_modes } : {}),
       ...(opts.freq_min != null ? { freq_min: opts.freq_min } : {}),
       ...(opts.freq_max != null ? { freq_max: opts.freq_max } : {}),
+      ...(opts.nlgeom ? { nlgeom: true } : {}),
+      ...(opts.nlgeom && opts.n_increments != null ? { n_increments: opts.n_increments } : {}),
       ...(opts.wait === false ? { wait: false } : {}),
     }),
   });

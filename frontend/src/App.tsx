@@ -43,6 +43,7 @@ import {
   formatMPa,
   setMaterialSnCurve,
   solveGeometry,
+  isValidIncrements,
   type Material,
   type MaterialAssignment,
   type SolveBC,
@@ -778,6 +779,8 @@ function App() {
   const [bcGz, setBcGz] = useState("-9810");
   const [shellThickness, setShellThickness] = useState("3");
   const [runCcx, setRunCcx] = useState(false);
+  const [nlgeom, setNlgeom] = useState(false);
+  const [nIncrements, setNIncrements] = useState("20");
   const [modalNModes, setModalNModes] = useState("10");
   const [modalFreqMin, setModalFreqMin] = useState("");
   const [modalFreqMax, setModalFreqMax] = useState("");
@@ -2203,6 +2206,8 @@ function App() {
         name: caseNameInput.trim() || undefined,
         element_size: meshResult.element_size,
         element_scheme: meshResult.element_scheme,
+        nlgeom,
+        n_increments: nlgeom ? parseInt(nIncrements, 10) : undefined,
       });
       let finalResult = result;
       if (result.status === "pending") {
@@ -4330,6 +4335,26 @@ function App() {
           />
           ccx çalıştır (kuruluysa)
         </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={nlgeom}
+            onChange={(e) => setNlgeom(e.target.checked)}
+          />
+          NLGEOM (büyük deformasyon)
+        </label>
+        {nlgeom && (
+          <label className="mesh-field">
+            <span>Artım sayısı (1–500)</span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={nIncrements}
+              onChange={(e) => setNIncrements(e.target.value)}
+            />
+          </label>
+        )}
         <button
           type="button"
           className="material-assign-button"
@@ -4337,6 +4362,7 @@ function App() {
             busyAction !== null ||
             geometryId === null ||
             meshResult === null ||
+            (nlgeom && !isValidIncrements(nIncrements)) ||
             !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
           }
           onClick={() => void handleSolve()}
