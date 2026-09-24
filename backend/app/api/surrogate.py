@@ -848,6 +848,11 @@ def backfill_stress_probe(
     Şablonsuz run'lar atlanır (karakteristik uzunluk bilinmiyor).
     Yeni DOE koşusundan ÖNCE bir kez çalıştırılmalı ki eski ve yeni
     örnekler aynı hedefi taşısın.
+
+    İki ölçüt AYRI ayrı doldurulur: `max_von_mises_away` ve tepe merkezli
+    `max_von_mises_near_peak` (TODO 6b). Eskiden `_away` varsa run tümden
+    atlanıyordu — tepe ölçütü eski koşulara hiç yazılamıyordu. Mevcut
+    değerin üzerine yazılmaz.
     """
     from app.api.solve import RUNS_DIR
     from app.models.geometry import Geometry
@@ -862,9 +867,12 @@ def backfill_stress_probe(
         .all()
     )
     updated = skipped = failed = 0
+    updated_away = updated_peak = 0
     for run in runs:
         sc = dict(run.scalars or {})
-        if "max_von_mises_away" in sc:
+        need_away = "max_von_mises_away" not in sc
+        need_peak = "max_von_mises_near_peak" not in sc
+        if not (need_away or need_peak):
             skipped += 1
             continue
         geo = db.get(Geometry, run.geometry_id)
@@ -884,12 +892,21 @@ def backfill_stress_probe(
                 characteristic_length=char_len,
                 standoff_ratio=standoff_ratio,
             )
-            if not probe or probe.get("max_von_mises_away") is None:
+            wrote = False
+            if probe and need_away and probe.get("max_von_mises_away") is not None:
+                sc["max_von_mises_away"] = probe["max_von_mises_away"]
+                sc["stress_probe_standoff_mm"] = probe["standoff_mm"]
+                sc["stress_probe_fraction_used"] = probe["fraction_used"]
+                updated_away += 1
+                wrote = True
+            if probe and need_peak and probe.get("max_von_mises_near_peak") is not None:
+                sc["max_von_mises_near_peak"] = probe["max_von_mises_near_peak"]
+                sc["peak_probe_offset_mm"] = probe["peak_offset_mm"]
+                updated_peak += 1
+                wrote = True
+            if not wrote:
                 skipped += 1
                 continue
-            sc["max_von_mises_away"] = probe["max_von_mises_away"]
-            sc["stress_probe_standoff_mm"] = probe["standoff_mm"]
-            sc["stress_probe_fraction_used"] = probe["fraction_used"]
             run.scalars = sc
             updated += 1
         except Exception:  # noqa: BLE001
@@ -897,6 +914,8 @@ def backfill_stress_probe(
     db.commit()
     return {
         "updated": updated,
+        "updated_away": updated_away,
+        "updated_near_peak": updated_peak,
         "skipped": skipped,
         "failed": failed,
         "standoff_ratio": standoff_ratio,

@@ -494,8 +494,16 @@ sonraki koşularda yazılıyor, mevcut 538 dosyada yok. Eğitim hedefi yapmadan
 yeniden hesapla) — ayrı mikro-adım.
 
 ### Kalan
-- [ ] `max_von_mises_near_peak`'i mevcut koşulara geriye doldur, sonra
-      hedef listesine ekleyip kıyas ölç
+- [x] `max_von_mises_near_peak`'i mevcut koşulara geriye doldur — YAPILDI
+      (2026-09-24). `/backfill-stress-probe` `_away` dolu run'ı TÜMDEN
+      atlıyordu, tepe ölçütü eski koşulara hiç yazılamıyordu; artık iki
+      ölçüt ayrı doldurulur, mevcut değerin üzerine yazılmaz. Dev DB:
+      584 çözülmüş run → 500 şablonlu run'ın **500'üne** yazıldı
+      (kiriş 281/281, plaka 219/219), 84 şablonsuz atlandı, 0 hata. Aynı
+      geçişte 263 run'a eksik `_away` de yazıldı. Test:
+      `test_backfill_near_peak.py` (2).
+- [ ] `max_von_mises_near_peak`'i hedef listesine (`TARGET_KEYS`) ekleyip
+      kıyas ölç
 - [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) —
       gerçek yapılarda keskin köşe yok, tekilliğin asıl kaynağı bu
 
