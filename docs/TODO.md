@@ -558,6 +558,31 @@ yeniden hesapla) — ayrı mikro-adım.
       (2) köşe birleşim noktası kendisi tekil (boyuna kenarlar keskin).
       İkisi de mühendislik kararı (yerel mesh inceltme / boyuna kenar
       radyusu) — agent karar vermedi.
+
+      **Yerel inceltme ölçümü (2026-09-25, yalnız ölçüm betiği, ürün kodu
+      değişmedi):** global es=5, kök çevresine (x −3…12) gmsh Box alanı ile
+      yerel boy h. Eğri fillet yüzeyinde ters jacobian'lı C3D10 çıktı (8.4
+      ile aynı) → betikte `optimize("HighOrder")` açıldı.
+
+      | h (mm) | düğüm | köşe vm (MPa) | fillet ortası vm (MPa) |
+      |---|---|---|---|
+      | 2.0 | 35 167 | 384.7 | 348.4 |
+      | 1.2 | 62 658 | 410.3 (+6.7%) | 354.8 (+1.8%) |
+      | 0.8 | 140 361 | 417.4 (+1.7%) | 362.0 (+2.0%) |
+      | 0.55 | — | ccx 600 s zaman aşımı (~18 GB bellek) | — |
+
+      **Köşe değeri yakınsıyor:** artışlar küçülüyor (+25.6 → +7.1 MPa),
+      geometrik seri limiti ≈ 420 MPa. Yani sebep büyük olasılıkla
+      (1) çözünürlük — köşe birleşimi tekil DEĞİL; boyuna kenar radyusu
+      (c) bu ölçüme göre gerekmiyor. Fillet ortası adım başına ~%2 artmaya
+      devam ediyor — tam yakınsamadı, 3 nokta az. Güven: orta; h=0.55
+      bitseydi kesinleşirdi.
+      **Ürün için sonuç:** filletli kirişte gerilme hedefi global eleman
+      boyuyla mesh'e bağlı (es=2.5'te bile ~%12 düşük). Kullanılabilir
+      olması için ürüne yerel mesh inceltmesi (+ yüksek mertebe
+      optimizasyonu, 8.4) gerekiyor — ikisi de mesh ayarı, karar sende.
+      O zamana kadar `root_fillet > 0` DOE'de gerilme hedefi için
+      kullanılmamalı.
 - [ ] Omuz geçişi filleti — kademeli mil (madde 7) ile birlikte
 
 ---
