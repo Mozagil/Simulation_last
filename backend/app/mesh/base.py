@@ -131,6 +131,13 @@ class MeshParams:
     element_scheme: str = "tet"  # tet | quad | mix
     # Kenar tag → düğüm sayısı (uçlar dahil, min 2). Gmsh transfinite curve.
     curve_nodes: dict[int, int] = field(default_factory=dict)
+    #: 2. mertebe düğümleri eğri yüzeye taşıdıktan sonra gmsh'in yüksek
+    #: mertebe optimizasyonu (TODO 8.4). Delik/fillet gibi eğri yüzeylerde
+    #: kenar-orta düğümler elemanı ters çevirebiliyor (ccx: `nonpositive
+    #: jacobian`); ölçüldü — kök filletli kirişte h=1.2'de ters eleman
+    #: çıktı, optimizasyonla düzeldi. Varsayılan KAPALI: mesh ayarı,
+    #: kararı mühendis verir.
+    high_order_optimize: bool = False
 
 
 @dataclass

@@ -365,6 +365,8 @@ function App() {
   const [meshElementSize, setMeshElementSize] = useState("5");
   const [meshDimension, setMeshDimension] = useState<2 | 3>(2);
   const [meshScheme, setMeshScheme] = useState<MeshElementScheme>("quad");
+  // gmsh HighOrder optimizasyonu (TODO 8.4): eğri yüzeyde ters jacobian'a karşı.
+  const [highOrderOptimize, setHighOrderOptimize] = useState(false);
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
   const [meshPreview, setMeshPreview] = useState<MeshPreviewData | null>(null);
   // Modelin en büyük bounding box boyutu (mm) — deformasyon slider'ının
@@ -1438,6 +1440,8 @@ function App() {
         size,
         meshDimension,
         meshScheme,
+        {},
+        highOrderOptimize,
       );
       setMeshResult(result);
       ensureStepExpanded("material");
@@ -3712,6 +3716,15 @@ function App() {
             <option value="quad">quad</option>
             <option value="mix">mix</option>
           </select>
+        </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={highOrderOptimize}
+            disabled={busyAction === "mesh"}
+            onChange={(e) => setHighOrderOptimize(e.target.checked)}
+          />
+          2. mertebe optimizasyonu (eğri yüzeyde ters eleman)
         </label>
         <p className="mesh-side-hint">
           Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile

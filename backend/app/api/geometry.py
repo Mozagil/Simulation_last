@@ -817,6 +817,10 @@ class GenerateMeshRequest(BaseModel):
         default_factory=dict,
         description="Kenar id → düğüm sayısı (uçlar dahil, min 2)",
     )
+    high_order_optimize: bool = Field(
+        default=False,
+        description="2. mertebe düğümler için gmsh HighOrder optimizasyonu (eğri yüzeylerde ters jacobian'a karşı)",
+    )
 
 
 @router.post("/{geometry_id}/mesh")
@@ -855,6 +859,7 @@ def generate_mesh(
                     for k, v in (body.curve_nodes or {}).items()
                     if int(v) >= 2
                 },
+                high_order_optimize=bool(body.high_order_optimize),
             ),
         )
     except GmshImportError as exc:
