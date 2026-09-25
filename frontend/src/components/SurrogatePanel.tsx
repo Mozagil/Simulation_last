@@ -408,6 +408,12 @@ export default function SurrogatePanel({
         />
         NLGEOM (büyük deformasyon) modeli — ayrı korpus, ayrı dosya
       </label>
+      {nlgeom && !active && (
+        <p className="material-assign-hint" data-testid="nlgeom-model-missing">
+          Bu şablonda NLGEOM modeli eğitilmedi — önce NLGEOM korpusuyla eğit; tahmin
+          lineer modele düşmez.
+        </p>
+      )}
 
       <label className="mesh-field">
         <span>Skaler model</span>

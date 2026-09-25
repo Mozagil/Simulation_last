@@ -859,6 +859,58 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
     }
 
 
+class ScreenBody(BaseModel):
+    """Geometri kaydı gerektirmeyen ön kontrol: şablon parametreleri + yük."""
+
+    template_id: str = "cantilever_beam"
+    params: dict[str, float] = Field(default_factory=dict)
+    youngs_modulus: float = Field(default=210e9, gt=0)
+    yield_strength: float | None = Field(default=None, gt=0)
+    load_fx: float = 0.0
+    load_fy: float = 0.0
+    load_fz: float = 0.0
+    material_id: int | None = None
+
+
+@router.post("/screen")
+def screen_params(body: ScreenBody, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """ccx, mesh, geometri kaydı YOK: lineer analitikle beklenen u/L, σ, akma.
+
+    WeWeb formu için — kullanıcı parametreleri yazarken anında "büyük
+    deformasyon bandında mı / akıyor mu" verisi. Karar vermez; arayüz
+    NLGEOM'u önerir, kullanıcı seçer. `material_id` verilirse E ve akma
+    kütüphaneden alınır, verilmezse gövdedeki değerler.
+    """
+    from app.doe.screening import screen_sample
+    from app.ml.corpus import DEFAULT_MAX_U_OVER_L
+
+    e_pa, yield_pa = body.youngs_modulus, body.yield_strength
+    if body.material_id is not None:
+        mat = db.get(Material, body.material_id)
+        if mat is None:
+            raise HTTPException(status_code=404, detail="Malzeme bulunamadı.")
+        e_pa = float(mat.youngs_modulus)
+        yield_pa = float(mat.yield_strength) if mat.yield_strength else None
+    force = (body.load_fx**2 + body.load_fy**2 + body.load_fz**2) ** 0.5
+    res = screen_sample(
+        body.template_id, dict(body.params), force_n=force, youngs_modulus_pa=e_pa,
+        yield_strength_pa=yield_pa, max_u_over_l=DEFAULT_MAX_U_OVER_L,
+    )
+    return {
+        "template_id": body.template_id,
+        "has_analytic": res.u_mm is not None,
+        "u_over_l": res.u_over_l,
+        "u_mm": res.u_mm,
+        "sigma_mpa": res.sigma_mpa,
+        "threshold": DEFAULT_MAX_U_OVER_L,
+        "large_deformation": bool(res.u_over_l is not None and res.u_over_l > DEFAULT_MAX_U_OVER_L),
+        "exceeds_yield": bool(
+            yield_pa and res.sigma_mpa is not None and res.sigma_mpa > float(yield_pa) / 1e6
+        ),
+        "reason": res.reason,
+    }
+
+
 @router.post("/backfill-stress-probe")
 def backfill_stress_probe(
     standoff_ratio: float = DEFAULT_STANDOFF_RATIO,

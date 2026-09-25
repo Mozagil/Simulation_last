@@ -276,6 +276,14 @@ describe("SurrogatePanel", () => {
     );
   });
 
+  it("NLGEOM modeli yokken not gösterir ve tahmin butonu kapalı", async () => {
+    render(<SurrogatePanel geometryId={1} runId={4} />);
+    await screen.findByRole("button", { name: /Hibrit .* eğit/ });
+    fireEvent.click(screen.getByLabelText(/NLGEOM .büyük deformasyon. modeli/));
+    expect(await screen.findByTestId("nlgeom-model-missing")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Parametreyle tahmin" })).toBeDisabled();
+  });
+
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {
     vi.mocked(fetchSurrogateStatus).mockResolvedValue({
       scalar_rf: null,

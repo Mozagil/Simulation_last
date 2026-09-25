@@ -62,7 +62,7 @@ function CantileverBeamSchematic() {
       <svg
         viewBox="0 0 300 150"
         role="img"
-        aria-label="Ankastre kiriş: sol uç duvara tutturulmuş, sağ uçta aşağı yük F; L uzunluk, T kalınlık, W genişlik"
+        aria-label="Ankastre kiriş: sol uç duvara tutturulmuş, sağ uçta aşağı yük F; L uzunluk, T kalınlık, W genişlik; isteğe bağlı kök filleti r, duvar kalınlığı tw ve taşması m"
       >
         <defs>
           <pattern
@@ -82,6 +82,13 @@ function CantileverBeamSchematic() {
         <text x="20" y="144" textAnchor="middle" className="template-schematic-caption">
           ankastre
         </text>
+
+        {/* Kök filleti (r > 0): duvar bloğu tw × (T+2m), kiriş köküne r yayı */}
+        <path d="M32,60 Q32,68 40,68" className="template-schematic-dim" />
+        <path d="M32,96 Q32,88 40,88" className="template-schematic-dim" />
+        <text x="44" y="64" className="template-schematic-label">r</text>
+        <text x="20" y="28" textAnchor="middle" className="template-schematic-caption">tw</text>
+        <text x="46" y="104" className="template-schematic-caption">m</text>
 
         {/*
           İzometrik dikdörtgen kutu.

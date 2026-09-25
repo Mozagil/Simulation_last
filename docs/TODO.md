@@ -364,6 +364,14 @@ Eksikler:
       "büyük deformasyon ile çözülsün mü?" sorar (Tamam → NLGEOM, İptal →
       lineer). Analitiği olmayan şablon/şablonsuz geometride sorulmaz.
       Test: `test_solve_screen.py` (2) + `materials.nlgeom.test.ts` (+1).
+- [x] **Küçük işler — YAPILDI (2026-09-25):** sonuç kartında NLGEOM
+      (artım, cutback, yakınsama) kartı; çözüm panelinde ön kontrol satırı
+      (beklenen sehim, u/L, σ — BC değişince 300 ms sonra); ML Stüdyo'da
+      NLGEOM modeli yoksa not + buton kapalı; `POST /surrogate/screen`
+      (geometri kaydı gerektirmeyen ön kontrol, WeWeb formu için);
+      `scripts/backup_models.py` (uploads/models → backups/*.zip, --restore);
+      kiriş şemasında r/tw/m. Testler: `test_surrogate_screen.py` (3),
+      `SurrogatePanel.test.tsx` (+1).
 - [x] **Doğrulama — YAPILDI (2026-09-25), kesin çözümle tutuyor.** Vaka
       α = FL²/(EI) = 1 (6061-T6, L1000 T6.4 W40, F = 60.2 N, σ ≈ 220 MPa <
       akma 276). Referans: Bisshopp & Drucker büyük sehim çözümü.

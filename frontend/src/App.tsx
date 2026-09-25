@@ -45,6 +45,7 @@ import {
   solveGeometry,
   isValidIncrements,
   screenSolve,
+  type SolveScreenResult,
   type Material,
   type MaterialAssignment,
   type SolveBC,
@@ -740,6 +741,23 @@ function App() {
     }
   }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
+
+  useEffect(() => {
+    if (geometryId == null || !bcList.some((b) => b.kind === "cload")) {
+      setScreenInfo(null);
+      return;
+    }
+    let alive = true;
+    const t = window.setTimeout(() => {
+      screenSolve(geometryId, bcList.map((b) => b.payload))
+        .then((r) => alive && setScreenInfo(r))
+        .catch(() => alive && setScreenInfo(null));
+    }, 300);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [geometryId, bcList]);
   // Geçmiş satırlarında şablon parametrelerini şemadaki harfle göstermek için.
   const [paramSymbols, setParamSymbols] = useState<SymbolMap>({});
   // Donmuş eğitim seti: rozetler hangi run'ın sete girdiğini gösterir.
@@ -784,6 +802,8 @@ function App() {
   const [runCcx, setRunCcx] = useState(false);
   const [nlgeom, setNlgeom] = useState(false);
   const [nIncrements, setNIncrements] = useState("20");
+  // Çözmeden önce lineer teoriye göre beklenen u/L — kullanıcı sormadan görür.
+  const [screenInfo, setScreenInfo] = useState<SolveScreenResult | null>(null);
   const [modalNModes, setModalNModes] = useState("10");
   const [modalFreqMin, setModalFreqMin] = useState("");
   const [modalFreqMax, setModalFreqMax] = useState("");
@@ -3463,6 +3483,23 @@ function App() {
             </div>
             {solveResult?.scalars && solveResult.scalars.max_von_mises !== undefined && (
               <div className="metric-cards-row">
+                {solveResult.scalars._nlgeom ? (
+                  <div className="metric-card" data-testid="nlgeom-card">
+                    <span className="metric-card-label">KİNEMATİK</span>
+                    <span className="metric-card-value">NLGEOM</span>
+                    <span className="metric-card-sub">
+                      {solveResult.scalars._n_increments !== undefined
+                        ? `${solveResult.scalars._n_increments.toFixed(0)} artım`
+                        : "büyük deformasyon"}
+                      {solveResult.scalars._n_cutbacks
+                        ? ` · ${solveResult.scalars._n_cutbacks.toFixed(0)} cutback`
+                        : ""}
+                      {solveResult.scalars._solver_converged !== undefined
+                        ? solveResult.scalars._solver_converged >= 1 ? " · yakınsadı" : " · YAKINSAMADI"
+                        : ""}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="metric-card">
                   <span className="metric-card-label">MAX STRESS</span>
                   <span className="metric-card-value">
@@ -4383,6 +4420,15 @@ function App() {
           />
           NLGEOM (büyük deformasyon)
         </label>
+        {screenInfo?.has_analytic && screenInfo.u_over_l != null && (
+          <p className="material-assign-hint" data-testid="solve-screen-line">
+            Lineer teori: beklenen sehim {screenInfo.u_mm?.toFixed(2)} mm (L&apos;nin %
+            {(screenInfo.u_over_l * 100).toFixed(1)}&apos;i, eşik %
+            {(screenInfo.threshold * 100).toFixed(0)})
+            {screenInfo.sigma_mpa != null ? ` · σ ${screenInfo.sigma_mpa.toFixed(0)} MPa` : ""}
+            {screenInfo.large_deformation ? " · büyük deformasyon bandında" : ""}
+          </p>
+        )}
         {nlgeom && (
           <label className="mesh-field">
             <span>Artım sayısı (1–500)</span>
