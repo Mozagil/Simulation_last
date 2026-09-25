@@ -105,14 +105,21 @@ def _pressure(bcs: list[dict[str, Any]]) -> float:
     return 0.0
 
 
-def _schema_defaults(template_id: str) -> dict[str, Any]:
+def _schema_defaults(template_id: str, *, optional_only: bool = False) -> dict[str, Any]:
+    """Şablon alanlarının varsayılanları. `optional_only`: yalnız şemada
+    `optional: true` işaretli alanlar (şablona sonradan eklenen, eski
+    çağrıların bilmediği alanlar — ör. kiriş kök filleti)."""
     try:
         from app.templates import get_template
 
         props = get_template(template_id).params_schema().get("properties") or {}
     except Exception:  # noqa: BLE001 — bilinmeyen şablon: varsayılan yok
         return {}
-    return {name: prop["default"] for name, prop in props.items() if "default" in prop}
+    return {
+        name: prop["default"]
+        for name, prop in props.items()
+        if "default" in prop and (not optional_only or prop.get("optional"))
+    }
 
 
 def feature_values_from_run(

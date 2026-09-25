@@ -657,7 +657,32 @@ ccx'te hata vermez, sıfır deplasmanlı "başarılı" sonuç üretir. `gravity`
 
 Doğrulandı: bölge adıyla toplam Fy = −150.00 N (beklenen −150).
 
-### 8.2 Test malzemesi çöpü
+### 8.2 Test malzemesi çöpü — ✅ kapandı (2026-09-25), AMA VERİ KAYBIYLA
+
+**Kök çözüm:** `tests/conftest.py` testleri `cae_test` veritabanına
+yönlendirir (`app` import edilmeden önce `DATABASE_URL`; yoksa yaratılır;
+şema `alembic upgrade head`; kimlik sayaçları 10M'dan başlar ki test
+dosyaları dev'in `uploads/` dosyalarıyla çakışmasın). Kapatmak:
+`CAE_TESTS_USE_DEV_DB=1`. Dev DB'den 44 `TestCustomSteel_*` malzemesi ve
+453 `box.step` test run'ı (+2592 test geometrisi) silindi.
+
+**OLAY — 2026-09-25, geri dönüşsüz:** `cae_test`'e geçiş, eski
+fixture'lardaki `safe_cleanup`'ı "izinli" saydı ve `rmtree(uploads/…)`
+GERÇEK dosyaları sildi: `uploads/runs/` (~716 klasör: 538 `.train.npz`,
+`.frd.gz`, `.inp`), `uploads/models/` (skaler modeller, `field_gnn.npz`,
+korpus manifestleri), `uploads/meshes/`. DB (`cae_dev`) ve `uploads/*.step`
+sağlam. Düzeltme: `db_guard` dosya silmeyi yalnız açık
+`CAE_ALLOW_UPLOAD_WIPE=1` ile yapar; `RESTART IDENTITY` kaldırıldı.
+
+**Kurtarma:** manifestler `study_id` ile yeniden donduruldu — kiris-v2
+200 → **192** (bugünkü yakınsama kapısı 8 run daha atıyor), plaka-v1 198
+→ 198; skaler modeller yeniden eğitildi (hibrit holdout u_max MAPE kiriş
+%0.20, plaka %0.29 — eskisiyle aynı mertebe). Koşu dosyaları ccx ile
+yeniden üretiliyor (`resolve_runs`: 430 run, DB'ye yazmaz; ilk 93'te
+u sapması %0.00–0.01, yani deterministik). Eski `field_gnn.npz` (8 graf,
+şablonsuz, zaten geçersiz) geri gelmeyecek.
+
+Eski metin:
 DB'de 16 adet `TestCustomSteel_*` malzemesi birikmiş (id 34–49) —
 testlerin bıraktığı kayıtlar. 21 malzemenin 16'sı çöp. Testler rollback
 yapmalı ya da ayrı test DB'si kullanmalı.

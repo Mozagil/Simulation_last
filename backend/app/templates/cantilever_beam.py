@@ -40,19 +40,21 @@ class CantileverBeamParams(BaseModel):
         0.0,
         ge=0,
         description="Kök fillet yarıçapı r (0 → duvar yok, düz ankastre)",
-        json_schema_extra={"unit": "mm", "symbol": "r"},
+        # optional: tahmin isteğinde eksikse varsayılan alınır (çekirdek
+        # L/T/W için böyle değil — eksikleri açık hata).
+        json_schema_extra={"unit": "mm", "symbol": "r", "optional": True},
     )
     wall_thickness: float = Field(
         20.0,
         gt=0,
         description="Duvar kalınlığı (x) — yalnız r > 0 iken",
-        json_schema_extra={"unit": "mm", "symbol": "tw"},
+        json_schema_extra={"unit": "mm", "symbol": "tw", "optional": True},
     )
     wall_margin: float = Field(
         20.0,
         gt=0,
         description="Duvarın kesitten her yönde taşması — yalnız r > 0 iken",
-        json_schema_extra={"unit": "mm", "symbol": "m"},
+        json_schema_extra={"unit": "mm", "symbol": "m", "optional": True},
     )
 
     @model_validator(mode="after")

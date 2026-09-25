@@ -407,7 +407,14 @@ def predict_from_params(
         )
     model_kind, bundle = loaded
     keys = _bundle_keys(bundle, body.template_id)
+    from app.ml.scalar_features import _schema_defaults
+
     features = {
+        # Şablona sonradan eklenen `optional` alanlar (kiriş kök filleti)
+        # eski çağrıda yok: şablon VARSAYILANI (eski geometri), 0 değil.
+        # Çekirdek alanlar (L/T/W, plaka çapı…) eksikse aşağıda açık hata.
+        **{k: float(v) for k, v in _schema_defaults(body.template_id, optional_only=True).items()
+           if isinstance(v, (int, float)) and not isinstance(v, bool)},
         # Şablonun kendi alanları; kirişin L/T/W'si ayrıca doğrudan gelebilir.
         **{k: float(v) for k, v in (body.params or {}).items()},
         **{

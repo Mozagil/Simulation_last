@@ -138,10 +138,12 @@ def test_stepped_shaft_fillet_adds_material_and_regions(tmp_path):
         assert len(r.regions["ankastre_uc"]) == 1 and len(r.regions["yuk_yuzeyi"]) == 1
         v, n = _volume(r.step_path)
         sharp = math.pi * p.big_radius**2 * p.big_length + math.pi * p.small_radius**2 * p.small_length
-        # İçbükey fillet malzeme EKLER: kesit r²(1−π/4), omuz çevresi ~2π(R2 + ~0.4r).
-        expect = 2 * math.pi * (p.small_radius + rf * (1 - 4 / (3 * math.pi))) * rf**2 * (1 - math.pi / 4)
+        # İçbükey fillet malzeme EKLER (Pappus): kesit A = r²(1−π/4), köşe
+        # bölgesinin ağırlık merkezi her iki kenardan 0.2232·r uzakta →
+        # V = 2π (R2 + 0.2232 r) · A. Ölçüldü: r=2 → 56.34, r=4 → 235.02 mm³.
+        expect = 2 * math.pi * (p.small_radius + 0.2232 * rf) * rf**2 * (1 - math.pi / 4)
         assert n == 1
-        assert v - sharp == pytest.approx(expect, rel=0.10)
+        assert v - sharp == pytest.approx(expect, rel=2e-3)
 
 
 def test_stepped_shaft_kt_table_and_analytic():
