@@ -622,11 +622,20 @@ yeniden hesapla) — ayrı mikro-adım.
 
 ## 7. Şablon kütüphanesi (Faz 0.4)
 
-12 şablon var, 4'ü eksik:
-- [ ] T-braket (kaburgalı ve kaburgasız)
-- [ ] L-braket, delikli bağlantı
-- [ ] Flanş (cıvata delikli)
-- [ ] Kademeli mil (çap geçişinde gerilme yığılması, fillet parametre)
+16 şablon — Grup 3 YAPILDI (2026-09-25), hepsi gerçek OCC geometrisi,
+hacimle doğrulandı (`test_templates_grup3.py`, 11 test), şemaları var:
+- [x] `t_bracket` — sırt plakası + konsol raf, `rib_kind` none/gusset
+      (üçgen prizma, gövdeye kaynaşık). Analitik yalnız kaburgasız raf;
+      kaburgalı DOE'de `require_analytic_ok=False` gerekir.
+- [x] `l_bracket_bolted` — dik bacakta 2 cıvata deliği, ankastre DELİK
+      yüzeylerinde (gerçek delik yığılması); analitik yatay bacak konsolu.
+- [x] `flange` — halka plaka, n cıvata deliği ankastre, boru deliğinden
+      eksenel çekme. `analytic=None` (DOE ön elemesi atlanır).
+- [x] `stepped_shaft` — omuz filleti GEOMETRİDE; Kt Peterson/Norton
+      üstel tablosu (D/d ara değer, r/d 0.01–0.3), sehim Castigliano;
+      `characteristic_length = r` (fillet çözülsün diye).
+Hiçbiri ccx ile koşulmadı — DOE/yakınsama ayrı iş. Şablon başına
+mesh yakınsaması ölçülmeden eğitime alınmamalı (kök filleti dersi).
 
 ---
 

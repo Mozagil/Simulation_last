@@ -28,6 +28,10 @@ from app.templates.simply_supported_beam import SIMPLY_SUPPORTED_BEAM
 from app.templates.thick_walled_tube import THICK_WALLED_TUBE
 from app.templates.torsion_shaft import TORSION_SHAFT
 from app.templates.box_tube import BOX_TUBE
+from app.templates.t_bracket import T_BRACKET
+from app.templates.l_bracket_bolted import L_BRACKET_BOLTED
+from app.templates.flange import FLANGE
+from app.templates.stepped_shaft import STEPPED_SHAFT
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -42,6 +46,10 @@ _ALL: tuple[GeometryTemplate, ...] = (
     L_ANGLE,
     NOTCHED_BAR,
     KEYWAY_SHAFT,
+    T_BRACKET,
+    L_BRACKET_BOLTED,
+    FLANGE,
+    STEPPED_SHAFT,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}
