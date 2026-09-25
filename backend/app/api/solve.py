@@ -782,6 +782,59 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
+class SolveScreenBody(BaseModel):
+    bcs: list[SolveBC] = Field(default_factory=list)
+
+
+@router.post("/{geometry_id}/solve/screen")
+def screen_solve(
+    geometry_id: int, body: SolveScreenBody, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Çözmeden önce: lineer analitikle beklenen u/L. Karar vermez, veri döner.
+
+    Arayüz `large_deformation` true ise kullanıcıya "NLGEOM ile çözülsün mü?"
+    diye sorar; seçim kullanıcının. Eşik korpus kapısıyla aynı (u/L 0.10):
+    lineer çözüm bunun üstünde denge denklemlerini yanlış geometride kurar.
+    Şablonsuz geometri ya da analitiği olmayan şablonda `has_analytic=false`
+    döner — soru sorulmaz, kullanıcı kendi bilir.
+    """
+    from app.doe.screening import screen_sample
+    from app.ml.corpus import DEFAULT_MAX_U_OVER_L
+
+    geo = db.get(Geometry, geometry_id)
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Geometri bulunamadı.")
+    out: dict[str, Any] = {
+        "has_analytic": False, "u_over_l": None, "u_mm": None, "sigma_mpa": None,
+        "threshold": DEFAULT_MAX_U_OVER_L, "large_deformation": False,
+    }
+    if not geo.template_id or not geo.template_params:
+        return out
+    assignment = (
+        db.query(MaterialAssignment)
+        .options(joinedload(MaterialAssignment.material))
+        .filter(MaterialAssignment.geometry_id == geometry_id)
+        .first()
+    )
+    e_pa = float(assignment.material.youngs_modulus) if assignment and assignment.material else 210e9
+    force = 0.0
+    for bc in body.bcs:
+        if (bc.type or "").lower() == "cload":
+            force += ((bc.fx or 0.0) ** 2 + (bc.fy or 0.0) ** 2 + (bc.fz or 0.0) ** 2) ** 0.5
+    res = screen_sample(
+        geo.template_id, dict(geo.template_params), force_n=force,
+        youngs_modulus_pa=e_pa, yield_strength_pa=None, max_u_over_l=DEFAULT_MAX_U_OVER_L,
+    )
+    if res.u_over_l is None:
+        return out
+    out.update({
+        "has_analytic": True, "u_over_l": res.u_over_l, "u_mm": res.u_mm,
+        "sigma_mpa": res.sigma_mpa,
+        "large_deformation": res.u_over_l > DEFAULT_MAX_U_OVER_L,
+    })
+    return out
+
+
 @router.delete("/runs/{run_id}")
 def delete_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Bir analiz kaydını ve `uploads/runs/{id}/` klasörünü siler.

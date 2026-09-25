@@ -31,6 +31,20 @@ describe("solveGeometry — NLGEOM (TODO 4)", () => {
   });
 });
 
+describe("screenSolve", () => {
+  it("geometry_id ve bcs ile ön kontrol ister, sonucu döner", async () => {
+    const { screenSolve } = await import("./materials");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ has_analytic: true, u_over_l: 0.33, u_mm: 330, sigma_mpa: 220, threshold: 0.1, large_deformation: true }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await screenSolve(7, [{ type: "cload", fy: -60 }]);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/geometry/7/solve/screen");
+    expect(lastBody(fetchMock)).toEqual({ bcs: [{ type: "cload", fy: -60 }] });
+    expect(out.large_deformation).toBe(true);
+  });
+});
+
 describe("isValidIncrements", () => {
   it("backend sınırı 1–500 tam sayı", () => {
     expect(isValidIncrements("20")).toBe(true);

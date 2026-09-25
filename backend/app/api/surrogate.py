@@ -536,8 +536,15 @@ def train_field_gnn(
     db: Session = Depends(get_db),
     template_id: str | None = None,
     corpus_name: str | None = None,
+    hidden: int = 24,
+    n_proc: int = 2,
 ) -> dict[str, Any]:
     """Alan modeli (GNN) eğitimi.
+
+    `hidden`/`n_proc` (1.3c taraması, kiriş 192 graf, holdout u_max RMSE):
+    24/2 → 2.56 · 24/8 → 2.46 · 48/2 → 2.90 · 48/8 → 2.15 · 24/16 → 2.28 mm.
+    Derinlik yardım ediyor, genişlik tek başına zarar; hiçbiri %5 ölçütünü
+    (0.12 mm) tutmuyor. Varsayılan hızlı olan; ölçüm için açık verilir.
 
     Model ŞABLON KLASÖRÜNE yazılır (`uploads/models/<şablon>/field_gnn.npz`):
     eskiden tek global dosyaya yazılıyor, plaka eğitimi kiriş modelini
@@ -602,7 +609,7 @@ def train_field_gnn(
         summary = corpus.as_public()
 
     try:
-        bundle = train_gnn(samples)
+        bundle = train_gnn(samples, hidden=hidden, n_proc=n_proc)
     except ValueError as ext:
         raise HTTPException(status_code=422, detail=str(ext)) from ext
     bundle["corpus"] = summary

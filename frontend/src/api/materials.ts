@@ -188,6 +188,29 @@ export type SolveBC = {
   ref_node_id?: number;
 };
 
+export interface SolveScreenResult {
+  has_analytic: boolean;
+  u_over_l: number | null;
+  u_mm: number | null;
+  sigma_mpa: number | null;
+  threshold: number;
+  large_deformation: boolean;
+}
+
+/** Çözmeden önce lineer analitikle beklenen u/L — NLGEOM sorusu için veri. */
+export async function screenSolve(
+  geometryId: number,
+  bcs: SolveBC[],
+): Promise<SolveScreenResult> {
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/solve/screen`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bcs }),
+  });
+  if (!response.ok) throw new Error(`Ön kontrol başarısız (HTTP ${response.status}).`);
+  return (await response.json()) as SolveScreenResult;
+}
+
 /** NLGEOM artım sayısı: backend `n_increments` sınırı 1–500 (tam sayı). */
 export function isValidIncrements(raw: string): boolean {
   const n = Number(raw);

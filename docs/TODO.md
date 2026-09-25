@@ -232,10 +232,28 @@ taşımadığı için hiçbir şablona verilmiyor.** Açık run tahmini, şablon
 başına GNN eğitilene kadar skaler modele düşüyor. Dosya silinmedi.
 Testler: `test_gnn_template_store.py` (7).
 
-#### 1.3c GNN mimarisi — AÇIK, karar bekliyor
-Seçenekler: (a) `n_proc`/`hidden` taraması (kod değişmez, yalnız ölçüm);
-(b) kenar öznitelikleri / göreli konum; (c) global bağlam (graf düzeyi
-havuzlama → her düğüme geri yayın); (d) çok ölçekli (kaba graf) mesaj geçişi.
+#### 1.3c GNN mimarisi — (a) TARAMA YAPILDI (2026-09-25), ÖLÇÜT YİNE TUTMADI
+Kiriş kiris-v2 (192 mesh grafı, torch, aynı tohum, holdout ~%20):
+
+| hidden | n_proc | u_y RMSE (mm) | vm RMSE (MPa) | u_max RMSE (mm) | vm_max RMSE (MPa) | süre |
+|---|---|---|---|---|---|---|
+| 24 | 2 | 1.120 | 11.28 | 2.564 | 25.0 | 5 dk |
+| 24 | 4 | 1.081 | 11.04 | 2.578 | 24.9 | 7 dk |
+| 24 | 8 | 1.026 | 10.84 | 2.464 | 24.8 | 50 dk* |
+| 24 | 16 | 1.097 | 16.18 | 2.276 | 36.8 | 25 dk |
+| 48 | 2 | 1.143 | 11.09 | 2.897 | 27.7 | 13 dk |
+| 48 | 8 | **1.016** | **10.70** | **2.145** | 26.9 | 40 dk |
+
+(*CPU çekişmesi.) **Sonuç:** mesaj geçişi derinliği yardım ediyor (2→8:
+−%16 u_max), genişlik tek başına zarar veriyor, 16 adım aşırı uyuyor
+(vm bozuluyor). En iyisi (48/8) bile ölçütün (0.12 mm) **18 katı**. Yani
+şüphe kısmen doğru (bilgi yayılımı sınırlı) ama çare değil: sorun
+mimarinin ölçeğinde değil, temsilinde — deplasman GLOBAL bir büyüklük,
+yerel mesaj geçişi 7000 düğümde ankastre→uç ilişkisini öğrenemiyor.
+**Karar:** (b)/(c)/(d) bu turda yapılmadı; GNN "prototip — sonuçlar
+geçersiz" etiketiyle kalır. `/gnn/train` artık `hidden`/`n_proc` alır.
+Şablon başına kiriş GNN'i (48/8) yeniden çözülen dosyalarla eğitildi
+(`uploads/models/cantilever_beam/field_gnn.npz`) — sonuç aşağıda.
 
 ---
 
@@ -340,6 +358,12 @@ Eksikler:
 - [x] **Arayüzde açma/kapama** — YAPILDI (2026-09-25, `b23e487`): statik
       çözüm panelinde "NLGEOM (büyük deformasyon)" + artım sayısı (1–500).
       Kapalıyken istek eskisiyle aynı. Test: `api/materials.nlgeom.test.ts` (3).
+- [x] **Ön kontrol + soru — YAPILDI (2026-09-25).** `POST
+      /geometry/{id}/solve/screen` lineer analitikle beklenen u/L döner
+      (karar vermez). Arayüz: NLGEOM seçili değilse ve u/L > 0.10 ise
+      "büyük deformasyon ile çözülsün mü?" sorar (Tamam → NLGEOM, İptal →
+      lineer). Analitiği olmayan şablon/şablonsuz geometride sorulmaz.
+      Test: `test_solve_screen.py` (2) + `materials.nlgeom.test.ts` (+1).
 - [x] **Doğrulama — YAPILDI (2026-09-25), kesin çözümle tutuyor.** Vaka
       α = FL²/(EI) = 1 (6061-T6, L1000 T6.4 W40, F = 60.2 N, σ ≈ 220 MPa <
       akma 276). Referans: Bisshopp & Drucker büyük sehim çözümü.

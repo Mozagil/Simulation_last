@@ -44,6 +44,7 @@ import {
   setMaterialSnCurve,
   solveGeometry,
   isValidIncrements,
+  screenSolve,
   type Material,
   type MaterialAssignment,
   type SolveBC,
@@ -2192,6 +2193,32 @@ function App() {
     const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
     const bcs = bcList.map((b) => b.payload);
 
+    // Kullanıcı NLGEOM seçmediyse ön kontrol: lineer analitik u/L eşiği
+    // aşıyorsa sor. Karar kullanıcının; ön kontrol yapılamıyorsa sorulmaz.
+    let useNlgeom = nlgeom;
+    if (!nlgeom) {
+      try {
+        const screen = await screenSolve(geometryId, bcs);
+        if (screen.large_deformation && screen.u_over_l != null) {
+          const pct = (screen.u_over_l * 100).toFixed(1);
+          const thr = (screen.threshold * 100).toFixed(0);
+          if (
+            window.confirm(
+              `Lineer teoriye göre beklenen uç sehimi L'nin %${pct}'i (eşik %${thr}). ` +
+                "Lineer çözüm bu bölgede denge denklemlerini deforme olmamış geometride kurar.\n\n" +
+                "Büyük deformasyon (NLGEOM) ile çözülsün mü?\n" +
+                "Tamam: NLGEOM · İptal: lineer devam",
+            )
+          ) {
+            useNlgeom = true;
+            setNlgeom(true);
+          }
+        }
+      } catch {
+        /* ön kontrol başarısızsa soru sorulmaz, lineer devam */
+      }
+    }
+
     setBusyAction("solve");
     setErrorMessage(null);
     const treeThickness = productTree?.items.find(
@@ -2210,8 +2237,8 @@ function App() {
         name: caseNameInput.trim() || undefined,
         element_size: meshResult.element_size,
         element_scheme: meshResult.element_scheme,
-        nlgeom,
-        n_increments: nlgeom ? parseInt(nIncrements, 10) : undefined,
+        nlgeom: useNlgeom,
+        n_increments: useNlgeom ? parseInt(nIncrements, 10) : undefined,
       });
       let finalResult = result;
       if (result.status === "pending") {

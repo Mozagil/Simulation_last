@@ -53,7 +53,7 @@ def fake_graphs(monkeypatch):
     )
     real = train_gnn
     monkeypatch.setattr(
-        api, "train_gnn", lambda samples: real(samples, seed=0, hidden=8, engine="numpy")
+        api, "train_gnn", lambda samples, **kw: real(samples, seed=0, hidden=8, engine="numpy")
     )
 
 
