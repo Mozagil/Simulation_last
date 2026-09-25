@@ -340,3 +340,52 @@ def test_kapi_ve_bant_farkli_isler_yapar(db_session):
     assert corpus.dropped["mesh_too_coarse"] == 1
     assert corpus.dropped["mesh_outlier"] == 1
     assert corpus.n_kept == 8
+
+
+# --- TODO 4: NLGEOM korpusu lineer kapılara takılmaz --------------------------
+
+
+def _nl_run(db, **kw):
+    r = _run(db, **kw)
+    r.scalars = dict(r.scalars) | {"_nlgeom": True}
+    db.commit()
+    return r
+
+
+def test_nlgeom_korpusu_buyuk_sehimi_ve_analitik_sapmayi_tutar(db_session):
+    """Set tanım gereği u/L > 0.10 ve lineer analitikten ~%10 sapar; lineer
+    kapılar (large_displacement, analytic_warn) uygulansaydı hepsi giderdi."""
+    for i in range(8):  # u/L 0.20–0.34, hepsi lineer analitikle "uyumsuz"
+        _nl_run(db_session, length=1000.0, thickness=6.0, width=40.0, element_size=4.0,
+                disp=200.0 + 20 * i, fy=-20.0 - i, warned=True)
+    _nl_run(db_session, length=1000.0, thickness=6.0, width=40.0, element_size=4.0,
+            disp=600.0)  # u/L 0.6
+    _run(db_session, disp=20.0)  # lineer run — kinematik farklı
+
+    c = select_training_runs(db_session, CorpusSpec(template_id="cantilever_beam", nlgeom=True))
+    assert c.n_kept == 8
+    assert c.dropped.get("wrong_kinematics") == 1
+    assert c.dropped.get("large_displacement") == 1   # 0.5 üstü yine dışarıda
+    assert "analytic_warn" not in c.dropped
+    assert c.spec.max_u_over_L == 0.5 and c.spec.require_analytic_ok is False
+
+
+def test_lineer_korpus_degismedi_ve_acik_deger_korunur(db_session):
+    lin = CorpusSpec(template_id="cantilever_beam")
+    assert lin.max_u_over_L == 0.10 and lin.require_analytic_ok is True
+    custom = CorpusSpec(nlgeom=True, max_u_over_L=0.3)
+    assert custom.max_u_over_L == 0.3
+
+
+def test_manifest_nlgeom_bayragini_tasir(tmp_path, monkeypatch, db_session):
+    import app.ml.manifest as mf
+
+    monkeypatch.setattr(mf, "MANIFEST_DIR", tmp_path, raising=False)
+    for i in range(4):
+        _nl_run(db_session, length=1000.0, thickness=6.0, width=40.0, element_size=4.0,
+                disp=200.0 + i, fy=-20.0 - i)
+    c = select_training_runs(db_session, CorpusSpec(template_id="cantilever_beam", nlgeom=True))
+    data = mf.save_manifest("nl-test", c)
+    spec = mf.spec_from_manifest(data)
+    assert data["spec"]["nlgeom"] is True
+    assert spec.nlgeom is True and spec.max_u_over_L == 0.5

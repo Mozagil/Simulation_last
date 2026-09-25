@@ -123,7 +123,9 @@ class RunIdsBody(BaseModel):
     override: bool = False
 
 
-def _corpus_run_ids(db: Session, name: str | None, template_id: str | None) -> tuple[
+def _corpus_run_ids(
+    db: Session, name: str | None, template_id: str | None, nlgeom: bool = False
+) -> tuple[
     list[int] | None, TrainingCorpus | None, dict[str, Any] | None
 ]:
     """Donmuş manifest varsa onun listesi, yoksa canlı süzgeç."""
@@ -134,7 +136,7 @@ def _corpus_run_ids(db: Session, name: str | None, template_id: str | None) -> t
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         ids = [int(v) for v in (data.get("run_ids") or [])]
         return ids, None, data
-    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    corpus = select_training_runs(db, CorpusSpec(template_id=template_id, nlgeom=nlgeom))
     return corpus.run_ids, corpus, None
 
 
@@ -311,6 +313,7 @@ def train_scalar(
     template_id: str | None = None,
     corpus_name: str | None = None,
     model: str = "rf",
+    nlgeom: bool = False,
 ) -> dict[str, Any]:
     """Skaler surrogate eğitimi. `model`: "rf" | "loglinear" | "hybrid".
 
@@ -328,7 +331,7 @@ def train_scalar(
             detail=f"model {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
         )
     label = {"rf": "RF", "loglinear": "log-log", "hybrid": "hibrit"}[model]
-    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
+    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id, nlgeom)
     try:
         X, y, ids, keys, corpus_template = collect_template_table(db, list(run_ids or []))
     except MixedTemplateError as exc:
@@ -607,6 +610,7 @@ def freeze_corpus(
     db: Session = Depends(get_db),
     template_id: str | None = None,
     study_id: int | None = None,
+    nlgeom: bool = False,
 ) -> dict[str, Any]:
     """Canlı süzgeç seçimini isimli bir manifeste dondurur.
 
@@ -616,7 +620,7 @@ def freeze_corpus(
     genişletebilir (bkz. `CorpusSpec.study_id`).
     """
     corpus = select_training_runs(
-        db, CorpusSpec(template_id=template_id, study_id=study_id)
+        db, CorpusSpec(template_id=template_id, study_id=study_id, nlgeom=nlgeom)
     )
     try:
         payload = save_manifest(name, corpus)

@@ -366,13 +366,12 @@ Eksikler:
       Koşu (Codespace önerilir — yerelde ccx büyük mesh'te ~18 GB'a çıktı;
       örnek başı ~1–2 dk, toplam ~4–5 sa):
       `POST /doe/studies` gövde = JSON dosyası → `POST /doe/studies/{id}/run`.
-- [ ] **KORPUS NLGEOM'U HENÜZ KABUL ETMİYOR — eğitimden ÖNCE düzeltilmeli.**
-      `CorpusSpec(nlgeom=True)` kinematiği ayırıyor ama iki lineer kapı
-      yine uygulanıyor: (1) `large_displacement` u/L > 0.10'u atar — bu
-      setin TAMAMI 0.10 üstü; (2) `require_analytic_ok` lineer analitikten
-      sapan (`analytic_warn`) run'ları atar — NLGEOM tanım gereği ~%10
-      sapar. Öneri: nlgeom korpusunda u/L kapısı bandın üstüne (≈0.5),
-      analitik kapısı kapalı ya da büyük sehim referansına (B–D) bağlı.
+- [x] **Korpus NLGEOM kapıları — YAPILDI (2026-09-25).** `CorpusSpec(nlgeom=True)`
+      artık varsayılan u/L kapısını 0.5'e çeker (`NLGEOM_MAX_U_OVER_L`) ve
+      lineer analitik kapısını kapatır; açıkça verilen değer korunur.
+      Manifest `spec.nlgeom` taşır; `/scalar/train`, `/corpus/freeze`
+      `nlgeom` sorgu parametresi alır. Lineer korpus değişmedi.
+      Test: `test_ml_corpus.py` (+3).
 - [ ] NLGEOM ayrı model: eğitim + kıyas (korpus düzeltmesinden sonra)
 
 **Doğrulama vakası** (hesaplandı): çelikte akmadan büyük deformasyona

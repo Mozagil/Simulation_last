@@ -27,6 +27,10 @@ from app.models.run import AnalysisRun
 #: Lineer etiket kapısı: u / karakteristik uzunluk. Üstü büyük deformasyon;
 #: o koşular ayrı modele aittir (0.6.5).
 DEFAULT_MAX_U_OVER_L = 0.10
+#: NLGEOM korpusunun u/L üst sınırı. Büyük deformasyon seti TANIM GEREĞİ
+#: 0.10 üstündedir (TODO 4 DOE bandı 0.10–0.34); lineer kapı bu setin
+#: tamamını atardı. 0.5 üstü akma/temas gibi başka fizik demek — ayrı iş.
+NLGEOM_MAX_U_OVER_L = 0.50
 #: Göreli eleman boyutu (es / kalınlık veya L) medyandan sapma üstü.
 DEFAULT_MESH_RATIO_BAND = 0.50
 
@@ -79,6 +83,18 @@ class CorpusSpec:
     #: uydurmaya çalışmaktır.
     nlgeom: bool = False
 
+    def __post_init__(self) -> None:
+        # NLGEOM setinde iki lineer kapı anlamsız: (1) u/L > 0.10 kapısı —
+        # set zaten 0.10 üstü; (2) lineer analitik karşılaştırması — NLGEOM
+        # lineerden tanım gereği sapar (ölçüldü: α=1'de %9.4), sapma hata
+        # değil sonuçtur. Açıkça verilen değer korunur; yalnız varsayılan
+        # değiştirilir. Büyük sehim referansı (Bisshopp–Drucker) ayrı iş.
+        if self.nlgeom:
+            if self.max_u_over_L == DEFAULT_MAX_U_OVER_L:
+                self.max_u_over_L = NLGEOM_MAX_U_OVER_L
+            if self.require_analytic_ok:
+                self.require_analytic_ok = False
+
 
 @dataclass
 class TrainingCorpus:
@@ -105,6 +121,7 @@ class TrainingCorpus:
             "dropped": dict(self.dropped),
             "flagged": dict(self.flagged),
             "max_u_over_L": self.spec.max_u_over_L,
+            "nlgeom": self.spec.nlgeom,
             "mesh_ratio_band": self.spec.mesh_ratio_band,
             "max_mesh_ratio": self.spec.max_mesh_ratio,
             "analysis_type": self.spec.analysis_type,
