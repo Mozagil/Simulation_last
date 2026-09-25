@@ -216,3 +216,35 @@ def test_mesajda_kullanilan_tur_dogru_yazilir(db, store_root):
     out = predict_from_params(body=body, db=db, model="auto")
     assert out["model_kind"] == "hybrid"
     assert out["message"].startswith("Tahmin (hibrit)")
+
+
+# --- TODO 4: NLGEOM modeli lineer modelden AYRI saklanır ---------------------
+
+
+def test_nlgeom_modeli_lineeri_ezmez_ve_lineere_dusmez(store_root):
+    store.save_model("cantilever_beam", "hybrid", {"v": "lin"}, root=store_root)
+    store.save_model("cantilever_beam", "hybrid", {"v": "nl"}, root=store_root, nlgeom=True)
+
+    assert load_model("cantilever_beam", "hybrid", root=store_root)["v"] == "lin"
+    nl = load_model("cantilever_beam", "hybrid", root=store_root, nlgeom=True)
+    assert nl["v"] == "nl" and nl["nlgeom"] is True
+    assert (store_root / "cantilever_beam" / "nlgeom" / "scalar_hybrid.joblib").is_file()
+    # NLGEOM istenip yoksa lineer dosyaya düşülmez.
+    assert load_model("plate_with_hole", "hybrid", root=store_root, nlgeom=True) is None
+    listed = store.list_models(root=store_root)
+    assert listed["cantilever_beam"] == ["hybrid"]
+    assert listed["cantilever_beam/nlgeom"] == ["hybrid"]
+
+
+def test_status_ve_tahmin_nlgeom_bayragina_gore_okur(db, store_root):
+    store.save_model(PLATE, "hybrid", _fake_plate_bundle(), root=store_root, nlgeom=True)
+    assert surrogate_status(template_id=PLATE)["scalar_hybrid"] is None
+    assert surrogate_status(template_id=PLATE, nlgeom=True)["scalar_hybrid"] is not None
+
+    body = ParamPredictBody(template_id=PLATE, params={"height": 200, "width": 100,
+                                                       "thickness": 6, "diameter": 20},
+                            load_fx=20000.0)
+    with pytest.raises(Exception):
+        predict_from_params(body=body, db=db, model="auto")  # lineer model yok
+    out = predict_from_params(body=body, db=db, model="auto", nlgeom=True)
+    assert out["model_kind"] == "hybrid"

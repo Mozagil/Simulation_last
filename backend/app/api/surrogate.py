@@ -211,7 +211,7 @@ _LOGLINEAR_KINDS = ("loglinear", "hybrid")
 
 
 def _load_scalar_model(
-    model: str, template_id: str | None = None
+    model: str, template_id: str | None = None, nlgeom: bool = False
 ) -> tuple[str, dict[str, Any]] | None:
     """(tür, bundle) ya da None.
 
@@ -226,8 +226,10 @@ def _load_scalar_model(
         )
     kinds = _AUTO_ORDER if model == "auto" else (model,)
     for kind in kinds:
+        if nlgeom and not template_id:
+            return None  # NLGEOM modeli yalnız şablon klasöründe
         bundle = (
-            load_model(template_id, kind)
+            load_model(template_id, kind, nlgeom=nlgeom)
             if template_id
             else _load_legacy_global(kind)
         )
@@ -266,7 +268,7 @@ def _bundle_keys(bundle: dict[str, Any], template_id: str | None) -> tuple[str, 
 
 
 @router.get("/status")
-def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
+def surrogate_status(template_id: str | None = None, nlgeom: bool = False) -> dict[str, Any]:
     """Eğitilmiş modellerin durumu.
 
     `template_id` verilirse o şablonun modelleri; verilmezse eski global
@@ -278,7 +280,9 @@ def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
 
     def _summary(kind: str) -> dict[str, Any] | None:
         bundle = (
-            load_model(template_id, kind) if template_id else _load_legacy_global(kind)
+            load_model(template_id, kind, nlgeom=nlgeom)
+            if template_id
+            else (None if nlgeom else _load_legacy_global(kind))
         )
         if bundle is None:
             return None
@@ -290,6 +294,7 @@ def surrogate_status(template_id: str | None = None) -> dict[str, Any]:
 
     return {
         "template_id": template_id,
+        "nlgeom": nlgeom,
         "templates": list_models(),
         "scalar_rf": _summary("rf"),
         "scalar_loglinear": _summary("loglinear"),
@@ -361,10 +366,11 @@ def train_scalar(
     bundle["corpus"] = (
         _frozen_summary(frozen, len(ids)) if frozen is not None else corpus.as_public()
     )
-    save_model(corpus_template, model, bundle)
+    save_model(corpus_template, model, bundle, nlgeom=nlgeom)
     out = public_metrics(bundle) if model == "rf" else public_metrics_loglinear(bundle)
     out["model_kind"] = model
     out["template_id"] = corpus_template
+    out["nlgeom"] = nlgeom
     out["run_ids"] = ids
     return out
 
@@ -385,6 +391,7 @@ def predict_from_params(
     body: ParamPredictBody,
     db: Session = Depends(get_db),
     model: str = "auto",
+    nlgeom: bool = False,
 ) -> dict[str, Any]:
     """ccx ve mesh yok: şablon parametreleri + yük → skaler tahmin.
 
@@ -392,7 +399,7 @@ def predict_from_params(
     Kullanılan tür yanıtta `model_kind` ile döner. Model şablon başına
     saklanır; `body.template_id` hangi modelin okunacağını belirler.
     """
-    loaded = _load_scalar_model(model, body.template_id)
+    loaded = _load_scalar_model(model, body.template_id, nlgeom)
     if loaded is None:
         raise HTTPException(
             status_code=404,

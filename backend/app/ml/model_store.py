@@ -46,17 +46,33 @@ def _check(template_id: str, kind: str) -> None:
         )
 
 
-def model_path(template_id: str, kind: str, *, root: Path | None = None) -> Path:
+#: NLGEOM (büyük deformasyon) modelleri lineerden AYRI klasörde: iki farklı
+#: fizik, aynı dosyaya yazılsa biri diğerini ezer (TODO 4).
+NLGEOM_DIR = "nlgeom"
+
+
+def model_path(
+    template_id: str, kind: str, *, root: Path | None = None, nlgeom: bool = False
+) -> Path:
     _check(template_id, kind)
-    return (root or MODELS_ROOT) / template_id / KIND_FILES[kind]
+    base = (root or MODELS_ROOT) / template_id
+    if nlgeom:
+        base = base / NLGEOM_DIR
+    return base / KIND_FILES[kind]
 
 
 def save_model(
-    template_id: str, kind: str, bundle: dict[str, Any], *, root: Path | None = None
+    template_id: str,
+    kind: str,
+    bundle: dict[str, Any],
+    *,
+    root: Path | None = None,
+    nlgeom: bool = False,
 ) -> Path:
-    dest = model_path(template_id, kind, root=root)
+    dest = model_path(template_id, kind, root=root, nlgeom=nlgeom)
     dest.parent.mkdir(parents=True, exist_ok=True)
     bundle["template_id"] = template_id
+    bundle["nlgeom"] = bool(nlgeom)
     joblib.dump(bundle, dest)
     return dest
 
@@ -69,12 +85,18 @@ def _bundle_template(bundle: dict[str, Any]) -> str | None:
 
 
 def load_model(
-    template_id: str, kind: str, *, root: Path | None = None
+    template_id: str, kind: str, *, root: Path | None = None, nlgeom: bool = False
 ) -> dict[str, Any] | None:
-    """Şablonun modeli; yoksa ve eşleşiyorsa eski global dosya; yoksa None."""
-    dest = model_path(template_id, kind, root=root)
+    """Şablonun modeli; yoksa ve eşleşiyorsa eski global dosya; yoksa None.
+
+    NLGEOM modeli yalnız kendi klasöründen okunur — lineer dosyaya DÜŞMEZ:
+    sessizce yanlış fiziğin modelini kullanmak, "model yok"tan kötü.
+    """
+    dest = model_path(template_id, kind, root=root, nlgeom=nlgeom)
     if dest.is_file():
         return joblib.load(dest)
+    if nlgeom:
+        return None
     legacy = (root or MODELS_ROOT) / KIND_FILES[kind]
     if legacy.is_file():
         bundle = joblib.load(legacy)
@@ -95,6 +117,9 @@ def list_models(*, root: Path | None = None) -> dict[str, list[str]]:
             kinds = [k for k, f in KIND_FILES.items() if (sub / f).is_file()]
             if kinds:
                 out[sub.name] = kinds
+            nl = [k for k, f in KIND_FILES.items() if (sub / NLGEOM_DIR / f).is_file()]
+            if nl:
+                out[f"{sub.name}/{NLGEOM_DIR}"] = nl
         for kind, fname in KIND_FILES.items():
             legacy = base / fname
             if not legacy.is_file():
