@@ -105,6 +105,11 @@ class ParamPredictBody(BaseModel):
     material_id: int | None = None
     #: Akmanın kaçta kaçına kadar "güvenli" sayılsın (0.8 = %20 marj).
     yield_utilisation: float = Field(default=0.8, gt=0, le=2.0)
+    #: Akma kontrolünde hangi gerilme: "auto" = maskeli (`_away`) varsa o,
+    #: yoksa ham tepe (bugünkü davranış); "away" = yalnız maskeli; "peak" =
+    #: ham tepe (tekillik dahil — ankastre kirişte ~%10 muhafazakâr).
+    #: Kararı mühendis verir; araç ikisini de sunar.
+    stress_source: str = Field(default="auto", pattern="^(auto|away|peak)$")
 
 
 def _deviation_pct(pred: float, fea: float) -> float | None:
@@ -468,11 +473,16 @@ def predict_from_params(
             yield_mpa = float(mat.yield_strength) / 1e6
             limit = yield_mpa * float(body.yield_utilisation)
             preds = pred.get("predictions") or {}
-            sigma = preds.get("max_von_mises_away")
-            source = "max_von_mises_away"
-            if sigma is None:
-                sigma = preds.get("max_von_mises")
-                source = "max_von_mises"
+            if body.stress_source == "peak":
+                sigma, source = preds.get("max_von_mises"), "max_von_mises"
+            elif body.stress_source == "away":
+                sigma, source = preds.get("max_von_mises_away"), "max_von_mises_away"
+            else:
+                sigma = preds.get("max_von_mises_away")
+                source = "max_von_mises_away"
+                if sigma is None:
+                    sigma = preds.get("max_von_mises")
+                    source = "max_von_mises"
             if sigma is not None:
                 pred["yield_check"] = {
                     "material": mat.name,
@@ -520,6 +530,10 @@ def predict_from_params(
         "out_of_domain": ood,
         "predictions": pred["predictions"],
         "features": features,
+        # İkisi de hesaplanıyordu ama yanıta KONMUYORDU: arayüzdeki akma
+        # uyarısı ve "hangi özellik uzay dışı" tablosu hiç görünmedi.
+        "yield_check": pred.get("yield_check"),
+        "domain_violations": pred.get("domain_violations"),
         "fea": fea,
         "deviation_pct": deviation,
         "message": (

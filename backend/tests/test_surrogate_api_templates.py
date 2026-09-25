@@ -248,3 +248,27 @@ def test_status_ve_tahmin_nlgeom_bayragina_gore_okur(db, store_root):
         predict_from_params(body=body, db=db, model="auto")  # lineer model yok
     out = predict_from_params(body=body, db=db, model="auto", nlgeom=True)
     assert out["model_kind"] == "hybrid"
+
+
+# --- akma kontrolünde gerilme kaynağı kullanıcı seçimi -------------------------
+
+
+def test_akma_gerilmesi_kaynagi_secilebilir(db, store_root):
+    from app.models.material import Material
+
+    store.save_model(PLATE, "hybrid", _fake_plate_bundle(), root=store_root)
+    m = Material(name="S235t", category="metal", density=7850.0, youngs_modulus=210e9,
+                 poisson_ratio=0.3, yield_strength=235e6, ultimate_strength=360e6)
+    db.add(m); db.commit()
+    base = dict(template_id=PLATE, params={"height": 200, "width": 100, "thickness": 6, "diameter": 20},
+                load_fx=20000.0, material_id=m.id)
+
+    peak = predict_from_params(body=ParamPredictBody(**base, stress_source="peak"), db=db)
+    assert peak["yield_check"]["source"] == "max_von_mises"
+    # Sahte plaka modelinde maskeli hedef yok → auto ham tepeye düşer, "away" ise kontrolü atlar.
+    auto = predict_from_params(body=ParamPredictBody(**base), db=db)
+    assert auto["yield_check"]["source"] == "max_von_mises"
+    away = predict_from_params(body=ParamPredictBody(**base, stress_source="away"), db=db)
+    assert away["yield_check"] is None
+    with pytest.raises(Exception):
+        ParamPredictBody(**base, stress_source="tepe")

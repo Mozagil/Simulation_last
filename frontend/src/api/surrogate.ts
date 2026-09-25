@@ -192,6 +192,8 @@ export interface ParamPredictRequest {
   compare_run_id?: number;
   /** Akma kontrolü için — verilmezse kontrol atlanır. */
   material_id?: number;
+  /** Akma kontrolünde gerilme: auto (maskeli varsa) | away (maskeli) | peak (ham tepe, tekillik dahil). */
+  stress_source?: "auto" | "away" | "peak";
 }
 
 export interface ParamPredictResult {

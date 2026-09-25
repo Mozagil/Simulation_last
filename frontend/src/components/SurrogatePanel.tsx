@@ -119,6 +119,8 @@ export default function SurrogatePanel({
   // Akma kontrolü için malzeme. Boş bırakılırsa kontrol atlanır — E ve ν
   // zaten ayrı alanlarda, bu yalnız akma sınırı için.
   const [materialId, setMaterialId] = useState<string>("");
+  // Akma kontrolünde hangi gerilme okunacağı mühendisin kararı (TODO 6/8).
+  const [stressSource, setStressSource] = useState<"auto" | "away" | "peak">("auto");
   const [materials, setMaterials] = useState<{ id: number; name: string }[]>([]);
 
   useEffect(() => {
@@ -343,6 +345,7 @@ export default function SurrogatePanel({
         dimension: 3,
         compare_run_id: compareOpenRun && runId != null ? runId : undefined,
         material_id: materialId ? Number(materialId) : undefined,
+        stress_source: stressSource,
       }, scalarModel, nlgeom);
       setParamResult(result);
       setMessage(result.message);
@@ -624,6 +627,18 @@ export default function SurrogatePanel({
           </select>
         </label>
         <label className="mesh-field">
+          <span>Akma gerilmesi</span>
+          <select
+            value={stressSource}
+            onChange={(e) => setStressSource(e.target.value as "auto" | "away" | "peak")}
+            title="Maskeli: kısıttan 1×T uzakta (tekillik dışarıda, kirişte teoriye ±%1). Ham tepe: mesh'teki en yüksek değer, tekillik dahil (kirişte ~%10 yüksek)."
+          >
+            <option value="auto">otomatik (maskeli varsa)</option>
+            <option value="away">maskeli (tekillik dışı)</option>
+            <option value="peak">ham tepe (tekillik dahil)</option>
+          </select>
+        </label>
+        <label className="mesh-field">
           <span>Fx (N)</span>
           <input value={fx} onChange={(e) => setFx(e.target.value)} />
         </label>
@@ -755,7 +770,8 @@ export default function SurrogatePanel({
               </strong>
               <span className="predict-warning-note">
                 {paramResult.yield_check.material}: tahmin{" "}
-                {fmtNum(paramResult.yield_check.sigma_mpa)} MPa, akma{" "}
+                {fmtNum(paramResult.yield_check.sigma_mpa)} MPa (
+                {paramResult.yield_check.source === "max_von_mises" ? "ham tepe" : "maskeli"}), akma{" "}
                 {fmtNum(paramResult.yield_check.yield_mpa)} MPa
                 {paramResult.yield_check.utilisation != null &&
                   ` (%${(paramResult.yield_check.utilisation * 100).toFixed(0)} kullanım)`}
