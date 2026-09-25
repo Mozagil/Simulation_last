@@ -138,6 +138,7 @@ describe("SurrogatePanel", () => {
       }),
       // Bu senaryoda yalnız RF eğitilmiş; seçici mevcut türe geçer.
       "rf",
+      false,
     );
     expect(await screen.findByText(/Tahmin u_max/)).toBeInTheDocument();
     expect(screen.getByText(/24.100 mm/)).toBeInTheDocument();
@@ -164,7 +165,7 @@ describe("SurrogatePanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Hibrit .* eğit/ }));
     await waitFor(() =>
-      expect(trainScalarRf).toHaveBeenCalledWith("kiris-v1", "hybrid"),
+      expect(trainScalarRf).toHaveBeenCalledWith("kiris-v1", "hybrid", "cantilever_beam", false),
     );
     expect(await screen.findByText(/set kiris-v1/)).toBeInTheDocument();
   });
@@ -248,13 +249,31 @@ describe("SurrogatePanel", () => {
     expect(screen.getByText("korpus boyunca sabit")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Hibrit .* eğit/ }));
-    await waitFor(() => expect(trainScalarRf).toHaveBeenCalledWith(null, "hybrid"));
+    await waitFor(() =>
+      expect(trainScalarRf).toHaveBeenCalledWith(null, "hybrid", "cantilever_beam", false),
+    );
 
     // RF'e geçilince üs tablosu kalkar ve eğitim o türe gider.
     fireEvent.change(screen.getByLabelText("Skaler model"), { target: { value: "rf" } });
     expect(screen.queryByText(/Öğrenilen üsler/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Random Forest eğit" }));
-    await waitFor(() => expect(trainScalarRf).toHaveBeenCalledWith(null, "rf"));
+    await waitFor(() =>
+      expect(trainScalarRf).toHaveBeenCalledWith(null, "rf", "cantilever_beam", false),
+    );
+  });
+
+  it("NLGEOM anahtarı durum, eğitim ve tahmini o modele yönlendirir (TODO 4)", async () => {
+    vi.mocked(trainScalarRf).mockResolvedValue({ n_samples: 12, metrics: {} });
+    render(<SurrogatePanel geometryId={1} runId={4} />);
+    await screen.findByRole("button", { name: /Hibrit .* eğit/ });
+    fireEvent.click(screen.getByLabelText(/NLGEOM .büyük deformasyon. modeli/));
+    await waitFor(() =>
+      expect(fetchSurrogateStatus).toHaveBeenLastCalledWith("cantilever_beam", true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hibrit .* eğit/ }));
+    await waitFor(() =>
+      expect(trainScalarRf).toHaveBeenCalledWith(null, "hybrid", "cantilever_beam", true),
+    );
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {
@@ -315,7 +334,7 @@ describe("SurrogatePanel — şablona göre tahmin", () => {
     render(<SurrogatePanel />);
     await screen.findByLabelText(/L · Uzunluk/);
     await waitFor(() =>
-      expect(fetchSurrogateStatus).toHaveBeenCalledWith("cantilever_beam"),
+      expect(fetchSurrogateStatus).toHaveBeenCalledWith("cantilever_beam", false),
     );
 
     fireEvent.change(screen.getByLabelText("Şablon"), {
@@ -325,7 +344,7 @@ describe("SurrogatePanel — şablona göre tahmin", () => {
     expect(await screen.findByLabelText(/d · Delik çapı/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/L · Uzunluk/)).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(fetchSurrogateStatus).toHaveBeenCalledWith("plate_with_hole"),
+      expect(fetchSurrogateStatus).toHaveBeenCalledWith("plate_with_hole", false),
     );
   });
 

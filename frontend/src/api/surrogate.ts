@@ -111,25 +111,37 @@ async function parseError(res: Response, fallback: string): Promise<string> {
   return `${fallback} (HTTP ${res.status}).`;
 }
 
+/** Sorgu dizesi: boş/undefined değerler atlanır, `nlgeom` yalnız true iken gider. */
+function query(params: Record<string, string | boolean | null | undefined>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === "" || v === false) continue;
+    parts.push(`${k}=${encodeURIComponent(String(v))}`);
+  }
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
 export async function fetchSurrogateStatus(
   templateId?: string | null,
+  nlgeom = false,
 ): Promise<SurrogateStatus> {
-  const q = templateId ? `?template_id=${encodeURIComponent(templateId)}` : "";
+  const q = query({ template_id: templateId, nlgeom });
   const res = await fetch(`${API_BASE_URL}/surrogate/status${q}`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Surrogate durumu alınamadı"));
   return (await res.json()) as SurrogateStatus;
 }
 
-function corpusQuery(corpusName?: string | null): string {
-  return corpusName ? `?corpus_name=${encodeURIComponent(corpusName)}` : "";
-}
-
 export async function trainScalarRf(
   corpusName?: string | null,
   model: ScalarModelKind = "rf",
+  templateId?: string | null,
+  nlgeom = false,
 ): Promise<(ScalarModelInfo & { model_kind?: ScalarModelKind }) | null> {
-  const q = corpusQuery(corpusName);
-  const url = `${API_BASE_URL}/surrogate/scalar/train${q ? `${q}&` : "?"}model=${model}`;
+  // Şablon gönderilmezse canlı süzgeç TÜM şablonları toplar ve backend
+  // "birden çok şablon" (422) der — set seçilmeden eğitim çalışmıyordu.
+  const url = `${API_BASE_URL}/surrogate/scalar/train${query({
+    corpus_name: corpusName, model, template_id: templateId, nlgeom,
+  })}`;
   const res = await fetch(url, { method: "POST" });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Skaler eğitim başarısız"));
   return (await res.json()) as ScalarModelInfo & { model_kind?: ScalarModelKind };
@@ -137,8 +149,10 @@ export async function trainScalarRf(
 
 export async function trainFieldGnn(
   corpusName?: string | null,
+  templateId?: string | null,
 ): Promise<SurrogateStatus["field_gnn"]> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/gnn/train${corpusQuery(corpusName)}`, {
+  const q = query({ corpus_name: corpusName, template_id: templateId });
+  const res = await fetch(`${API_BASE_URL}/surrogate/gnn/train${q}`, {
     method: "POST",
   });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "GNN eğitimi başarısız"));
@@ -318,8 +332,9 @@ export async function fetchCorpusMembership(name: string): Promise<CorpusMembers
 export async function predictFromParams(
   body: ParamPredictRequest,
   model: ScalarModelKind | "auto" = "auto",
+  nlgeom = false,
 ): Promise<ParamPredictResult> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params?model=${model}`, {
+  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params${query({ model, nlgeom })}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

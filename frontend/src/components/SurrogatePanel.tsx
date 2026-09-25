@@ -108,6 +108,8 @@ export default function SurrogatePanel({
   // L/T/W sabitti; plakada height/diameter girilemiyordu.
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [predictTemplate, setPredictTemplate] = useState<string>("cantilever_beam");
+  // Büyük deformasyon (NLGEOM) modeli: ayrı korpus, ayrı dosya (TODO 4).
+  const [nlgeom, setNlgeom] = useState(false);
   const [params, setParams] = useState<Record<string, string>>({});
   const [elementSize, setElementSize] = useState("8");
   const [youngs, setYoungs] = useState("2.1e11");
@@ -154,7 +156,7 @@ export default function SurrogatePanel({
   const autoPickedCorpus = useRef(false);
 
   const reload = useCallback(() => {
-    fetchSurrogateStatus(predictTemplate)
+    fetchSurrogateStatus(predictTemplate, nlgeom)
       .then(setStatus)
       .catch((e) => setError(e instanceof Error ? e.message : "Durum alınamadı."));
     fetchCorpusList()
@@ -170,7 +172,7 @@ export default function SurrogatePanel({
         });
       })
       .catch(() => setCorpora([]));
-  }, [predictTemplate]);
+  }, [predictTemplate, nlgeom]);
 
   useEffect(() => {
     reload();
@@ -189,7 +191,7 @@ export default function SurrogatePanel({
     setError(null);
     setMessage(null);
     try {
-      const r = await trainScalarRf(corpus || null, scalarModel);
+      const r = await trainScalarRf(corpus || null, scalarModel, predictTemplate, nlgeom);
       const info = r?.corpus;
       const droppedN = Object.values(info?.dropped ?? {}).reduce((a, b) => a + b, 0);
       const flaggedN = Object.values(info?.flagged ?? {}).reduce((a, b) => a + b, 0);
@@ -221,7 +223,7 @@ export default function SurrogatePanel({
     setError(null);
     setMessage(null);
     try {
-      const r = await trainFieldGnn(corpus || null);
+      const r = await trainFieldGnn(corpus || null, predictTemplate);
       const rmse = r?.metrics?.node_rmse?.von_mises_mpa;
       const info = r?.corpus;
       const droppedN = Object.values(info?.dropped ?? {}).reduce((a, b) => a + b, 0);
@@ -341,7 +343,7 @@ export default function SurrogatePanel({
         dimension: 3,
         compare_run_id: compareOpenRun && runId != null ? runId : undefined,
         material_id: materialId ? Number(materialId) : undefined,
-      }, scalarModel);
+      }, scalarModel, nlgeom);
       setParamResult(result);
       setMessage(result.message);
     } catch (e) {
@@ -396,6 +398,16 @@ export default function SurrogatePanel({
         bir tasarım içindir — ccx çalışmaz. Skaler RF kontur üretmez; GNN alan
         modeli ayrı. Tahmin tam çözüm değildir.
       </p>
+
+      <label className="dataset-filter">
+        <input
+          type="checkbox"
+          checked={nlgeom}
+          disabled={busy !== null}
+          onChange={(e) => setNlgeom(e.target.checked)}
+        />
+        NLGEOM (büyük deformasyon) modeli — ayrı korpus, ayrı dosya
+      </label>
 
       <label className="mesh-field">
         <span>Skaler model</span>

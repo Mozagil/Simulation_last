@@ -717,10 +717,11 @@ kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
 
 ## Ara maddeler — ana maddeler (6, 4) bitince yapılacak (2026-09-24)
 
-- [ ] **Panel eğitim isteğine şablon göndermiyor.** `trainFieldGnn` ve
-      `trainScalarRf` `template_id` yollamıyor; canlı süzgeçle eğitim iki
-      şablon diskteyken "birden çok şablon" (422) veriyor, yalnız donmuş
-      set çalışıyor. Çözüm: paneldeki seçili şablonu isteğe ekle (frontend).
+- [x] **Panel eğitim isteğine şablon gönderiyor — YAPILDI (2026-09-25).**
+      `trainScalarRf`/`trainFieldGnn` seçili şablonu yollar; canlı süzgeçle
+      eğitim artık 422 vermez. Aynı adımda panele "NLGEOM (büyük deformasyon)
+      modeli" anahtarı: durum, eğitim ve parametre tahmini o modele gider.
+      Test: `SurrogatePanel.test.tsx` (+1).
 - [ ] **1.3c GNN mimarisi.** Önce (a) `n_proc`/`hidden` taraması (yalnız
       ölçüm), sonra sonuca göre (b)/(c)/(d). Şablon başına GNN yeniden
       eğitilmeli — diskteki eski `field_gnn.npz` şablon kaydı taşımadığı
