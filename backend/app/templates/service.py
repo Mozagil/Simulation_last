@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.api.geometry import UPLOAD_DIR, _ensure_dirs, _regenerate_tessellation
 from app.mesh.gmsh_adapter import GmshImportError
+from app.auth import current_user
 from app.models.geometry import Geometry, PhysicalGroup
 from app.templates import build_template, get_template
 
@@ -42,11 +43,13 @@ def create_geometry_from_template(
 
     _ensure_dirs()
     dumped = params.model_dump()
+    owner = current_user()
     geo = Geometry(
         original_filename=f"{template.id}.step",
         current_filename="",
         template_id=template.id,
         template_params=dumped,
+        owner_id=owner.id if owner else None,
     )
     db.add(geo)
     db.commit()

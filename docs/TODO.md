@@ -781,6 +781,26 @@ kendiliğinden açmaz. Seçenekler: (a) olduğu gibi bırak, DOE'de binde 10
 açık bir "yüksek mertebe optimizasyonu" anahtarı eklensin (varsayılan
 kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
 
+## 9. WeWeb bağlantısı — kimlik + CORS (2026-09-26) ✅
+
+**Karar:** Bearer API anahtarı (kullanıcı başına, DB'de SHA-256 özeti).
+- `users` tablosu + `geometries.owner_id` (migration `d1e2f3a4b5c6`; eski
+  kayıtlar NULL = herkese açık, silinmedi).
+- `app/auth.py`: `ApiKeyMiddleware` her istekte anahtarı çözer →
+  `current_user_var` (contextvar). `AUTH_REQUIRED=1` ile kapı: anahtarsız
+  istek 401 (`/health`, `/docs` hariç). Varsayılan 0: başlık yoksa anonim,
+  başlık varsa yine doğrulanır (yanlış anahtar 401 — sessizce anonim olmaz).
+- Kapsam: `_get_geometry_or_404` sahibi olmayan kullanıcıya **404** (varlık
+  sızmaz); geometri oluşturma (upload, şablon) sahibi yazar; `/geometry/runs`
+  kullanıcının + sahipsiz run'lar.
+- Anahtar üretme: `python scripts/create_api_key.py "Ad"` (bir kez gösterir,
+  `--rotate`, `--list`). CORS: `CORS_ALLOW_ORIGINS` (zaten vardı, .env.example'a
+  WeWeb notu eklendi).
+- Test: `test_auth_api_key.py` (4, gerçek DB).
+**Yapılmadı (bilinçli):** kullanıcı başına model/korpus ayrımı (modeller
+şablon başına ortak — DOE tek seferlik sunucu işi, kullanıcı DOE koşmaz);
+oran sınırı (rate limit); anahtar süresi.
+
 ## Ara maddeler — ana maddeler (6, 4) bitince yapılacak (2026-09-24)
 
 - [x] **Panel eğitim isteğine şablon gönderiyor — YAPILDI (2026-09-25).**

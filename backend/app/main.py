@@ -46,6 +46,11 @@ else:
     # kısıtlamıyoruz, prod'a geçerken CORS_ALLOW_ORIGINS ile daraltılmalı.
     allow_origins = ["*"]
 
+from app.auth import ApiKeyMiddleware  # noqa: E402
+
+# API anahtarı (WeWeb). CORS'tan SONRA eklenir ki dışta CORS kalsın:
+# 401 yanıtları da CORS başlığı taşısın, tarayıcı gerçek hatayı görsün.
+app.add_middleware(ApiKeyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,

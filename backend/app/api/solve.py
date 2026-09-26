@@ -11,10 +11,12 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, TESSELLATION_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import SessionLocal, get_db
+from app.auth import current_user
 from app.models.geometry import Geometry
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
@@ -629,8 +631,16 @@ def list_runs(
     run'lar döner.
     """
     q = db.query(AnalysisRun).options(joinedload(AnalysisRun.geometry))
+    user = current_user()
+    if user is not None:
+        # Kullanıcı yalnız kendi geometrilerinin ve sahipsiz (eski) run'ları görür.
+        q = q.join(AnalysisRun.geometry).filter(
+            or_(Geometry.owner_id == user.id, Geometry.owner_id.is_(None))
+        )
     if template_id:
-        q = q.join(AnalysisRun.geometry).filter(Geometry.template_id == template_id)
+        if user is None:
+            q = q.join(AnalysisRun.geometry)
+        q = q.filter(Geometry.template_id == template_id)
     if doe_study_id is not None:
         q = q.filter(AnalysisRun.doe_study_id == doe_study_id)
     if only_excluded:

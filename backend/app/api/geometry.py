@@ -42,6 +42,7 @@ from app.mesh.gmsh_adapter import (
     MidsurfaceError,
     SurfaceNotFoundError,
 )
+from app.auth import current_user, owner_matches
 from app.models.geometry import Geometry, PhysicalGroup
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ def _ensure_dirs() -> None:
 
 def _get_geometry_or_404(db: Session, geometry_id: int) -> Geometry:
     geo = db.get(Geometry, geometry_id)
+    # Başkasının geometrisi "yok" gibi davranır — varlığı da sızmasın.
+    if geo is not None and not owner_matches(geo.owner_id, current_user()):
+        geo = None
     if geo is None:
         raise HTTPException(
             status_code=404,
@@ -151,7 +155,11 @@ def upload_geometry(file: UploadFile, db: Session = Depends(get_db)) -> dict[str
     logger.info("Geometri yukleme basladi: dosya=%s, boyut=%d", file.filename, len(contents))
 
     # Önce DB kaydını oluştur (autoincrement id'yi al), sonra dosyayı bu id ile adlandır.
-    db_geometry = Geometry(original_filename=file.filename, current_filename="")
+    owner = current_user()
+    db_geometry = Geometry(
+        original_filename=file.filename, current_filename="",
+        owner_id=owner.id if owner else None,
+    )
     db.add(db_geometry)
     db.commit()
     db.refresh(db_geometry)
