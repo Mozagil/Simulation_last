@@ -729,6 +729,21 @@ export default function SurrogatePanel({
       {/* ── Toplu tarama (2 · Tahmin'in devamı) ───────────────────── */}
       <details className="surrogate-exponents" data-testid="sweep-section">
         <summary>Toplu tarama — bir parametreyi aralıkta değiştir, N tahmin tek seferde</summary>
+        <p className="material-assign-hint" data-testid="sweep-fixed-inputs">
+          Taranmayan girdiler yukarıdaki 2 · Tahmin formundan alınır:{" "}
+          {predictFields
+            .filter((f) => !f.optional && f.name !== sweepParam)
+            .map((f) => `${f.symbol ?? f.label}=${params[f.name] ?? String(f.defaultValue)}`)
+            .concat(
+              sweepParam !== "load_fy" ? [`Fy=${fy}`] : [],
+              materialId
+                ? [materials.find((m) => String(m.id) === materialId)?.name ?? `malzeme #${materialId}`]
+                : ["malzeme seçilmedi"],
+              [nlgeom ? "NLGEOM" : "lineer"],
+            )
+            .join(" · ")}
+          . Eğitim aralığı dışındaki girdi her noktayı &quot;uzay dışı&quot; yapar.
+        </p>
         <div className="mesh-grid">
           <label className="mesh-field">
             <span>Parametre</span>

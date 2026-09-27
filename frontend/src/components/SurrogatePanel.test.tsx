@@ -316,6 +316,11 @@ describe("SurrogatePanel", () => {
     );
     const table = await screen.findByTestId("sweep-result");
     expect(table).toHaveTextContent("uzay dışı: T, Fy");
+    // Sabit tutulan girdiler açıkça yazılır; taranan (T) listede yoktur.
+    const fixed = screen.getByTestId("sweep-fixed-inputs");
+    expect(fixed).toHaveTextContent("L=500");
+    expect(fixed).toHaveTextContent("Fy=-500");
+    expect(fixed).not.toHaveTextContent("T=10");
     expect(table).toHaveTextContent("24.000");
   });
 
