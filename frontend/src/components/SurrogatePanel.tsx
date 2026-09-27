@@ -905,6 +905,7 @@ export default function SurrogatePanel({
                 <span>en kötü u_max</span>
               </div>
             </div>
+            <div className="validate-table-wrap">
             <table className="doe-table">
               <thead>
                 <tr>
@@ -948,6 +949,7 @@ export default function SurrogatePanel({
                 ))}
               </tbody>
             </table>
+            </div>
             <p className="filename">
               σ sütunu maskeli gerilme (`{validation.rows[0]?.vm_key ?? "max_von_mises"}`). Run'lar
               zaten çözülmüş; ccx çalışmadı.

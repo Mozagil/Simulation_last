@@ -4137,3 +4137,13 @@ p {
   stroke: var(--danger, #b3261e);
   stroke-width: 1.5;
 }
+
+/* Tahmin vs FEA tablosu: 9 sütun dar panele sığmaz, yatay kaydır */
+.validate-table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.validate-table-wrap .doe-table {
+  min-width: 720px;
+  white-space: nowrap;
+}
