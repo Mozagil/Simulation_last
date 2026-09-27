@@ -537,8 +537,8 @@ def predict_from_params(
         "fea": fea,
         "deviation_pct": deviation,
         "message": (
-            f"Tahmin ({MODEL_LABELS[model_kind]})"
-            " — ccx çalışmadı, tam çözüm değil."
+            f"Modelden tahmin ({MODEL_LABELS[model_kind]}) — çözücü çalıştırılmadı; "
+            "doğrulamak için tam çözüm yapılabilir."
             + (" Eğitim uzayı dışı." if ood else "")
             + (" FEA kıyası eklendi." if fea else "")
         ),
