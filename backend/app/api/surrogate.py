@@ -615,6 +615,88 @@ def predict_sweep(
     }
 
 
+@router.get("/validate")
+def validate_against_runs(
+    template_id: str,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+    nlgeom: bool = False,
+    limit: int = 10,
+    name_contains: str | None = None,
+    run_ids: str | None = None,
+) -> dict[str, Any]:
+    """Tahmin vs FEA tablosu: çözülmüş run'lar için modelin ne dediği.
+
+    Run'lar zaten çözülmüş; ccx çalışmaz. Her satır: FEA u/σ, tahmin, sapma,
+    uzay dışı girdiler, akma. Kinematik (`nlgeom`) run'ınkiyle uyuşmalı —
+    lineer modeli NLGEOM run'ıyla kıyaslamak yanlış fizik karşılaştırır,
+    bu yüzden uyuşmayan run'lar `skipped` ile raporlanır, atlanmaz gibi
+    sessizce geçilmez. Karar vermez: tablo + özet döner.
+    """
+    loaded = _load_scalar_model(model, template_id, nlgeom)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail=f"'{template_id}' için model yok; önce eğit.")
+    kind, bundle = loaded
+    keys = _bundle_keys(bundle, template_id)
+    q = (
+        db.query(AnalysisRun)
+        .join(Geometry, Geometry.id == AnalysisRun.geometry_id)
+        .filter(AnalysisRun.status == "solved", Geometry.template_id == template_id)
+    )
+    if run_ids:
+        ids = [int(v) for v in run_ids.split(",") if v.strip()]
+        q = q.filter(AnalysisRun.id.in_(ids))
+    if name_contains:
+        q = q.filter(AnalysisRun.name.ilike(f"%{name_contains}%"))
+    runs = q.order_by(AnalysisRun.id.desc()).limit(max(1, min(limit, 200))).all()
+
+    rows: list[dict[str, Any]] = []
+    skipped: dict[str, int] = {}
+    for run in runs:
+        geo = db.get(Geometry, run.geometry_id)
+        sc = run.scalars or {}
+        if bool(sc.get("_nlgeom", False)) != nlgeom:
+            skipped["wrong_kinematics"] = skipped.get("wrong_kinematics", 0) + 1
+            continue
+        x = features_from_run(run, geo, keys)
+        if x is None or sc.get("max_displacement") is None:
+            skipped["missing_features"] = skipped.get("missing_features", 0) + 1
+            continue
+        pred = _predict_with(kind, bundle, x)["predictions"]
+        viol = domain_violations(x, bundle.get("bounds") or {}, keys)
+        fea_u = float(sc["max_displacement"])
+        fea_vm = sc.get("max_von_mises_away") if sc.get("max_von_mises_away") is not None else sc.get("max_von_mises")
+        vm_key = "max_von_mises_away" if sc.get("max_von_mises_away") is not None else "max_von_mises"
+        p_u = pred.get("max_displacement")
+        p_vm = pred.get(vm_key)
+        params = dict(geo.template_params or {})
+        fy = sum(float(b.get("fy") or 0) for b in (run.bcs or []) if b.get("type") == "cload")
+        rows.append({
+            "run_id": run.id,
+            "name": run.name,
+            "params": params,
+            "load_fy": fy,
+            "fea_u": fea_u, "pred_u": p_u,
+            "dev_u_pct": _deviation_pct(p_u, fea_u) if p_u is not None else None,
+            "fea_vm": fea_vm, "pred_vm": p_vm, "vm_key": vm_key,
+            "dev_vm_pct": _deviation_pct(p_vm, fea_vm) if (p_vm is not None and fea_vm) else None,
+            "out_of_domain": bool(viol),
+            "violations": [d["feature"] for d in viol],
+            "u_over_l": (fea_u / float(params["length"])) if params.get("length") else None,
+            "nlgeom": bool(sc.get("_nlgeom", False)),
+        })
+    du = [abs(r["dev_u_pct"]) for r in rows if r["dev_u_pct"] is not None]
+    dv = [abs(r["dev_vm_pct"]) for r in rows if r["dev_vm_pct"] is not None]
+    return {
+        "template_id": template_id, "model_kind": kind, "nlgeom": nlgeom,
+        "n": len(rows), "skipped": skipped,
+        "mean_abs_dev_u_pct": (sum(du) / len(du)) if du else None,
+        "mean_abs_dev_vm_pct": (sum(dv) / len(dv)) if dv else None,
+        "max_abs_dev_u_pct": max(du) if du else None,
+        "rows": rows,
+    }
+
+
 @router.post("/gnn/train")
 def train_field_gnn(
     db: Session = Depends(get_db),

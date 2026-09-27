@@ -15,6 +15,7 @@ vi.mock("../api/surrogate", () => ({
   predictSurrogate: vi.fn(),
   predictFromParams: vi.fn(),
   predictSweep: vi.fn(),
+  fetchValidation: vi.fn(),
 }));
 
 import {
@@ -26,6 +27,7 @@ import {
   predictFromParams,
   predictSurrogate,
   predictSweep,
+  fetchValidation,
   trainScalarRf,
 } from "../api/surrogate";
 import { fetchTemplates } from "../api/templates";
@@ -322,6 +324,39 @@ describe("SurrogatePanel", () => {
     expect(fixed).toHaveTextContent("Fy=-500");
     expect(fixed).not.toHaveTextContent("T=10");
     expect(table).toHaveTextContent("24.000");
+  });
+
+  it("tahmin vs FEA tablosu son N run ve ad süzgeciyle ister", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null, scalar_loglinear: null,
+      scalar_hybrid: { n_samples: 192, has_holdout: true, metrics: { test: { max_displacement: { r2: 0.99, mae: 0.1, mape: 0.002 } } } },
+      templates: {}, field_gnn: null,
+    });
+    vi.mocked(fetchValidation).mockResolvedValue({
+      template_id: "cantilever_beam", model_kind: "hybrid", nlgeom: false, n: 2, skipped: {},
+      mean_abs_dev_u_pct: 0.2, mean_abs_dev_vm_pct: 0.6, max_abs_dev_u_pct: 0.3,
+      rows: [
+        { run_id: 1457, name: "OOD deneme A", params: { length: 900, thickness: 12, width: 50 }, load_fy: -150,
+          fea_u: 24.259, pred_u: 24.224, dev_u_pct: -0.14, fea_vm: 110.3, pred_vm: 110.9, vm_key: "max_von_mises_away",
+          dev_vm_pct: 0.54, out_of_domain: true, violations: ["length"], u_over_l: 0.027, nlgeom: false },
+        { run_id: 1458, name: "OOD deneme B", params: { length: 500, thickness: 10, width: 50 }, load_fy: -1500,
+          fea_u: 71.759, pred_u: 71.972, dev_u_pct: 0.3, fea_vm: 879.9, pred_vm: 874.9, vm_key: "max_von_mises_away",
+          dev_vm_pct: -0.57, out_of_domain: true, violations: ["thickness", "load_fy"], u_over_l: 0.144, nlgeom: false },
+      ],
+    });
+    render(<SurrogatePanel geometryId={1} runId={4} />);
+    await screen.findByRole("button", { name: "Tahmin et" });
+    fireEvent.change(screen.getByLabelText("Ad içerir (isteğe bağlı)"), { target: { value: "OOD deneme" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tabloyu oluştur" }));
+    await waitFor(() => expect(fetchValidation).toHaveBeenCalledTimes(1));
+    expect(fetchValidation).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "cantilever_beam", model: "hybrid", nlgeom: false, limit: 10, nameContains: "OOD deneme" }),
+    );
+    const table = await screen.findByTestId("validate-result");
+    expect(table).toHaveTextContent("1457 · OOD deneme A");
+    expect(table).toHaveTextContent("uzay dışı: L");
+    expect(table).toHaveTextContent("uzay dışı: T, Fy · u/L 0.14");
+    expect(table).toHaveTextContent("0.20%");
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {

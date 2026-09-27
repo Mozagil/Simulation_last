@@ -300,3 +300,29 @@ def test_toplu_tarama_n_nokta_ve_bayraklar(db, store_root):
         predict_sweep(body=SweepBody(**{**body.model_dump(exclude={"sweep_min", "sweep_max"}), "sweep_min": 5.0, "sweep_max": 5.0}), db=db)
     with pytest.raises(Exception, match="taranamaz"):
         predict_sweep(body=SweepBody(**{**body.model_dump(exclude={"sweep_param"}), "sweep_param": "yok"}), db=db)
+
+
+# --- tahmin vs FEA doğrulama tablosu ---------------------------------------------
+
+
+def test_dogrulama_tablosu_fea_ile_tahmini_yan_yana_koyar(db, store_root):
+    from app.api.surrogate import validate_against_runs
+
+    store.save_model(PLATE, "hybrid", _fake_plate_bundle(), root=store_root)
+    runs = _plate_runs(db, n=6)
+    runs[0].name = "OOD deneme X"
+    db.commit()
+
+    out = validate_against_runs(template_id=PLATE, db=db, model="auto", limit=10)
+    assert out["model_kind"] == "hybrid" and out["n"] == 6 and out["skipped"] == {}
+    row = out["rows"][0]
+    assert {"run_id", "fea_u", "pred_u", "dev_u_pct", "fea_vm", "pred_vm", "violations", "params"} <= set(row)
+    assert row["pred_u"] > 0 and row["dev_u_pct"] is not None
+    assert out["mean_abs_dev_u_pct"] is not None and out["mean_abs_dev_u_pct"] >= 0
+
+    named = validate_against_runs(template_id=PLATE, db=db, name_contains="ood deneme", limit=10)
+    assert named["n"] == 1 and named["rows"][0]["name"] == "OOD deneme X"
+
+    # NLGEOM istenirse lineer run'lar 'wrong_kinematics' ile raporlanır (model yoksa 404).
+    with pytest.raises(Exception, match="model yok"):
+        validate_against_runs(template_id=PLATE, db=db, nlgeom=True)

@@ -11,6 +11,8 @@ import {
   predictFromParams,
   predictSweep,
   type SweepResult,
+  fetchValidation,
+  type ValidationResult,
   predictSurrogate,
   trainFieldGnn,
   trainScalarRf,
@@ -97,8 +99,12 @@ export default function SurrogatePanel({
 }) {
   const [status, setStatus] = useState<SurrogateStatus | null>(null);
   const [busy, setBusy] = useState<
-    "rf" | "gnn" | "pred" | "params" | "sweep" | "freeze" | "evaluate" | "add" | null
+    "rf" | "gnn" | "pred" | "params" | "sweep" | "validate" | "freeze" | "evaluate" | "add" | null
   >(null);
+  // Tahmin vs FEA: çözülmüş run'larda modelin sapması (tablo).
+  const [validateLimit, setValidateLimit] = useState("10");
+  const [validateName, setValidateName] = useState("");
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
   // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
   const [sweepParam, setSweepParam] = useState<string>("");
   const [sweepMin, setSweepMin] = useState("");
@@ -349,6 +355,34 @@ export default function SurrogatePanel({
       material_id: materialId ? Number(materialId) : undefined,
       stress_source: stressSource,
     };
+  }
+
+  async function handleValidate() {
+    setBusy("validate");
+    setError(null);
+    setMessage(null);
+    setValidation(null);
+    try {
+      const result = await fetchValidation({
+        templateId: predictTemplate,
+        model: scalarModel,
+        nlgeom,
+        limit: Math.max(1, Math.min(200, Math.round(num(validateLimit)) || 10)),
+        nameContains: validateName.trim() || null,
+      });
+      setValidation(result);
+      const sk = Object.values(result.skipped).reduce((a, b) => a + b, 0);
+      setMessage(
+        `Tahmin vs FEA: ${result.n} run` +
+          (result.mean_abs_dev_u_pct != null ? ` · ort |sapma| u ${result.mean_abs_dev_u_pct.toFixed(2)}%` : "") +
+          (result.mean_abs_dev_vm_pct != null ? ` · σ ${result.mean_abs_dev_vm_pct.toFixed(2)}%` : "") +
+          (sk > 0 ? ` · ${sk} run atlandı (kinematik/özellik)` : ""),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleSweep() {
@@ -819,6 +853,105 @@ export default function SurrogatePanel({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </details>
+
+      {/* ── Tahmin vs FEA ─────────────────────────────────────────── */}
+      <details className="surrogate-exponents" data-testid="validate-section" open>
+        <summary>Tahmin vs FEA — çözülmüş run'larda model ne kadar şaşıyor</summary>
+        <div className="mesh-grid">
+          <label className="mesh-field">
+            <span>Son N run</span>
+            <input value={validateLimit} onChange={(e) => setValidateLimit(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Ad içerir (isteğe bağlı)</span>
+            <input
+              value={validateName}
+              placeholder="örn. OOD deneme"
+              onChange={(e) => setValidateName(e.target.value)}
+            />
+          </label>
+          <div className="mesh-field">
+            <span>&nbsp;</span>
+            <button
+              type="button"
+              className="material-assign-button"
+              disabled={!canParamsPredict}
+              onClick={() => void handleValidate()}
+            >
+              {busy === "validate" ? "Hesaplanıyor…" : "Tabloyu oluştur"}
+            </button>
+          </div>
+        </div>
+        {validation && (
+          <div className="surrogate-pred-table" data-testid="validate-result">
+            <div className="dataset-stats">
+              <div>
+                <strong>{validation.n}</strong>
+                <span>run</span>
+              </div>
+              <div>
+                <strong>{validation.mean_abs_dev_u_pct != null ? `${validation.mean_abs_dev_u_pct.toFixed(2)}%` : "—"}</strong>
+                <span>ort |sapma| u_max</span>
+              </div>
+              <div>
+                <strong>{validation.mean_abs_dev_vm_pct != null ? `${validation.mean_abs_dev_vm_pct.toFixed(2)}%` : "—"}</strong>
+                <span>ort |sapma| σ</span>
+              </div>
+              <div>
+                <strong>{validation.max_abs_dev_u_pct != null ? `${validation.max_abs_dev_u_pct.toFixed(2)}%` : "—"}</strong>
+                <span>en kötü u_max</span>
+              </div>
+            </div>
+            <table className="doe-table">
+              <thead>
+                <tr>
+                  <th>run</th>
+                  <th>tasarım</th>
+                  <th>FEA u_max</th>
+                  <th>tahmin</th>
+                  <th>sapma</th>
+                  <th>FEA σ</th>
+                  <th>tahmin</th>
+                  <th>sapma</th>
+                  <th>durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {validation.rows.map((r) => (
+                  <tr key={r.run_id} className={r.out_of_domain ? "doe-table-row-flagged" : undefined}>
+                    <td>{r.run_id}{r.name ? ` · ${r.name}` : ""}</td>
+                    <td>
+                      {Object.entries(r.params)
+                        .filter(([k]) => ["length", "thickness", "width", "height", "diameter"].includes(k))
+                        .map(([k, v]) => `${violationLabel(k)}=${fmtNum(v)}`)
+                        .concat([`Fy=${fmtNum(r.load_fy)}`])
+                        .join(" · ")}
+                    </td>
+                    <td>{fmtNum(r.fea_u)} mm</td>
+                    <td>{fmtNum(r.pred_u)}</td>
+                    <td>{r.dev_u_pct != null ? `${r.dev_u_pct >= 0 ? "+" : ""}${r.dev_u_pct.toFixed(1)}%` : "—"}</td>
+                    <td>{fmtNum(r.fea_vm)} MPa</td>
+                    <td>{fmtNum(r.pred_vm)}</td>
+                    <td>{r.dev_vm_pct != null ? `${r.dev_vm_pct >= 0 ? "+" : ""}${r.dev_vm_pct.toFixed(1)}%` : "—"}</td>
+                    <td>
+                      {[
+                        r.out_of_domain ? `uzay dışı: ${r.violations.map(violationLabel).join(", ")}` : null,
+                        r.u_over_l != null && r.u_over_l > 0.1 ? `u/L ${r.u_over_l.toFixed(2)}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="filename">
+              σ sütunu maskeli gerilme (`{validation.rows[0]?.vm_key ?? "max_von_mises"}`). Run'lar
+              zaten çözülmüş; ccx çalışmadı.
+            </p>
           </div>
         )}
       </details>

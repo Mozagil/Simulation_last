@@ -259,6 +259,56 @@ export interface CorpusListItem {
   n_manual: number;
 }
 
+export interface ValidationRow {
+  run_id: number;
+  name: string | null;
+  params: Record<string, number>;
+  load_fy: number;
+  fea_u: number;
+  pred_u: number | null;
+  dev_u_pct: number | null;
+  fea_vm: number | null;
+  pred_vm: number | null;
+  vm_key: string;
+  dev_vm_pct: number | null;
+  out_of_domain: boolean;
+  violations: string[];
+  u_over_l: number | null;
+  nlgeom: boolean;
+}
+
+export interface ValidationResult {
+  template_id: string;
+  model_kind: string;
+  nlgeom: boolean;
+  n: number;
+  skipped: Record<string, number>;
+  mean_abs_dev_u_pct: number | null;
+  mean_abs_dev_vm_pct: number | null;
+  max_abs_dev_u_pct: number | null;
+  rows: ValidationRow[];
+}
+
+/** Çözülmüş run'lar için tahmin vs FEA tablosu — ccx çalışmaz. */
+export async function fetchValidation(opts: {
+  templateId: string;
+  model?: ScalarModelKind | "auto";
+  nlgeom?: boolean;
+  limit?: number;
+  nameContains?: string | null;
+}): Promise<ValidationResult> {
+  const q = query({
+    template_id: opts.templateId,
+    model: opts.model ?? "auto",
+    nlgeom: opts.nlgeom ?? false,
+    limit: opts.limit != null ? String(opts.limit) : undefined,
+    name_contains: opts.nameContains,
+  });
+  const res = await fetch(`${API_BASE_URL}/surrogate/validate${q}`);
+  if (!res.ok) throw new SurrogateApiError(await parseError(res, "Doğrulama tablosu alınamadı"));
+  return (await res.json()) as ValidationResult;
+}
+
 export async function fetchCorpusList(): Promise<CorpusListItem[]> {
   const res = await fetch(`${API_BASE_URL}/surrogate/corpus`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Eğitim setleri alınamadı"));
