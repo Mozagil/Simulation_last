@@ -12,12 +12,22 @@
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
+/** Şablon başına veri kırılımı — tek bir toplam sayı, ikinci şablon
+ *  girdiğinde hangi verinin hangi modele ait olduğunu göstermiyor. */
+export interface DatasetTemplateRow {
+  template_id: string | null;
+  runs: number;
+  solved: number;
+  excluded: number;
+}
+
 export interface DatasetSummary {
   geometries: number;
   materials: number;
   analysis_runs: number;
   solved_runs: number;
   training_samples: number;
+  by_template?: DatasetTemplateRow[];
 }
 
 export interface DatasetImportResult {
@@ -49,6 +59,10 @@ export interface ExportFilters {
   geometryId?: number;
   /** Çözülmemiş run'ları dışarıda bırak — sonuç dosyaları yoktur. */
   onlySolved?: boolean;
+  /** Donmuş eğitim setinin adı: yalnız o setin run'ları + setin TANIMI.
+   * "Yalnız çözülmüş" süzgeci elle dışlananları ve korpus süzgecinden
+   * düşenleri de alıyordu; temiz eğitim seti böyle indirilemiyordu. */
+  corpusName?: string;
 }
 
 export async function downloadDataset(filters: ExportFilters = {}): Promise<void> {
@@ -57,6 +71,7 @@ export async function downloadDataset(filters: ExportFilters = {}): Promise<void
   if (filters.runIds?.length) q.set("run_ids", filters.runIds.join(","));
   if (filters.geometryId != null) q.set("geometry_id", String(filters.geometryId));
   if (filters.onlySolved) q.set("only_solved", "true");
+  if (filters.corpusName) q.set("corpus_name", filters.corpusName);
 
   const res = await fetch(`${API_BASE_URL}/dataset/export?${q.toString()}`);
   if (!res.ok) {

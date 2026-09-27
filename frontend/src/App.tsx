@@ -43,13 +43,24 @@ import {
   formatMPa,
   setMaterialSnCurve,
   solveGeometry,
+  isValidIncrements,
+  screenSolve,
+  type SolveScreenResult,
   type Material,
   type MaterialAssignment,
   type SolveBC,
   type SolveResponse,
 } from "./api/materials";
-import { deleteRun, fetchRunDetail, fetchRuns, RunFetchError, type RunSummary } from "./api/runs";
+import {
+  deleteRun,
+  fetchRunDetail,
+  fetchRuns,
+  RunFetchError,
+  setRunExcluded,
+  type RunSummary,
+} from "./api/runs";
 import ComparisonView from "./components/ComparisonView";
+import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import SurrogatePanel from "./components/SurrogatePanel";
@@ -356,6 +367,8 @@ function App() {
   const [meshElementSize, setMeshElementSize] = useState("5");
   const [meshDimension, setMeshDimension] = useState<2 | 3>(2);
   const [meshScheme, setMeshScheme] = useState<MeshElementScheme>("quad");
+  // gmsh HighOrder optimizasyonu (TODO 8.4): eğri yüzeyde ters jacobian'a karşı.
+  const [highOrderOptimize, setHighOrderOptimize] = useState(false);
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
   const [meshPreview, setMeshPreview] = useState<MeshPreviewData | null>(null);
   // Modelin en büyük bounding box boyutu (mm) — deformasyon slider'ının
@@ -728,6 +741,23 @@ function App() {
     }
   }
   const [bcList, setBcList] = useState<BcListItem[]>([]);
+
+  useEffect(() => {
+    if (geometryId == null || !bcList.some((b) => b.kind === "cload")) {
+      setScreenInfo(null);
+      return;
+    }
+    let alive = true;
+    const t = window.setTimeout(() => {
+      screenSolve(geometryId, bcList.map((b) => b.payload))
+        .then((r) => alive && setScreenInfo(r))
+        .catch(() => alive && setScreenInfo(null));
+    }, 300);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [geometryId, bcList]);
   // Geçmiş satırlarında şablon parametrelerini şemadaki harfle göstermek için.
   const [paramSymbols, setParamSymbols] = useState<SymbolMap>({});
   // Donmuş eğitim seti: rozetler hangi run'ın sete girdiğini gösterir.
@@ -770,6 +800,10 @@ function App() {
   const [bcGz, setBcGz] = useState("-9810");
   const [shellThickness, setShellThickness] = useState("3");
   const [runCcx, setRunCcx] = useState(false);
+  const [nlgeom, setNlgeom] = useState(false);
+  const [nIncrements, setNIncrements] = useState("20");
+  // Çözmeden önce lineer teoriye göre beklenen u/L — kullanıcı sormadan görür.
+  const [screenInfo, setScreenInfo] = useState<SolveScreenResult | null>(null);
   const [modalNModes, setModalNModes] = useState("10");
   const [modalFreqMin, setModalFreqMin] = useState("");
   const [modalFreqMax, setModalFreqMax] = useState("");
@@ -1427,6 +1461,8 @@ function App() {
         size,
         meshDimension,
         meshScheme,
+        {},
+        highOrderOptimize,
       );
       setMeshResult(result);
       ensureStepExpanded("material");
@@ -2177,6 +2213,32 @@ function App() {
     const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
     const bcs = bcList.map((b) => b.payload);
 
+    // Kullanıcı NLGEOM seçmediyse ön kontrol: lineer analitik u/L eşiği
+    // aşıyorsa sor. Karar kullanıcının; ön kontrol yapılamıyorsa sorulmaz.
+    let useNlgeom = nlgeom;
+    if (!nlgeom) {
+      try {
+        const screen = await screenSolve(geometryId, bcs);
+        if (screen.large_deformation && screen.u_over_l != null) {
+          const pct = (screen.u_over_l * 100).toFixed(1);
+          const thr = (screen.threshold * 100).toFixed(0);
+          if (
+            window.confirm(
+              `Lineer teoriye göre beklenen uç sehimi L'nin %${pct}'i (eşik %${thr}). ` +
+                "Lineer çözüm bu bölgede denge denklemlerini deforme olmamış geometride kurar.\n\n" +
+                "Büyük deformasyon (NLGEOM) ile çözülsün mü?\n" +
+                "Tamam: NLGEOM · İptal: lineer devam",
+            )
+          ) {
+            useNlgeom = true;
+            setNlgeom(true);
+          }
+        }
+      } catch {
+        /* ön kontrol başarısızsa soru sorulmaz, lineer devam */
+      }
+    }
+
     setBusyAction("solve");
     setErrorMessage(null);
     const treeThickness = productTree?.items.find(
@@ -2195,6 +2257,8 @@ function App() {
         name: caseNameInput.trim() || undefined,
         element_size: meshResult.element_size,
         element_scheme: meshResult.element_scheme,
+        nlgeom: useNlgeom,
+        n_increments: useNlgeom ? parseInt(nIncrements, 10) : undefined,
       });
       let finalResult = result;
       if (result.status === "pending") {
@@ -2513,6 +2577,7 @@ function App() {
 
         <div className="ml-studio-body">
         <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+        <ConvergencePanel templateId={activeTemplateId} />
         <DoePanel
           refreshKey={runsHistory.length}
           templateId={activeTemplateId}
@@ -2524,6 +2589,7 @@ function App() {
         <SurrogatePanel
           refreshKey={runsHistory.length}
           geometryId={geometryId}
+          templateId={activeTemplateId}
           runId={solveResult?.run_id ?? null}
           onCorpusChange={handleCorpusChange}
           onPrediction={(result: SurrogatePredictResult) => {
@@ -3417,6 +3483,23 @@ function App() {
             </div>
             {solveResult?.scalars && solveResult.scalars.max_von_mises !== undefined && (
               <div className="metric-cards-row">
+                {solveResult.scalars._nlgeom ? (
+                  <div className="metric-card" data-testid="nlgeom-card">
+                    <span className="metric-card-label">KİNEMATİK</span>
+                    <span className="metric-card-value">NLGEOM</span>
+                    <span className="metric-card-sub">
+                      {solveResult.scalars._n_increments !== undefined
+                        ? `${solveResult.scalars._n_increments.toFixed(0)} artım`
+                        : "büyük deformasyon"}
+                      {solveResult.scalars._n_cutbacks
+                        ? ` · ${solveResult.scalars._n_cutbacks.toFixed(0)} cutback`
+                        : ""}
+                      {solveResult.scalars._solver_converged !== undefined
+                        ? solveResult.scalars._solver_converged >= 1 ? " · yakınsadı" : " · YAKINSAMADI"
+                        : ""}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="metric-card">
                   <span className="metric-card-label">MAX STRESS</span>
                   <span className="metric-card-value">
@@ -3697,6 +3780,15 @@ function App() {
             <option value="quad">quad</option>
             <option value="mix">mix</option>
           </select>
+        </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={highOrderOptimize}
+            disabled={busyAction === "mesh"}
+            onChange={(e) => setHighOrderOptimize(e.target.checked)}
+          />
+          2. mertebe optimizasyonu (eğri yüzeyde ters eleman)
         </label>
         <p className="mesh-side-hint">
           Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
@@ -4320,6 +4412,35 @@ function App() {
           />
           ccx çalıştır (kuruluysa)
         </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={nlgeom}
+            onChange={(e) => setNlgeom(e.target.checked)}
+          />
+          NLGEOM (büyük deformasyon)
+        </label>
+        {screenInfo?.has_analytic && screenInfo.u_over_l != null && (
+          <p className="material-assign-hint" data-testid="solve-screen-line">
+            Lineer teori: beklenen sehim {screenInfo.u_mm?.toFixed(2)} mm (L&apos;nin %
+            {(screenInfo.u_over_l * 100).toFixed(1)}&apos;i, eşik %
+            {(screenInfo.threshold * 100).toFixed(0)})
+            {screenInfo.sigma_mpa != null ? ` · σ ${screenInfo.sigma_mpa.toFixed(0)} MPa` : ""}
+            {screenInfo.large_deformation ? " · büyük deformasyon bandında" : ""}
+          </p>
+        )}
+        {nlgeom && (
+          <label className="mesh-field">
+            <span>Artım sayısı (1–500)</span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={nIncrements}
+              onChange={(e) => setNIncrements(e.target.value)}
+            />
+          </label>
+        )}
         <button
           type="button"
           className="material-assign-button"
@@ -4327,6 +4448,7 @@ function App() {
             busyAction !== null ||
             geometryId === null ||
             meshResult === null ||
+            (nlgeom && !isValidIncrements(nIncrements)) ||
             !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
           }
           onClick={() => void handleSolve()}
@@ -4683,6 +4805,31 @@ function App() {
           void handleDeleteRun(id, name);
         }}
         onCompare={() => setViewMode("compare")}
+        onSetExcluded={(id, excluded) => {
+          void (async () => {
+            try {
+              await setRunExcluded(
+                id,
+                excluded,
+                excluded ? "elle işaretlendi" : undefined,
+              );
+              // Listeyi tazele — rozet ve süzgeç sayıları güncellensin.
+              setRunsHistory((prev) =>
+                prev.map((r) =>
+                  r.id === id
+                    ? { ...r, excluded, exclude_reason: excluded ? "elle işaretlendi" : null }
+                    : r,
+                ),
+              );
+              // Korpus da değişti: dışlanan run eğitime girmez.
+              setCorpusRefreshKey((k) => k + 1);
+            } catch (err) {
+              setErrorMessage(
+                err instanceof Error ? err.message : "İşaretlenemedi.",
+              );
+            }
+          })();
+        }}
       />
 
       <div className="status-bar">

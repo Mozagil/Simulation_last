@@ -19,14 +19,34 @@ from app.ml.ood import bounds_from_matrix, is_out_of_domain
 from app.ml.scalar_features import FEATURE_KEYS, TARGET_KEYS
 
 MIN_SAMPLES = 8
+#: Ayrı bir holdout ayırmak için gereken en az örnek.
+#:
+#: Altında test seti AYRILMAZ ve test metriği RAPORLANMAZ. Daha önce bu
+#: durumda `X_te = X_tr` atanıyordu; sonuç, `metrics["test"]` adı altında
+#: eğitim R²'sinin raporlanmasıydı. Ölçüldü: 8 örneklik sette "test R² =
+#: 0.739" gösteriliyordu, o sayı modelin kendi eğitim verisindeki
+#: başarısıydı ve genelleme hakkında hiçbir şey söylemiyordu. Sessiz yanlış
+#: sayı, eksik sayıdan kötüdür.
+MIN_HOLDOUT_SAMPLES = 12
 DEFAULT_MODEL_PATH = Path("uploads") / "models" / "scalar_rf.joblib"
 
 
-def _metrics(y_true: np.ndarray, y_pred: np.ndarray, keys: tuple[str, ...]) -> dict[str, Any]:
+def split_metrics(y_true: np.ndarray, y_pred: np.ndarray, keys: tuple[str, ...]) -> dict[str, Any]:
+    """Hedef basina R2 / MAE / MAPE. `scalar_loglinear` da bunu kullanir —
+    iki model turunun sayilari ayni tanimla uretilmezse kiyaslanamaz."""
     out: dict[str, Any] = {}
     for i, key in enumerate(keys):
         yt = y_true[:, i]
         yp = y_pred[:, i]
+        # Hedef-bazlı maskeleme sonrası bazı satırlar NaN olabilir (o run'da
+        # o skaler yok). Metrik yalnız dolu satırlardan hesaplanır; hiç
+        # dolu satır yoksa hedef için metrik None döner.
+        finite = np.isfinite(yt) & np.isfinite(yp)
+        if not finite.any():
+            out[key] = None
+            continue
+        yt = yt[finite]
+        yp = yp[finite]
         mae = float(mean_absolute_error(yt, yp))
         denom = np.maximum(np.abs(yt), 1e-12)
         mape = float(np.mean(np.abs(yt - yp) / denom))
@@ -42,47 +62,86 @@ def train_scalar_rf(
     X: np.ndarray,
     y: np.ndarray,
     *,
+    feature_keys: list[str] | tuple[str, ...] | None = None,
     seed: int = 2026,
     n_estimators: int = 80,
     test_size: float = 0.25,
 ) -> dict[str, Any]:
+    """`feature_keys`: X'in sütun adları (şablona özgü; yoksa eski kiriş)."""
+    feature_keys = list(feature_keys) if feature_keys is not None else list(FEATURE_KEYS)
+    if X.shape[1] != len(feature_keys):
+        raise ValueError(
+            f"X {X.shape[1]} sütunlu ama {len(feature_keys)} özellik anahtarı verildi."
+        )
     if X.shape[0] < MIN_SAMPLES:
         raise ValueError(f"En az {MIN_SAMPLES} çözülmüş örnek gerekir (var: {X.shape[0]}).")
-    if X.shape[0] >= 12:
+    # Hedef sutun sayisi TARGET_KEYS ile uyusmali. Eksikse NaN ile
+    # tamamlanir: cagiran yeni bir hedefi (max_von_mises_away) bilmiyorsa
+    # ya da o skaler henuz hesaplanmamissa patlamak yerine o hedef
+    # atlanir. Fazlaysa sessizce kirpmak veri kaybini gizler -> hata.
+    y = np.asarray(y, dtype=np.float64)
+    if y.ndim != 2:
+        raise ValueError(f"y 2 boyutlu olmali (geldi: {y.shape}).")
+    n_targets = len(TARGET_KEYS)
+    if y.shape[1] > n_targets:
+        raise ValueError(
+            f"y {y.shape[1]} sutunlu ama {n_targets} hedef tanimli."
+        )
+    if y.shape[1] < n_targets:
+        pad = np.full((y.shape[0], n_targets - y.shape[1]), np.nan)
+        y = np.hstack([y, pad])
+
+    has_holdout = X.shape[0] >= MIN_HOLDOUT_SAMPLES
+    if has_holdout:
         X_tr, X_te, y_tr, y_te = train_test_split(
             X, y, test_size=test_size, random_state=seed
         )
     else:
+        # Holdout yok: eğitim verisi test verisi olarak GEÇİRİLMEZ.
         X_tr, y_tr = X, y
-        X_te, y_te = X, y
+        X_te = y_te = None
 
     models: dict[str, RandomForestRegressor] = {}
     pred_tr = np.zeros_like(y_tr)
-    pred_te = np.zeros_like(y_te)
+    pred_te = np.zeros_like(y_te) if y_te is not None else None
     for i, key in enumerate(TARGET_KEYS):
         rf = RandomForestRegressor(
             n_estimators=n_estimators,
             random_state=seed,
             min_samples_leaf=1,
         )
-        rf.fit(X_tr, y_tr[:, i])
+        ok = np.isfinite(y_tr[:, i])
+        if int(ok.sum()) < MIN_SAMPLES:
+            models[key] = None
+            pred_tr[:, i] = np.nan
+            if pred_te is not None:
+                pred_te[:, i] = np.nan
+            continue
+        rf.fit(X_tr[ok], y_tr[ok, i])
         models[key] = rf
-        pred_tr[:, i] = rf.predict(X_tr)
-        pred_te[:, i] = rf.predict(X_te)
+        pred_tr[:, i] = np.where(ok, rf.predict(X_tr), np.nan)
+        if pred_te is not None and X_te is not None and y_te is not None:
+            ok_te = np.isfinite(y_te[:, i])
+            pred_te[:, i] = np.where(ok_te, rf.predict(X_te), np.nan)
 
     bundle = {
         "kind": "scalar_rf",
-        "feature_keys": list(FEATURE_KEYS),
+        "feature_keys": feature_keys,
         "target_keys": list(TARGET_KEYS),
         "models": models,
         "bounds": bounds_from_matrix(X),
         "n_samples": int(X.shape[0]),
         "n_train": int(X_tr.shape[0]),
-        "n_test": int(X_te.shape[0]),
+        "n_test": int(X_te.shape[0]) if X_te is not None else 0,
+        "has_holdout": has_holdout,
         "seed": seed,
         "metrics": {
-            "train": _metrics(y_tr, pred_tr, TARGET_KEYS),
-            "test": _metrics(y_te, pred_te, TARGET_KEYS),
+            "train": split_metrics(y_tr, pred_tr, TARGET_KEYS),
+            "test": (
+                split_metrics(y_te, pred_te, TARGET_KEYS)
+                if has_holdout and y_te is not None and pred_te is not None
+                else None
+            ),
         },
     }
     return bundle
@@ -109,7 +168,8 @@ def predict_scalar(
     vec = np.asarray(x, dtype=np.float64).reshape(1, -1)
     preds: dict[str, float] = {}
     for key in bundle["target_keys"]:
-        preds[key] = float(bundle["models"][key].predict(vec)[0])
+        m = (bundle.get("models") or {}).get(key)
+        preds[key] = float(m.predict(vec)[0]) if m is not None else None
     ood = is_out_of_domain(vec.reshape(-1), bundle.get("bounds") or {})
     return {
         "kind": "scalar",
@@ -124,6 +184,9 @@ def public_metrics(bundle: dict[str, Any]) -> dict[str, Any]:
         "n_samples": bundle.get("n_samples"),
         "n_train": bundle.get("n_train"),
         "n_test": bundle.get("n_test"),
+        # Eski bundle'larda alan yok; o dosyalar test=train ile yazılmıştı,
+        # bu yüzden varsayılan False (holdout yok) doğru yorumdur.
+        "has_holdout": bool(bundle.get("has_holdout", False)),
         "metrics": bundle.get("metrics"),
         "feature_keys": bundle.get("feature_keys"),
         "target_keys": bundle.get("target_keys"),

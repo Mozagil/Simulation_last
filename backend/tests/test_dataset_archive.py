@@ -188,3 +188,152 @@ def test_import_restores_template_origin(db_session, tmp_path):
         assert geo.template_params["length"] == 500.0
     finally:
         dest.close()
+
+
+# --- korpusa göre arşiv (TODO 2.1) -------------------------------------------
+#
+# Eskiden temiz eğitim setini indirmenin yolu yoktu: yalnız "çözülmüş run"
+# süzgeci vardı, o da elle dışlananları ve korpus süzgecinden düşenleri de
+# alıyordu. Artık donmuş setin run'ları ve TANIMI birlikte taşınır.
+
+
+def _corpus_runs(db, uploads: Path, n: int = 3) -> list[int]:
+    ids = []
+    for i in range(n):
+        g = Geometry(
+            original_filename=f"g{i}.step", current_filename=f"g{i}.step",
+            template_id="cantilever_beam",
+            template_params={"length": 500.0 + i, "thickness": 10.0, "width": 50.0},
+        )
+        db.add(g)
+        db.flush()
+        r = AnalysisRun(
+            geometry_id=g.id, dimension=3, element_size=8.0, element_scheme="tet",
+            bcs=[{"type": "cload", "fy": -500.0}],
+            materials_snapshot=[{"youngs_modulus": 210e9, "poisson_ratio": 0.3}],
+            status="solved",
+            scalars={"max_displacement": 20.0 + i, "max_von_mises": 300.0},
+        )
+        db.add(r)
+        db.flush()
+        ids.append(r.id)
+    db.commit()
+    return ids
+
+
+def _write_manifest(root: Path, name: str, run_ids: list[int]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"corpus_{name}.json").write_text(
+        json.dumps({"name": name, "run_ids": run_ids, "template_id": "cantilever_beam"}),
+        encoding="utf-8",
+    )
+
+
+def test_korpus_adiyla_yalniz_setin_runlari_alinir(db_session, tmp_path, monkeypatch):
+    import app.ml.manifest as manifest_mod
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    _seed(db_session, uploads)  # sete GİRMEYEN bir run
+    ids = _corpus_runs(db_session, uploads)
+    mdir = tmp_path / "models"
+    _write_manifest(mdir, "kiris-v9", ids[:2])
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", mdir)
+
+    out = tmp_path / "set.tar.gz"
+    man = export_dataset(db_session, uploads, out, include_files=False,
+                         corpus_name="kiris-v9")
+
+    assert man["counts"]["analysis_runs"] == 2
+    assert man["filters"]["corpus_name"] == "kiris-v9"
+    with tarfile.open(out) as tar:
+        names = tar.getnames()
+        runs = json.loads(tar.extractfile("db/analysis_runs.json").read())
+    assert {r["id"] for r in runs} == set(ids[:2])
+    assert "corpus/corpus_kiris-v9.json" in names, "setin tanımı da arşivde olmalı"
+
+
+def test_korpus_ve_run_ids_birlikte_kesisim(db_session, tmp_path, monkeypatch):
+    import app.ml.manifest as manifest_mod
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    ids = _corpus_runs(db_session, uploads, n=4)
+    mdir = tmp_path / "models"
+    _write_manifest(mdir, "kiris-v9", ids[:3])
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", mdir)
+
+    out = tmp_path / "kesisim.tar.gz"
+    man = export_dataset(db_session, uploads, out, include_files=False,
+                         corpus_name="kiris-v9", run_ids=[ids[2], ids[3]])
+    assert man["counts"]["analysis_runs"] == 1  # yalnız ikisinde de olan
+
+
+def test_bilinmeyen_korpus_hata(db_session, tmp_path, monkeypatch):
+    import app.ml.manifest as manifest_mod
+    from app.ml.manifest import ManifestError
+
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", tmp_path / "models")
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    with pytest.raises(ManifestError):
+        export_dataset(db_session, uploads, tmp_path / "x.tar.gz",
+                       include_files=False, corpus_name="yok")
+
+
+def test_ice_aktarmada_set_tanimi_geri_yazilir(db_session, tmp_path, monkeypatch):
+    import app.ml.manifest as manifest_mod
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    ids = _corpus_runs(db_session, uploads)
+    src_dir = tmp_path / "models_src"
+    _write_manifest(src_dir, "kiris-v9", ids)
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", src_dir)
+    out = tmp_path / "set.tar.gz"
+    export_dataset(db_session, uploads, out, include_files=False, corpus_name="kiris-v9")
+
+    # Başka bir ortam: boş manifest klasörü + boş DB
+    dst_dir = tmp_path / "models_dst"
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", dst_dir)
+    engine2 = create_engine(f"sqlite:///{tmp_path / 'other.db'}")
+    Base.metadata.create_all(engine2)
+    other = sessionmaker(bind=engine2)()
+    try:
+        res = import_dataset(other, tmp_path / "uploads2", out)
+    finally:
+        other.close()
+        engine2.dispose()
+
+    assert res["restored_corpora"] == ["kiris-v9"]
+    assert (dst_dir / "corpus_kiris-v9.json").is_file()
+
+
+def test_var_olan_set_tanimi_ezilmez(db_session, tmp_path, monkeypatch):
+    """Yereldeki set kullanıcının kendi kürasyonunu taşıyor olabilir."""
+    import app.ml.manifest as manifest_mod
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    ids = _corpus_runs(db_session, uploads)
+    src_dir = tmp_path / "models_src"
+    _write_manifest(src_dir, "kiris-v9", ids)
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", src_dir)
+    out = tmp_path / "set.tar.gz"
+    export_dataset(db_session, uploads, out, include_files=False, corpus_name="kiris-v9")
+
+    dst_dir = tmp_path / "models_dst"
+    _write_manifest(dst_dir, "kiris-v9", [999])  # yereldeki farklı tanım
+    monkeypatch.setattr(manifest_mod, "MANIFEST_DIR", dst_dir)
+    engine2 = create_engine(f"sqlite:///{tmp_path / 'other2.db'}")
+    Base.metadata.create_all(engine2)
+    other = sessionmaker(bind=engine2)()
+    try:
+        res = import_dataset(other, tmp_path / "uploads3", out)
+    finally:
+        other.close()
+        engine2.dispose()
+
+    assert res["restored_corpora"] == []
+    kept = json.loads((dst_dir / "corpus_kiris-v9.json").read_text(encoding="utf-8"))
+    assert kept["run_ids"] == [999]

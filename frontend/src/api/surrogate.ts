@@ -17,15 +17,48 @@ export interface TrainingCorpusInfo {
   flagged?: Record<string, number>;
 }
 
+/** Skaler model turu. "auto": log-log varsa o, yoksa RF. */
+/** Skaler model türleri. Ölçülen test MAPE (u/σ):
+ *   korpus   rf             loglinear     hybrid
+ *   kiriş    %18.87/%11.69  %0.16/%1.97   %0.17/%1.86
+ *   plaka    %19.56/%16.08  %1.53/%2.22   %0.29/%1.30
+ */
+export type ScalarModelKind = "rf" | "loglinear" | "hybrid";
+
+export interface ScalarExponent {
+  feature: string;
+  exponent: number;
+  /** false ise katsayi "us" diye okunamaz (sabit ya da esdogrusal sutun). */
+  identifiable: boolean;
+  reason: string | null;
+}
+
+export interface ScalarModelInfo {
+  n_samples?: number;
+  n_train?: number;
+  n_test?: number;
+  has_holdout?: boolean;
+  corpus?: TrainingCorpusInfo | null;
+  metrics?: {
+    train?: Record<string, { r2: number | null; mae: number; mape: number }>;
+    test?: Record<string, { r2: number | null; mae: number; mape: number }> | null;
+  };
+  exponents?: Record<string, ScalarExponent[]>;
+  constant_features?: string[];
+  collinear_features?: string[][];
+}
+
 export interface SurrogateStatus {
-  scalar_rf: {
-    n_samples?: number;
-    corpus?: TrainingCorpusInfo | null;
-    metrics?: {
-      train?: Record<string, { r2: number | null; mae: number; mape: number }>;
-      test?: Record<string, { r2: number | null; mae: number; mape: number }>;
-    };
-  } | null;
+  /** Durumun hangi şablon için okunduğu (null: eski global dosyalar). */
+  template_id?: string | null;
+  /** Şablon -> eğitilmiş model türleri. */
+  templates?: Record<string, ScalarModelKind[]>;
+  scalar_rf: ScalarModelInfo | null;
+  /** Log-log lineer model (0.6.3). Güç yasası hedeflerinde RF'ten çok daha
+   * isabetli; ikisi birlikte tutulur, biri diğerini silmez. */
+  scalar_loglinear: ScalarModelInfo | null;
+  /** Log-log iskelet + RF artık katmanı (0.6.4). */
+  scalar_hybrid: ScalarModelInfo | null;
   field_gnn: {
     n_samples?: number;
     corpus?: TrainingCorpusInfo | null;
@@ -33,6 +66,12 @@ export interface SurrogateStatus {
       node_rmse?: Record<string, number>;
       scalar_rmse?: Record<string, number>;
       rmse_by_element_size?: Record<string, number>;
+      /** Az örnekte holdout ayrılmaz → null ("yok" ≠ "sıfır"). */
+      holdout?: {
+        node_rmse?: Record<string, number>;
+        scalar_rmse?: Record<string, number>;
+      } | null;
+      engine?: string;
     };
   } | null;
 }
@@ -72,30 +111,48 @@ async function parseError(res: Response, fallback: string): Promise<string> {
   return `${fallback} (HTTP ${res.status}).`;
 }
 
-export async function fetchSurrogateStatus(): Promise<SurrogateStatus> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/status`);
+/** Sorgu dizesi: boş/undefined değerler atlanır, `nlgeom` yalnız true iken gider. */
+function query(params: Record<string, string | boolean | null | undefined>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === "" || v === false) continue;
+    parts.push(`${k}=${encodeURIComponent(String(v))}`);
+  }
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
+export async function fetchSurrogateStatus(
+  templateId?: string | null,
+  nlgeom = false,
+): Promise<SurrogateStatus> {
+  const q = query({ template_id: templateId, nlgeom });
+  const res = await fetch(`${API_BASE_URL}/surrogate/status${q}`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Surrogate durumu alınamadı"));
   return (await res.json()) as SurrogateStatus;
 }
 
-function corpusQuery(corpusName?: string | null): string {
-  return corpusName ? `?corpus_name=${encodeURIComponent(corpusName)}` : "";
-}
-
 export async function trainScalarRf(
   corpusName?: string | null,
-): Promise<SurrogateStatus["scalar_rf"]> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/scalar/train${corpusQuery(corpusName)}`, {
-    method: "POST",
-  });
+  model: ScalarModelKind = "rf",
+  templateId?: string | null,
+  nlgeom = false,
+): Promise<(ScalarModelInfo & { model_kind?: ScalarModelKind }) | null> {
+  // Şablon gönderilmezse canlı süzgeç TÜM şablonları toplar ve backend
+  // "birden çok şablon" (422) der — set seçilmeden eğitim çalışmıyordu.
+  const url = `${API_BASE_URL}/surrogate/scalar/train${query({
+    corpus_name: corpusName, model, template_id: templateId, nlgeom,
+  })}`;
+  const res = await fetch(url, { method: "POST" });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Skaler eğitim başarısız"));
-  return (await res.json()) as SurrogateStatus["scalar_rf"];
+  return (await res.json()) as ScalarModelInfo & { model_kind?: ScalarModelKind };
 }
 
 export async function trainFieldGnn(
   corpusName?: string | null,
+  templateId?: string | null,
 ): Promise<SurrogateStatus["field_gnn"]> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/gnn/train${corpusQuery(corpusName)}`, {
+  const q = query({ corpus_name: corpusName, template_id: templateId });
+  const res = await fetch(`${API_BASE_URL}/surrogate/gnn/train${q}`, {
     method: "POST",
   });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "GNN eğitimi başarısız"));
@@ -116,9 +173,14 @@ export async function predictSurrogate(body: {
 }
 
 export interface ParamPredictRequest {
-  length: number;
-  thickness: number;
-  width: number;
+  /** Hangi şablonun modeli kullanılacak. */
+  template_id?: string;
+  /** Şablonun KENDİ alanları (plakada height/width/thickness/diameter). */
+  params?: Record<string, number>;
+  /** Kirişin üç alanı doğrudan da gönderilebilir (eski istemciler). */
+  length?: number;
+  thickness?: number;
+  width?: number;
   element_size: number;
   youngs_modulus: number;
   poisson_ratio: number;
@@ -128,10 +190,18 @@ export interface ParamPredictRequest {
   pressure_mpa: number;
   dimension: number;
   compare_run_id?: number;
+  /** Akma kontrolü için — verilmezse kontrol atlanır. */
+  material_id?: number;
+  /** Akma kontrolünde gerilme: auto (maskeli varsa) | away (maskeli) | peak (ham tepe, tekillik dahil). */
+  stress_source?: "auto" | "away" | "peak";
 }
 
 export interface ParamPredictResult {
   kind: "scalar";
+  template_id?: string;
+  feature_keys?: string[];
+  /** Tahmini gerçekte hangi model üretti — araç sessizce model değiştirmez. */
+  model_kind?: ScalarModelKind;
   source: string;
   out_of_domain: boolean;
   predictions: { max_displacement: number; max_von_mises: number };
@@ -147,6 +217,30 @@ export interface ParamPredictResult {
     max_von_mises_pct: number | null;
   } | null;
   message: string;
+  /** Hangi özellikler eğitim kutusu dışında — "uzay dışı" demek tek
+   *  başına kullanıcıya neyi düzelteceğini söylemiyor. */
+  domain_violations?: {
+    feature: string;
+    value: number;
+    min: number;
+    max: number;
+    side: "below" | "above";
+    factor: number | null;
+  }[];
+  /** Akma kontrolü. OOD'den AYRI: OOD istatistikseldir ("bu noktayı
+   *  görmedim"), bu fizikseldir ("sonuç doğru hesaplansa bile malzeme
+   *  plastik davranıyorsa geçersiz"). Biri diğerini yakalamaz. */
+  yield_check?: {
+    material: string;
+    sigma_mpa: number;
+    yield_mpa: number;
+    limit_mpa: number;
+    utilisation: number | null;
+    exceeds_yield: boolean;
+    exceeds_limit: boolean;
+    source: string;
+  } | null;
+
 }
 
 export interface CorpusMembership {
@@ -163,6 +257,56 @@ export interface CorpusListItem {
   n_runs: number;
   template_id: string | null;
   n_manual: number;
+}
+
+export interface ValidationRow {
+  run_id: number;
+  name: string | null;
+  params: Record<string, number>;
+  load_fy: number;
+  fea_u: number;
+  pred_u: number | null;
+  dev_u_pct: number | null;
+  fea_vm: number | null;
+  pred_vm: number | null;
+  vm_key: string;
+  dev_vm_pct: number | null;
+  out_of_domain: boolean;
+  violations: string[];
+  u_over_l: number | null;
+  nlgeom: boolean;
+}
+
+export interface ValidationResult {
+  template_id: string;
+  model_kind: string;
+  nlgeom: boolean;
+  n: number;
+  skipped: Record<string, number>;
+  mean_abs_dev_u_pct: number | null;
+  mean_abs_dev_vm_pct: number | null;
+  max_abs_dev_u_pct: number | null;
+  rows: ValidationRow[];
+}
+
+/** Çözülmüş run'lar için tahmin vs FEA tablosu — ccx çalışmaz. */
+export async function fetchValidation(opts: {
+  templateId: string;
+  model?: ScalarModelKind | "auto";
+  nlgeom?: boolean;
+  limit?: number;
+  nameContains?: string | null;
+}): Promise<ValidationResult> {
+  const q = query({
+    template_id: opts.templateId,
+    model: opts.model ?? "auto",
+    nlgeom: opts.nlgeom ?? false,
+    limit: opts.limit != null ? String(opts.limit) : undefined,
+    name_contains: opts.nameContains,
+  });
+  const res = await fetch(`${API_BASE_URL}/surrogate/validate${q}`);
+  if (!res.ok) throw new SurrogateApiError(await parseError(res, "Doğrulama tablosu alınamadı"));
+  return (await res.json()) as ValidationResult;
 }
 
 export async function fetchCorpusList(): Promise<CorpusListItem[]> {
@@ -237,10 +381,57 @@ export async function fetchCorpusMembership(name: string): Promise<CorpusMembers
   return (await res.json()) as CorpusMembership;
 }
 
+export interface SweepRequest extends ParamPredictRequest {
+  sweep_param: string;
+  sweep_min: number;
+  sweep_max: number;
+  sweep_n: number;
+}
+
+export interface SweepPoint {
+  value: number;
+  max_displacement: number | null;
+  max_von_mises: number | null;
+  max_von_mises_away: number | null;
+  out_of_domain: boolean;
+  /** Eğitim aralığı dışındaki girdi adları (boşsa uzay içi). */
+  violations: string[];
+  exceeds_yield: boolean | null;
+  sigma_mpa: number | null;
+}
+
+export interface SweepResult {
+  kind: "sweep";
+  template_id: string;
+  sweep_param: string;
+  nlgeom: boolean;
+  model_kind: string | null;
+  n: number;
+  n_out_of_domain: number;
+  points: SweepPoint[];
+}
+
+/** Tek parametre aralıkta N adım — N tahmin tek istekte (ccx yok). */
+export async function predictSweep(
+  body: SweepRequest,
+  model: ScalarModelKind | "auto" = "auto",
+  nlgeom = false,
+): Promise<SweepResult> {
+  const res = await fetch(`${API_BASE_URL}/surrogate/predict/sweep${query({ model, nlgeom })}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new SurrogateApiError(await parseError(res, "Toplu tarama başarısız"));
+  return (await res.json()) as SweepResult;
+}
+
 export async function predictFromParams(
   body: ParamPredictRequest,
+  model: ScalarModelKind | "auto" = "auto",
+  nlgeom = false,
 ): Promise<ParamPredictResult> {
-  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params`, {
+  const res = await fetch(`${API_BASE_URL}/surrogate/predict/params${query({ model, nlgeom })}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

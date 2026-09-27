@@ -11,10 +11,12 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, TESSELLATION_DIR, UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import SessionLocal, get_db
+from app.auth import current_user
 from app.models.geometry import Geometry
 from app.models.material import MaterialAssignment
 from app.models.run import AnalysisRun
@@ -23,6 +25,7 @@ from app.postprocess.report import build_run_report_pdf
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.calculix import CalculiXAdapter, _ccx_executable
 from app.dataset.rebuild import discard_solver_input
+from app.postprocess.stress_probe import DEFAULT_STANDOFF_RATIO, recompute_from_sample
 from app.templates.compare import build_analytic_comparison, store_comparison_on_scalars
 
 logger = logging.getLogger(__name__)
@@ -92,6 +95,59 @@ def _analytic_comparison_for(
     return comparison
 
 
+def _stress_probe_for(
+    geo: Geometry | None,
+    run_id: int,
+    scalars: dict[str, Any],
+) -> None:
+    """Tekillikten uzakta ölçülen max von Mises'i skalerlere ekler.
+
+    NEDEN: `max_von_mises` ankastre köşe gibi TEKİL noktalardan okunuyor ve
+    mesh'ten mesh'e oynuyor. Ölçtük (convergence study_id=8, S235
+    L500/T10/W50, uçtan 500 N):
+
+        ham max σ  : gürültü tabanı %5.57 · teoriden +%10 sapma
+        1×T maskeli: gürültü tabanı %1.20 · teoriden −%0.8 sapma
+
+    Yani maskeli ölçüm hem 4.6× daha az gürültülü hem teoriye çok daha
+    yakın. Surrogate hedefi olarak bunu kullanmak, modelin doğruluk
+    tavanını %5.6'dan %1.2'ye çekiyor.
+
+    Karakteristik uzunluk şablondan gelir; şablonsuz (kullanıcı yüklemesi)
+    geometride atlanır — ne kadar uzaklaşacağımızı bilemeyiz.
+    """
+    if geo is None or not geo.template_id:
+        return
+    try:
+        from app.templates import get_template
+
+        tpl = get_template(geo.template_id)
+        if tpl.characteristic_length is None or not geo.template_params:
+            return
+        params = tpl.parse_params(geo.template_params)
+        char_len = float(tpl.characteristic_length(params))
+        if char_len <= 0:
+            return
+        probe = recompute_from_sample(
+            RUNS_DIR / str(run_id) / f"run{run_id}.train.npz",
+            characteristic_length=char_len,
+            standoff_ratio=DEFAULT_STANDOFF_RATIO,
+        )
+        if probe and probe.get("max_von_mises_away") is not None:
+            scalars["max_von_mises_away"] = probe["max_von_mises_away"]
+            scalars["stress_probe_standoff_mm"] = probe["standoff_mm"]
+            scalars["stress_probe_fraction_used"] = probe["fraction_used"]
+        # Ayrı koşul: kısıt maskesi boş dönse bile tepe merkezli ölçüt
+        # hesaplanabilir (ve tersi). İkisi farklı sorulara bakıyor.
+        if probe and probe.get("max_von_mises_near_peak") is not None:
+            scalars["max_von_mises_near_peak"] = probe["max_von_mises_near_peak"]
+            scalars["peak_probe_offset_mm"] = probe["peak_offset_mm"]
+    except Exception as exc:  # noqa: BLE001
+        # Ölçüm başarısız olursa çözüm geçerliliğini yitirmez — ham
+        # max_von_mises yerinde duruyor.
+        logger.warning("stress probe hesaplanamadı (run %s): %s", run_id, exc)
+
+
 def _complete_ccx_job(run_id: int) -> None:
     db = SessionLocal()
     run = None
@@ -112,6 +168,10 @@ def _complete_ccx_job(run_id: int) -> None:
         )
         scalars = dict(parsed.scalars or {})
         scalars["_analysis_type"] = analysis_type
+        # Çözüm öncesi yazılan kinematik bayrağı KORUNMALI: eskiden parse
+        # sonucu üzerine yazıp siliyordu → korpus 150 NLGEOM run'ını
+        # "wrong_kinematics" diye atıyordu (DOE 6, 2026-09-27).
+        scalars["_nlgeom"] = bool((run.scalars or {}).get("_nlgeom", False))
         scalars, _note, _runout = _attach_fatigue_and_sf(
             scalars,
             assignments,
@@ -126,6 +186,7 @@ def _complete_ccx_job(run_id: int) -> None:
             analysis_type,
             scalars,
         )
+        _stress_probe_for(geo, run.id, scalars)
         run.status = "solved"
         run.message = f"ccx bitti ({status.state})"
         run.scalars = scalars
@@ -153,6 +214,12 @@ def _complete_ccx_job(run_id: int) -> None:
 
 class SolveBC(BaseModel):
     type: str
+    #: İsimli bölge (`ankastre_uc`, `yuk_yuzeyi` …). Şablondan üretilen
+    #: geometrilerde yüzey numarası parametreye göre kayar; isim sabittir.
+    #: ÖNCEDEN: bu alan modelde yoktu, pydantic sessizce atıyordu — bölge
+    #: adıyla gönderilen BC hiçbir yere bağlanmıyor, model YÜKSÜZ çözülüyor
+    #: ve hata verilmiyordu. Artık burada çözülür (bkz. `_bind_regions`).
+    region: str | None = None
     face_ids: list[int] | None = None
     edge_ids: list[int] | None = None
     node_ids: list[int] | None = None
@@ -177,6 +244,57 @@ class SolveBC(BaseModel):
     ref_node_id: int | None = None
 
 
+#: Hedef (yüzey/kenar/düğüm) GEREKTİREN BC tipleri. `gravity` hacim
+#: yüküdür, `rigid_body` referans düğümle çalışır — ikisi de listede yok.
+_TARGETED_BC_TYPES = ("fixed", "cload", "pressure", "displacement", "sliding", "bearing")
+
+
+def _bind_regions(
+    db: Session, geometry_id: int, bcs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """`region` adlarını yüzey/kenar id'lerine çevirir.
+
+    DOE ve yakınsama yolları bunu zaten yapıyordu (`bind_scenario_bcs`);
+    `/solve` yapmıyordu ve bölge adıyla gelen BC sessizce düşüyordu.
+    """
+    if not any(bc.get("region") for bc in bcs):
+        return bcs
+    from app.doe.regions import DoeBindError, bind_scenario_bcs, groups_by_name
+
+    try:
+        return bind_scenario_bcs(groups_by_name(db, geometry_id), bcs)
+    except DoeBindError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _require_targets(bcs: list[dict[str, Any]]) -> None:
+    """Hedefi olmayan BC sessizce yok sayılmaz.
+
+    Hedefsiz bir `cload` modeli YÜKSÜZ çözer: ccx hata vermez, sonuç sıfır
+    deplasman çıkar ve bu "çalıştı" gibi görünür.
+    """
+    empty = [
+        f"#{i} {bc.get('type')}"
+        for i, bc in enumerate(bcs)
+        if str(bc.get("type") or "").lower() in _TARGETED_BC_TYPES
+        and not (
+            bc.get("face_ids")
+            or bc.get("edge_ids")
+            or bc.get("node_ids")
+            or bc.get("mesh_node_ids")
+        )
+    ]
+    if empty:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Şu sınır koşulları hiçbir yüzey/kenar/düğüme bağlı değil: "
+                f"{', '.join(empty)}. Yüzey seçin ya da `region` adı verin — "
+                "hedefsiz BC sessizce yok sayılırsa model yüksüz çözülür."
+            ),
+        )
+
+
 class SolveRequest(BaseModel):
     dimension: int = Field(..., description="2 | 3")
     shell_thickness: float = Field(default=3.0, gt=0)
@@ -191,6 +309,14 @@ class SolveRequest(BaseModel):
     element_size: float | None = Field(default=None)
     element_scheme: str | None = Field(default=None)
     analysis_type: str = Field(default="static", description="static | modal")
+    #: Büyük deformasyon (geometrik nonlineerlik). Lineer çözüm denge
+    #: denklemlerini deforme OLMAMIŞ geometride kurar; u/L büyüdükçe bu
+    #: varsayım bozulur ve çözücü SESSİZCE yanlış cevap verir. Korpus
+    #: kapısı bu yüzden u/L > 0.10 run'ları eliyor. NLGEOM açıkken çözüm
+    #: iterasyonlu ve belirgin şekilde yavaştır — varsayılan kapalı.
+    nlgeom: bool = Field(default=False)
+    #: NLGEOM yükleme artım sayısı. Yakınsamıyorsa artırın.
+    n_increments: int = Field(default=20, ge=1, le=500)
     n_modes: int | None = Field(default=None, ge=1, le=200)
     freq_min: float | None = Field(default=None)
     freq_max: float | None = Field(default=None)
@@ -244,6 +370,8 @@ def solve_geometry(
     ]
 
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
+    bcs = _bind_regions(db, geometry_id, bcs)
+    _require_targets(bcs)
     # KRİTİK: eskiden bcs boşsa sessizce `face_ids=[]` ile bir "fixed" BC
     # (aslında hiçbir düğümü sabitlemeyen, no-op) + gravity kullanılıyordu.
     # Bu, cismi hiçbir yerde sabitlemeden yerçekimine bırakıyordu — rijit
@@ -349,6 +477,8 @@ def solve_geometry(
                 "n_modes": n_modes,
                 "freq_min": body.freq_min,
                 "freq_max": body.freq_max,
+                "nlgeom": body.nlgeom,
+                "n_increments": body.n_increments,
             }
         )
     except SolverError as exc:
@@ -369,7 +499,10 @@ def solve_geometry(
     run.inp_path = str(artifact.path).replace("\\", "/")
     run.status = "inp_only"
     run.message = "modal inp üretildi" if analysis_type == "modal" else "inp üretildi"
-    run.scalars = {"_analysis_type": analysis_type}
+    # NLGEOM bayrağını kaydet: korpus ve karşılaştırma tarafı bir run'ın
+    # lineer mi nonlineer mi çözüldüğünü bilmek zorunda — ikisi aynı
+    # modele girmemeli.
+    run.scalars = {"_analysis_type": analysis_type, "_nlgeom": bool(body.nlgeom)}
     db.commit()
 
     result: dict[str, Any] = {
@@ -377,6 +510,7 @@ def solve_geometry(
         "run_id": run.id,
         "dimension": body.dimension,
         "analysis_type": analysis_type,
+        "nlgeom": body.nlgeom,
         "n_modes": n_modes if analysis_type == "modal" else None,
         "inp_path": run.inp_path,
         "inp_url": f"/files/runs/{run.id}/{artifact.path.name}",
@@ -417,6 +551,7 @@ def solve_geometry(
                 result["status"] = "solved"
                 scalars = dict(parsed.scalars or {})
                 scalars["_analysis_type"] = analysis_type
+                scalars["_nlgeom"] = bool(body.nlgeom)  # bkz. _complete_ccx_job
                 scalars, fatigue_note, fatigue_runout = _attach_fatigue_and_sf(
                     scalars,
                     assignments,
@@ -426,6 +561,7 @@ def solve_geometry(
                 comparison = _analytic_comparison_for(
                     geo, materials, bcs, analysis_type, scalars
                 )
+                _stress_probe_for(geo, run.id, scalars)
                 result["scalars"] = scalars
                 if comparison is not None:
                     result["analytic_comparison"] = comparison
@@ -474,19 +610,54 @@ def solve_geometry(
 
 
 @router.get("/runs")
-def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Tüm analiz geçmişini listeler — en yeni önce.
+def list_runs(
+    template_id: str | None = None,
+    doe_study_id: int | None = None,
+    include_excluded: bool = True,
+    only_excluded: bool = False,
+    status: str | None = None,
+    limit: int | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Analiz geçmişi — en yeni önce, süzülebilir.
 
-    ROADMAP.md "7. Veritabanına kayıt + geçmiş" — frontend'de geçmiş
-    analizler listesi ve Faz 4 surrogate model eğitim verisi kaynağı.
-    Kullanıcı tek tek silebilir; otomatik temizlik yoktur.
+    900'e yakın run birikti ve ikinci şablon girince liste karışıyor.
+    Süzgeçler:
+
+    - `template_id`: yalnız o şablonun run'ları. Ankastre kiriş ile delikli
+      plaka sonuçları aynı listede karışmasın diye.
+    - `doe_study_id`: yalnız o DOE/kalite setinin run'ları — "şu 200'lük
+      set" diye bakmak için.
+    - `include_excluded` / `only_excluded`: elle dışlanmışları gizle ya da
+      YALNIZ onları göster (deneme/mükerrer koşuları gözden geçirmek için).
+    - `status`, `limit`: alışıldık süzgeçler.
+
+    Varsayılan davranış eskisiyle aynı: hiçbir parametre verilmezse tüm
+    run'lar döner.
     """
-    runs = (
-        db.query(AnalysisRun)
-        .options(joinedload(AnalysisRun.geometry))
-        .order_by(AnalysisRun.created_at.desc())
-        .all()
-    )
+    q = db.query(AnalysisRun).options(joinedload(AnalysisRun.geometry))
+    user = current_user()
+    if user is not None:
+        # Kullanıcı yalnız kendi geometrilerinin ve sahipsiz (eski) run'ları görür.
+        q = q.join(AnalysisRun.geometry).filter(
+            or_(Geometry.owner_id == user.id, Geometry.owner_id.is_(None))
+        )
+    if template_id:
+        if user is None:
+            q = q.join(AnalysisRun.geometry)
+        q = q.filter(Geometry.template_id == template_id)
+    if doe_study_id is not None:
+        q = q.filter(AnalysisRun.doe_study_id == doe_study_id)
+    if only_excluded:
+        q = q.filter(AnalysisRun.excluded.is_(True))
+    elif not include_excluded:
+        q = q.filter(AnalysisRun.excluded.is_(False))
+    if status:
+        q = q.filter(AnalysisRun.status == status)
+    q = q.order_by(AnalysisRun.created_at.desc())
+    if limit is not None and limit > 0:
+        q = q.limit(limit)
+    runs = q.all()
     return {
         "count": len(runs),
         "runs": [
@@ -505,10 +676,78 @@ def list_runs(db: Session = Depends(get_db)) -> dict[str, Any]:
                 # sorusunun cevabı burada. Yüklenen STEP'te None.
                 "template_id": r.geometry.template_id if r.geometry else None,
                 "template_params": r.geometry.template_params if r.geometry else None,
+                "doe_study_id": r.doe_study_id,
+                "excluded": bool(r.excluded),
+                "exclude_reason": r.exclude_reason,
             }
             for r in runs
         ],
     }
+
+
+class RunExcludeRequest(BaseModel):
+    """Run'ı elle dışla / geri al."""
+
+    excluded: bool
+    reason: str | None = Field(
+        default=None,
+        description="Neden dışlandı: 'deneme', 'mükerrer', 'kalitesiz' vb.",
+    )
+
+
+@router.patch("/runs/{run_id}/exclude")
+def set_run_excluded(
+    run_id: int,
+    body: RunExcludeRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Deneme / mükerrer / kalitesiz koşuyu işaretler.
+
+    SİLMEZ — dosyalar diskte kalır, karar geri alınabilir. Dışlanan run
+    korpusa (eğitim setine) girmez; geçmişte istenirse gizlenir ya da
+    yalnız dışlananlar listelenebilir.
+
+    Silmek yerine işaretlemenin sebebi: bir run'ın "kalitesiz" olduğu
+    kararı sonradan yanlış çıkabilir. Silinen geri gelmez.
+    """
+    run = db.get(AnalysisRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run bulunamadı: id={run_id}")
+    run.excluded = bool(body.excluded)
+    run.exclude_reason = body.reason if body.excluded else None
+    db.commit()
+    return {
+        "id": run.id,
+        "excluded": run.excluded,
+        "exclude_reason": run.exclude_reason,
+    }
+
+
+@router.patch("/runs/exclude-bulk")
+def set_runs_excluded_bulk(
+    body: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Birden çok run'ı tek seferde işaretler.
+
+    Gövde: {"run_ids": [1,2,3], "excluded": true, "reason": "mükerrer"}
+    Bütün bir DOE setini elemek için pratik.
+    """
+    ids = [int(i) for i in (body.get("run_ids") or [])]
+    if not ids:
+        raise HTTPException(status_code=400, detail="run_ids boş.")
+    excluded = bool(body.get("excluded"))
+    reason = body.get("reason") if excluded else None
+    n = (
+        db.query(AnalysisRun)
+        .filter(AnalysisRun.id.in_(ids))
+        .update(
+            {"excluded": excluded, "exclude_reason": reason},
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return {"updated": n, "excluded": excluded, "reason": reason}
 
 
 @router.get("/runs/{run_id}")
@@ -556,6 +795,59 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
         "inp_url": f"/files/runs/{run.id}/{Path(run.inp_path).name}" if run.inp_path else None,
         "analytic_comparison": (run.scalars or {}).get("_analytic_comparison"),
     }
+
+
+class SolveScreenBody(BaseModel):
+    bcs: list[SolveBC] = Field(default_factory=list)
+
+
+@router.post("/{geometry_id}/solve/screen")
+def screen_solve(
+    geometry_id: int, body: SolveScreenBody, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Çözmeden önce: lineer analitikle beklenen u/L. Karar vermez, veri döner.
+
+    Arayüz `large_deformation` true ise kullanıcıya "NLGEOM ile çözülsün mü?"
+    diye sorar; seçim kullanıcının. Eşik korpus kapısıyla aynı (u/L 0.10):
+    lineer çözüm bunun üstünde denge denklemlerini yanlış geometride kurar.
+    Şablonsuz geometri ya da analitiği olmayan şablonda `has_analytic=false`
+    döner — soru sorulmaz, kullanıcı kendi bilir.
+    """
+    from app.doe.screening import screen_sample
+    from app.ml.corpus import DEFAULT_MAX_U_OVER_L
+
+    geo = db.get(Geometry, geometry_id)
+    if geo is None:
+        raise HTTPException(status_code=404, detail="Geometri bulunamadı.")
+    out: dict[str, Any] = {
+        "has_analytic": False, "u_over_l": None, "u_mm": None, "sigma_mpa": None,
+        "threshold": DEFAULT_MAX_U_OVER_L, "large_deformation": False,
+    }
+    if not geo.template_id or not geo.template_params:
+        return out
+    assignment = (
+        db.query(MaterialAssignment)
+        .options(joinedload(MaterialAssignment.material))
+        .filter(MaterialAssignment.geometry_id == geometry_id)
+        .first()
+    )
+    e_pa = float(assignment.material.youngs_modulus) if assignment and assignment.material else 210e9
+    force = 0.0
+    for bc in body.bcs:
+        if (bc.type or "").lower() == "cload":
+            force += ((bc.fx or 0.0) ** 2 + (bc.fy or 0.0) ** 2 + (bc.fz or 0.0) ** 2) ** 0.5
+    res = screen_sample(
+        geo.template_id, dict(geo.template_params), force_n=force,
+        youngs_modulus_pa=e_pa, yield_strength_pa=None, max_u_over_l=DEFAULT_MAX_U_OVER_L,
+    )
+    if res.u_over_l is None:
+        return out
+    out.update({
+        "has_analytic": True, "u_over_l": res.u_over_l, "u_mm": res.u_mm,
+        "sigma_mpa": res.sigma_mpa,
+        "large_deformation": res.u_over_l > DEFAULT_MAX_U_OVER_L,
+    })
+    return out
 
 
 @router.delete("/runs/{run_id}")

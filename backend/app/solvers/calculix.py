@@ -55,6 +55,72 @@ _GMSH_TO_CCX_2D = {
 _GMSH_TO_CCX_TET10_ORDER = (0, 1, 2, 3, 4, 5, 6, 7, 9, 8)
 
 
+
+#: CalculiX katı eleman yüz numaraları, KÖŞE düğüm indeksleriyle (0-tabanlı,
+#: CalculiX sırasına göre). Yüzey yükü (*DSLOAD) uygulanırken bir sınır
+#: üçgeninin hangi elemanın hangi yüzü olduğunu bulmak için kullanılır.
+#:
+#: NEDEN GEREKLİ — ölçtük: toplam kuvvet yüzey düğümlerine EŞİT bölünüyordu
+#: (`fx / n`). Kuadratik elemanlarda (C3D10) bu YANLIŞ: düzgün bir yüzey
+#: yükünün tutarlı düğüm kuvvetleri eşit değildir, köşe ve kenar-orta
+#: düğümleri farklı ağırlık alır. Sonuç: yükleme yüzeyinde sahte yerel
+#: salınım.
+#:
+#: Delikli plaka taramasında (study 10, 7 basamak) bu salınım u_max'ı
+#: mesh'ten mesh'e %36 oynattı — beş mesh 0.0603–0.0609 mm'de uyuşurken
+#: ikisi 0.0656 ve 0.0848 verdi. Mesh kaliteleri iyiydi (Jacobian 0.75 ve
+#: 0.84; "sağlam" olanınki 0.60), yani sebep mesh değildi. σ etkilenmedi
+#: çünkü tepe gerilme delikte, yükleme yüzeyinden uzakta.
+#:
+#: Kirişte fark edilmemişti: orada sehim 23 mm, aynı salınım yanında
+#: görünmez kalıyor. Plakada gerçek deplasman 0.06 mm olunca baskın hale
+#: geldi.
+#: gmsh 2B eleman tipi -> düğüm sayısı. Sınır üçgenlerini ana katı
+#: elemanla eşlerken bağlantı dizisini doğru adımlamak için.
+_SURF_NODES_PER: dict[int, int] = {
+    2: 3,   # tri3
+    3: 4,   # quad4
+    9: 6,   # tri6
+    16: 8,  # quad8
+}
+
+_CCX_SOLID_FACES: dict[str, tuple[tuple[int, ...], ...]] = {
+    # 4 ve 10 düğümlü tet: yüz köşeleri (CalculiX kılavuzu, C3D4/C3D10)
+    "C3D4": ((0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)),
+    "C3D10": ((0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)),
+    # 8 düğümlü hex: C3D8 yüzleri
+    "C3D8": (
+        (0, 1, 2, 3),
+        (4, 7, 6, 5),
+        (0, 4, 5, 1),
+        (1, 5, 6, 2),
+        (2, 6, 7, 3),
+        (3, 7, 4, 0),
+    ),
+}
+
+
+def _solid_face_lookup(
+    ccx_type: str, elem_id: int, conn: list[int]
+) -> list[tuple[frozenset[int], int, int]]:
+    """Bir katı elemanın her yüzü için (köşe kümesi, eleman id, yüz no).
+
+    Yüz numarası CalculiX'in 1-tabanlı P1..P6 gösterimidir. Köşe kümesi
+    sırasızdır; sınır üçgeni hangi sırayla gelirse gelsin eşleşsin diye.
+    """
+    faces = _CCX_SOLID_FACES.get(ccx_type)
+    if not faces:
+        return []
+    out: list[tuple[frozenset[int], int, int]] = []
+    for fi, idxs in enumerate(faces, start=1):
+        try:
+            corners = frozenset(conn[i] for i in idxs)
+        except IndexError:
+            continue
+        out.append((corners, elem_id, fi))
+    return out
+
+
 def _reorder_connectivity(conn: list[int], gmsh_etype: int) -> list[int]:
     """Gmsh eleman bağlantısını CalculiX'in beklediği sıraya çevirir.
 
@@ -124,6 +190,59 @@ def _read_inp_nodes(inp_path: Path) -> list[tuple[float, float, float]]:
     except OSError:
         return []
     return nodes
+
+
+def _read_inp_elements(inp_path: Path) -> tuple[list[list[int]], list[str]]:
+    """`.inp` içindeki `*ELEMENT` bloklarından eleman bağlantısı ve tipleri.
+
+    GNN eğitimi için gerekli: mesh grafının kenarları eleman bağlantısından
+    kurulur. Bu bilgi daha önce hiç taşınmıyordu (`connectivity=None`), graf
+    koordinatlardan k-NN ile kuruluyordu — yani mesh grafı değil nokta bulutu
+    komşuluğuydu.
+
+    `_read_inp_nodes` ile aynı gerekçe: dosyayı biz yazdığımız için biçim
+    kesin. Düğüm numaraları 1-based ve `*NODE` sırasıyla aynı.
+
+    Dönen bağlantı CalculiX sırasındadır (tet10'da kenar-ortası düğümler
+    gmsh'ten farklı yerde — `_reorder_connectivity`).
+    """
+    conn: list[list[int]] = []
+    types: list[str] = []
+    etype: str | None = None
+    try:
+        with inp_path.open(encoding="utf-8") as fh:
+            pending = ""
+            for raw in fh:
+                line = (pending + raw.strip()) if pending else raw.strip()
+                pending = ""
+                if not line:
+                    continue
+                if line.startswith("*"):
+                    etype = None
+                    upper = line.upper()
+                    if upper.startswith("*ELEMENT") and "OUTPUT" not in upper:
+                        for part in line.split(",")[1:]:
+                            key, _, value = part.partition("=")
+                            if key.strip().upper() == "TYPE":
+                                etype = value.strip().upper()
+                    continue
+                if etype is None:
+                    continue
+                if line.endswith(","):  # Abaqus/CCX devam satırı
+                    pending = line
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                try:
+                    nodes = [int(v) for v in parts[1:] if v]
+                except ValueError:
+                    continue
+                if not nodes:
+                    continue
+                conn.append(nodes)
+                types.append(etype)
+    except OSError:
+        return [], []
+    return conn, types
 
 
 
@@ -268,13 +387,31 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
     # elemandan AYRI bir değerle birden fazla kez gelir. Node başına TEK
     # değer değil, gelen tüm değerlerin toplamı+sayacı tutulur; sonda
     # componentwise ortalama alınır (cgx/Abaqus'un yaptığı "nodal averaging").
+    # Gerilme ARTIM BAŞINA ayrı tutulur. Eskiden tüm STRESS blokları tek
+    # toplamda birikiyordu: çok artımlı (NLGEOM) .frd'de sonuç yük
+    # geçmişinin ORTALAMASI oluyordu — ölçüldü, 20 artımlı doğrusal
+    # yüklemede tam yükün %52.5'i (103.5 MPa, ~197 olması gerekirken).
+    # Blok İÇİNDE ortalama korunur: aynı düğüm birden çok elemandan gelir.
     stress_sum: dict[int, list[float]] = {}
     stress_count: dict[int, int] = {}
+    stress_increments: list[dict[int, tuple[float, ...]]] = []
     disp_increments: list[dict[int, tuple[float, ...]]] = []
     current_disp: dict[int, tuple[float, ...]] = {}
 
     in_node_block = False
     current_result_type: str | None = None
+
+    def flush_stress() -> None:
+        nonlocal stress_sum, stress_count
+        if stress_sum:
+            stress_increments.append(
+                {
+                    nid: tuple(v / stress_count[nid] for v in acc)
+                    for nid, acc in stress_sum.items()
+                }
+            )
+        stress_sum = {}
+        stress_count = {}
 
     def flush_disp() -> None:
         nonlocal current_disp, displacement
@@ -294,6 +431,8 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             # örn: " -4  DISP        4    1" / " -4  STRESS      6    1"
             if current_result_type == "DISP":
                 flush_disp()
+            elif current_result_type == "STRESS":
+                flush_stress()
             rest = line[4:].split()
             current_result_type = rest[0] if rest else None
             in_node_block = False
@@ -303,6 +442,8 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
         if line.startswith(" -3"):
             if current_result_type == "DISP":
                 flush_disp()
+            elif current_result_type == "STRESS":
+                flush_stress()
             in_node_block = False
             current_result_type = None
             continue
@@ -332,15 +473,17 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
 
     if current_result_type == "DISP":
         flush_disp()
+    elif current_result_type == "STRESS":
+        flush_stress()
 
-    stress: dict[int, tuple[float, ...]] = {
-        nid: tuple(v / stress_count[nid] for v in acc) for nid, acc in stress_sum.items()
-    }
+    # Son artım = tam yük (statik). Tek artımlı lineer çözümde aynı sonuç.
+    stress: dict[int, tuple[float, ...]] = stress_increments[-1] if stress_increments else {}
 
     return {
         "node_coords": node_coords,
         "displacement": displacement,
         "disp_increments": disp_increments,
+        "stress_increments": stress_increments,
         "stress": stress,
     }
 
@@ -367,6 +510,112 @@ def _vendor_ccx_candidates() -> list[Path]:
         vendor / "ccx_static.exe",
         vendor / "ccx",
     ]
+
+
+def _deck_is_frequency(inp_path: Path) -> bool | None:
+    """Girdi destesi özdeğer (*FREQUENCY) adımı mı? Deste okunamazsa None."""
+    try:
+        text = inp_path.read_text(encoding="utf-8", errors="replace").upper()
+    except OSError:
+        return None
+    return "*FREQUENCY" in text
+
+
+def parse_ccx_sta(path: Path) -> dict[str, float] | None:
+    """CalculiX `.sta` özetini okur — çözümün adımı gerçekten tamamlayıp
+    tamamlamadığının tek güvenilir kaydı.
+
+    Satır biçimi: STEP INC ATT ITRS TOT_TIME STEP_TIME INC_TIME. `ATT`
+    sütununda `U` son eki yakınsamayan ve geri alınan denemedir (cutback);
+    o satırın STEP_TIME'ı ilerlemez. Ölçülen gerçek ccx çıktıları
+    `tests/fixtures/ccx_sta/` altında.
+
+    Döner: `_n_increments` (yakınsayan artım), `_n_cutbacks`, `_n_iterations`,
+    `_final_step_time` (yakınsayan son artımın adım zamanı), `_solver_converged`
+    (1.0: adım zamanı 1.0'a ulaştı). Dosya yoksa ya da satır yoksa None.
+    Tek adımlı iş varsayılır — bu platformun girdileri tek `*STEP` yazar.
+    """
+    if not path.is_file():
+        return None
+    rows: list[tuple[bool, float, int]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) < 7 or not parts[0].isdigit():
+            continue
+        try:
+            itrs = int(parts[3])
+            step_time = float(parts[5])
+        except ValueError:
+            continue
+        rows.append((parts[2].upper().endswith("U"), step_time, itrs))
+    if not rows:
+        return None
+    converged = [r for r in rows if not r[0]]
+    final_time = max((r[1] for r in converged), default=0.0)
+    return {
+        "_n_increments": float(len(converged)),
+        "_n_cutbacks": float(len(rows) - len(converged)),
+        "_n_iterations": float(sum(r[2] for r in rows)),
+        "_final_step_time": final_time,
+        "_solver_converged": 1.0 if final_time >= 1.0 - 1e-6 else 0.0,
+    }
+
+
+def _sta_note(summary: dict[str, float] | None) -> str:
+    if not summary:
+        return ""
+    return (
+        f" Adım zamanı {summary['_final_step_time']:.3g}/1.0, "
+        f"{int(summary['_n_increments'])} artım, "
+        f"{int(summary['_n_cutbacks'])} cutback."
+    )
+
+
+#: Hata mesajına taşınacak en fazla `*ERROR` bloğu ve toplam karakter.
+CCX_ERROR_BLOCKS = 2
+CCX_ERROR_CHARS = 240
+
+
+def _ccx_error_lines(log_text: str) -> str:
+    """ccx log'undaki `*ERROR` bloklarını tek satıra toplar.
+
+    NEDEN: hata mesajı yalnız log DOSYA YOLUNU gösteriyordu. Kullanıcı
+    "neden düştü" sorusunun cevabını görmek için sunucudaki dosyayı açmak
+    zorundaydı; DOE'de 200 koşudan 2'si böyle düşüyor ve sebebi arayüzde
+    hiç görünmüyordu.
+
+    ccx biçimi (gerçek log'dan):
+        *ERROR in e_c3d: nonpositive jacobian
+              determinant in element          38
+    Devam satırları girintilidir ve `*` ile başlamaz.
+    """
+    blocks: list[str] = []
+    lines = log_text.splitlines()
+    i = 0
+    while i < len(lines) and len(blocks) < CCX_ERROR_BLOCKS:
+        if lines[i].strip().startswith("*ERROR"):
+            # ccx sabit sütun genişliği kullanıyor: "element          38"
+            parts = [" ".join(lines[i].split())]
+            i += 1
+            while i < len(lines):
+                nxt = lines[i].strip()
+                if not nxt or nxt.startswith("*"):
+                    break
+                parts.append(" ".join(nxt.split()))
+                i += 1
+            # Aynı hata hem stdout hem stderr'de geliyor (log ikisinin
+            # birleşimi); mesaj kendini tekrar etmesin.
+            block = " ".join(parts)
+            if block not in blocks:
+                blocks.append(block)
+            continue
+        i += 1
+    if not blocks:
+        return ""
+    text = " | ".join(blocks)
+    if len(text) > CCX_ERROR_CHARS:
+        text = text[: CCX_ERROR_CHARS - 1].rstrip() + "…"
+    return text
 
 
 def _ccx_executable() -> str | None:
@@ -433,7 +682,7 @@ class CalculiXAdapter(SolverAdapter):
         bcs = params.get("bcs") or []
         analysis_type = str(params.get("analysis_type") or "static").lower()
 
-        mesh_block, nsets, elsets = _mesh_to_inp_blocks(
+        mesh_block, nsets, elsets, face_weights = _mesh_to_inp_blocks(
             mesh_path, dimension, materials, shell_thickness
         )
         mat_block = _materials_inp_block(materials, dimension, shell_thickness)
@@ -441,7 +690,9 @@ class CalculiXAdapter(SolverAdapter):
         # step_bc_block: *CLOAD/*DLOAD (SADECE STEP İÇİNDE geçerli — gerçek
         # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
         # used within a STEP" hatasıyla durduğu doğrulandı).
-        model_bc_block, step_bc_block = _bcs_inp_block(bcs, nsets, elsets, dimension)
+        model_bc_block, step_bc_block = _bcs_inp_block(
+            bcs, nsets, elsets, dimension, face_weights
+        )
         if analysis_type == "modal":
             # Modal'da yükler (*CLOAD/*DLOAD) yazılmaz — özdeğer problemi
             # mesnet + kütle/rijitlik ister, kuvvet değil.
@@ -452,7 +703,12 @@ class CalculiXAdapter(SolverAdapter):
                 dimension=dimension,
             )
         elif analysis_type == "static":
-            step_block = _static_step_block(step_bc_block, dimension)
+            step_block = _static_step_block(
+                step_bc_block,
+                dimension,
+                nlgeom=bool(params.get("nlgeom")),
+                n_increments=int(params.get("n_increments") or 20),
+            )
         else:
             raise SolverError(
                 f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
@@ -481,8 +737,12 @@ class CalculiXAdapter(SolverAdapter):
                 shell_thickness,
                 _resolve_bc_node_ids,
             )
+            _conn, _etypes = _read_inp_elements(inp_path)
             _td.write_inputs(
-                inp_path.with_suffix(".inputs.npz"), _X, None
+                inp_path.with_suffix(".inputs.npz"),
+                _X,
+                _td.pad_connectivity(_conn),
+                element_types=_etypes,
             )
         except Exception as exc:  # noqa: BLE001 — veri seti üretimi çözümü bozmasın
             logger.warning("Eğitim girdileri yazılamadı: %s", exc)
@@ -515,16 +775,34 @@ class CalculiXAdapter(SolverAdapter):
         except subprocess.TimeoutExpired as exc:
             raise SolverError("CalculiX zaman aşımı (600s).") from exc
 
-        log_path.write_text(
-            (proc.stdout or "") + "\n" + (proc.stderr or ""),
-            encoding="utf-8",
-        )
+        log_text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        log_path.write_text(log_text, encoding="utf-8")
+        ccx_error = _ccx_error_lines(log_text)
+        error_note = f" {ccx_error}" if ccx_error else ""
         handle = JobHandle(job_id=job_id, work_dir=work_dir, artifact=artifact)
         handle._exit_code = proc.returncode  # type: ignore[attr-defined]
         handle._log_path = log_path  # type: ignore[attr-defined]
+        summary = parse_ccx_sta(work_dir / f"{job_name}.sta")
+        handle._sta_summary = summary  # type: ignore[attr-defined]
         if proc.returncode != 0:
+            # Ölçüldü: NLGEOM'da artım limiti ve ıraksama ikisi de exit=201
+            # veriyor ve .frd KISMİ artımlarla yine yazılıyor — .frd'nin
+            # varlığı başarı göstergesi değil.
             raise SolverError(
-                f"CalculiX hata (exit={proc.returncode}). Log: {log_path}"
+                f"CalculiX hata (exit={proc.returncode})."
+                f"{error_note}{_sta_note(summary)} Log: {log_path}"
+            )
+        # Savunma: exit=0 ama statik adım 1.0'a ulaşmamış. Ölçülen vakalarda
+        # ccx bu durumda sıfır olmayan kod döndürdü; yine de yakınsamamış bir
+        # çözümün sessizce `solved` olup eğitime girmesinin bedeli yüksek.
+        # Modal (*FREQUENCY) artım yazmaz, bu denetim yalnız *STATIC içindir.
+        is_static = "*STATIC" in artifact.path.read_text(
+            encoding="utf-8", errors="replace"
+        ).upper()
+        if is_static and summary is not None and summary["_solver_converged"] < 1.0:
+            raise SolverError(
+                "CalculiX statik adımı tamamlamadı (exit=0)."
+                f"{error_note}{_sta_note(summary)} Log: {log_path}"
             )
         return handle
 
@@ -606,6 +884,18 @@ class CalculiXAdapter(SolverAdapter):
         increments = parsed.get("disp_increments") or (
             [displacement] if displacement else []
         )
+        # Çözüm tipi GİRDİ DESTESİNDEN okunur, .frd blok sayısından değil.
+        # Eskiden "birden çok DISP bloğu = modal" varsayılıyordu; NLGEOM
+        # statik çözümü de artım başına blok yazar (ölçüldü: 20 blok). Sonuç:
+        # deplasman ilk artımdan (yükün %5'i) okunuyor, eğitim örneği modal
+        # şemayla yazılıyor, görüntüleyici artımları "mod" diye gösteriyordu.
+        is_modal = _deck_is_frequency(job.artifact.path)
+        if is_modal is None:  # deste yoksa eski ipucuna düş
+            is_modal = bool(frequencies)
+        if not is_modal and increments:
+            # Statik: yalnız SON artım (tam yük). Lineerde zaten tek artım —
+            # çıktı birebir aynı kalır.
+            increments = increments[-1:]
         modes: list[dict[str, Any]] = []
         for i, inc in enumerate(increments):
             vecs = [list(inc.get(nid, (0.0, 0.0, 0.0))) for nid in node_order]
@@ -620,7 +910,7 @@ class CalculiXAdapter(SolverAdapter):
                 }
             )
 
-        # Varsayılan görüntü: ilk increment (modal'da 1. mod).
+        # Varsayılan görüntü: modal'da 1. mod; statikte tek eleman = son artım.
         if modes:
             disp_mag_array = modes[0]["displacement_magnitude"]
             disp_vector_array = modes[0]["displacement_vectors"]
@@ -667,7 +957,7 @@ class CalculiXAdapter(SolverAdapter):
         # aslında bir mod şekli olan anlamsız bir örnek çıkar — hiçbir yerde
         # hata vermeden. Bu yüzden modal kendi şemasına yazılır: mod başına
         # normalize edilmiş şekil + frekans.
-        _is_modal = bool(frequencies) or len(increments) > 1
+        _is_modal = is_modal
         try:
             from app.dataset import training_data as _td
 
@@ -731,6 +1021,7 @@ class CalculiXAdapter(SolverAdapter):
                     else {}
                 ),
                 **freq_scalars,
+                **(parse_ccx_sta(job.work_dir / f"{job.artifact.path.stem}.sta") or {}),
             },
             curves={"frequencies": frequencies} if frequencies else {},
             raw_result_path=frd,
@@ -787,8 +1078,17 @@ def _mesh_to_inp_blocks(
     dimension: int,
     materials: list[dict[str, Any]],
     shell_thickness: float,
-) -> tuple[str, dict[str, list[int]], dict[str, list[int]]]:
-    """Gmsh mesh'ten *NODE / *ELEMENT / *NSET / *ELSET blokları."""
+) -> tuple[
+    str,
+    dict[str, list[int]],
+    dict[str, list[int]],
+    dict[int, dict[int, float]],
+]:
+    """Gmsh mesh'ten *NODE / *ELEMENT / *NSET / *ELSET blokları.
+
+    Dördüncü dönüş: yüzey tag -> {düğüm: ağırlık}. Yüzey yükünü tutarlı
+    dağıtmak için; eşit bölme kuadratik elemanlarda yanlış sonuç veriyor.
+    """
     _gmsh_lock.acquire()
     gmsh.initialize(interruptible=False)
     try:
@@ -797,6 +1097,14 @@ def _mesh_to_inp_blocks(
 
         node_tags, coords, _ = gmsh.model.mesh.getNodes()
         tag_to_idx = {int(t): i + 1 for i, t in enumerate(node_tags)}  # 1-based inp
+        # Yüzey üçgeni alanı için düğüm koordinatları (1-based indekse göre).
+        coords_by_idx: dict[int, tuple[float, float, float]] = {
+            i + 1: (float(coords[3 * i]), float(coords[3 * i + 1]), float(coords[3 * i + 2]))
+            for i in range(len(node_tags))
+        }
+        # Yüzey tag -> {düğüm indeksi: ağırlık}. Yüzey yükünü tutarlı
+        # dağıtmak için; eşit bölme kuadratik elemanlarda yanlış.
+        face_weights: dict[int, dict[int, float]] = {}
         lines: list[str] = ["*HEADING", "CAE platform CalculiX job", "*NODE"]
         for i, tag in enumerate(node_tags):
             nid = i + 1
@@ -841,6 +1149,9 @@ def _mesh_to_inp_blocks(
             # 2D: PART_n = kenar paylaşan kabuk (preview triangle_to_part ile aynı).
             # 3D: PART_n = volume sırası. FACE_EL_* her yüzey için ayrı kalır (DLOAD).
             face_to_part: dict[int, int] = {}
+            # köşe kümesi -> (eleman id, yerel yüz no). 3B katıda yüzey
+            # yükünü *DSLOAD ile yazabilmek için gerekli.
+
             if elem_dim == 2:
                 from app.mesh.gmsh_adapter import _surface_parts_by_coincident_nodes
 
@@ -889,6 +1200,54 @@ def _mesh_to_inp_blocks(
                             continue
                         nt, _, _ = gmsh.model.mesh.getNodes(2, btag)
                         nsets[nset] = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
+                        # Yüzey yükü için: bu sınır yüzeyinin üçgenlerini
+                        # ana katı elemanla eşle. gmsh sınır yüzeyini
+                        # meshlememiş olabilir (2B eleman üretilmemiş) —
+                        # o durumda liste boş kalır ve yük eski yoldan
+                        # (düğümlere bölünmüş CLOAD) uygulanır.
+                        # Yüzey yükünün TUTARLI düğüm ağırlıkları.
+                        # tri6'da düzgün yayılı yük için: köşeler 0,
+                        # kenar-ortaları A/3. tri3'te üçü de A/3.
+                        # Bu ağırlıklar yön bağımsızdır; teğet yükte de
+                        # geçerli (bkz. _bcs_inp_block cload dalı).
+                        try:
+                            s_types, _s_tags, s_nodes = gmsh.model.mesh.getElements(
+                                dim=2, tag=btag
+                            )
+                        except Exception:  # noqa: BLE001
+                            s_types, s_nodes = [], []
+                        w_map: dict[int, float] = {}
+                        for s_type, s_conn in zip(s_types, s_nodes):
+                            per = _SURF_NODES_PER.get(int(s_type))
+                            if per not in (3, 6):
+                                continue  # quad yüzler: şimdilik eşit bölme
+                            total = len(s_conn) // per
+                            for si in range(total):
+                                base = si * per
+                                tags = [int(s_conn[base + k]) for k in range(per)]
+                                if any(t not in tag_to_idx for t in tags):
+                                    continue
+                                idxs = [tag_to_idx[t] for t in tags]
+                                area = _tri_area(
+                                    coords_by_idx[idxs[0]],
+                                    coords_by_idx[idxs[1]],
+                                    coords_by_idx[idxs[2]],
+                                )
+                                if area <= 0:
+                                    continue
+                                if per == 6:
+                                    # Kuadratik: yalnız kenar-orta düğümler
+                                    for k in (3, 4, 5):
+                                        w_map[idxs[k]] = (
+                                            w_map.get(idxs[k], 0.0) + area / 3.0
+                                        )
+                                else:
+                                    for k in (0, 1, 2):
+                                        w_map[idxs[k]] = (
+                                            w_map.get(idxs[k], 0.0) + area / 3.0
+                                        )
+                        if w_map:
+                            face_weights[int(btag)] = w_map
                 else:
                     # 2D: yüzey kendisi
                     nset = f"FACE_{etag}"
@@ -926,7 +1285,7 @@ def _mesh_to_inp_blocks(
         # Kullanılmayan part_materials uyarısı yok — section'lar materials bloğunda
         _ = part_materials
         _ = shell_thickness
-        return "\n".join(lines) + "\n", nsets, elsets
+        return "\n".join(lines) + "\n", nsets, elsets, face_weights
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
@@ -1026,11 +1385,42 @@ def _resolve_bc_node_ids(
     return list(dict.fromkeys(resolved))
 
 
+
+def _tri_area(p0: tuple[float, float, float],
+              p1: tuple[float, float, float],
+              p2: tuple[float, float, float]) -> float:
+    ux, uy, uz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+    vx, vy, vz = p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]
+    cx = uy * vz - uz * vy
+    cy = uz * vx - ux * vz
+    cz = ux * vy - uy * vx
+    return 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
+
+
+def _consistent_face_weights(
+    bc: dict[str, Any],
+    face_weights: dict[int, dict[int, float]] | None,
+) -> dict[int, float]:
+    """BC'nin dokunduğu yüzeylerin tutarlı düğüm ağırlıklarını toplar.
+
+    Birden çok yüzey seçiliyse ağırlıklar toplanır — ortak kenardaki
+    düğüm iki yüzeyden de pay alır, doğrusu bu.
+    """
+    if not face_weights:
+        return {}
+    out: dict[int, float] = {}
+    for fid in bc.get("face_ids") or []:
+        for nid, w in (face_weights.get(int(fid)) or {}).items():
+            out[nid] = out.get(nid, 0.0) + w
+    return out
+
+
 def _bcs_inp_block(
     bcs: list[dict[str, Any]],
     nsets: dict[str, list[int]],
     elsets: dict[str, list[int]],
     dimension: int,
+    face_weights: dict[int, dict[int, float]] | None = None,
 ) -> tuple[str, str]:
     """BC kartlarını üretir — döndürür: (model_seviyesi, step_seviyesi).
 
@@ -1082,49 +1472,72 @@ def _bcs_inp_block(
             fx = float(bc.get("fx", 0.0))
             fy = float(bc.get("fy", 0.0))
             fz = float(bc.get("fz", 0.0))
+            # Yük bir YÜZEYE uygulanıyorsa toplam kuvveti düğümlere EŞİT
+            # bölmek yanlış. Kuadratik elemanlarda (C3D10 → yüzeyi tri6)
+            # düzgün yayılı yükün TUTARLI düğüm kuvvetleri eşit değildir:
+            # köşeler 0, kenar-ortaları A/3. Eşit bölmek yükleme yüzeyinde
+            # sahte yerel salınım üretir.
+            #
+            # KONTROLLÜ A/B İLE ÖLÇÜLDÜ (delikli plaka H200 W100 t5 d20,
+            # S235, 30 kN, aynı 5 mesh, tek fark yük dağıtımı):
+            #
+            #   es    eşit bölme   tutarlı ağırlık
+            #   12    0.060882     0.059850
+            #    7    0.060795     0.059905
+            #    5    0.060623     0.059914
+            #   3.6   0.065623     0.059905
+            #   2.4   0.084794     0.059853
+            #   yayılma  %39.9        %0.11
+            #
+            # σ iki kolda da aynı (187–192 MPa, ince meshler) çünkü tepe
+            # gerilme delikte, yükleme yüzeyinden uzakta. Kirişte
+            # görünmemişti: orada sehim 23 mm, salınım yanında önemsiz.
+            #
+            # Basınca (*DSLOAD) çevirmek genel çözüm DEĞİL: basınç yüzeye
+            # daima diktir, ankastre kirişte ise uç yükü yüzeye TEĞET.
+            # Tutarlı düğüm ağırlıkları yön bağımsızdır, o yüzden bu yol.
+            # TOPLAM KUVVET SÖZLEŞMESİ: fx/fy/fz, seçimin TAMAMINA uygulanan
+            # toplam kuvvettir — kaç yüz/kenar/nokta seçildiğinden ve mesh
+            # tipinden bağımsız. Eskiden her yüze ve her kenara AYRI AYRI
+            # tam F yazılıyordu (2 yüz seçilince 2F); tutarlı-ağırlık yolu
+            # ise ağırlıkları birleştirip toplam F veriyordu. Yani aynı BC,
+            # yüzün tri6 mi quad mı olduğuna göre F ya da n·F uyguluyordu.
+            #
+            # Dağıtım:
+            #  * Seçim yalnız yüzlerden oluşuyor VE her yüzün tutarlı
+            #    ağırlığı varsa → tutarlı ağırlıklar (alanla orantılı,
+            #    kuadratikte köşeler 0).
+            #  * Aksi halde → yüz + kenar + nokta düğümlerinin BİRLEŞİMİNE
+            #    eşit bölme. Kaba ama toplamı doğru; karışık seçimde tutarlı
+            #    ağırlık ile düğüm sayısını aynı ölçekte birleştirmenin
+            #    anlamlı bir yolu yok.
             node_ids = _resolve_bc_node_ids(bc, nsets)
-            if node_ids:
-                # Toplam kuvvet seçili düğümlere EŞİT bölünür — tıpkı
-                # kenar/yüzey yükünde olduğu gibi. Eskiden her düğüme TAM
-                # kuvvet yazılıyordu, yani 3 düğüm seçince model 3F yük
-                # görüyordu.
-                n = len(node_ids)
+            face_ids = [int(f) for f in (bc.get("face_ids") or [])]
+            edge_ids = [int(e) for e in (bc.get("edge_ids") or [])]
+            all_faces_weighted = bool(face_ids) and all(
+                face_weights and face_weights.get(f) for f in face_ids
+            )
+            share: dict[int, float] = {}
+            if all_faces_weighted and not edge_ids and not node_ids:
+                share = _consistent_face_weights(bc, face_weights)
+            else:
+                targets: list[int] = list(node_ids)
+                for fid in face_ids:
+                    targets.extend(nsets.get(f"FACE_{fid}") or [])
+                for eid in edge_ids:
+                    targets.extend(nsets.get(f"EDGE_{eid}") or [])
+                share = {nid: 1.0 for nid in dict.fromkeys(targets)}
+            total_w = sum(share.values())
+            if total_w > 0:
                 step_lines.append("*CLOAD")
-                for nid in node_ids:
+                for nid, w in sorted(share.items()):
+                    frac = w / total_w
                     if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
+                        step_lines.append(f"{nid}, 1, {fx * frac:.6g}")
                     if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
+                        step_lines.append(f"{nid}, 2, {fy * frac:.6g}")
                     if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
-            for fid in bc.get("face_ids") or []:
-                nset = f"FACE_{int(fid)}"
-                ids = nsets.get(nset) or []
-                if not ids:
-                    continue
-                n = len(ids)
-                step_lines.append("*CLOAD")
-                for nid in ids:
-                    if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
-                    if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
-                    if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
-            for eid in bc.get("edge_ids") or []:
-                nset = f"EDGE_{int(eid)}"
-                ids = nsets.get(nset) or []
-                if not ids:
-                    continue
-                n = len(ids)
-                step_lines.append("*CLOAD")
-                for nid in ids:
-                    if abs(fx) > 0:
-                        step_lines.append(f"{nid}, 1, {fx / n:.6g}")
-                    if abs(fy) > 0:
-                        step_lines.append(f"{nid}, 2, {fy / n:.6g}")
-                    if abs(fz) > 0:
-                        step_lines.append(f"{nid}, 3, {fz / n:.6g}")
+                        step_lines.append(f"{nid}, 3, {fz * frac:.6g}")
         elif btype == "pressure":
             mag = float(bc.get("magnitude", 0.0))
             if abs(mag) < 1e-30:
@@ -1306,11 +1719,40 @@ def _output_qualifier(dimension: int) -> str:
     return ""
 
 
-def _static_step_block(step_bc_lines: str = "", dimension: int = 3) -> str:
+def _static_step_block(
+    step_bc_lines: str = "",
+    dimension: int = 3,
+    nlgeom: bool = False,
+    n_increments: int = 20,
+) -> str:
+    """Statik çözüm adımı. `nlgeom=True` ise büyük deformasyon.
+
+    NEDEN GEREKLİ: Lineer (küçük deformasyon) çözüm, denge denklemlerini
+    deforme OLMAMIŞ geometride kurar. u/L büyüdükçe bu varsayım bozulur;
+    çözücü hata vermez, sessizce yanlış cevap verir. Korpus kapısı bu
+    yüzden u/L > 0.10 olan run'ları eliyor (kirişte 23 run elendi).
+
+    NLGEOM ile CalculiX denge denklemlerini deforme geometride kurar ve
+    yükü artımlı uygular. Maliyeti: iterasyon gerektirir, lineer çözümden
+    belirgin şekilde yavaştır — bu yüzden varsayılan KAPALI.
+
+    `*STATIC` satırındaki dört alan: başlangıç artım, toplam adım süresi,
+    min artım, max artım. NLGEOM'da artımlı yükleme şart; lineer çözümde
+    tek artım yeterli olduğu için o satır sade bırakılıyor.
+    """
     out = _output_qualifier(dimension)
+    if nlgeom:
+        inc = max(1, int(n_increments))
+        first = 1.0 / inc
+        head = (
+            f"*STEP, NLGEOM, INC={max(100, inc * 5)}\n"
+            f"*STATIC\n"
+            f"{first:g}, 1.0, {first / 100:g}, {first:g}\n"
+        )
+    else:
+        head = "*STEP\n*STATIC\n"
     return (
-        "*STEP\n"
-        "*STATIC\n"
+        f"{head}"
         f"{step_bc_lines}"
         f"*NODE FILE{out}\n"
         "U\n"

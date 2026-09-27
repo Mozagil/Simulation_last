@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import numpy as np
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.doe.quality import MIN_NODES, RIGID_DISP_MM
@@ -26,8 +27,35 @@ from app.models.run import AnalysisRun
 #: Lineer etiket kapısı: u / karakteristik uzunluk. Üstü büyük deformasyon;
 #: o koşular ayrı modele aittir (0.6.5).
 DEFAULT_MAX_U_OVER_L = 0.10
+#: NLGEOM korpusunun u/L üst sınırı. Büyük deformasyon seti TANIM GEREĞİ
+#: 0.10 üstündedir (TODO 4 DOE bandı 0.10–0.34); lineer kapı bu setin
+#: tamamını atardı. 0.5 üstü akma/temas gibi başka fizik demek — ayrı iş.
+NLGEOM_MAX_U_OVER_L = 0.50
 #: Göreli eleman boyutu (es / kalınlık veya L) medyandan sapma üstü.
 DEFAULT_MESH_RATIO_BAND = 0.50
+
+#: YAKINSAMA KAPISI: es / karakteristik uzunluk bunun üstündeyse koşu
+#: eğitime girmez. `mesh_ratio_band` bir TUTARLILIK bandıdır (medyandan
+#: sapma) — korpusun tamamı kabaysa hepsini geçirir. Bu ise mutlak bir
+#: incelik eşiği.
+#:
+#: ÖLÇÜLDÜ (ankastre kiriş, aynı geometrinin 8 mesh'i, gerilme yayılımı):
+#:
+#:     eşik (es/t)   kalan   ham tepe   kaçınma
+#:        ≤ 1.0        8       %9.53     %4.14
+#:        ≤ 0.6        7       %7.19     %1.65
+#:        ≤ 0.5        5       %3.45     %0.99
+#:        ≤ 0.3        3       %3.45     %0.99
+#:
+#: Diz 0.5'te; altında iyileşme yok. Ölçüm meshin KENDİ ortalama kenar
+#: uzunluğuyla yapıldı (tet10'da nominal eleman boyutunun ~yarısı), o
+#: yüzden nominal `es` cinsinden eşik 1.0'dır.
+#:
+#: SINIR: kalibrasyon yalnız ankastre kirişte yapıldı (plakanın yakınsama
+#: koşularında mesh dosyası üzerine yazıldığı için bağlantı yok — TODO 1.1c).
+#: Plakada karakteristik uzunluk DELİK ÇAPI ve DOE 0.12–0.25×d bandında
+#: meshliyor, yani bu eşik orada hiçbir koşuyu elemez.
+DEFAULT_MAX_MESH_RATIO = 1.0
 
 
 @dataclass
@@ -36,7 +64,36 @@ class CorpusSpec:
     analysis_type: str = "static"
     max_u_over_L: float = DEFAULT_MAX_U_OVER_L
     mesh_ratio_band: float = DEFAULT_MESH_RATIO_BAND
+    #: Yakınsama kapısı — bkz. `DEFAULT_MAX_MESH_RATIO`. None = kapı yok.
+    max_mesh_ratio: float | None = DEFAULT_MAX_MESH_RATIO
     require_analytic_ok: bool = True
+    #: Verilirse yalnız bu DOE çalışmasının run'ları taranır.
+    #:
+    #: NEDEN: süzgeçler "tutarsız mı" diye bakar, "planladığım kutudan mı"
+    #: diye bakmaz. Elle çözülen tek tük doğrulama koşuları (bir T=20, bir
+    #: F=1000 N) süzgeci geçer ama eğitim kutusunu tek noktayla genişletir.
+    #: OOD koruması min–maks kutusu olduğu için (`ml/ood.py`) bu, korumayı
+    #: tam gerektiği yerde işlevsizleştirir: F=1000'de tek örnek varken
+    #: F=900 "eğitim uzayı içinde" sayılır. Ölçüldü: study 3 kutusu
+    #: F ≤ 220 N iken, süzgeç F=1000 N'lik bir koşuyu sete almıştı.
+    study_id: int | None = None
+    #: Lineer mi nonlineer (NLGEOM) run'lar mı toplanacak. İkisi FARKLI
+    #: FİZİK: lineer çözüm denge denklemlerini deforme olmamış geometride
+    #: kurar. Aynı modele sokmak, iki farklı fonksiyonu tek fonksiyona
+    #: uydurmaya çalışmaktır.
+    nlgeom: bool = False
+
+    def __post_init__(self) -> None:
+        # NLGEOM setinde iki lineer kapı anlamsız: (1) u/L > 0.10 kapısı —
+        # set zaten 0.10 üstü; (2) lineer analitik karşılaştırması — NLGEOM
+        # lineerden tanım gereği sapar (ölçüldü: α=1'de %9.4), sapma hata
+        # değil sonuçtur. Açıkça verilen değer korunur; yalnız varsayılan
+        # değiştirilir. Büyük sehim referansı (Bisshopp–Drucker) ayrı iş.
+        if self.nlgeom:
+            if self.max_u_over_L == DEFAULT_MAX_U_OVER_L:
+                self.max_u_over_L = NLGEOM_MAX_U_OVER_L
+            if self.require_analytic_ok:
+                self.require_analytic_ok = False
 
 
 @dataclass
@@ -64,8 +121,11 @@ class TrainingCorpus:
             "dropped": dict(self.dropped),
             "flagged": dict(self.flagged),
             "max_u_over_L": self.spec.max_u_over_L,
+            "nlgeom": self.spec.nlgeom,
             "mesh_ratio_band": self.spec.mesh_ratio_band,
+            "max_mesh_ratio": self.spec.max_mesh_ratio,
             "analysis_type": self.spec.analysis_type,
+            "study_id": self.spec.study_id,
         }
 
 
@@ -132,10 +192,39 @@ def _u_over_L(run: AnalysisRun, geo: Geometry) -> float | None:
     return abs(disp) / L
 
 
+def _template_char_length(geo: Geometry) -> float | None:
+    """Şablonun KENDİ karakteristik uzunluğu — DOE mesh'i bununla kurar
+    (`element_ratio × karakteristik uzunluk`). Şablon tanımlamıyorsa None."""
+    if not geo.template_id:
+        return None
+    try:
+        from app.templates import get_template
+
+        template = get_template(geo.template_id)
+        if template.characteristic_length is None:
+            return None
+        length = float(template.characteristic_length(template.parse_params(geo.template_params or {})))
+    except Exception:  # noqa: BLE001 — bilinmeyen şablon / geçersiz parametre: eski yola düş
+        return None
+    return length if length > 0 else None
+
+
 def _mesh_ratio(run: AnalysisRun, geo: Geometry) -> float | None:
+    """Göreli mesh boyutu: es / karakteristik uzunluk.
+
+    Payda, DOE'nin mesh'i kurduğu uzunlukla AYNI olmalı. Eskiden her zaman
+    kalınlık kullanılıyordu; kirişte karakteristik uzunluk zaten kalınlık
+    olduğu için tesadüfen doğruydu. Delikli plakada karakteristik uzunluk
+    DELİK ÇAPI — ölçüldü: study 5'te es/T geniş dağıldığı için 114 geçerli
+    örneğin 45'i `mesh_outlier` diye atılıyordu (hepsi aynı 0.12–0.25 × d
+    bandında meshlenmişti).
+    """
     es = run.element_size
     if es is None or es <= 0:
         return None
+    char = _template_char_length(geo)
+    if char is not None:
+        return float(es) / char
     params = geo.template_params or {}
     try:
         thick = float(params.get("thickness") or 0.0)
@@ -156,12 +245,29 @@ def _material_key(run: AnalysisRun) -> tuple[float, float]:
 
 
 def _row_reject(run: AnalysisRun, geo: Geometry, spec: CorpusSpec) -> str | None:
+    # Elle dışlanmış run'lar (deneme, mükerrer, kalitesiz) eğitime girmez.
+    # Otomatik kapılardan ÖNCE bakılıyor: kullanıcının kararı, otomatik
+    # ölçütlerden üstündür.
+    if bool(getattr(run, "excluded", False)):
+        return "manually_excluded"
     if (geo.template_id or "") == "":
         return "no_template"
+    # Eski run'larda bu bayrak yok; yokluğu "lineer" demektir.
+    if bool((run.scalars or {}).get("_nlgeom", False)) != bool(spec.nlgeom):
+        return "wrong_kinematics"
     if _analysis_type(run) != spec.analysis_type:
         return "wrong_analysis"
     if features_from_run(run, geo) is None or targets_from_run(run) is None:
         return "missing_features"
+    # Çözücü adımı tamamlamadıysa sonuç ara bir yük seviyesine aittir.
+    # Anahtar yoksa (bu alan eklenmeden önce çözülmüş run'lar) dokunulmaz —
+    # o run'lar lineer tek-artımlı; kaydı olmayanı düşürmek 200 örneklik
+    # kiriş setini boşaltırdı.
+    try:
+        if float((run.scalars or {}).get("_solver_converged", 1.0)) < 1.0:
+            return "not_converged"
+    except (TypeError, ValueError):
+        return "bad_scalars"
     scalars = run.scalars or {}
     disp = scalars.get("max_displacement")
     try:
@@ -222,6 +328,34 @@ def _soft_drop_large(
     return [(run, geo) for _, run, geo in remain]
 
 
+def _drop_coarse_mesh(
+    kept: list[tuple[AnalysisRun, Geometry]],
+    spec: CorpusSpec,
+    dropped: dict[str, int],
+) -> list[tuple[AnalysisRun, Geometry]]:
+    """Yakınsamamış (fazla kaba) koşuları eğitimden çıkarır.
+
+    `_soft_drop_mesh`'ten FARKI: o medyana göre aykırı olanı atar, bu
+    mutlak eşiği uygular. İkisi farklı soruları yanıtlıyor — "hepsi aynı
+    incelikte mi" ve "yeterince ince mi".
+
+    Yumuşak değil SERT: az örnek kalsa bile kaba koşu geri alınmaz. Kaba
+    mesh'in gerilmesi hedefin kendisini ±%9 oynatıyor; onu eğitime koymak
+    modelin doğruluk tavanını düşürür.
+    """
+    limit = spec.max_mesh_ratio
+    if limit is None:
+        return kept
+    out: list[tuple[AnalysisRun, Geometry]] = []
+    for run, geo in kept:
+        ratio = _mesh_ratio(run, geo)
+        if ratio is not None and ratio > limit:
+            _drop(dropped, "mesh_too_coarse")
+            continue
+        out.append((run, geo))
+    return out
+
+
 def _soft_drop_mesh(
     kept: list[tuple[AnalysisRun, Geometry]],
     spec: CorpusSpec,
@@ -267,13 +401,21 @@ def select_training_runs(
 ) -> TrainingCorpus:
     spec = spec or CorpusSpec()
     dropped: dict[str, int] = {}
-    rows = (
+    query = (
         db.query(AnalysisRun, Geometry)
         .join(Geometry, Geometry.id == AnalysisRun.geometry_id)
         .filter(AnalysisRun.status == "solved")
-        .order_by(AnalysisRun.id)
-        .all()
     )
+    if spec.study_id is not None:
+        from app.models.doe import DoeCase
+
+        study_runs = (
+            db.query(DoeCase.run_id)
+            .filter(DoeCase.study_id == spec.study_id, DoeCase.run_id.isnot(None))
+            .subquery()
+        )
+        query = query.filter(AnalysisRun.id.in_(select(study_runs.c.run_id)))
+    rows = query.order_by(AnalysisRun.id).all()
     n_scanned = len(rows)
     kept: list[tuple[AnalysisRun, Geometry]] = []
     for run, geo in rows:
@@ -300,6 +442,9 @@ def select_training_runs(
     kept = _keep_majority(kept, lambda rg: _material_key(rg[0]), "other_material", dropped)
 
     kept = _soft_drop_large(kept, spec, dropped, min_keep)
+    # Önce mutlak incelik kapısı, sonra tutarlılık bandı: aksi hâlde band
+    # medyanı kaba koşularla kurulur ve kapı yanlış yere düşer.
+    kept = _drop_coarse_mesh(kept, spec, dropped)
     kept = _soft_drop_mesh(kept, spec, dropped, min_keep)
 
     flagged: dict[str, int] = {}

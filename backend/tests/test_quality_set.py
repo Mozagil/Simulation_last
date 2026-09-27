@@ -52,14 +52,18 @@ def test_quality_set_is_200_reproducible_and_slender():
     assert [_fy(s) for s in a] == [_fy(s) for s in b]
     for s in a:
         g = s.geometry_params
-        assert 450.0 <= g["length"] <= 700.0
-        assert 8.0 <= g["thickness"] <= 12.0
-        assert 35.0 <= g["width"] <= 70.0
+        # Faz 0.6'da güncellendi: eski kutu (L 450-700, T 8-12, W 35-70,
+        # F 200-800 N) lineer-elastik bölgenin dışına taşıyordu — tipik
+        # örnek çelikte σ≈331 MPa, S235 akması 235 MPa. Yeni kutu 9000
+        # örnekle simüle edildi, analitik elemeyle kabul oranı %89.6.
+        assert 400.0 <= g["length"] <= 700.0
+        assert 8.0 <= g["thickness"] <= 20.0
+        assert 30.0 <= g["width"] <= 80.0
         assert g["length"] / g["thickness"] >= 5.0
         # Oranlı mesh: eleman boyutu kalınlığın 0.5–1.2 katı (mutlak mm yerine
         # oran; geometri değişirken çözünürlük sabit kalsın).
         assert 0.5 - 1e-9 <= s.element_size / g["thickness"] <= 1.2 + 1e-9
-        assert -800.0 <= _fy(s) <= -200.0
+        assert -400.0 <= _fy(s) <= -20.0
         assert s.scenario.name == "varsayilan"
         assert {bc.get("region") for bc in s.scenario.bcs} == {"ankastre_uc", "yuk_yuzeyi"}
 
@@ -345,8 +349,14 @@ def test_quality_set_scenario_comes_from_template_defaults():
     assert "pressure" in types, "boru basınçla yüklenmeli"
 
 
-def test_load_scale_covers_same_force_band_as_before():
-    """Ankastre kirişte eski `load_fy` (-800..-200) ile aynı bant."""
+def test_load_scale_stays_in_linear_band():
+    """Ankastre kirişte yük bandı lineer-elastik bölgede kalmalı.
+
+    ÖNCEDEN: bu test eski `load_fy` bandını (-800..-200) koruyordu.
+    Faz 0.6'da o bandın kendisi hatalı bulundu — üst uç (800 N) S235'in
+    akmasını kat kat aşıyordu, üretilen örneklerin çoğu korpus kapısında
+    eleniyordu. Band bilerek daraltıldı: 0.04-0.8 × 500 N = 20-400 N.
+    """
     from app.doe.quality_set import quality_spec
     from app.doe.sampling import sample_spec
 
@@ -356,8 +366,8 @@ def test_load_scale_covers_same_force_band_as_before():
         for bc in s.scenario.bcs
         if bc["type"] == "cload"
     ]
-    assert min(fy) >= -800.0 - 1e-6
-    assert max(fy) <= -200.0 + 1e-6
+    assert min(fy) >= -400.0 - 1e-6
+    assert max(fy) <= -20.0 + 1e-6
     assert all(v < 0 for v in fy), "yön korunmalı"
 
 

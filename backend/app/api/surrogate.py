@@ -21,7 +21,8 @@ from app.ml.gnn import (
     train_gnn,
 )
 from app.ml.graph_data import GraphSample, load_graph
-from app.ml.ood import is_out_of_domain
+from app.ml.ood import domain_violations, is_out_of_domain
+from app.postprocess.stress_probe import DEFAULT_STANDOFF_RATIO
 from app.ml.corpus import CorpusSpec, TrainingCorpus, evaluate_run, select_training_runs
 from app.ml.manifest import (
     ManifestError,
@@ -32,7 +33,22 @@ from app.ml.manifest import (
     save_manifest,
     spec_from_manifest,
 )
-from app.ml.scalar_features import collect_scalar_table, features_from_dict, features_from_run
+from app.ml.model_store import (
+    gnn_path,
+    list_models,
+    load_model,
+    load_template_gnn,
+    save_model,
+)
+from app.ml.scalar_features import (
+    FEATURE_KEYS,
+    MixedTemplateError,
+    collect_scalar_table,
+    collect_template_table,
+    feature_keys_for,
+    features_from_dict,
+    features_from_run,
+)
 from app.ml.scalar_rf import (
     DEFAULT_MODEL_PATH,
     MIN_SAMPLES,
@@ -42,7 +58,17 @@ from app.ml.scalar_rf import (
     save_scalar_rf,
     train_scalar_rf,
 )
+from app.ml.scalar_loglinear import (
+    DEFAULT_LOGLIN_PATH,
+    load_scalar_loglinear,
+    predict_scalar_loglinear,
+    public_metrics_loglinear,
+    save_scalar_loglinear,
+    train_scalar_hybrid,
+    train_scalar_loglinear,
+)
 from app.models.geometry import Geometry
+from app.models.material import Material
 from app.models.run import AnalysisRun
 
 router = APIRouter(prefix="/surrogate", tags=["surrogate"])
@@ -53,11 +79,18 @@ class ScalarPredictBody(BaseModel):
 
 
 class ParamPredictBody(BaseModel):
-    """Yeni tasarım: şablon parametreleri + yük. Geometri/run zorunlu değil."""
+    """Yeni tasarım: şablon parametreleri + yük. Geometri/run zorunlu değil.
 
-    length: float = Field(..., gt=0)
-    thickness: float = Field(..., gt=0)
-    width: float = Field(..., gt=0)
+    `params` şablonun KENDİ alanlarını taşır (plakada height/width/
+    thickness/diameter). Kirişin üç alanı ayrıca doğrudan alan olarak da
+    kabul edilir — eski istemciler değişmeden çalışsın diye.
+    """
+
+    template_id: str = "cantilever_beam"
+    params: dict[str, float] = Field(default_factory=dict)
+    length: float | None = Field(default=None, gt=0)
+    thickness: float | None = Field(default=None, gt=0)
+    width: float | None = Field(default=None, gt=0)
     element_size: float = Field(default=8.0, gt=0)
     youngs_modulus: float = Field(default=210e9, gt=0)
     poisson_ratio: float = Field(default=0.3, gt=0, lt=0.5)
@@ -67,6 +100,16 @@ class ParamPredictBody(BaseModel):
     pressure_mpa: float = 0.0
     dimension: int = Field(default=3, ge=2, le=3)
     compare_run_id: int | None = None
+    #: Akma kontrolü için. Verilirse tahmin edilen σ malzemenin akma
+    #: sınırıyla karşılaştırılır; verilmezse bu kontrol atlanır.
+    material_id: int | None = None
+    #: Akmanın kaçta kaçına kadar "güvenli" sayılsın (0.8 = %20 marj).
+    yield_utilisation: float = Field(default=0.8, gt=0, le=2.0)
+    #: Akma kontrolünde hangi gerilme: "auto" = maskeli (`_away`) varsa o,
+    #: yoksa ham tepe (bugünkü davranış); "away" = yalnız maskeli; "peak" =
+    #: ham tepe (tekillik dahil — ankastre kirişte ~%10 muhafazakâr).
+    #: Kararı mühendis verir; araç ikisini de sunar.
+    stress_source: str = Field(default="auto", pattern="^(auto|away|peak)$")
 
 
 def _deviation_pct(pred: float, fea: float) -> float | None:
@@ -85,7 +128,9 @@ class RunIdsBody(BaseModel):
     override: bool = False
 
 
-def _corpus_run_ids(db: Session, name: str | None, template_id: str | None) -> tuple[
+def _corpus_run_ids(
+    db: Session, name: str | None, template_id: str | None, nlgeom: bool = False
+) -> tuple[
     list[int] | None, TrainingCorpus | None, dict[str, Any] | None
 ]:
     """Donmuş manifest varsa onun listesi, yoksa canlı süzgeç."""
@@ -96,7 +141,7 @@ def _corpus_run_ids(db: Session, name: str | None, template_id: str | None) -> t
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         ids = [int(v) for v in (data.get("run_ids") or [])]
         return ids, None, data
-    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    corpus = select_training_runs(db, CorpusSpec(template_id=template_id, nlgeom=nlgeom))
     return corpus.run_ids, corpus, None
 
 
@@ -150,15 +195,119 @@ def _inputs_npz_for(run_id: int) -> Path:
     return RUNS_DIR / str(run_id) / f"run{run_id}.inputs.npz"
 
 
+
+#: Skaler model türleri. Ölçüldü (aynı 150/50 ayrım, test MAPE u/σ):
+#:
+#:   korpus   rf             loglinear      hybrid
+#:   kiriş    %18.87/%11.69  %0.16/%1.97    %0.17/%1.86
+#:   plaka    %19.56/%16.08  %1.53/%2.22    %0.29/%1.30
+#:
+#: `auto` sırası bu ölçüme dayanır: hibrit → log-log → RF. Hangi türün
+#: kullanıldığı yanıtta `model_kind` ile DAİMA bildirilir; araç sessizce
+#: model değiştirmez.
+SCALAR_MODELS = ("rf", "loglinear", "hybrid")
+#: Kullanıcıya gösterilen ad. Mesaj metni eskiden yalnız log-log ile
+#: diğerlerini ayırıyordu: hibrit tahmin "Tahmin (RF)" diye görünüyordu.
+MODEL_LABELS = {"rf": "RF", "loglinear": "log-log", "hybrid": "hibrit"}
+_AUTO_ORDER = ("hybrid", "loglinear", "rf")
+
+#: Modeli log uzayında tahmin eden türler (hibrit = log-log + RF artık).
+_LOGLINEAR_KINDS = ("loglinear", "hybrid")
+
+
+def _load_scalar_model(
+    model: str, template_id: str | None = None, nlgeom: bool = False
+) -> tuple[str, dict[str, Any]] | None:
+    """(tür, bundle) ya da None.
+
+    `template_id` verilirse model ŞABLON KLASÖRÜNDEN okunur (yoksa eski
+    global dosya, korpusu o şablonsa — bkz. `ml/model_store`). Verilmezse
+    eski davranış: global dosyalar.
+    """
+    if model not in ("auto",) + SCALAR_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model 'auto', {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
+        )
+    kinds = _AUTO_ORDER if model == "auto" else (model,)
+    for kind in kinds:
+        if nlgeom and not template_id:
+            return None  # NLGEOM modeli yalnız şablon klasöründe
+        bundle = (
+            load_model(template_id, kind, nlgeom=nlgeom)
+            if template_id
+            else _load_legacy_global(kind)
+        )
+        if bundle is not None:
+            return kind, bundle
+    return None
+
+
+def _load_legacy_global(kind: str) -> dict[str, Any] | None:
+    """Şablon verilmeyen eski çağrılar için global dosyalar."""
+    if kind == "rf":
+        return load_scalar_rf(DEFAULT_MODEL_PATH)
+    if kind == "loglinear":
+        return load_scalar_loglinear(DEFAULT_LOGLIN_PATH)
+    return None  # hibrit yalnız şablon klasöründe
+
+
+def _predict_with(kind: str, bundle: dict[str, Any], x) -> dict[str, Any]:
+    return (
+        predict_scalar_loglinear(bundle, x)
+        if kind in _LOGLINEAR_KINDS
+        else predict_scalar(bundle, x)
+    )
+
+
+def _bundle_keys(bundle: dict[str, Any], template_id: str | None) -> tuple[str, ...]:
+    """Tahmin vektörünün sütun adları. Bundle'ın KENDİ anahtarları esastır:
+    şablon şeması sonradan değişse bile model eğitildiği sırayı bekler.
+
+    Anahtar saklamayan bundle şablon öncesi döneme ait — yalnız kiriş vardı,
+    eski kiriş vektörü (`FEATURE_KEYS`). Şablonun bugünkü şemasına düşmek
+    yanlış olurdu: kirişe kök filleti alanları eklendi (TODO 6).
+    """
+    keys = bundle.get("feature_keys")
+    return tuple(keys) if keys else FEATURE_KEYS
+
+
 @router.get("/status")
-def surrogate_status() -> dict[str, Any]:
-    rf = load_scalar_rf(DEFAULT_MODEL_PATH)
-    gnn = load_gnn(DEFAULT_GNN_PATH)
+def surrogate_status(template_id: str | None = None, nlgeom: bool = False) -> dict[str, Any]:
+    """Eğitilmiş modellerin durumu.
+
+    `template_id` verilirse o şablonun modelleri; verilmezse eski global
+    dosyalar (geriye uyum). `templates` alanı hangi şablonda hangi türlerin
+    eğitildiğini listeler.
+    """
+    # GNN de şablon başına (TODO 1.3b kapsam); şablonsuz çağrı eski global dosya.
+    gnn = load_template_gnn(template_id) if template_id else load_gnn(DEFAULT_GNN_PATH)
+
+    def _summary(kind: str) -> dict[str, Any] | None:
+        bundle = (
+            load_model(template_id, kind, nlgeom=nlgeom)
+            if template_id
+            else (None if nlgeom else _load_legacy_global(kind))
+        )
+        if bundle is None:
+            return None
+        return (
+            public_metrics(bundle)
+            if kind == "rf"
+            else public_metrics_loglinear(bundle)
+        )
+
     return {
-        "scalar_rf": public_metrics(rf) if rf else None,
+        "template_id": template_id,
+        "nlgeom": nlgeom,
+        "templates": list_models(),
+        "scalar_rf": _summary("rf"),
+        "scalar_loglinear": _summary("loglinear"),
+        "scalar_hybrid": _summary("hybrid"),
         "field_gnn": (
             {
                 "kind": gnn["kind"],
+                "template_id": gnn.get("template_id"),
                 "n_samples": gnn.get("n_samples"),
                 "metrics": gnn.get("metrics"),
             }
@@ -173,46 +322,115 @@ def train_scalar(
     db: Session = Depends(get_db),
     template_id: str | None = None,
     corpus_name: str | None = None,
+    model: str = "rf",
+    nlgeom: bool = False,
 ) -> dict[str, Any]:
-    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
-    X, y, ids = collect_scalar_table(db, run_ids=run_ids)
+    """Skaler surrogate eğitimi. `model`: "rf" | "loglinear" | "hybrid".
+
+    Türler AYNI korpustan, aynı metrik tanımıyla eğitilir; her biri kendi
+    dosyasına yazılır, biri diğerini silmez. Hangisinin kullanılacağı
+    tahmin anında seçilir.
+
+    Model ŞABLON KLASÖRÜNE kaydedilir (`uploads/models/<şablon>/`): farklı
+    şablonların özellik vektörleri farklıdır, tek global dosya plaka
+    eğitiminde kiriş modelinin üzerine yazıyordu.
+    """
+    if model not in SCALAR_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model {' veya '.join(repr(m) for m in SCALAR_MODELS)} olmalı.",
+        )
+    label = {"rf": "RF", "loglinear": "log-log", "hybrid": "hibrit"}[model]
+    run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id, nlgeom)
+    try:
+        X, y, ids, keys, corpus_template = collect_template_table(db, list(run_ids or []))
+    except MixedTemplateError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if corpus_template is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Korpusta şablonlu run yok; model şablon başına saklandığı için "
+                "eğitim yapılamaz."
+            ),
+        )
     if len(ids) < MIN_SAMPLES:
         if frozen is not None:
-            raise _too_few_frozen("RF", len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
+            raise _too_few_frozen(label, len(ids), MIN_SAMPLES, _frozen_summary(frozen, len(ids)))
         assert corpus is not None
-        raise _too_few("RF", len(ids), MIN_SAMPLES, corpus)
+        raise _too_few(label, len(ids), MIN_SAMPLES, corpus)
+    trainer = {
+        "rf": train_scalar_rf,
+        "loglinear": train_scalar_loglinear,
+        "hybrid": train_scalar_hybrid,
+    }[model]
     try:
-        bundle = train_scalar_rf(X, y)
+        bundle = trainer(X, y, feature_keys=keys)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     bundle["corpus"] = (
         _frozen_summary(frozen, len(ids)) if frozen is not None else corpus.as_public()
     )
-    save_scalar_rf(bundle, DEFAULT_MODEL_PATH)
-    out = public_metrics(bundle)
+    save_model(corpus_template, model, bundle, nlgeom=nlgeom)
+    out = public_metrics(bundle) if model == "rf" else public_metrics_loglinear(bundle)
+    out["model_kind"] = model
+    out["template_id"] = corpus_template
+    out["nlgeom"] = nlgeom
     out["run_ids"] = ids
     return out
 
 
 @router.post("/scalar/predict")
-def scalar_predict(body: ScalarPredictBody) -> dict[str, Any]:
-    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
-    if bundle is None:
+def scalar_predict(body: ScalarPredictBody, model: str = "auto") -> dict[str, Any]:
+    loaded = _load_scalar_model(model)
+    if loaded is None:
         raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
-    x = features_from_dict(body.features)
-    return predict_scalar(bundle, x)
+    kind, bundle = loaded
+    out = _predict_with(kind, bundle, features_from_dict(body.features))
+    out["model_kind"] = kind
+    return out
 
 
 @router.post("/predict/params")
-def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """ccx ve mesh yok: L/T/W + yük → RF skaler. İsteğe bağlı FEA kıyası."""
-    bundle = load_scalar_rf(DEFAULT_MODEL_PATH)
-    if bundle is None:
-        raise HTTPException(status_code=404, detail="Skaler model yok; önce eğit.")
+def predict_from_params(
+    body: ParamPredictBody,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+    nlgeom: bool = False,
+) -> dict[str, Any]:
+    """ccx ve mesh yok: şablon parametreleri + yük → skaler tahmin.
+
+    `model`: "auto" (hibrit → log-log → RF) | "rf" | "loglinear" | "hybrid".
+    Kullanılan tür yanıtta `model_kind` ile döner. Model şablon başına
+    saklanır; `body.template_id` hangi modelin okunacağını belirler.
+    """
+    loaded = _load_scalar_model(model, body.template_id, nlgeom)
+    if loaded is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"'{body.template_id}' için eğitilmiş skaler model yok; önce eğit.",
+        )
+    model_kind, bundle = loaded
+    keys = _bundle_keys(bundle, body.template_id)
+    from app.ml.scalar_features import _schema_defaults
+
     features = {
-        "length": body.length,
-        "thickness": body.thickness,
-        "width": body.width,
+        # Şablona sonradan eklenen `optional` alanlar (kiriş kök filleti)
+        # eski çağrıda yok: şablon VARSAYILANI (eski geometri), 0 değil.
+        # Çekirdek alanlar (L/T/W, plaka çapı…) eksikse aşağıda açık hata.
+        **{k: float(v) for k, v in _schema_defaults(body.template_id, optional_only=True).items()
+           if isinstance(v, (int, float)) and not isinstance(v, bool)},
+        # Şablonun kendi alanları; kirişin L/T/W'si ayrıca doğrudan gelebilir.
+        **{k: float(v) for k, v in (body.params or {}).items()},
+        **{
+            k: float(v)
+            for k, v in (
+                ("length", body.length),
+                ("thickness", body.thickness),
+                ("width", body.width),
+            )
+            if v is not None
+        },
         "element_size": body.element_size,
         "youngs_modulus": body.youngs_modulus,
         "poisson_ratio": body.poisson_ratio,
@@ -222,7 +440,61 @@ def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -
         "pressure_mpa": body.pressure_mpa,
         "dimension": float(body.dimension),
     }
-    pred = predict_scalar(bundle, features_from_dict(features))
+    missing = [k for k in keys if k not in features]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"'{body.template_id}' modeli şu alanları bekliyor: "
+                f"{', '.join(missing)}. `params` içinde gönderin."
+            ),
+        )
+    vec = features_from_dict(features, keys)
+    pred = _predict_with(model_kind, bundle, vec)
+
+    # HANGİ özellik uzay dışında — yalnız "uzay dışı" demek kullanıcıya
+    # neyi düzelteceğini söylemiyor. Ölçülen vaka: 20×2 kesit, L=100 mm →
+    # beş özellikten dördü kutunun dışındaydı, sadece yük içerideydi.
+    pred["domain_violations"] = domain_violations(
+        vec, bundle.get("bounds") or {}, keys
+    )
+
+    # Akma kontrolü. OOD'den AYRI bir şey: OOD istatistikseldir ("bu
+    # noktayı görmedim"), akma fizikseldir ("sonuç doğru hesaplansa bile
+    # malzeme plastik davranıyorsa geçersiz"). Biri diğerini yakalamaz.
+    # Aynı ölçülen vakada tahmin teoriyle birebir tuttu (375.0 MPa) ama
+    # S235'in akması 235 → tasarım zaten geçersizdi.
+    # Bu kontrol DOE elemesinde vardı (`doe/screening.py`), tahmin
+    # tarafında yoktu.
+    pred["yield_check"] = None
+    if body.material_id is not None:
+        mat = db.get(Material, body.material_id)
+        if mat is not None and mat.yield_strength:
+            yield_mpa = float(mat.yield_strength) / 1e6
+            limit = yield_mpa * float(body.yield_utilisation)
+            preds = pred.get("predictions") or {}
+            if body.stress_source == "peak":
+                sigma, source = preds.get("max_von_mises"), "max_von_mises"
+            elif body.stress_source == "away":
+                sigma, source = preds.get("max_von_mises_away"), "max_von_mises_away"
+            else:
+                sigma = preds.get("max_von_mises_away")
+                source = "max_von_mises_away"
+                if sigma is None:
+                    sigma = preds.get("max_von_mises")
+                    source = "max_von_mises"
+            if sigma is not None:
+                pred["yield_check"] = {
+                    "material": mat.name,
+                    "sigma_mpa": float(sigma),
+                    "yield_mpa": yield_mpa,
+                    "limit_mpa": limit,
+                    "utilisation": float(sigma) / yield_mpa if yield_mpa else None,
+                    "exceeds_yield": float(sigma) > yield_mpa,
+                    "exceeds_limit": float(sigma) > limit,
+                    "source": source,
+                }
+
     fea: dict[str, Any] | None = None
     deviation: dict[str, float | None] | None = None
     if body.compare_run_id is not None:
@@ -251,17 +523,177 @@ def predict_from_params(body: ParamPredictBody, db: Session = Depends(get_db)) -
     ood = bool(pred["out_of_domain"])
     return {
         "kind": "scalar",
+        "model_kind": model_kind,
+        "template_id": body.template_id,
+        "feature_keys": list(keys),
         "source": "surrogate",
         "out_of_domain": ood,
         "predictions": pred["predictions"],
         "features": features,
+        # İkisi de hesaplanıyordu ama yanıta KONMUYORDU: arayüzdeki akma
+        # uyarısı ve "hangi özellik uzay dışı" tablosu hiç görünmedi.
+        "yield_check": pred.get("yield_check"),
+        "domain_violations": pred.get("domain_violations"),
         "fea": fea,
         "deviation_pct": deviation,
         "message": (
-            "Tahmin — ccx çalışmadı, tam çözüm değil."
+            f"Modelden tahmin ({MODEL_LABELS[model_kind]}) — çözücü çalıştırılmadı; "
+            "doğrulamak için tam çözüm yapılabilir."
             + (" Eğitim uzayı dışı." if ood else "")
             + (" FEA kıyası eklendi." if fea else "")
         ),
+    }
+
+
+class SweepBody(ParamPredictBody):
+    """Toplu tarama: tek parametre aralıkta N adım, diğerleri sabit."""
+
+    #: Şablon alanı (ör. `thickness`) ya da `load_fx|load_fy|load_fz|element_size`.
+    sweep_param: str
+    sweep_min: float
+    sweep_max: float
+    sweep_n: int = Field(default=20, ge=2, le=200)
+
+
+_SWEEP_SCALARS = ("load_fx", "load_fy", "load_fz", "element_size", "youngs_modulus")
+
+
+@router.post("/predict/sweep")
+def predict_sweep(
+    body: SweepBody,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+    nlgeom: bool = False,
+) -> dict[str, Any]:
+    """N tahmin tek istekte — surrogate'in asıl vaadi (ccx yok, milisaniye).
+
+    Her nokta `predict_from_params` ile aynı yoldan geçer: OOD bayrağı ve
+    akma kontrolü nokta başına gelir; kıyas run'ı (`compare_run_id`) taramada
+    kullanılmaz. Karar vermez: eğri ve bayraklar döner.
+    """
+    if body.sweep_max <= body.sweep_min:
+        raise HTTPException(status_code=422, detail="sweep_max, sweep_min'den büyük olmalı.")
+    if body.sweep_param not in _SWEEP_SCALARS and body.sweep_param not in (body.params or {}):
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{body.sweep_param}' taranamaz: params içinde ya da {', '.join(_SWEEP_SCALARS)} olmalı.",
+        )
+    values = np.linspace(body.sweep_min, body.sweep_max, body.sweep_n)
+    points: list[dict[str, Any]] = []
+    model_kind: str | None = None
+    base = body.model_dump(exclude={"sweep_param", "sweep_min", "sweep_max", "sweep_n"})
+    base["compare_run_id"] = None
+    for v in values:
+        point = dict(base)
+        if body.sweep_param in _SWEEP_SCALARS:
+            point[body.sweep_param] = float(v)
+        else:
+            point["params"] = {**(base.get("params") or {}), body.sweep_param: float(v)}
+        out = predict_from_params(ParamPredictBody(**point), db=db, model=model, nlgeom=nlgeom)
+        model_kind = out.get("model_kind")
+        yc = out.get("yield_check") or {}
+        points.append({
+            "value": float(v),
+            "max_displacement": out["predictions"].get("max_displacement"),
+            "max_von_mises": out["predictions"].get("max_von_mises"),
+            "max_von_mises_away": out["predictions"].get("max_von_mises_away"),
+            "out_of_domain": bool(out.get("out_of_domain")),
+            # Hangi girdi dışarıda — yalnız bayrak kullanıcıya neyi düzelteceğini söylemez.
+            "violations": [d["feature"] for d in (out.get("domain_violations") or [])],
+            "exceeds_yield": bool(yc.get("exceeds_yield")) if yc else None,
+            "sigma_mpa": yc.get("sigma_mpa") if yc else None,
+        })
+    return {
+        "kind": "sweep",
+        "template_id": body.template_id,
+        "sweep_param": body.sweep_param,
+        "nlgeom": nlgeom,
+        "model_kind": model_kind,
+        "n": len(points),
+        "n_out_of_domain": sum(1 for p in points if p["out_of_domain"]),
+        "points": points,
+    }
+
+
+@router.get("/validate")
+def validate_against_runs(
+    template_id: str,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+    nlgeom: bool = False,
+    limit: int = 10,
+    name_contains: str | None = None,
+    run_ids: str | None = None,
+) -> dict[str, Any]:
+    """Tahmin vs FEA tablosu: çözülmüş run'lar için modelin ne dediği.
+
+    Run'lar zaten çözülmüş; ccx çalışmaz. Her satır: FEA u/σ, tahmin, sapma,
+    uzay dışı girdiler, akma. Kinematik (`nlgeom`) run'ınkiyle uyuşmalı —
+    lineer modeli NLGEOM run'ıyla kıyaslamak yanlış fizik karşılaştırır,
+    bu yüzden uyuşmayan run'lar `skipped` ile raporlanır, atlanmaz gibi
+    sessizce geçilmez. Karar vermez: tablo + özet döner.
+    """
+    loaded = _load_scalar_model(model, template_id, nlgeom)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail=f"'{template_id}' için model yok; önce eğit.")
+    kind, bundle = loaded
+    keys = _bundle_keys(bundle, template_id)
+    q = (
+        db.query(AnalysisRun)
+        .join(Geometry, Geometry.id == AnalysisRun.geometry_id)
+        .filter(AnalysisRun.status == "solved", Geometry.template_id == template_id)
+    )
+    if run_ids:
+        ids = [int(v) for v in run_ids.split(",") if v.strip()]
+        q = q.filter(AnalysisRun.id.in_(ids))
+    if name_contains:
+        q = q.filter(AnalysisRun.name.ilike(f"%{name_contains}%"))
+    runs = q.order_by(AnalysisRun.id.desc()).limit(max(1, min(limit, 200))).all()
+
+    rows: list[dict[str, Any]] = []
+    skipped: dict[str, int] = {}
+    for run in runs:
+        geo = db.get(Geometry, run.geometry_id)
+        sc = run.scalars or {}
+        if bool(sc.get("_nlgeom", False)) != nlgeom:
+            skipped["wrong_kinematics"] = skipped.get("wrong_kinematics", 0) + 1
+            continue
+        x = features_from_run(run, geo, keys)
+        if x is None or sc.get("max_displacement") is None:
+            skipped["missing_features"] = skipped.get("missing_features", 0) + 1
+            continue
+        pred = _predict_with(kind, bundle, x)["predictions"]
+        viol = domain_violations(x, bundle.get("bounds") or {}, keys)
+        fea_u = float(sc["max_displacement"])
+        fea_vm = sc.get("max_von_mises_away") if sc.get("max_von_mises_away") is not None else sc.get("max_von_mises")
+        vm_key = "max_von_mises_away" if sc.get("max_von_mises_away") is not None else "max_von_mises"
+        p_u = pred.get("max_displacement")
+        p_vm = pred.get(vm_key)
+        params = dict(geo.template_params or {})
+        fy = sum(float(b.get("fy") or 0) for b in (run.bcs or []) if b.get("type") == "cload")
+        rows.append({
+            "run_id": run.id,
+            "name": run.name,
+            "params": params,
+            "load_fy": fy,
+            "fea_u": fea_u, "pred_u": p_u,
+            "dev_u_pct": _deviation_pct(p_u, fea_u) if p_u is not None else None,
+            "fea_vm": fea_vm, "pred_vm": p_vm, "vm_key": vm_key,
+            "dev_vm_pct": _deviation_pct(p_vm, fea_vm) if (p_vm is not None and fea_vm) else None,
+            "out_of_domain": bool(viol),
+            "violations": [d["feature"] for d in viol],
+            "u_over_l": (fea_u / float(params["length"])) if params.get("length") else None,
+            "nlgeom": bool(sc.get("_nlgeom", False)),
+        })
+    du = [abs(r["dev_u_pct"]) for r in rows if r["dev_u_pct"] is not None]
+    dv = [abs(r["dev_vm_pct"]) for r in rows if r["dev_vm_pct"] is not None]
+    return {
+        "template_id": template_id, "model_kind": kind, "nlgeom": nlgeom,
+        "n": len(rows), "skipped": skipped,
+        "mean_abs_dev_u_pct": (sum(du) / len(du)) if du else None,
+        "mean_abs_dev_vm_pct": (sum(dv) / len(dv)) if dv else None,
+        "max_abs_dev_u_pct": max(du) if du else None,
+        "rows": rows,
     }
 
 
@@ -270,12 +702,49 @@ def train_field_gnn(
     db: Session = Depends(get_db),
     template_id: str | None = None,
     corpus_name: str | None = None,
+    hidden: int = 24,
+    n_proc: int = 2,
 ) -> dict[str, Any]:
+    """Alan modeli (GNN) eğitimi.
+
+    `hidden`/`n_proc` (1.3c taraması, kiriş 192 graf, holdout u_max RMSE):
+    24/2 → 2.56 · 24/8 → 2.46 · 48/2 → 2.90 · 48/8 → 2.15 · 24/16 → 2.28 mm.
+    Derinlik yardım ediyor, genişlik tek başına zarar; hiçbiri %5 ölçütünü
+    (0.12 mm) tutmuyor. Varsayılan hızlı olan; ölçüm için açık verilir.
+
+    Model ŞABLON KLASÖRÜNE yazılır (`uploads/models/<şablon>/field_gnn.npz`):
+    eskiden tek global dosyaya yazılıyor, plaka eğitimi kiriş modelini
+    eziyordu. Korpus tek şablonlu olmak zorunda; şablonsuz run'lar atılır
+    (`dropped.no_template`) — hangi şablonun modeline girdikleri belirsiz.
+    """
     run_ids, corpus, frozen = _corpus_run_ids(db, corpus_name, template_id)
+    run_template = dict(
+        db.query(AnalysisRun.id, Geometry.template_id)
+        .join(Geometry, AnalysisRun.geometry_id == Geometry.id)
+        .filter(AnalysisRun.id.in_(list(run_ids or []) or [-1]))
+        .all()
+    )
+    templates = sorted({t for t in run_template.values() if t})
+    if len(templates) > 1:
+        raise HTTPException(
+            status_code=422, detail=f"Korpusta birden çok şablon var: {templates}"
+        )
+    if not templates:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Korpusta şablonlu run yok; model şablon başına saklandığı için "
+                "eğitim yapılamaz."
+            ),
+        )
+    corpus_template = templates[0]
+    no_template = [rid for rid in run_ids or [] if not run_template.get(rid)]
     runs = {r.id: r for r in db.query(AnalysisRun).all()}
     samples: list[GraphSample] = []
     missing = 0
     for rid in run_ids or []:
+        if not run_template.get(rid):
+            continue
         sample = load_graph(_train_npz_for(rid), run_id=rid)
         if sample is None or sample.node_outputs is None:
             missing += 1
@@ -289,28 +758,35 @@ def train_field_gnn(
         summary = _frozen_summary(frozen, len(samples))
         if missing:
             summary["dropped"] = dict(summary["dropped"]) | {"missing_graph": missing}
+        if no_template:
+            summary["dropped"] = dict(summary["dropped"]) | {"no_template": len(no_template)}
         if len(samples) < 2:
             raise _too_few_frozen("GNN", len(samples), 2, summary)
     else:
         assert corpus is not None
         if missing:
             corpus.dropped["missing_graph"] = missing
+        if no_template:
+            corpus.dropped["no_template"] = corpus.dropped.get("no_template", 0) + len(no_template)
+        if missing or no_template:
             corpus.n_kept = len(samples)
         if len(samples) < 2:
             raise _too_few("GNN", len(samples), 2, corpus)
         summary = corpus.as_public()
 
     try:
-        bundle = train_gnn(samples)
+        bundle = train_gnn(samples, hidden=hidden, n_proc=n_proc)
     except ValueError as ext:
         raise HTTPException(status_code=422, detail=str(ext)) from ext
     bundle["corpus"] = summary
-    save_gnn(bundle, DEFAULT_GNN_PATH)
+    bundle["template_id"] = corpus_template
+    dest = save_gnn(bundle, gnn_path(corpus_template))
     return {
         "kind": "field_gnn",
+        "template_id": corpus_template,
         "n_samples": bundle["n_samples"],
         "metrics": bundle["metrics"],
-        "path": str(DEFAULT_GNN_PATH),
+        "path": str(dest),
         "corpus": summary,
     }
 
@@ -320,9 +796,19 @@ def freeze_corpus(
     name: str,
     db: Session = Depends(get_db),
     template_id: str | None = None,
+    study_id: int | None = None,
+    nlgeom: bool = False,
 ) -> dict[str, Any]:
-    """Canlı süzgeç seçimini isimli bir manifeste dondurur."""
-    corpus = select_training_runs(db, CorpusSpec(template_id=template_id))
+    """Canlı süzgeç seçimini isimli bir manifeste dondurur.
+
+    `study_id` verilirse yalnız o DOE çalışmasının run'ları taranır. Süzgeçler
+    "tutarsız mı" diye bakar, "planladığım kutudan mı" diye bakmaz; elle
+    çözülen doğrulama koşuları süzgeci geçip eğitim kutusunu tek noktayla
+    genişletebilir (bkz. `CorpusSpec.study_id`).
+    """
+    corpus = select_training_runs(
+        db, CorpusSpec(template_id=template_id, study_id=study_id, nlgeom=nlgeom)
+    )
     try:
         payload = save_manifest(name, corpus)
     except ManifestError as exc:
@@ -461,8 +947,12 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
     """Alan tahmini (GNN) veya skaler yedek (RF). Viewer preview JSON şeması."""
     run = _resolve_run(db, body)
     geo = db.get(Geometry, run.geometry_id)
-    gnn = load_gnn(DEFAULT_GNN_PATH)
-    rf = load_scalar_rf(DEFAULT_MODEL_PATH)
+    run_template = geo.template_id if geo is not None else None
+    # Alan modeli de skaler yedek de run'ın KENDİ şablonunun modelinden gelir.
+    # Şablonsuz run'a GNN verilmez: hangi şablonun ağı olacağı belirsiz.
+    gnn = load_template_gnn(run_template) if run_template else None
+    loaded = _load_scalar_model("auto", run_template)
+    rf = loaded[1] if loaded else None
     if gnn is None and rf is None:
         raise HTTPException(status_code=404, detail="Eğitilmiş model yok.")
 
@@ -493,11 +983,14 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
                 "max_von_mises_true": float(sample.node_outputs[:, 3].max()),
                 "max_von_mises_pred": float(yhat[:, 3].max()),
             }
-    elif rf is not None:
-        x = features_from_run(run, geo)
+    elif rf is not None and loaded is not None:
+        scalar_kind = loaded[0]
+        x = features_from_run(
+            run, geo, _bundle_keys(rf, geo.template_id if geo is not None else None)
+        )
         if x is None:
             raise HTTPException(status_code=422, detail="Bu run için skaler özellik çıkarılamadı.")
-        scalar = predict_scalar(rf, x)
+        scalar = _predict_with(scalar_kind, rf, x)
         ood = bool(scalar["out_of_domain"])
         preview = {
             "node_ids": [],
@@ -529,4 +1022,149 @@ def predict(body: FieldPredictBody, db: Session = Depends(get_db)) -> dict[str, 
             + (" Eğitim uzayı dışı." if ood else "")
             + (" Alan yok; skaler baseline." if kind == "scalar" else "")
         ),
+    }
+
+
+class ScreenBody(BaseModel):
+    """Geometri kaydı gerektirmeyen ön kontrol: şablon parametreleri + yük."""
+
+    template_id: str = "cantilever_beam"
+    params: dict[str, float] = Field(default_factory=dict)
+    youngs_modulus: float = Field(default=210e9, gt=0)
+    yield_strength: float | None = Field(default=None, gt=0)
+    load_fx: float = 0.0
+    load_fy: float = 0.0
+    load_fz: float = 0.0
+    material_id: int | None = None
+
+
+@router.post("/screen")
+def screen_params(body: ScreenBody, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """ccx, mesh, geometri kaydı YOK: lineer analitikle beklenen u/L, σ, akma.
+
+    WeWeb formu için — kullanıcı parametreleri yazarken anında "büyük
+    deformasyon bandında mı / akıyor mu" verisi. Karar vermez; arayüz
+    NLGEOM'u önerir, kullanıcı seçer. `material_id` verilirse E ve akma
+    kütüphaneden alınır, verilmezse gövdedeki değerler.
+    """
+    from app.doe.screening import screen_sample
+    from app.ml.corpus import DEFAULT_MAX_U_OVER_L
+
+    e_pa, yield_pa = body.youngs_modulus, body.yield_strength
+    if body.material_id is not None:
+        mat = db.get(Material, body.material_id)
+        if mat is None:
+            raise HTTPException(status_code=404, detail="Malzeme bulunamadı.")
+        e_pa = float(mat.youngs_modulus)
+        yield_pa = float(mat.yield_strength) if mat.yield_strength else None
+    force = (body.load_fx**2 + body.load_fy**2 + body.load_fz**2) ** 0.5
+    res = screen_sample(
+        body.template_id, dict(body.params), force_n=force, youngs_modulus_pa=e_pa,
+        yield_strength_pa=yield_pa, max_u_over_l=DEFAULT_MAX_U_OVER_L,
+    )
+    return {
+        "template_id": body.template_id,
+        "has_analytic": res.u_mm is not None,
+        "u_over_l": res.u_over_l,
+        "u_mm": res.u_mm,
+        "sigma_mpa": res.sigma_mpa,
+        "threshold": DEFAULT_MAX_U_OVER_L,
+        "large_deformation": bool(res.u_over_l is not None and res.u_over_l > DEFAULT_MAX_U_OVER_L),
+        "exceeds_yield": bool(
+            yield_pa and res.sigma_mpa is not None and res.sigma_mpa > float(yield_pa) / 1e6
+        ),
+        "reason": res.reason,
+    }
+
+
+@router.post("/backfill-stress-probe")
+def backfill_stress_probe(
+    standoff_ratio: float = DEFAULT_STANDOFF_RATIO,
+    limit: int = 500,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Mevcut çözülmüş run'lara maskeli gerilme skalerini geriye dönük ekler.
+
+    Çözüm TEKRARLANMAZ — diskteki `.train.npz` okunur.
+
+    NEDEN: ham `max_von_mises` ankastre köşe gibi TEKİL noktalardan
+    okunuyor ve mesh'ten mesh'e oynuyor. Ölçtük (ankastre kiriş, 8
+    basamaklı tarama): ham gürültü tabanı %5.57 ve teoriden +%10 sapma;
+    kısıttan 1×T uzakta ölçülünce %1.20 ve −%0.8. Üstel de düzeliyor:
+    thickness −1.919 → −2.011 (teori −2).
+
+    Şablonsuz run'lar atlanır (karakteristik uzunluk bilinmiyor).
+    Yeni DOE koşusundan ÖNCE bir kez çalıştırılmalı ki eski ve yeni
+    örnekler aynı hedefi taşısın.
+
+    İki ölçüt AYRI ayrı doldurulur: `max_von_mises_away` ve tepe merkezli
+    `max_von_mises_near_peak` (TODO 6b). Eskiden `_away` varsa run tümden
+    atlanıyordu — tepe ölçütü eski koşulara hiç yazılamıyordu. Mevcut
+    değerin üzerine yazılmaz.
+    """
+    from app.api.solve import RUNS_DIR
+    from app.models.geometry import Geometry
+    from app.postprocess.stress_probe import recompute_from_sample
+    from app.templates import get_template
+
+    runs = (
+        db.query(AnalysisRun)
+        .filter(AnalysisRun.status == "solved")
+        .order_by(AnalysisRun.id.desc())
+        .limit(limit)
+        .all()
+    )
+    updated = skipped = failed = 0
+    updated_away = updated_peak = 0
+    for run in runs:
+        sc = dict(run.scalars or {})
+        need_away = "max_von_mises_away" not in sc
+        need_peak = "max_von_mises_near_peak" not in sc
+        if not (need_away or need_peak):
+            skipped += 1
+            continue
+        geo = db.get(Geometry, run.geometry_id)
+        if geo is None or not geo.template_id or not geo.template_params:
+            skipped += 1
+            continue
+        try:
+            tpl = get_template(geo.template_id)
+            if tpl.characteristic_length is None:
+                skipped += 1
+                continue
+            char_len = float(
+                tpl.characteristic_length(tpl.parse_params(geo.template_params))
+            )
+            probe = recompute_from_sample(
+                RUNS_DIR / str(run.id) / f"run{run.id}.train.npz",
+                characteristic_length=char_len,
+                standoff_ratio=standoff_ratio,
+            )
+            wrote = False
+            if probe and need_away and probe.get("max_von_mises_away") is not None:
+                sc["max_von_mises_away"] = probe["max_von_mises_away"]
+                sc["stress_probe_standoff_mm"] = probe["standoff_mm"]
+                sc["stress_probe_fraction_used"] = probe["fraction_used"]
+                updated_away += 1
+                wrote = True
+            if probe and need_peak and probe.get("max_von_mises_near_peak") is not None:
+                sc["max_von_mises_near_peak"] = probe["max_von_mises_near_peak"]
+                sc["peak_probe_offset_mm"] = probe["peak_offset_mm"]
+                updated_peak += 1
+                wrote = True
+            if not wrote:
+                skipped += 1
+                continue
+            run.scalars = sc
+            updated += 1
+        except Exception:  # noqa: BLE001
+            failed += 1
+    db.commit()
+    return {
+        "updated": updated,
+        "updated_away": updated_away,
+        "updated_near_peak": updated_peak,
+        "skipped": skipped,
+        "failed": failed,
+        "standoff_ratio": standoff_ratio,
     }

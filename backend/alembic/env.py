@@ -18,7 +18,8 @@ from app.models import material  # noqa: E402,F401
 from app.models import component  # noqa: E402,F401
 from app.models import run  # noqa: E402,F401  (analiz geçmişi)
 from app.models import doe  # noqa: E402,F401  (0.5.4 DOE)
-from app.models import system_check  # noqa: E402,F401  (metadata'ya kaydolsun diye import)
+from app.models import system_check  # noqa: E402,F401
+from app.models import user  # noqa: E402,F401  (API anahtarı)  (metadata'ya kaydolsun diye import)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

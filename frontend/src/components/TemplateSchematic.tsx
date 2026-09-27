@@ -41,6 +41,18 @@ export default function TemplateSchematic({ templateId }: TemplateSchematicProps
   if (templateId === "keyway_shaft") {
     return <KeywayShaftSchematic />;
   }
+  if (templateId === "t_bracket") {
+    return <TBracketSchematic />;
+  }
+  if (templateId === "l_bracket_bolted") {
+    return <LBracketBoltedSchematic />;
+  }
+  if (templateId === "flange") {
+    return <FlangeSchematic />;
+  }
+  if (templateId === "stepped_shaft") {
+    return <SteppedShaftSchematic />;
+  }
   return null;
 }
 
@@ -50,7 +62,7 @@ function CantileverBeamSchematic() {
       <svg
         viewBox="0 0 300 150"
         role="img"
-        aria-label="Ankastre kiriş: sol uç duvara tutturulmuş, sağ uçta aşağı yük F; L uzunluk, T kalınlık, W genişlik"
+        aria-label="Ankastre kiriş: sol uç duvara tutturulmuş, sağ uçta aşağı yük F; L uzunluk, T kalınlık, W genişlik; isteğe bağlı kök filleti r, duvar kalınlığı tw ve taşması m"
       >
         <defs>
           <pattern
@@ -70,6 +82,13 @@ function CantileverBeamSchematic() {
         <text x="20" y="144" textAnchor="middle" className="template-schematic-caption">
           ankastre
         </text>
+
+        {/* Kök filleti (r > 0): duvar bloğu tw × (T+2m), kiriş köküne r yayı */}
+        <path d="M32,60 Q32,68 40,68" className="template-schematic-dim" />
+        <path d="M32,96 Q32,88 40,88" className="template-schematic-dim" />
+        <text x="44" y="64" className="template-schematic-label">r</text>
+        <text x="20" y="28" textAnchor="middle" className="template-schematic-caption">tw</text>
+        <text x="46" y="104" className="template-schematic-caption">m</text>
 
         {/*
           İzometrik dikdörtgen kutu.
@@ -406,6 +425,79 @@ function KeywayShaftSchematic() {
         <rect x="138" y="28" width="24" height="22" className="template-schematic-hole" />
         <text x="210" y="70" className="template-schematic-label">R</text>
         <text x="150" y="24" textAnchor="middle" className="template-schematic-label">w, h</text>
+      </svg>
+    </figure>
+  );
+}
+
+
+function TBracketSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="T-braket: sırt plakası h yükseklik, raf a uzunluk, kalınlık t, isteğe bağlı üçgen kaburga; raf ucunda aşağı yük F">
+        <rect x="60" y="20" width="16" height="110" className="template-schematic-face-side" />
+        <rect x="76" y="67" width="150" height="16" className="template-schematic-face-side" />
+        <path d="M76,83 L136,83 L76,143 Z" className="template-schematic-face-side" strokeDasharray="4 3" />
+        <text x="40" y="80" className="template-schematic-label">h</text>
+        <text x="150" y="60" className="template-schematic-label">a</text>
+        <text x="232" y="78" className="template-schematic-label">t</text>
+        <text x="100" y="120" className="template-schematic-label">kaburga</text>
+        <text x="226" y="105" className="template-schematic-label">F ↓</text>
+      </svg>
+    </figure>
+  );
+}
+
+function LBracketBoltedSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Delikli L-braket: dik bacak hv, yatay bacak lh, kalınlık t, iki cıvata deliği d; yatay bacak ucunda aşağı yük F">
+        <rect x="70" y="20" width="16" height="110" className="template-schematic-face-side" />
+        <rect x="70" y="114" width="160" height="16" className="template-schematic-face-side" />
+        <circle cx="78" cy="42" r="5" className="template-schematic-hole" />
+        <circle cx="78" cy="62" r="5" className="template-schematic-hole" />
+        <text x="50" y="80" className="template-schematic-label">hv</text>
+        <text x="150" y="108" className="template-schematic-label">lh</text>
+        <text x="94" y="46" className="template-schematic-label">d</text>
+        <text x="236" y="126" className="template-schematic-label">F ↓</text>
+      </svg>
+    </figure>
+  );
+}
+
+function FlangeSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Flanş: dış yarıçap R, boru deliği ri, cıvata çemberi Rb üzerinde n delik; boru deliğinden eksenel yük">
+        <circle cx="150" cy="75" r="62" className="template-schematic-face-side" />
+        <circle cx="150" cy="75" r="24" className="template-schematic-hole" />
+        {[0, 60, 120, 180, 240, 300].map((deg) => (
+          <circle
+            key={deg}
+            cx={150 + 45 * Math.cos((deg * Math.PI) / 180)}
+            cy={75 + 45 * Math.sin((deg * Math.PI) / 180)}
+            r="5"
+            className="template-schematic-hole"
+          />
+        ))}
+        <text x="218" y="40" className="template-schematic-label">R</text>
+        <text x="150" y="79" textAnchor="middle" className="template-schematic-label">ri</text>
+        <text x="200" y="118" className="template-schematic-label">Rb, n, d</text>
+      </svg>
+    </figure>
+  );
+}
+
+function SteppedShaftSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Kademeli mil: büyük yarıçap R1 boy L1, küçük yarıçap R2 boy L2, omuzda fillet r; küçük uçta aşağı yük F">
+        <rect x="40" y="45" width="110" height="60" className="template-schematic-face-side" />
+        <path d="M150,45 L150,55 A8,8 0 0 0 158,63 L260,63 L260,87 L158,87 A8,8 0 0 0 150,95 L150,105 Z" className="template-schematic-face-side" />
+        <text x="90" y="36" className="template-schematic-label">L1, R1</text>
+        <text x="190" y="56" className="template-schematic-label">L2, R2</text>
+        <text x="160" y="118" className="template-schematic-label">r</text>
+        <text x="262" y="110" className="template-schematic-label">F ↓</text>
       </svg>
     </figure>
   );

@@ -275,3 +275,103 @@ def test_field_predict_matches_preview_keys(tmp_path):
     mag = np.linalg.norm(yhat[:, :3], axis=1)
     assert mag.shape[0] == samples[0].node_inputs.shape[0]
     assert yhat.shape[1] == 4
+
+
+# --- 0.6.2: holdout yoksa test metrigi raporlanmaz -------------------------
+
+
+def _toy_xy(n: int):
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    X = rng.uniform(1.0, 2.0, size=(n, 11))
+    y = np.column_stack([X[:, 0] * 3.0 + X[:, 1], X[:, 0] * 50.0])
+    return X, y
+
+
+def test_no_holdout_reports_no_test_metrics():
+    """8 ornek: eskiden X_te = X_tr atanip egitim R2'si 'test' diye donuyordu."""
+    from app.ml.scalar_rf import MIN_HOLDOUT_SAMPLES, public_metrics, train_scalar_rf
+
+    X, y = _toy_xy(MIN_HOLDOUT_SAMPLES - 1)
+    bundle = train_scalar_rf(X, y)
+
+    assert bundle["has_holdout"] is False
+    assert bundle["n_test"] == 0
+    assert bundle["n_train"] == X.shape[0]
+    assert bundle["metrics"]["test"] is None
+    assert bundle["metrics"]["train"]["max_displacement"]["r2"] is not None
+    assert public_metrics(bundle)["has_holdout"] is False
+
+
+def test_holdout_is_disjoint_from_training_set():
+    from app.ml.scalar_rf import MIN_HOLDOUT_SAMPLES, train_scalar_rf
+
+    X, y = _toy_xy(MIN_HOLDOUT_SAMPLES + 40)
+    bundle = train_scalar_rf(X, y)
+
+    assert bundle["has_holdout"] is True
+    assert bundle["n_test"] > 0
+    assert bundle["n_train"] + bundle["n_test"] == bundle["n_samples"]
+    assert bundle["metrics"]["test"] is not None
+
+
+def test_old_bundle_without_flag_is_read_as_no_holdout():
+    """Diskteki eski scalar_rf.joblib dosyalari test=train ile yazilmisti."""
+    from app.ml.scalar_rf import public_metrics
+
+    assert public_metrics({"kind": "scalar_rf", "n_samples": 8})["has_holdout"] is False
+
+
+# --- 0.6.3: iki skaler model turu -----------------------------------------
+
+
+def test_scalar_train_rejects_unknown_model(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as client:
+        r = client.post("/surrogate/scalar/train?model=xgboost")
+    assert r.status_code == 422
+    assert "loglinear" in str(r.json()["detail"])
+
+
+def test_load_scalar_model_prefers_loglinear_in_auto(tmp_path, monkeypatch):
+    """auto: log-log varsa o secilir, yoksa RF'e duser. Sessiz degisim yok —
+    secilen tur her yanitta model_kind ile bildirilir."""
+    import app.api.surrogate as api
+
+    monkeypatch.setattr(api, "load_scalar_loglinear", lambda p=None: {"kind": "ll"})
+    monkeypatch.setattr(api, "load_scalar_rf", lambda p=None: {"kind": "rf"})
+    assert api._load_scalar_model("auto")[0] == "loglinear"
+    assert api._load_scalar_model("rf")[0] == "rf"
+    assert api._load_scalar_model("loglinear")[0] == "loglinear"
+
+    monkeypatch.setattr(api, "load_scalar_loglinear", lambda p=None: None)
+    assert api._load_scalar_model("auto")[0] == "rf"
+    assert api._load_scalar_model("loglinear") is None
+
+    monkeypatch.setattr(api, "load_scalar_rf", lambda p=None: None)
+    assert api._load_scalar_model("auto") is None
+
+
+def test_load_scalar_model_rejects_unknown_name():
+    import pytest as _pytest
+    from fastapi import HTTPException
+
+    import app.api.surrogate as api
+
+    with _pytest.raises(HTTPException) as exc:
+        api._load_scalar_model("lasso")
+    assert exc.value.status_code == 422
+
+
+def test_status_exposes_both_scalar_models():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as client:
+        body = client.get("/surrogate/status").json()
+    assert "scalar_rf" in body
+    assert "scalar_loglinear" in body
+    assert "field_gnn" in body

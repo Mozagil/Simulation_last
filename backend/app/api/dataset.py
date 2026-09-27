@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.api.geometry import UPLOAD_DIR
 from app.db.session import get_db
 from app.dataset.archive import export_dataset, import_dataset
+from app.ml.manifest import ManifestError
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def export_dataset_endpoint(
     run_ids: str | None = None,
     geometry_id: int | None = None,
     only_solved: bool = False,
+    corpus_name: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Analiz geçmişini + çözüm dosyalarını tek arşiv olarak indirir.
@@ -39,7 +41,8 @@ def export_dataset_endpoint(
     `include_files=false` yalnız metaveri alır — hızlıdır ama surrogate
     eğitimi için yetersizdir, `.frd` alan verisi gitmez.
 
-    Filtreler: `run_ids` (virgülle ayrılmış), `geometry_id`, `only_solved`.
+    Filtreler: `run_ids` (virgülle ayrılmış), `geometry_id`, `only_solved`,
+    `corpus_name` (donmuş eğitim seti; setin tanımı da arşive konur).
     Hiçbiri verilmezse tüm geçmiş alınır.
     """
     parsed_ids: list[int] | None = None
@@ -52,7 +55,12 @@ def export_dataset_endpoint(
             ) from exc
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    suffix = "-secili" if parsed_ids else ("-cozulmus" if only_solved else "")
+    if corpus_name:
+        suffix = f"-set-{corpus_name}"
+    elif parsed_ids:
+        suffix = "-secili"
+    else:
+        suffix = "-cozulmus" if only_solved else ""
     out = Path(tempfile.gettempdir()) / f"dataset{suffix}-{stamp}.tar.gz"
     try:
         manifest = export_dataset(
@@ -63,7 +71,10 @@ def export_dataset_endpoint(
             run_ids=parsed_ids,
             geometry_id=geometry_id,
             only_solved=only_solved,
+            corpus_name=corpus_name,
         )
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         logger.exception("Veri seti dışa aktarılamadı")
         raise HTTPException(status_code=500, detail=f"Dışa aktarma başarısız: {exc}") from exc
@@ -80,6 +91,7 @@ def export_dataset_endpoint(
 @router.get("/summary")
 def dataset_summary(db: Session = Depends(get_db)) -> dict:
     """Dışa aktarmadan önce ne kadar veri olduğunu gösterir."""
+    from sqlalchemy import case
     from app.models.geometry import Geometry
     from app.models.material import Material
     from app.models.run import AnalysisRun
@@ -89,12 +101,42 @@ def dataset_summary(db: Session = Depends(get_db)) -> dict:
     if runs_root.is_dir():
         train_n = sum(1 for _ in runs_root.glob("*/*.train.npz"))
 
+    # Şablon kırılımı: tek bir "478 çözülmüş run" sayısı, ikinci şablon
+    # girdiğinde hangi verinin hangi modele ait olduğunu göstermiyor.
+    # Kiriş ve delikli plaka ayrı ayrı görünmeli.
+    from sqlalchemy import func
+
+    rows = (
+        db.query(
+            Geometry.template_id,
+            func.count(AnalysisRun.id),
+            func.sum(
+                case((AnalysisRun.status == "solved", 1), else_=0)
+            ),
+            func.sum(case((AnalysisRun.excluded.is_(True), 1), else_=0)),
+        )
+        .join(AnalysisRun, AnalysisRun.geometry_id == Geometry.id)
+        .group_by(Geometry.template_id)
+        .all()
+    )
+    by_template = [
+        {
+            "template_id": tpl,
+            "runs": int(total or 0),
+            "solved": int(solved or 0),
+            "excluded": int(excluded or 0),
+        }
+        for tpl, total, solved, excluded in rows
+    ]
+    by_template.sort(key=lambda r: (-r["solved"], str(r["template_id"])))
+
     return {
         "geometries": db.query(Geometry).count(),
         "materials": db.query(Material).count(),
         "analysis_runs": db.query(AnalysisRun).count(),
         "solved_runs": db.query(AnalysisRun).filter(AnalysisRun.status == "solved").count(),
         "training_samples": train_n,
+        "by_template": by_template,
     }
 
 

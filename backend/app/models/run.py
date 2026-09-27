@@ -17,7 +17,17 @@ yaşıyor.
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -47,6 +57,21 @@ class AnalysisRun(Base):
 
     # "pending" (henüz işleniyor) | "inp_only" (sadece .inp üretildi, ccx
     # çalışmadı) | "solved" (ccx başarıyla bitti) | "failed" (hata)
+    #: Bu run hangi DOE/kalite setinden geldi. Elle çözümlerde None.
+    #: Geçmişte "şu 200'lük setin run'ları" diye süzmek için — bilgi
+    #: DoeCase'te var ama run'dan geriye bakılamıyordu.
+    doe_study_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True
+    )
+    #: Elle dışlama: deneme amaçlı, mükerrer ya da kalitesiz koşular.
+    #: Silmek yerine işaretlenir — dosyalar diskte kalır, karar geri
+    #: alınabilir. Korpus bunları eğitime almaz.
+    excluded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"), index=True
+    )
+    #: Neden dışlandı. Altı ay sonra "bu neden kapalı" sorusunun cevabı
+    #: kodda değil veride olmalı.
+    exclude_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     message: Mapped[str | None] = mapped_column(String, nullable=True)
 

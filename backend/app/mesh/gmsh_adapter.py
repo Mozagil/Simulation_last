@@ -2188,6 +2188,8 @@ class GmshMesherAdapter(MesherAdapter):
                     # Hex (quad şeması) hariç tutuldu: setOrder(2) orada
                     # hex20 üretir, .inp yazıcısında karşılığı henüz yok.
                     gmsh.model.mesh.setOrder(2)
+                    if params.high_order_optimize:
+                        gmsh.model.mesh.optimize("HighOrder")
             else:
                 shell_faces = _orphan_shell_face_tags()
                 if not shell_faces:

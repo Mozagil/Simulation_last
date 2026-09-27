@@ -25,6 +25,12 @@ export interface RunSummary {
   status: "pending" | "inp_only" | "solved" | "failed";
   message: string | null;
   scalars: Record<string, number>;
+  /** Hangi DOE/kalite setinden geldi; elle çözümlerde null. */
+  doe_study_id?: number | null;
+  /** Elle dışlanmış mı — deneme, mükerrer, kalitesiz koşular. Dışlanan
+   * run silinmez, sadece eğitim setinden ve (istenirse) listeden çıkar. */
+  excluded?: boolean;
+  exclude_reason?: string | null;
 }
 
 export interface RunDetail extends RunSummary {
@@ -40,8 +46,62 @@ export interface RunDetail extends RunSummary {
   analytic_comparison?: AnalyticComparison | null;
 }
 
-export async function fetchRuns(): Promise<RunSummary[]> {
-  const response = await fetch(`${API_BASE_URL}/geometry/runs`);
+export interface RunFilter {
+  /** Yalnız bu şablonun run'ları — kiriş ve delikli plaka karışmasın. */
+  templateId?: string | null;
+  /** Yalnız bu DOE setinin run'ları. */
+  doeStudyId?: number | null;
+  /** Dışlanmışları gizle. */
+  includeExcluded?: boolean;
+  /** YALNIZ dışlanmışları göster (gözden geçirmek için). */
+  onlyExcluded?: boolean;
+}
+
+function filterQuery(f?: RunFilter): string {
+  if (!f) return "";
+  const q = new URLSearchParams();
+  if (f.templateId) q.set("template_id", f.templateId);
+  if (f.doeStudyId != null) q.set("doe_study_id", String(f.doeStudyId));
+  if (f.includeExcluded === false) q.set("include_excluded", "false");
+  if (f.onlyExcluded) q.set("only_excluded", "true");
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+export async function setRunExcluded(
+  runId: number,
+  excluded: boolean,
+  reason?: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/geometry/runs/${runId}/exclude`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ excluded, reason: reason ?? null }),
+  });
+  if (!response.ok) {
+    throw new RunFetchError(`İşaretlenemedi (HTTP ${response.status}).`);
+  }
+}
+
+export async function setRunsExcludedBulk(
+  runIds: number[],
+  excluded: boolean,
+  reason?: string,
+): Promise<number> {
+  const response = await fetch(`${API_BASE_URL}/geometry/runs/exclude-bulk`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_ids: runIds, excluded, reason: reason ?? null }),
+  });
+  if (!response.ok) {
+    throw new RunFetchError(`Toplu işaretleme başarısız (HTTP ${response.status}).`);
+  }
+  const body = (await response.json()) as { updated: number };
+  return body.updated;
+}
+
+export async function fetchRuns(filter?: RunFilter): Promise<RunSummary[]> {
+  const response = await fetch(`${API_BASE_URL}/geometry/runs${filterQuery(filter)}`);
   if (!response.ok) {
     throw new RunFetchError(`Geçmiş alınamadı (HTTP ${response.status}).`);
   }

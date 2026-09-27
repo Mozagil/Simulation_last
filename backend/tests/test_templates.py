@@ -9,10 +9,11 @@ bölgeleri doğru yüzeye bağlıyor" iddiasını kilitler.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
+
+from app.solvers.calculix import _ccx_executable
 from pydantic import ValidationError
 
 from app.templates import (
@@ -34,9 +35,14 @@ EXPECTED_DISP_MM = 23.92
 EXPECTED_MAX_VM_MPA = 330.7
 TOLERANCE = 0.05
 
+# Uygulamanın ccx'i bulduğu AYNI mantık (CCX_PATH → PATH → vendor). Eskiden
+# yalnız PATH'teki `ccx` aranıyordu; CCX_PATH ile kurulu makinede bu gerçek
+# çözüm testleri SESSİZCE atlanıyordu — "tüm testler yeşil" sayısı kiriş
+# fiziğini hiç kapsamıyordu. Tutarlı-yük değişikliği bu yüzden fizik
+# regresyonu görülmeden commit'lenebildi.
 requires_ccx = pytest.mark.skipif(
-    shutil.which("ccx") is None,
-    reason="CalculiX (ccx) kurulu değil — bu test gerçek çözüm gerektirir",
+    _ccx_executable() is None,
+    reason="CalculiX (ccx) bulunamadı (CCX_PATH / PATH / vendor) — bu test gerçek çözüm gerektirir",
 )
 
 
@@ -57,10 +63,16 @@ def test_unknown_template_raises():
 
 def test_params_schema_is_json_schema_with_units():
     schema = get_template("cantilever_beam").params_schema()
-    assert set(schema["properties"]) == {"length", "thickness", "width"}
-    for prop in schema["properties"].values():
+    assert set(schema["properties"]) == {
+        "length", "thickness", "width", "root_fillet", "wall_thickness", "wall_margin",
+    }
+    for name, prop in schema["properties"].items():
         assert prop["type"] == "number"
-        assert prop["exclusiveMinimum"] == 0
+        # r = 0 geçerli (duvar yok); diğer boyutlar kesin pozitif.
+        if name == "root_fillet":
+            assert prop["minimum"] == 0
+        else:
+            assert prop["exclusiveMinimum"] == 0
         assert prop["unit"] == "mm"
 
 
@@ -85,7 +97,10 @@ def test_invalid_params_rejected(raw):
 
 def test_defaults_are_reference_case():
     p = get_template("cantilever_beam").parse_params({})
-    assert p.model_dump() == REF_PARAMS
+    # Kök filleti varsayılanda kapalı → geometri referans vakayla aynı.
+    assert p.model_dump() == REF_PARAMS | {
+        "root_fillet": 0.0, "wall_thickness": 20.0, "wall_margin": 20.0,
+    }
 
 
 # --- kurucu + bölgeler --------------------------------------------------------

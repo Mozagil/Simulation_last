@@ -14,8 +14,16 @@ from typing import Any
 
 import numpy as np
 
-from app.dataset.training_data import NODE_INPUT_CHANNELS, NODE_OUTPUT_CHANNELS
+from app.dataset.training_data import (
+    NODE_INPUT_CHANNELS,
+    NODE_INPUT_GROUPS,
+    NODE_OUTPUT_CHANNELS,
+    NODE_OUTPUT_GROUPS,
+    channel_group_indices,
+)
 from app.ml.graph_data import GraphSample
+from app.ml.gnn_torch import DEFAULT_PATIENCE, torch_available, train_torch_gnn
+from app.ml.normalization import ChannelScaler
 from app.ml.ood import bounds_from_matrix
 
 DEFAULT_GNN_PATH = Path("uploads") / "models" / "field_gnn.npz"
@@ -25,18 +33,45 @@ def _relu(x: np.ndarray) -> np.ndarray:
     return np.maximum(x, 0.0)
 
 
+#: Düzleştirilmiş indeks dizisinin üst sınırı (öğe sayısı). Aşılırsa
+#: sütun sütun toplanır: geçici dizi 2·kenar·gizli boyutunda büyüyor ve
+#: gizli katman genişledikçe (1.3'te 64+) belleği zorluyor.
+_FLAT_INDEX_LIMIT = 8_000_000
+
+
 def _mean_neighbors(h: np.ndarray, edges: np.ndarray) -> np.ndarray:
-    n = h.shape[0]
-    agg = np.zeros_like(h)
-    deg = np.zeros((n, 1), dtype=np.float64)
+    """Komşu ortalaması — mesaj geçişinin çekirdeği.
+
+    Eskiden kenarlar üzerinde Python döngüsüydü; eğitim ve her ölçüm turu
+    bu yüzden dakikalar sürüyordu. Ölçüldü (gizli=24, 3 tekrar ortalaması):
+
+    | graf | döngü | vektör |
+    |---|---|---|
+    | 500 düğüm / 0.9k kenar | 4.44 ms | 0.43 ms |
+    | 9k düğüm / 15k kenar | 81.0 ms | 5.41 ms |
+    | 28k düğüm / 47k kenar | 246.9 ms | 17.3 ms |
+
+    Sonuç 6.7e−16'ya kadar aynı (yalnız kayan nokta toplama sırası farklı).
+    """
+    n, d = h.shape
     if edges.size == 0:
-        return agg
-    for a, b in edges:
-        agg[a] += h[b]
-        agg[b] += h[a]
-        deg[a] += 1.0
-        deg[b] += 1.0
-    return agg / np.maximum(deg, 1.0)
+        return np.zeros_like(h)
+
+    # Yönsüz kenar: her iki yönde de taşınır.
+    src = np.concatenate([edges[:, 0], edges[:, 1]]).astype(np.intp)
+    dst = np.concatenate([edges[:, 1], edges[:, 0]]).astype(np.intp)
+    gathered = np.asarray(h, dtype=np.float64)[dst]
+
+    if src.shape[0] * d <= _FLAT_INDEX_LIMIT:
+        idx = (src[:, None] * d + np.arange(d)[None, :]).ravel()
+        agg = np.bincount(idx, weights=gathered.ravel(), minlength=n * d).reshape(n, d)
+    else:
+        agg = np.empty((n, d), dtype=np.float64)
+        for j in range(d):
+            agg[:, j] = np.bincount(src, weights=gathered[:, j], minlength=n)
+
+    deg = np.bincount(src, minlength=n).astype(np.float64)
+    return agg / np.maximum(deg, 1.0)[:, None]
 
 
 class NumpyMeshGNN:
@@ -137,7 +172,56 @@ class NumpyMeshGNN:
         return model
 
 
-def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, Any]:
+def normalized_samples(
+    samples: list[GraphSample], x_scaler: ChannelScaler, y_scaler: ChannelScaler
+) -> list[GraphSample]:
+    """Girdi/çıktısı ölçeklenmiş kopyalar; graf yapısı paylaşılır."""
+    out: list[GraphSample] = []
+    for s in samples:
+        out.append(
+            GraphSample(
+                run_id=s.run_id,
+                node_inputs=x_scaler.transform(s.node_inputs).astype(np.float32),
+                node_outputs=(
+                    None
+                    if s.node_outputs is None
+                    else y_scaler.transform(s.node_outputs).astype(np.float32)
+                ),
+                edges=s.edges,
+                node_ids=s.node_ids,
+                element_size=s.element_size,
+                edge_source=s.edge_source,
+            )
+        )
+    return out
+
+
+def predict_physical(
+    model: NumpyMeshGNN,
+    sample: GraphSample,
+    x_scaler: ChannelScaler,
+    y_scaler: ChannelScaler,
+) -> np.ndarray:
+    """HAM girdiden fiziksel birimli tahmin (mm, MPa).
+
+    Ölçekleme yalnız modelin içinde kalır: çağıranlar her zaman fiziksel
+    birim görür, metrikler eski ölçümlerle karşılaştırılabilir kalır.
+    """
+    z = model.forward(x_scaler.transform(sample.node_inputs), sample.edges)
+    return y_scaler.inverse_transform(z)
+
+
+def _field_rmse(
+    samples: list[GraphSample],
+    model: NumpyMeshGNN,
+    x_scaler: ChannelScaler | None = None,
+    y_scaler: ChannelScaler | None = None,
+) -> dict[str, Any]:
+    """Hata metrikleri FİZİKSEL birimde (mm, MPa) — `samples` ham olmalı."""
+    n_in = samples[0].node_inputs.shape[1] if samples else 0
+    n_out = len(NODE_OUTPUT_CHANNELS)
+    x_scaler = x_scaler or ChannelScaler.identity(n_in)
+    y_scaler = y_scaler or ChannelScaler.identity(n_out)
     sq = np.zeros(len(NODE_OUTPUT_CHANNELS))
     n = 0
     scalar_sq = np.zeros(2)
@@ -146,7 +230,7 @@ def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, An
     for s in samples:
         if s.node_outputs is None:
             continue
-        pred = model.forward(s.node_inputs, s.edges)
+        pred = predict_physical(model, s, x_scaler, y_scaler)
         y = s.node_outputs
         diff = pred - y
         sq += (diff ** 2).mean(axis=0)
@@ -177,19 +261,86 @@ def _field_rmse(samples: list[GraphSample], model: NumpyMeshGNN) -> dict[str, An
     }
 
 
+#: Bu sayıdan az doğrulama grafı anlamlı bir holdout metriği vermez —
+#: skaler modellerdeki `MIN_HOLDOUT_SAMPLES` ile aynı gerekçe: az örnekle
+#: hesaplanan "test hatası" güven verir ama ölçmez.
+MIN_HOLDOUT_GRAPHS = 4
+DEFAULT_HOLDOUT_FRACTION = 0.2
+
+
+def split_holdout(
+    samples: list[GraphSample], fraction: float, seed: int
+) -> tuple[list[GraphSample], list[GraphSample]]:
+    """(eğitim, holdout). Yeterli örnek yoksa holdout BOŞ döner.
+
+    Örnek sayısı azken holdout ayırmak iki kötülüğü birden yapar: eğitimi
+    zayıflatır ve ölçemediği bir sayıyı "test hatası" diye sunar.
+    """
+    n_holdout = int(round(len(samples) * fraction))
+    if n_holdout < MIN_HOLDOUT_GRAPHS or len(samples) - n_holdout < MIN_HOLDOUT_GRAPHS:
+        return list(samples), []
+    order = np.random.default_rng(seed).permutation(len(samples))
+    idx = [int(i) for i in order]
+    holdout = [samples[i] for i in idx[:n_holdout]]
+    train = [samples[i] for i in idx[n_holdout:]]
+    return train, holdout
+
+
 def train_gnn(
     samples: list[GraphSample],
     *,
     seed: int = 2026,
     hidden: int = 24,
+    n_proc: int = 2,
     sgd_steps: int = 6,
+    engine: str = "auto",
+    epochs: int = 200,
+    lr: float = 1e-3,
+    patience: int = DEFAULT_PATIENCE,
+    holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
 ) -> dict[str, Any]:
+    """`engine`: "torch" (gerçek geri yayılım) | "numpy" (eski, en küçük
+    kareler + kaba gradyan) | "auto" (torch varsa torch).
+
+    Hangi motorun kullanıldığı `metrics["engine"]` ile raporlanır: "numpy"
+    çıktısı bir EĞİTİM DEĞİLDİR, encoder donuk kalır.
+    """
     if len(samples) < 2:
         raise ValueError("GNN için en az 2 graf örnek gerekir.")
     in_dim = samples[0].node_inputs.shape[1]
-    model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=2, out_dim=len(NODE_OUTPUT_CHANNELS), seed=seed)
-    model.fit_output_ls(samples)
-    model.sgd_process(samples, steps=sgd_steps, lr=1e-4)
+
+    if engine not in ("auto", "torch", "numpy"):
+        raise ValueError(f"Bilinmeyen engine={engine!r} (auto|torch|numpy).")
+    if engine == "auto":
+        engine = "torch" if torch_available() else "numpy"
+
+    # Ölçek EĞİTİM setinden çıkarılır; eğitim tamamen normalize uzayda
+    # yapılır, dışarıya fiziksel birim döner (bkz. `predict_physical`).
+    x_scaler = ChannelScaler.fit(
+        (s.node_inputs for s in samples),
+        channel_group_indices(NODE_INPUT_CHANNELS, NODE_INPUT_GROUPS),
+    )
+    y_scaler = ChannelScaler.fit(
+        (s.node_outputs for s in samples if s.node_outputs is not None),
+        channel_group_indices(NODE_OUTPUT_CHANNELS, NODE_OUTPUT_GROUPS),
+    )
+    train_samples, holdout_samples = split_holdout(samples, holdout_fraction, seed)
+    scaled = normalized_samples(train_samples, x_scaler, y_scaler)
+    scaled_holdout = normalized_samples(holdout_samples, x_scaler, y_scaler)
+
+    out_dim = len(NODE_OUTPUT_CHANNELS)
+    history: dict[str, Any] | None = None
+    if engine == "torch":
+        weights, hist = train_torch_gnn(
+            scaled, scaled_holdout, hidden=hidden, n_proc=n_proc, out_dim=out_dim,
+            seed=seed, epochs=epochs, lr=lr, patience=patience,
+        )
+        model = NumpyMeshGNN.from_npz(weights)
+        history = hist.as_public()
+    else:
+        model = NumpyMeshGNN(in_dim, hidden=hidden, n_proc=n_proc, out_dim=out_dim, seed=seed)
+        model.fit_output_ls(scaled)
+        model.sgd_process(scaled, steps=sgd_steps, lr=1e-4)
     globals_ = []
     for s in samples:
         # OOD için global özet: bbox + ortalama yük/E (kanal 7-12)
@@ -203,10 +354,28 @@ def train_gnn(
         )
         globals_.append(g)
     G = np.vstack(globals_)
-    metrics = _field_rmse(samples, model)
+    # Ana metrikler EĞİTİM kümesinde (eski davranış, biçim korunuyor);
+    # holdout ayrı alanda — yoksa None, "yok" ile "sıfır" karışmasın.
+    metrics = _field_rmse(train_samples, model, x_scaler, y_scaler)
+    metrics["engine"] = engine
+    metrics["history"] = history
+    metrics["holdout"] = (
+        _field_rmse(holdout_samples, model, x_scaler, y_scaler)
+        if holdout_samples
+        else None
+    )
+    metrics["architecture"] = {"hidden": hidden, "n_proc": n_proc}
+    metrics["n_train"] = len(train_samples)
+    metrics["n_holdout"] = len(holdout_samples)
     return {
         "kind": "field_gnn",
         "model": model,
+        "x_scaler": x_scaler,
+        "y_scaler": y_scaler,
+        "normalization": {
+            "inputs": x_scaler.summary(NODE_INPUT_CHANNELS),
+            "outputs": y_scaler.summary(NODE_OUTPUT_CHANNELS),
+        },
         "bounds": bounds_from_matrix(G),
         "n_samples": len(samples),
         "metrics": metrics,
@@ -221,6 +390,10 @@ def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     model: NumpyMeshGNN = bundle["model"]
     payload = model.to_npz()
+    for key, prefix in (("x_scaler", "x"), ("y_scaler", "y")):
+        scaler = bundle.get(key)
+        if scaler is not None:
+            payload.update(scaler.to_npz(prefix))
     payload["bounds_min"] = np.asarray(bundle["bounds"]["min"], dtype=np.float64)
     payload["bounds_max"] = np.asarray(bundle["bounds"]["max"], dtype=np.float64)
     payload["n_samples"] = np.int32(bundle["n_samples"])
@@ -235,8 +408,12 @@ def save_gnn(bundle: dict[str, Any], path: Path | None = None) -> Path:
                 "kind": "field_gnn",
                 "n_samples": bundle["n_samples"],
                 "metrics": bundle["metrics"],
+                "normalization": bundle.get("normalization"),
                 "input_channels": bundle["input_channels"],
                 "output_channels": bundle["output_channels"],
+                # Kapsam: hangi şablonun verisiyle eğitildiği (ml/model_store).
+                "template_id": bundle.get("template_id"),
+                "corpus": bundle.get("corpus"),
             },
             indent=2,
         ),
@@ -253,6 +430,8 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
     with np.load(dest, allow_pickle=False) as z:
         data = {k: z[k] for k in z.files}
     model = NumpyMeshGNN.from_npz(data)
+    x_scaler = ChannelScaler.from_npz(data, "x", int(data["W_enc"].shape[0]))
+    y_scaler = ChannelScaler.from_npz(data, "y", int(data["W_out"].shape[1]))
     import json
 
     metrics = {}
@@ -262,6 +441,9 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
     return {
         "kind": "field_gnn",
         "model": model,
+        "x_scaler": x_scaler,
+        "y_scaler": y_scaler,
+        "normalization": metrics.get("normalization") if isinstance(metrics, dict) else None,
         "bounds": {
             "min": [float(v) for v in data.get("bounds_min", [])],
             "max": [float(v) for v in data.get("bounds_max", [])],
@@ -270,6 +452,8 @@ def load_gnn(path: Path | None = None) -> dict[str, Any] | None:
         "metrics": metrics.get("metrics") if isinstance(metrics, dict) else {},
         "input_channels": metrics.get("input_channels") if isinstance(metrics, dict) else list(NODE_INPUT_CHANNELS),
         "output_channels": metrics.get("output_channels") if isinstance(metrics, dict) else list(NODE_OUTPUT_CHANNELS),
+        "template_id": metrics.get("template_id") if isinstance(metrics, dict) else None,
+        "corpus": metrics.get("corpus") if isinstance(metrics, dict) else None,
     }
 
 
@@ -284,5 +468,10 @@ def global_features_for_ood(X: np.ndarray) -> np.ndarray:
 
 
 def predict_field(bundle: dict[str, Any], sample: GraphSample) -> np.ndarray:
+    """Fiziksel birimli düğüm alanı. Ölçek modelle birlikte saklanır;
+    uygulanmazsa model sessizce saçmalar."""
     model: NumpyMeshGNN = bundle["model"]
-    return model.forward(sample.node_inputs, sample.edges)
+    n_in = sample.node_inputs.shape[1]
+    x_scaler = bundle.get("x_scaler") or ChannelScaler.identity(n_in)
+    y_scaler = bundle.get("y_scaler") or ChannelScaler.identity(len(NODE_OUTPUT_CHANNELS))
+    return predict_physical(model, sample, x_scaler, y_scaler)
