@@ -344,6 +344,8 @@ export interface SweepPoint {
   max_von_mises: number | null;
   max_von_mises_away: number | null;
   out_of_domain: boolean;
+  /** Eğitim aralığı dışındaki girdi adları (boşsa uzay içi). */
+  violations: string[];
   exceeds_yield: boolean | null;
   sigma_mpa: number | null;
 }

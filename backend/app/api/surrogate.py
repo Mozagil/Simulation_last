@@ -598,6 +598,8 @@ def predict_sweep(
             "max_von_mises": out["predictions"].get("max_von_mises"),
             "max_von_mises_away": out["predictions"].get("max_von_mises_away"),
             "out_of_domain": bool(out.get("out_of_domain")),
+            # Hangi girdi dışarıda — yalnız bayrak kullanıcıya neyi düzelteceğini söylemez.
+            "violations": [d["feature"] for d in (out.get("domain_violations") or [])],
             "exceeds_yield": bool(yc.get("exceeds_yield")) if yc else None,
             "sigma_mpa": yc.get("sigma_mpa") if yc else None,
         })

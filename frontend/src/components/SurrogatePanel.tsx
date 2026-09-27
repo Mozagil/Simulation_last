@@ -792,7 +792,9 @@ export default function SurrogatePanel({
                     <td>{fmtNum(p.max_von_mises)}</td>
                     <td>
                       {[
-                        p.out_of_domain ? "uzay dışı" : null,
+                        p.out_of_domain
+                          ? `uzay dışı${p.violations?.length ? `: ${p.violations.map(violationLabel).join(", ")}` : ""}`
+                          : null,
                         p.exceeds_yield ? "akıyor" : null,
                       ]
                         .filter(Boolean)
@@ -981,6 +983,16 @@ export default function SurrogatePanel({
 
     </div>
   );
+}
+
+/** Tablo hücresi için kısa girdi adı (Fy, T, L…); bilinmeyen anahtar olduğu gibi. */
+function violationLabel(key: string): string {
+  const short: Record<string, string> = {
+    length: "L", thickness: "T", width: "W", height: "H", diameter: "d",
+    load_fx: "Fx", load_fy: "Fy", load_fz: "Fz", element_size: "eleman",
+    youngs_modulus: "E", poisson_ratio: "ν", root_fillet: "r",
+  };
+  return short[key] ?? key;
 }
 
 /** u_max'ın taranan parametreye göre eğrisi; uzay dışı / akan noktalar içi boş. */

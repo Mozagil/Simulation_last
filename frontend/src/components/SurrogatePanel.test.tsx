@@ -296,9 +296,9 @@ describe("SurrogatePanel", () => {
       kind: "sweep", template_id: "cantilever_beam", sweep_param: "thickness", nlgeom: false,
       model_kind: "hybrid", n: 3, n_out_of_domain: 1,
       points: [
-        { value: 8, max_displacement: 40.1, max_von_mises: 300, max_von_mises_away: 290, out_of_domain: true, exceeds_yield: null, sigma_mpa: null },
-        { value: 10, max_displacement: 24.0, max_von_mises: 210, max_von_mises_away: 200, out_of_domain: false, exceeds_yield: null, sigma_mpa: null },
-        { value: 12, max_displacement: 14.0, max_von_mises: 150, max_von_mises_away: 145, out_of_domain: false, exceeds_yield: null, sigma_mpa: null },
+        { value: 8, max_displacement: 40.1, max_von_mises: 300, max_von_mises_away: 290, out_of_domain: true, violations: ["thickness", "load_fy"], exceeds_yield: null, sigma_mpa: null },
+        { value: 10, max_displacement: 24.0, max_von_mises: 210, max_von_mises_away: 200, out_of_domain: false, violations: [], exceeds_yield: null, sigma_mpa: null },
+        { value: 12, max_displacement: 14.0, max_von_mises: 150, max_von_mises_away: 145, out_of_domain: false, violations: [], exceeds_yield: null, sigma_mpa: null },
       ],
     });
     render(<SurrogatePanel geometryId={1} runId={4} />);
@@ -315,7 +315,7 @@ describe("SurrogatePanel", () => {
       false,
     );
     const table = await screen.findByTestId("sweep-result");
-    expect(table).toHaveTextContent("uzay dışı");
+    expect(table).toHaveTextContent("uzay dışı: T, Fy");
     expect(table).toHaveTextContent("24.000");
   });
 
