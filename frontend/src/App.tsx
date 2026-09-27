@@ -2621,7 +2621,7 @@ function App() {
               <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
               <path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9" />
             </svg>
-            <span className="app-brand-title">SİMÜLASYON TEZGAHI</span>
+            <span className="app-brand-title">SimSurrogate</span>
           </span>
           <span className="app-brand-divider" />
           <span className="toolbar-icon" aria-hidden="true">
