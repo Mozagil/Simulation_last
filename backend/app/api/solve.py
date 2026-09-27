@@ -168,6 +168,10 @@ def _complete_ccx_job(run_id: int) -> None:
         )
         scalars = dict(parsed.scalars or {})
         scalars["_analysis_type"] = analysis_type
+        # Çözüm öncesi yazılan kinematik bayrağı KORUNMALI: eskiden parse
+        # sonucu üzerine yazıp siliyordu → korpus 150 NLGEOM run'ını
+        # "wrong_kinematics" diye atıyordu (DOE 6, 2026-09-27).
+        scalars["_nlgeom"] = bool((run.scalars or {}).get("_nlgeom", False))
         scalars, _note, _runout = _attach_fatigue_and_sf(
             scalars,
             assignments,
@@ -547,6 +551,7 @@ def solve_geometry(
                 result["status"] = "solved"
                 scalars = dict(parsed.scalars or {})
                 scalars["_analysis_type"] = analysis_type
+                scalars["_nlgeom"] = bool(body.nlgeom)  # bkz. _complete_ccx_job
                 scalars, fatigue_note, fatigue_runout = _attach_fatigue_and_sf(
                     scalars,
                     assignments,

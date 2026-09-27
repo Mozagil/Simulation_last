@@ -216,3 +216,48 @@ def test_nlgeom_buyuk_sehim_kesin_cozumle_tutar(tmp_path):
     tip = np.abs(xyz[:, 0] - L) < 1e-6
     assert -u[tip, 1].mean() / L == pytest.approx(0.3017, rel=0.015)
     assert u[tip, 0].mean() / L == pytest.approx(-0.0564, rel=0.05)
+
+
+# --- kinematik bayrağı çözüm tamamlanınca KAYBOLMAMALI (DOE 6 olayı) -----------
+
+
+def test_nlgeom_bayragi_tamamlanmada_korunur(monkeypatch, tmp_path):
+    """Eskiden `_complete_ccx_job` parse sonucunu run.scalars ÜZERİNE yazıp
+    `_nlgeom`'u siliyordu; korpus 150 NLGEOM run'ını lineer sanıp atıyordu."""
+    from types import SimpleNamespace
+
+    import app.api.solve as solve
+
+    run = SimpleNamespace(id=1, inp_path=str(tmp_path / "x.inp"), geometry_id=1,
+                          scalars={"_analysis_type": "static", "_nlgeom": True},
+                          materials_snapshot=[], bcs=[], status="pending", message=None)
+
+    class FakeDB:
+        def get(self, model, rid):
+            return run if model is solve.AnalysisRun else None
+        def query(self, *a):
+            class Q:
+                def options(self, *a): return self
+                def filter(self, *a): return self
+                def all(self): return []
+            return Q()
+        def commit(self): pass
+        def close(self): pass
+
+    class FakeAdapter:
+        def submit(self, art): return SimpleNamespace(artifact=art, work_dir=tmp_path)
+        def poll_status(self, h): return SimpleNamespace(state="done")
+        def parse_results(self, h):
+            return SimpleNamespace(scalars={"max_displacement": 1.0, "_n_increments": 20.0},
+                                   raw_result_path=None, results_preview_path=None)
+
+    monkeypatch.setattr(solve, "SessionLocal", lambda: FakeDB())
+    monkeypatch.setattr(solve, "CalculiXAdapter", FakeAdapter)
+    monkeypatch.setattr(solve, "_attach_fatigue_and_sf", lambda s, *a: (s, None, False))
+    monkeypatch.setattr(solve, "_analytic_comparison_for", lambda *a, **k: None)
+    monkeypatch.setattr(solve, "_stress_probe_for", lambda *a, **k: None)
+    monkeypatch.setattr(solve, "discard_solver_input", lambda r: None)
+    solve._complete_ccx_job(1)
+    assert run.status == "solved"
+    assert run.scalars["_nlgeom"] is True
+    assert run.scalars["_n_increments"] == 20.0

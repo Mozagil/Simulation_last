@@ -272,3 +272,35 @@ def test_sablon_klasoru_eski_dosyaya_oncelikli(tmp_path):
 def test_gecersiz_ad_ya_da_tur_reddedilir(tmp_path, tpl, kind):
     with pytest.raises(ModelStoreError):
         model_path(tpl, kind, root=tmp_path)
+
+
+# --- sabit sütun (tek malzeme) log tasarımına girmez -------------------------
+
+
+def test_sabit_sutun_log_tasariminda_yok_ve_tahmin_sonlu():
+    """Korpus tek E ile eğitildiyse E sütunu sabittir; eskiden katsayı patlıyor,
+    başka E'de tahmin inf oluyordu (kiriş modeli, E=68.9e9)."""
+    import numpy as np
+
+    from app.ml.scalar_loglinear import predict_scalar_loglinear, train_scalar_loglinear
+
+    keys = ("length", "thickness", "width", "element_size", "youngs_modulus", "poisson_ratio",
+            "load_fx", "load_fy", "load_fz", "pressure_mpa", "dimension")
+    rng = np.random.default_rng(1)
+    n = 40
+    L, T, W = rng.uniform(400, 700, n), rng.uniform(10, 16, n), rng.uniform(40, 60, n)
+    F = rng.uniform(40, 220, n)
+    X = np.column_stack([L, T, W, np.full(n, 8.0), np.full(n, 210e9), np.full(n, 0.3),
+                         np.zeros(n), -F, np.zeros(n), np.zeros(n), np.full(n, 3.0)])
+    I = W * T**3 / 12
+    y = np.column_stack([F * L**3 / (3 * 210e3 * I), F * L * T / 2 / I])
+    bundle = train_scalar_loglinear(X, y, feature_keys=keys)
+    assert "youngs_modulus" in bundle["constant_features"]
+    m = bundle["models"]["max_displacement"]
+    e_idx = bundle["design_keys"].index("youngs_modulus")
+    assert m.coef_[e_idx] == 0.0  # sabit sütun: katsayı sıfır, kesişime yedirildi
+    # Eğitim verisinde tahmin bozulmadı; başka E'de sonlu.
+    same = predict_scalar_loglinear(bundle, X[0])["predictions"]["max_displacement"]
+    assert same == pytest.approx(y[0, 0], rel=0.02)
+    x_al = X[0].copy(); x_al[4] = 68.9e9
+    assert np.isfinite(predict_scalar_loglinear(bundle, x_al)["predictions"]["max_displacement"])

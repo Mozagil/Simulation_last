@@ -404,7 +404,37 @@ Eksikler:
       Manifest `spec.nlgeom` taşır; `/scalar/train`, `/corpus/freeze`
       `nlgeom` sorgu parametresi alır. Lineer korpus değişmedi.
       Test: `test_ml_corpus.py` (+3).
-- [ ] NLGEOM ayrı model: eğitim + kıyas (korpus düzeltmesinden sonra)
+- [x] **NLGEOM DOE + model — YAPILDI (2026-09-27).** DOE 6: 150/150
+      çözüldü (disk doluluğu ve CPU çekişmesiyle üç kez duraklatıldı; hepsi
+      yeniden denendi, sonuçta 0 hata). Korpus `kiris-nlgeom-v1` (150/150,
+      u/L 0.10–0.34). Modeller `uploads/models/cantilever_beam/nlgeom/`:
+
+      | model | holdout u_max MAPE | vm_away MAPE |
+      |---|---|---|
+      | hibrit | **0.49%** | 0.77% |
+      | log-log | 0.47% | 0.68% |
+      | RF | 19.4% | 10.8% |
+
+      **Lineer teori vs NLGEOM FEA (aynı 150 tasarım):** lineer sehim
+      ortalama +4.3% fazla (u/L 0.10–0.18: +1.7% · 0.18–0.26: +4.2% ·
+      0.26–0.35: +7.2%, en çok +8.9%). Yani lineer model bu bantta
+      sistematik olarak fazla sehim söyler; NLGEOM modeli %0.5 içinde.
+
+      **İki hata bulundu ve düzeltildi:**
+      1. `_complete_ccx_job` / senkron çözüm parse sonucunu `run.scalars`
+         ÜZERİNE yazıp `_nlgeom`'u siliyordu → korpus 150 run'ı
+         `wrong_kinematics` diye attı. Bayrak korunuyor; DOE 6 run'larına
+         `_n_increments=20` kanıtıyla geriye dolduruldu. Test:
+         `test_nlgeom_bayragi_tamamlanmada_korunur`.
+      2. Tek malzemeli korpusta E sabit → log-log tasarımında kesişimle
+         eşdoğrusal, katsayı anlamsız → başka E'de tahmin `inf` (kiriş
+         lineer modeli alüminyumda; ölçüldü: E katsayısı −1.3e4,
+         root_fillet +1.9e4, kesişim 8.6e5). Düzeltme: uydurmadan sonra
+         sabit tasarım sütunlarının katsayısı sıfırlanır, katkısı kesişime
+         yedirilir — eğitim tahminleri birebir aynı, başka E'de sonlu
+         (çelik varsayımıyla; OOD bayrağı E'yi listeler). Tüm skaler
+         modeller yeniden eğitildi, yedek alındı. Test:
+         `test_sabit_sutun_log_tasariminda_yok_ve_tahmin_sonlu`.
 
 **Doğrulama vakası** (hesaplandı): çelikte akmadan büyük deformasyona
 ulaşmak için L/T ≈ 168 gerekiyor — çok narin. Alüminyum pratik:

@@ -135,6 +135,13 @@ def to_log_features(X: np.ndarray, spec: dict[str, Any] | None = None) -> np.nda
     return np.column_stack(cols)
 
 
+def _constant_design_indices(design: np.ndarray, rtol: float = 1e-9) -> list[int]:
+    """Log tasarım matrisinde değişmeyen sütunların indeksleri."""
+    if design.size == 0:
+        return []
+    return [j for j in range(design.shape[1]) if float(np.ptp(design[:, j])) <= rtol]
+
+
 def constant_columns(
     X: np.ndarray, *, spec: dict[str, Any] | None = None, rtol: float = 1e-4
 ) -> list[str]:
@@ -314,6 +321,15 @@ def train_scalar_loglinear(
         model = LinearRegression()
         target = np.log(y_tr[ok, i])
         model.fit(A_tr[ok], target)
+        # SABİT sütunların katsayısı anlamsızdır ve sayısal olarak devasa
+        # çıkabiliyor (ölçüldü, kiriş kiris-v2: E −1.3e4, root_fillet
+        # +1.9e4, kesişim 8.6e5). Eğitim verisinde birbirini götürür ama
+        # başka bir E ile tahmin exp'de taşar → `inf`. Katsayı sıfırlanır,
+        # katkısı kesişime yedirilir: eğitim tahminleri birebir aynı kalır,
+        # sabit özellikte dış değerleme yapılmaz (OOD bayrağı söyler).
+        for j in _constant_design_indices(A_tr[ok]):
+            model.intercept_ += float(model.coef_[j]) * float(A_tr[ok][0, j])
+            model.coef_[j] = 0.0
         models[key] = model
         log_tr = model.predict(A_tr)
         rf = None
