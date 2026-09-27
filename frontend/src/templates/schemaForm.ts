@@ -26,6 +26,8 @@ export interface SchemaNumberField {
   unit: string | null;
   defaultValue: number;
   exclusiveMin: number | null;
+  /** Şemada `optional: true` — sonradan eklenen, formda ikinci planda kalan alan. */
+  optional: boolean;
 }
 
 export function numberFieldsFromSchema(schema: JsonSchema): SchemaNumberField[] {
@@ -40,6 +42,7 @@ export function numberFieldsFromSchema(schema: JsonSchema): SchemaNumberField[] 
       unit: p.unit ?? null,
       defaultValue: typeof p.default === "number" ? p.default : 0,
       exclusiveMin: typeof p.exclusiveMinimum === "number" ? p.exclusiveMinimum : null,
+      optional: (p as { optional?: boolean }).optional === true,
     }));
 }
 

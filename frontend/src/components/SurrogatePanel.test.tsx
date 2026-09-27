@@ -127,7 +127,7 @@ describe("SurrogatePanel", () => {
       target: { value: "520" },
     });
     fireEvent.change(screen.getByLabelText("Fy (N)"), { target: { value: "-400" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Parametreyle tahmin" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Tahmin et" }));
     await waitFor(() => expect(predictFromParams).toHaveBeenCalledTimes(1));
     expect(predictFromParams).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -254,7 +254,7 @@ describe("SurrogatePanel", () => {
     );
 
     // RF'e geçilince üs tablosu kalkar ve eğitim o türe gider.
-    fireEvent.change(screen.getByLabelText("Skaler model"), { target: { value: "rf" } });
+    fireEvent.change(screen.getByLabelText("Model türü"), { target: { value: "rf" } });
     expect(screen.queryByText(/Öğrenilen üsler/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Random Forest eğit" }));
     await waitFor(() =>
@@ -266,7 +266,7 @@ describe("SurrogatePanel", () => {
     vi.mocked(trainScalarRf).mockResolvedValue({ n_samples: 12, metrics: {} });
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: /Hibrit .* eğit/ });
-    fireEvent.click(screen.getByLabelText(/NLGEOM .büyük deformasyon. modeli/));
+    fireEvent.change(screen.getByLabelText("Kinematik"), { target: { value: "nlgeom" } });
     await waitFor(() =>
       expect(fetchSurrogateStatus).toHaveBeenLastCalledWith("cantilever_beam", true),
     );
@@ -279,9 +279,9 @@ describe("SurrogatePanel", () => {
   it("NLGEOM modeli yokken not gösterir ve tahmin butonu kapalı", async () => {
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: /Hibrit .* eğit/ });
-    fireEvent.click(screen.getByLabelText(/NLGEOM .büyük deformasyon. modeli/));
+    fireEvent.change(screen.getByLabelText("Kinematik"), { target: { value: "nlgeom" } });
     expect(await screen.findByTestId("nlgeom-model-missing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Parametreyle tahmin" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tahmin et" })).toBeDisabled();
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {
@@ -376,7 +376,7 @@ describe("SurrogatePanel — şablona göre tahmin", () => {
     fireEvent.change(await screen.findByLabelText(/d · Delik çapı/), {
       target: { value: "24" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Parametreyle tahmin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tahmin et" }));
 
     await waitFor(() => expect(predictFromParams).toHaveBeenCalledTimes(1));
     const [body, kind] = vi.mocked(predictFromParams).mock.calls[0];
@@ -394,8 +394,8 @@ describe("SurrogatePanel — şablona göre tahmin", () => {
       field_gnn: null,
     });
     render(<SurrogatePanel />);
-    const select = (await screen.findByLabelText("Skaler model")) as HTMLSelectElement;
+    const select = (await screen.findByLabelText("Model türü")) as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe("rf"));
-    expect(screen.getByRole("button", { name: "Parametreyle tahmin" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Tahmin et" })).toBeEnabled();
   });
 });

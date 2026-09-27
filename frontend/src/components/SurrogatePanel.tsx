@@ -394,188 +394,19 @@ export default function SurrogatePanel({
 
   return (
     <div className="panel dataset-panel">
-      <span className="eyebrow">Faz 0.5 · Surrogate</span>
+      <span className="eyebrow">Surrogate</span>
       <h1>Hızlı tahmin</h1>
       <p className="lead">
-        Çözülmüş run&apos;lar modeli eğitir. Aşağıdaki L/T/W ve yük <em>yeni</em>{" "}
-        bir tasarım içindir — ccx çalışmaz. Skaler RF kontur üretmez; GNN alan
-        modeli ayrı. Tahmin tam çözüm değildir.
+        Eğitilmiş model, yeni bir tasarım için sonucu ccx çalıştırmadan verir.
+        Tahmin tam çözüm değildir; eğitim uzayı dışında bayrakla döner.
       </p>
 
-      <label className="dataset-filter">
-        <input
-          type="checkbox"
-          checked={nlgeom}
-          disabled={busy !== null}
-          onChange={(e) => setNlgeom(e.target.checked)}
-        />
-        NLGEOM (büyük deformasyon) modeli — ayrı korpus, ayrı dosya
-      </label>
-      {nlgeom && !active && (
-        <p className="material-assign-hint" data-testid="nlgeom-model-missing">
-          Bu şablonda NLGEOM modeli eğitilmedi — önce NLGEOM korpusuyla eğit; tahmin
-          lineer modele düşmez.
-        </p>
-      )}
-
-      <label className="mesh-field">
-        <span>Skaler model</span>
-        <select
-          value={scalarModel}
-          disabled={busy !== null}
-          onChange={(e) => setScalarModel(e.target.value as ScalarModelKind)}
-        >
-          {(["hybrid", "loglinear", "rf"] as ScalarModelKind[]).map((k) => (
-            <option key={k} value={k}>
-              {MODEL_LABEL[k]}
-              {byKind[k] ? ` · ${byKind[k]?.n_samples} örnek` : " · eğitilmedi"}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="dataset-stats">
-        <div>
-          <strong>{active?.n_samples ?? "—"}</strong>
-          <span>{MODEL_LABEL[scalarModel]} örnek</span>
-        </div>
-        <div>
-          <strong>
-            {active?.has_holdout
-              ? fmtR2(active?.metrics?.test?.max_displacement?.r2)
-              : fmtR2(active?.metrics?.train?.max_displacement?.r2)}
-          </strong>
-          <span>{active?.has_holdout ? "test R² disp" : "eğitim R² disp (holdout yok)"}</span>
-        </div>
-        <div>
-          <strong>{fmtPct((active?.metrics?.test?.max_displacement?.mape ?? NaN) * 100)}</strong>
-          <span>test MAPE disp</span>
-        </div>
-        <div>
-          <strong>{gnn?.n_samples ?? "—"}</strong>
-          <span>GNN graf</span>
-        </div>
-      </div>
-
-      {scalarModel !== "rf" && active?.exponents?.max_displacement && (
-        <details className="surrogate-exponents">
-          <summary>
-            Öğrenilen üsler — deplasman (log-log modelin katsayıları)
-          </summary>
-          <table className="doe-table">
-            <thead>
-              <tr>
-                <th>özellik</th>
-                <th>üs</th>
-                <th>okunabilir mi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {active.exponents.max_displacement.map((e) => (
-                <tr key={e.feature} className={e.identifiable ? undefined : "doe-table-row-flagged"}>
-                  <td>{e.feature}</td>
-                  <td>{e.exponent.toFixed(4)}</td>
-                  <td>{e.identifiable ? "evet" : (e.reason ?? "hayır")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="filename">
-            Bir sütun korpus boyunca sabitse ya da başka bir sütunla eşdoğrusalsa
-            katsayısı &quot;üs&quot; olarak okunamaz — tahmin bundan zarar görmez,
-            yorum görür.
-          </p>
-        </details>
-      )}
-
-      <p className="material-assignments-title">Eğitim seti</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>Kullanılan set</span>
-          <select value={corpus} onChange={(e) => setCorpus(e.target.value)}>
-            <option value="">Canlı süzgeç (dondurulmamış)</option>
-            {corpora.map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.name} · {c.n_runs} run{c.n_manual > 0 ? ` (+${c.n_manual} manuel)` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mesh-field">
-          <span>Yeni set adı</span>
-          <input value={newCorpusName} onChange={(e) => setNewCorpusName(e.target.value)} />
-        </label>
-        <div className="mesh-field">
-          <span>&nbsp;</span>
-          <button
-            type="button"
-            className="material-secondary-button"
-            disabled={busy !== null || newCorpusName.trim() === ""}
-            onClick={() => void handleFreeze()}
-          >
-            {busy === "freeze" ? "Donduruluyor…" : "Seti dondur"}
-          </button>
-        </div>
-      </div>
-
-      {corpus && (
-        <div className="doe-actions">
-          <button
-            type="button"
-            className="material-secondary-button"
-            disabled={busy !== null || runId == null}
-            onClick={() => void handleEvaluate()}
-          >
-            {busy === "evaluate"
-              ? "Bakılıyor…"
-              : runId == null
-                ? "Açık run yok"
-                : `Run ${runId} karnesi`}
-          </button>
-        </div>
-      )}
-
-      {verdict && (
-        <div className="surrogate-pred-table">
-          <div className="results-stats-row">
-            <span>Run {verdict.run_id}</span>
-            <strong>{verdict.ok ? "süzgeci geçti" : reasonText(verdict.reason)}</strong>
-          </div>
-          <div className="results-stats-row">
-            <span>u / L</span>
-            <strong>{verdict.u_over_L != null ? verdict.u_over_L.toFixed(3) : "—"}</strong>
-          </div>
-          <div className="results-stats-row">
-            <span>Mesh sapması</span>
-            <strong>
-              {verdict.mesh_deviation != null ? fmtPct(verdict.mesh_deviation * 100) : "—"}
-            </strong>
-          </div>
-          <div className="doe-actions">
-            <button
-              type="button"
-              className="material-assign-button"
-              disabled={busy !== null}
-              onClick={() => void handleAddToCorpus(!verdict.ok)}
-            >
-              {busy === "add"
-                ? "Ekleniyor…"
-                : verdict.ok
-                  ? "Sete ekle"
-                  : "Yine de ekle (override)"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <p className="material-assignments-title">Yeni tasarım (ccx yok)</p>
+      {/* ── 1 · Model ─────────────────────────────────────────────── */}
+      <p className="material-assignments-title">1 · Model</p>
       <div className="mesh-grid">
         <label className="mesh-field">
           <span>Şablon</span>
-          <select
-            value={predictTemplate}
-            onChange={(e) => setPredictTemplate(e.target.value)}
-          >
+          <select value={predictTemplate} onChange={(e) => setPredictTemplate(e.target.value)}>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -586,7 +417,55 @@ export default function SurrogatePanel({
             ))}
           </select>
         </label>
-        {predictFields.map((f) => (
+        <label className="mesh-field">
+          <span>Kinematik</span>
+          <select
+            value={nlgeom ? "nlgeom" : "linear"}
+            disabled={busy !== null}
+            onChange={(e) => setNlgeom(e.target.value === "nlgeom")}
+            title="Lineer: küçük deformasyon (u/L < 0.10). NLGEOM: büyük deformasyon — ayrı korpus, ayrı model."
+          >
+            <option value="linear">Lineer (küçük deformasyon)</option>
+            <option value="nlgeom">NLGEOM (büyük deformasyon)</option>
+          </select>
+        </label>
+        <label className="mesh-field">
+          <span>Model türü</span>
+          <select
+            value={scalarModel}
+            disabled={busy !== null}
+            onChange={(e) => setScalarModel(e.target.value as ScalarModelKind)}
+          >
+            {(["hybrid", "loglinear", "rf"] as ScalarModelKind[]).map((k) => (
+              <option key={k} value={k}>
+                {MODEL_LABEL[k]}
+                {byKind[k] ? ` · ${byKind[k]?.n_samples} örnek` : " · eğitilmedi"}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {active ? (
+        <p className="material-assign-hint" data-testid="model-status-line">
+          {MODEL_LABEL[scalarModel]} · {active.n_samples} örnek ·{" "}
+          {active.has_holdout
+            ? `holdout u_max MAPE ${fmtPct((active.metrics?.test?.max_displacement?.mape ?? NaN) * 100)} · R² ${fmtR2(active.metrics?.test?.max_displacement?.r2)}`
+            : `holdout yok · eğitim R² ${fmtR2(active.metrics?.train?.max_displacement?.r2)}`}
+          {nlgeom ? " · NLGEOM" : " · lineer"}
+        </p>
+      ) : nlgeom ? (
+        <p className="material-assign-hint" data-testid="nlgeom-model-missing">
+          Bu şablonda NLGEOM modeli eğitilmedi — 3 · Eğitim bölümünden NLGEOM korpusuyla eğit;
+          tahmin lineer modele düşmez.
+        </p>
+      ) : (
+        <p className="material-assign-hint">Bu şablonda model eğitilmedi — 3 · Eğitim bölümüne bak.</p>
+      )}
+
+      {/* ── 2 · Tahmin ────────────────────────────────────────────── */}
+      <p className="material-assignments-title">2 · Tahmin</p>
+      <div className="mesh-grid">
+        {predictFields.filter((f) => !f.optional).map((f) => (
           <label className="mesh-field" key={f.name}>
             <span>
               {f.symbol ? `${f.symbol} · ` : ""}
@@ -600,16 +479,8 @@ export default function SurrogatePanel({
           </label>
         ))}
         <label className="mesh-field">
-          <span>Eleman (mm)</span>
-          <input value={elementSize} onChange={(e) => setElementSize(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>E (Pa)</span>
-          <input value={youngs} onChange={(e) => setYoungs(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>ν</span>
-          <input value={poisson} onChange={(e) => setPoisson(e.target.value)} />
+          <span>Fy (N)</span>
+          <input value={fy} onChange={(e) => setFy(e.target.value)} />
         </label>
         <label className="mesh-field">
           <span>Malzeme (akma kontrolü)</span>
@@ -626,31 +497,57 @@ export default function SurrogatePanel({
             ))}
           </select>
         </label>
-        <label className="mesh-field">
-          <span>Akma gerilmesi</span>
-          <select
-            value={stressSource}
-            onChange={(e) => setStressSource(e.target.value as "auto" | "away" | "peak")}
-            title="Maskeli: kısıttan 1×T uzakta (tekillik dışarıda, kirişte teoriye ±%1). Ham tepe: mesh'teki en yüksek değer, tekillik dahil (kirişte ~%10 yüksek)."
-          >
-            <option value="auto">otomatik (maskeli varsa)</option>
-            <option value="away">maskeli (tekillik dışı)</option>
-            <option value="peak">ham tepe (tekillik dahil)</option>
-          </select>
-        </label>
-        <label className="mesh-field">
-          <span>Fx (N)</span>
-          <input value={fx} onChange={(e) => setFx(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Fy (N)</span>
-          <input value={fy} onChange={(e) => setFy(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Fz (N)</span>
-          <input value={fz} onChange={(e) => setFz(e.target.value)} />
-        </label>
       </div>
+      <details className="surrogate-exponents">
+        <summary>Diğer yük bileşenleri, isteğe bağlı geometri, malzeme sabitleri, mesh, akma ölçütü</summary>
+        <div className="mesh-grid">
+          {predictFields.filter((f) => f.optional).map((f) => (
+            <label className="mesh-field" key={f.name}>
+              <span>
+                {f.symbol ? `${f.symbol} · ` : ""}
+                {f.label}
+                {f.unit ? ` (${f.unit})` : ""}
+              </span>
+              <input
+                value={params[f.name] ?? String(f.defaultValue)}
+                onChange={(e) => setParams((p) => ({ ...p, [f.name]: e.target.value }))}
+              />
+            </label>
+          ))}
+          <label className="mesh-field">
+            <span>Fx (N)</span>
+            <input value={fx} onChange={(e) => setFx(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Fz (N)</span>
+            <input value={fz} onChange={(e) => setFz(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>E (Pa)</span>
+            <input value={youngs} onChange={(e) => setYoungs(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>ν</span>
+            <input value={poisson} onChange={(e) => setPoisson(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Eleman (mm)</span>
+            <input value={elementSize} onChange={(e) => setElementSize(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Akma gerilmesi</span>
+            <select
+              value={stressSource}
+              onChange={(e) => setStressSource(e.target.value as "auto" | "away" | "peak")}
+              title="Maskeli: kısıttan 1×T uzakta (tekillik dışarıda, kirişte teoriye ±%1). Ham tepe: mesh'teki en yüksek değer, tekillik dahil (kirişte ~%10 yüksek)."
+            >
+              <option value="auto">otomatik (maskeli varsa)</option>
+              <option value="away">maskeli (tekillik dışı)</option>
+              <option value="peak">ham tepe (tekillik dahil)</option>
+            </select>
+          </label>
+        </div>
+      </details>
       <label className="dataset-filter">
         <input
           type="checkbox"
@@ -660,7 +557,6 @@ export default function SurrogatePanel({
         />
         Açık run ile FEA kıyasla{runId == null ? " (run yok)" : ` (run ${runId})`}
       </label>
-
       <div className="doe-actions">
         <button
           type="button"
@@ -668,42 +564,8 @@ export default function SurrogatePanel({
           disabled={!canParamsPredict}
           onClick={() => void handleParamsPredict()}
         >
-          {busy === "params" ? "Tahmin…" : "Parametreyle tahmin"}
+          {busy === "params" ? "Tahmin…" : "Tahmin et"}
         </button>
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={busy !== null}
-          onClick={() => void handleTrainRf()}
-        >
-          {busy === "rf" ? "Eğitiliyor…" : `${MODEL_LABEL[scalarModel]} eğit`}
-        </button>
-        <button
-          type="button"
-          className="material-secondary-button"
-          disabled={busy !== null}
-          onClick={() => void handleTrainGnn()}
-        >
-          {busy === "gnn" ? "Eğitiliyor…" : "GNN eğit (prototip)"}
-        </button>
-        <button
-          type="button"
-          className="material-secondary-button"
-          disabled={busy !== null || !canRunPredict}
-          onClick={() => void handlePredict()}
-        >
-          {busy === "pred" ? "Tahmin…" : "Açık run tahmini"}
-        </button>
-      </div>
-
-      {/* TODO 1.3b: başarı ölçütü (holdout u_max hatası < %5) tutmadı. */}
-      <div className="predict-warning" role="note" data-testid="gnn-prototype-note">
-        <strong>GNN alan modeli prototip — sonuçlar geçersiz</strong>
-        <span className="predict-warning-note">
-          Başarı ölçütü (holdout u_max hatası &lt; %5) karşılanmadı. Açık run
-          tahmini GNN varken kontur olarak onun çıktısını gösterir.
-          {gnnHoldoutUmax != null && ` Son eğitim holdout u_max RMSE: ${fmtNum(gnnHoldoutUmax)} mm.`}
-        </span>
       </div>
 
       {pred && (
@@ -807,6 +669,179 @@ export default function SurrogatePanel({
 
       {message && <p className="dataset-message">{message}</p>}
       {error && <p className="dataset-error">{error}</p>}
+      {/* ── 3 · Eğitim (gelişmiş) ─────────────────────────────────── */}
+      <details className="surrogate-exponents" data-testid="training-section">
+        <summary>3 · Eğitim (gelişmiş) — set, eğit, GNN, açık run</summary>
+        <div className="dataset-stats">
+          <div>
+            <strong>{active?.n_samples ?? "—"}</strong>
+            <span>{MODEL_LABEL[scalarModel]} örnek</span>
+          </div>
+          <div>
+            <strong>
+              {active?.has_holdout
+                ? fmtR2(active?.metrics?.test?.max_displacement?.r2)
+                : fmtR2(active?.metrics?.train?.max_displacement?.r2)}
+            </strong>
+            <span>{active?.has_holdout ? "test R² disp" : "eğitim R² disp (holdout yok)"}</span>
+          </div>
+          <div>
+            <strong>{fmtPct((active?.metrics?.test?.max_displacement?.mape ?? NaN) * 100)}</strong>
+            <span>test MAPE disp</span>
+          </div>
+          <div>
+            <strong>{gnn?.n_samples ?? "—"}</strong>
+            <span>GNN graf</span>
+          </div>
+        </div>
+
+        {scalarModel !== "rf" && active?.exponents?.max_displacement && (
+          <details className="surrogate-exponents">
+            <summary>Öğrenilen üsler — deplasman (log-log modelin katsayıları)</summary>
+            <table className="doe-table">
+              <thead>
+                <tr>
+                  <th>özellik</th>
+                  <th>üs</th>
+                  <th>okunabilir mi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {active.exponents.max_displacement.map((e) => (
+                  <tr key={e.feature} className={e.identifiable ? undefined : "doe-table-row-flagged"}>
+                    <td>{e.feature}</td>
+                    <td>{e.exponent == null ? "—" : e.exponent.toFixed(4)}</td>
+                    <td>{e.identifiable ? "evet" : (e.reason ?? "hayır")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="filename">
+              Bir sütun korpus boyunca sabitse ya da başka bir sütunla eşdoğrusalsa
+              katsayısı &quot;üs&quot; olarak okunamaz — tahmin bundan zarar görmez,
+              yorum görür.
+            </p>
+          </details>
+        )}
+
+        <p className="material-assignments-title">Eğitim seti</p>
+        <div className="mesh-grid">
+          <label className="mesh-field">
+            <span>Kullanılan set</span>
+            <select value={corpus} onChange={(e) => setCorpus(e.target.value)}>
+              <option value="">Canlı süzgeç (dondurulmamış)</option>
+              {corpora.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name} · {c.n_runs} run{c.n_manual > 0 ? ` (+${c.n_manual} manuel)` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mesh-field">
+            <span>Yeni set adı</span>
+            <input value={newCorpusName} onChange={(e) => setNewCorpusName(e.target.value)} />
+          </label>
+          <div className="mesh-field">
+            <span>&nbsp;</span>
+            <button
+              type="button"
+              className="material-secondary-button"
+              disabled={busy !== null || newCorpusName.trim() === ""}
+              onClick={() => void handleFreeze()}
+            >
+              {busy === "freeze" ? "Donduruluyor…" : "Seti dondur"}
+            </button>
+          </div>
+        </div>
+
+        {corpus && (
+          <div className="doe-actions">
+            <button
+              type="button"
+              className="material-secondary-button"
+              disabled={busy !== null || runId == null}
+              onClick={() => void handleEvaluate()}
+            >
+              {busy === "evaluate"
+                ? "Bakılıyor…"
+                : runId == null
+                  ? "Açık run yok"
+                  : `Run ${runId} karnesi`}
+            </button>
+          </div>
+        )}
+
+        {verdict && (
+          <div className="surrogate-pred-table">
+            <div className="results-stats-row">
+              <span>Run {verdict.run_id}</span>
+              <strong>{verdict.ok ? "süzgeci geçti" : reasonText(verdict.reason)}</strong>
+            </div>
+            <div className="results-stats-row">
+              <span>u / L</span>
+              <strong>{verdict.u_over_L != null ? verdict.u_over_L.toFixed(3) : "—"}</strong>
+            </div>
+            <div className="results-stats-row">
+              <span>Mesh sapması</span>
+              <strong>
+                {verdict.mesh_deviation != null ? fmtPct(verdict.mesh_deviation * 100) : "—"}
+              </strong>
+            </div>
+            <div className="doe-actions">
+              <button
+                type="button"
+                className="material-assign-button"
+                disabled={busy !== null}
+                onClick={() => void handleAddToCorpus(!verdict.ok)}
+              >
+                {busy === "add"
+                  ? "Ekleniyor…"
+                  : verdict.ok
+                    ? "Sete ekle"
+                    : "Yine de ekle (override)"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="doe-actions">
+          <button
+            type="button"
+            className="material-assign-button"
+            disabled={busy !== null}
+            onClick={() => void handleTrainRf()}
+          >
+            {busy === "rf" ? "Eğitiliyor…" : `${MODEL_LABEL[scalarModel]} eğit`}
+          </button>
+          <button
+            type="button"
+            className="material-secondary-button"
+            disabled={busy !== null}
+            onClick={() => void handleTrainGnn()}
+          >
+            {busy === "gnn" ? "Eğitiliyor…" : "GNN eğit (prototip)"}
+          </button>
+          <button
+            type="button"
+            className="material-secondary-button"
+            disabled={busy !== null || !canRunPredict}
+            onClick={() => void handlePredict()}
+          >
+            {busy === "pred" ? "Tahmin…" : "Açık run tahmini"}
+          </button>
+        </div>
+
+        {/* TODO 1.3b: başarı ölçütü (holdout u_max hatası < %5) tutmadı. */}
+        <div className="predict-warning" role="note" data-testid="gnn-prototype-note">
+          <strong>GNN alan modeli prototip — sonuçlar geçersiz</strong>
+          <span className="predict-warning-note">
+            Başarı ölçütü (holdout u_max hatası &lt; %5) karşılanmadı. Açık run
+            tahmini GNN varken kontur olarak onun çıktısını gösterir.
+            {gnnHoldoutUmax != null && ` Son eğitim holdout u_max RMSE: ${fmtNum(gnnHoldoutUmax)} mm.`}
+          </span>
+        </div>
+      </details>
+
     </div>
   );
 }
