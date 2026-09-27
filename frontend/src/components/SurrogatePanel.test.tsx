@@ -14,6 +14,7 @@ vi.mock("../api/surrogate", () => ({
   trainFieldGnn: vi.fn(),
   predictSurrogate: vi.fn(),
   predictFromParams: vi.fn(),
+  predictSweep: vi.fn(),
 }));
 
 import {
@@ -24,6 +25,7 @@ import {
   freezeCorpus,
   predictFromParams,
   predictSurrogate,
+  predictSweep,
   trainScalarRf,
 } from "../api/surrogate";
 import { fetchTemplates } from "../api/templates";
@@ -282,6 +284,39 @@ describe("SurrogatePanel", () => {
     fireEvent.change(screen.getByLabelText("Kinematik"), { target: { value: "nlgeom" } });
     expect(await screen.findByTestId("nlgeom-model-missing")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tahmin et" })).toBeDisabled();
+  });
+
+  it("toplu tarama parametre/aralık ile ister ve tabloyu gösterir", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null, scalar_loglinear: null,
+      scalar_hybrid: { n_samples: 192, has_holdout: true, metrics: { test: { max_displacement: { r2: 0.99, mae: 0.1, mape: 0.002 } } } },
+      templates: {}, field_gnn: null,
+    });
+    vi.mocked(predictSweep).mockResolvedValue({
+      kind: "sweep", template_id: "cantilever_beam", sweep_param: "thickness", nlgeom: false,
+      model_kind: "hybrid", n: 3, n_out_of_domain: 1,
+      points: [
+        { value: 8, max_displacement: 40.1, max_von_mises: 300, max_von_mises_away: 290, out_of_domain: true, exceeds_yield: null, sigma_mpa: null },
+        { value: 10, max_displacement: 24.0, max_von_mises: 210, max_von_mises_away: 200, out_of_domain: false, exceeds_yield: null, sigma_mpa: null },
+        { value: 12, max_displacement: 14.0, max_von_mises: 150, max_von_mises_away: 145, out_of_domain: false, exceeds_yield: null, sigma_mpa: null },
+      ],
+    });
+    render(<SurrogatePanel geometryId={1} runId={4} />);
+    await screen.findByRole("button", { name: "Tahmin et" });
+    fireEvent.change(screen.getByLabelText("Parametre"), { target: { value: "thickness" } });
+    fireEvent.change(screen.getByLabelText("Min"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Max"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Adım sayısı (2–200)"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tara" }));
+    await waitFor(() => expect(predictSweep).toHaveBeenCalledTimes(1));
+    expect(predictSweep).toHaveBeenCalledWith(
+      expect.objectContaining({ template_id: "cantilever_beam", sweep_param: "thickness", sweep_min: 8, sweep_max: 12, sweep_n: 3 }),
+      "hybrid",
+      false,
+    );
+    const table = await screen.findByTestId("sweep-result");
+    expect(table).toHaveTextContent("uzay dışı");
+    expect(table).toHaveTextContent("24.000");
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {

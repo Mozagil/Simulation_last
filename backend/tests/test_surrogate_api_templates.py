@@ -272,3 +272,31 @@ def test_akma_gerilmesi_kaynagi_secilebilir(db, store_root):
     assert away["yield_check"] is None
     with pytest.raises(Exception):
         ParamPredictBody(**base, stress_source="tepe")
+
+
+# --- toplu tarama ---------------------------------------------------------------
+
+
+def test_toplu_tarama_n_nokta_ve_bayraklar(db, store_root):
+    from app.api.surrogate import SweepBody, predict_sweep
+
+    store.save_model(PLATE, "hybrid", _fake_plate_bundle(), root=store_root)
+    body = SweepBody(template_id=PLATE, params={"height": 200, "width": 100, "thickness": 6, "diameter": 20},
+                     load_fx=20000.0, sweep_param="thickness", sweep_min=4.0, sweep_max=12.0, sweep_n=5)
+    out = predict_sweep(body=body, db=db, model="auto")
+    assert out["n"] == 5 and out["model_kind"] == "hybrid" and out["sweep_param"] == "thickness"
+    vals = [p["value"] for p in out["points"]]
+    assert vals == pytest.approx([4, 6, 8, 10, 12])
+    # Kalınlık artınca sehim düşmeli (sahte model F·H/(E·W·T)).
+    u = [p["max_displacement"] for p in out["points"]]
+    assert u[0] > u[-1] > 0
+    assert all(isinstance(p["out_of_domain"], bool) for p in out["points"])
+
+    # Yük de taranabilir; geçersiz aralık / bilinmeyen parametre açık hata.
+    load = predict_sweep(body=SweepBody(**{**body.model_dump(exclude={"sweep_param", "sweep_min", "sweep_max"}),
+                                          "sweep_param": "load_fx", "sweep_min": 1e4, "sweep_max": 3e4}), db=db)
+    assert load["n"] == 5 and load["points"][-1]["max_displacement"] > load["points"][0]["max_displacement"]
+    with pytest.raises(Exception, match="büyük olmalı"):
+        predict_sweep(body=SweepBody(**{**body.model_dump(exclude={"sweep_min", "sweep_max"}), "sweep_min": 5.0, "sweep_max": 5.0}), db=db)
+    with pytest.raises(Exception, match="taranamaz"):
+        predict_sweep(body=SweepBody(**{**body.model_dump(exclude={"sweep_param"}), "sweep_param": "yok"}), db=db)

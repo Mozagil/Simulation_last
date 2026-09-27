@@ -9,6 +9,8 @@ import {
   fetchSurrogateStatus,
   freezeCorpus,
   predictFromParams,
+  predictSweep,
+  type SweepResult,
   predictSurrogate,
   trainFieldGnn,
   trainScalarRf,
@@ -95,8 +97,14 @@ export default function SurrogatePanel({
 }) {
   const [status, setStatus] = useState<SurrogateStatus | null>(null);
   const [busy, setBusy] = useState<
-    "rf" | "gnn" | "pred" | "params" | "freeze" | "evaluate" | "add" | null
+    "rf" | "gnn" | "pred" | "params" | "sweep" | "freeze" | "evaluate" | "add" | null
   >(null);
+  // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
+  const [sweepParam, setSweepParam] = useState<string>("");
+  const [sweepMin, setSweepMin] = useState("");
+  const [sweepMax, setSweepMax] = useState("");
+  const [sweepN, setSweepN] = useState("20");
+  const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
   const [corpora, setCorpora] = useState<CorpusListItem[]>([]);
   const [corpus, setCorpus] = useState<string>("");
   const [newCorpusName, setNewCorpusName] = useState("kiris-v1");
@@ -319,6 +327,55 @@ export default function SurrogatePanel({
       onPrediction?.(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Tahmin başarısız.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function paramPredictBody() {
+    return {
+      template_id: predictTemplate,
+      params: Object.fromEntries(
+        Object.entries(params).map(([k, v]) => [k, num(v)]),
+      ),
+      element_size: num(elementSize),
+      youngs_modulus: num(youngs),
+      poisson_ratio: num(poisson),
+      load_fx: num(fx),
+      load_fy: num(fy),
+      load_fz: num(fz),
+      pressure_mpa: 0,
+      dimension: 3,
+      material_id: materialId ? Number(materialId) : undefined,
+      stress_source: stressSource,
+    };
+  }
+
+  async function handleSweep() {
+    if (!sweepParam) return;
+    setBusy("sweep");
+    setError(null);
+    setMessage(null);
+    setSweepResult(null);
+    try {
+      const result = await predictSweep(
+        {
+          ...paramPredictBody(),
+          sweep_param: sweepParam,
+          sweep_min: num(sweepMin),
+          sweep_max: num(sweepMax),
+          sweep_n: Math.max(2, Math.min(200, Math.round(num(sweepN)))),
+        },
+        scalarModel,
+        nlgeom,
+      );
+      setSweepResult(result);
+      setMessage(
+        `Tarama: ${result.n} nokta · ${result.sweep_param}` +
+          (result.n_out_of_domain > 0 ? ` · ${result.n_out_of_domain} nokta eğitim uzayı dışı` : ""),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Toplu tarama başarısız.");
     } finally {
       setBusy(null);
     }
@@ -669,6 +726,86 @@ export default function SurrogatePanel({
 
       {message && <p className="dataset-message">{message}</p>}
       {error && <p className="dataset-error">{error}</p>}
+      {/* ── Toplu tarama (2 · Tahmin'in devamı) ───────────────────── */}
+      <details className="surrogate-exponents" data-testid="sweep-section">
+        <summary>Toplu tarama — bir parametreyi aralıkta değiştir, N tahmin tek seferde</summary>
+        <div className="mesh-grid">
+          <label className="mesh-field">
+            <span>Parametre</span>
+            <select value={sweepParam} onChange={(e) => setSweepParam(e.target.value)}>
+              <option value="">— seç —</option>
+              {predictFields.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.symbol ? `${f.symbol} · ` : ""}
+                  {f.label}
+                </option>
+              ))}
+              <option value="load_fy">Fy (N)</option>
+              <option value="load_fx">Fx (N)</option>
+              <option value="load_fz">Fz (N)</option>
+              <option value="element_size">Eleman (mm)</option>
+            </select>
+          </label>
+          <label className="mesh-field">
+            <span>Min</span>
+            <input value={sweepMin} onChange={(e) => setSweepMin(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Max</span>
+            <input value={sweepMax} onChange={(e) => setSweepMax(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Adım sayısı (2–200)</span>
+            <input value={sweepN} onChange={(e) => setSweepN(e.target.value)} />
+          </label>
+        </div>
+        <div className="doe-actions">
+          <button
+            type="button"
+            className="material-assign-button"
+            disabled={!canParamsPredict || !sweepParam || sweepMin === "" || sweepMax === ""}
+            onClick={() => void handleSweep()}
+          >
+            {busy === "sweep" ? "Taranıyor…" : "Tara"}
+          </button>
+        </div>
+        {sweepResult && sweepResult.points.length > 0 && (
+          <div className="surrogate-pred-table" data-testid="sweep-result">
+            <SweepChart result={sweepResult} />
+            <table className="doe-table">
+              <thead>
+                <tr>
+                  <th>{sweepResult.sweep_param}</th>
+                  <th>u_max (mm)</th>
+                  <th>σ_max (MPa)</th>
+                  <th>durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sweepResult.points.map((p) => (
+                  <tr
+                    key={p.value}
+                    className={p.out_of_domain || p.exceeds_yield ? "doe-table-row-flagged" : undefined}
+                  >
+                    <td>{fmtNum(p.value)}</td>
+                    <td>{fmtNum(p.max_displacement)}</td>
+                    <td>{fmtNum(p.max_von_mises)}</td>
+                    <td>
+                      {[
+                        p.out_of_domain ? "uzay dışı" : null,
+                        p.exceeds_yield ? "akıyor" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </details>
+
       {/* ── 3 · Eğitim (gelişmiş) ─────────────────────────────────── */}
       <details className="surrogate-exponents" data-testid="training-section">
         <summary>3 · Eğitim (gelişmiş) — set, eğit, GNN, açık run</summary>
@@ -843,5 +980,51 @@ export default function SurrogatePanel({
       </details>
 
     </div>
+  );
+}
+
+/** u_max'ın taranan parametreye göre eğrisi; uzay dışı / akan noktalar içi boş. */
+function SweepChart({ result }: { result: SweepResult }) {
+  const pts = result.points.filter((p) => p.max_displacement != null && Number.isFinite(p.max_displacement));
+  if (pts.length < 2) return null;
+  const W = 320;
+  const H = 120;
+  const pad = { l: 44, r: 8, t: 8, b: 22 };
+  const xs = pts.map((p) => p.value);
+  const ys = pts.map((p) => p.max_displacement as number);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y0 = 0;
+  const y1 = Math.max(...ys) || 1;
+  const sx = (x: number) => pad.l + ((x - x0) / (x1 - x0 || 1)) * (W - pad.l - pad.r);
+  const sy = (y: number) => H - pad.b - ((y - y0) / (y1 - y0 || 1)) * (H - pad.t - pad.b);
+  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.value).toFixed(1)},${sy(p.max_displacement as number).toFixed(1)}`).join(" ");
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label={`u_max – ${result.sweep_param} eğrisi, ${pts.length} nokta`}
+      className="sweep-chart"
+    >
+      <line x1={pad.l} y1={H - pad.b} x2={W - pad.r} y2={H - pad.b} className="template-schematic-dim" />
+      <line x1={pad.l} y1={pad.t} x2={pad.l} y2={H - pad.b} className="template-schematic-dim" />
+      <text x={pad.l - 4} y={pad.t + 8} textAnchor="end" className="template-schematic-label">{fmtNum(y1)}</text>
+      <text x={pad.l - 4} y={H - pad.b} textAnchor="end" className="template-schematic-label">0</text>
+      <text x={pad.l} y={H - 6} className="template-schematic-label">{fmtNum(x0)}</text>
+      <text x={W - pad.r} y={H - 6} textAnchor="end" className="template-schematic-label">{fmtNum(x1)}</text>
+      <text x={(pad.l + W - pad.r) / 2} y={H - 6} textAnchor="middle" className="template-schematic-label">
+        {result.sweep_param} → u_max (mm)
+      </text>
+      <path d={path} fill="none" className="template-schematic-load" />
+      {pts.map((p) => (
+        <circle
+          key={p.value}
+          cx={sx(p.value)}
+          cy={sy(p.max_displacement as number)}
+          r={3}
+          className={p.out_of_domain || p.exceeds_yield ? "sweep-point-flagged" : "sweep-point"}
+        />
+      ))}
+    </svg>
   );
 }

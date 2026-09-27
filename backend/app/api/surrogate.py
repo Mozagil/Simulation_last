@@ -545,6 +545,74 @@ def predict_from_params(
     }
 
 
+class SweepBody(ParamPredictBody):
+    """Toplu tarama: tek parametre aralıkta N adım, diğerleri sabit."""
+
+    #: Şablon alanı (ör. `thickness`) ya da `load_fx|load_fy|load_fz|element_size`.
+    sweep_param: str
+    sweep_min: float
+    sweep_max: float
+    sweep_n: int = Field(default=20, ge=2, le=200)
+
+
+_SWEEP_SCALARS = ("load_fx", "load_fy", "load_fz", "element_size", "youngs_modulus")
+
+
+@router.post("/predict/sweep")
+def predict_sweep(
+    body: SweepBody,
+    db: Session = Depends(get_db),
+    model: str = "auto",
+    nlgeom: bool = False,
+) -> dict[str, Any]:
+    """N tahmin tek istekte — surrogate'in asıl vaadi (ccx yok, milisaniye).
+
+    Her nokta `predict_from_params` ile aynı yoldan geçer: OOD bayrağı ve
+    akma kontrolü nokta başına gelir; kıyas run'ı (`compare_run_id`) taramada
+    kullanılmaz. Karar vermez: eğri ve bayraklar döner.
+    """
+    if body.sweep_max <= body.sweep_min:
+        raise HTTPException(status_code=422, detail="sweep_max, sweep_min'den büyük olmalı.")
+    if body.sweep_param not in _SWEEP_SCALARS and body.sweep_param not in (body.params or {}):
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{body.sweep_param}' taranamaz: params içinde ya da {', '.join(_SWEEP_SCALARS)} olmalı.",
+        )
+    values = np.linspace(body.sweep_min, body.sweep_max, body.sweep_n)
+    points: list[dict[str, Any]] = []
+    model_kind: str | None = None
+    base = body.model_dump(exclude={"sweep_param", "sweep_min", "sweep_max", "sweep_n"})
+    base["compare_run_id"] = None
+    for v in values:
+        point = dict(base)
+        if body.sweep_param in _SWEEP_SCALARS:
+            point[body.sweep_param] = float(v)
+        else:
+            point["params"] = {**(base.get("params") or {}), body.sweep_param: float(v)}
+        out = predict_from_params(ParamPredictBody(**point), db=db, model=model, nlgeom=nlgeom)
+        model_kind = out.get("model_kind")
+        yc = out.get("yield_check") or {}
+        points.append({
+            "value": float(v),
+            "max_displacement": out["predictions"].get("max_displacement"),
+            "max_von_mises": out["predictions"].get("max_von_mises"),
+            "max_von_mises_away": out["predictions"].get("max_von_mises_away"),
+            "out_of_domain": bool(out.get("out_of_domain")),
+            "exceeds_yield": bool(yc.get("exceeds_yield")) if yc else None,
+            "sigma_mpa": yc.get("sigma_mpa") if yc else None,
+        })
+    return {
+        "kind": "sweep",
+        "template_id": body.template_id,
+        "sweep_param": body.sweep_param,
+        "nlgeom": nlgeom,
+        "model_kind": model_kind,
+        "n": len(points),
+        "n_out_of_domain": sum(1 for p in points if p["out_of_domain"]),
+        "points": points,
+    }
+
+
 @router.post("/gnn/train")
 def train_field_gnn(
     db: Session = Depends(get_db),

@@ -4120,3 +4120,20 @@ p {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Toplu tarama eğrisi (SurrogatePanel) */
+.sweep-chart {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+  margin: 6px 0 8px;
+}
+.sweep-point {
+  fill: var(--accent, #3b6ea5);
+}
+.sweep-point-flagged {
+  fill: var(--surface-2, #fff);
+  stroke: var(--danger, #b3261e);
+  stroke-width: 1.5;
+}

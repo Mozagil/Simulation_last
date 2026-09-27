@@ -331,6 +331,49 @@ export async function fetchCorpusMembership(name: string): Promise<CorpusMembers
   return (await res.json()) as CorpusMembership;
 }
 
+export interface SweepRequest extends ParamPredictRequest {
+  sweep_param: string;
+  sweep_min: number;
+  sweep_max: number;
+  sweep_n: number;
+}
+
+export interface SweepPoint {
+  value: number;
+  max_displacement: number | null;
+  max_von_mises: number | null;
+  max_von_mises_away: number | null;
+  out_of_domain: boolean;
+  exceeds_yield: boolean | null;
+  sigma_mpa: number | null;
+}
+
+export interface SweepResult {
+  kind: "sweep";
+  template_id: string;
+  sweep_param: string;
+  nlgeom: boolean;
+  model_kind: string | null;
+  n: number;
+  n_out_of_domain: number;
+  points: SweepPoint[];
+}
+
+/** Tek parametre aralıkta N adım — N tahmin tek istekte (ccx yok). */
+export async function predictSweep(
+  body: SweepRequest,
+  model: ScalarModelKind | "auto" = "auto",
+  nlgeom = false,
+): Promise<SweepResult> {
+  const res = await fetch(`${API_BASE_URL}/surrogate/predict/sweep${query({ model, nlgeom })}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new SurrogateApiError(await parseError(res, "Toplu tarama başarısız"));
+  return (await res.json()) as SweepResult;
+}
+
 export async function predictFromParams(
   body: ParamPredictRequest,
   model: ScalarModelKind | "auto" = "auto",
