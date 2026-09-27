@@ -215,7 +215,7 @@ def test_mesajda_kullanilan_tur_dogru_yazilir(db, store_root):
     )
     out = predict_from_params(body=body, db=db, model="auto")
     assert out["model_kind"] == "hybrid"
-    assert out["message"].startswith("Tahmin (hibrit)")
+    assert out["message"].startswith("Modelden tahmin (hibrit)")
 
 
 # --- TODO 4: NLGEOM modeli lineer modelden AYRI saklanır ---------------------
