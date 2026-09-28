@@ -479,9 +479,15 @@ doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
       (deplasman / karakteristik uzunluk oranı eşiği)
 
 **0.6.4 — Plastisite**
-- [ ] Malzeme modeline pekleşme eğrisi (`*PLASTIC`, izotropik; gerilme–plastik
-      şekil değiştirme tablosu). Mevcut `yield_strength` yalnız güvenlik
-      katsayısı için kullanılıyor, yeterli değil
+- [x] Malzeme modeline pekleşme eğrisi — `*PLASTIC` izotropik (2026-09-28).
+      Kütüphanede eğri yok; Re/Rm/A%'den iki noktalı gerçek gerilme/şekil
+      değiştirme (`materials/plasticity.py`; KABUL: A% tekdüze uzama yerine,
+      belgeli). `SolveRequest.plasticity` (varsayılan kapalı, .inp eskisiyle
+      birebir); açıkken artımlı yükleme (NLGEOM'suz da). Korpus `_plastic`
+      bayrağıyla ayırır. Ölçüm (kiriş 500×10×50 S235, es=8): 450 N fark yok,
+      650 N sehim +31%, 800 N çökme (535 mm), 1500 N çözücü 0.888 yükte durdu
+      (limit yük — yük kontrolü bulamaz, sıradaki madde). Testler:
+      `test_plasticity.py` (7, biri gerçek ccx)
 - [ ] Deplasman kontrollü yükleme seçeneği (limit yük civarında yük kontrolü
       yakınsamaz; CalculiX'te Riks yok)
 - [ ] Yeni hedef skalerler: maks. eşdeğer plastik şekil değiştirme, limit yük

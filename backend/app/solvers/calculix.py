@@ -708,6 +708,7 @@ class CalculiXAdapter(SolverAdapter):
                 dimension,
                 nlgeom=bool(params.get("nlgeom")),
                 n_increments=int(params.get("n_increments") or 20),
+                plastic=bool(params.get("plastic")),
             )
         else:
             raise SolverError(
@@ -1330,6 +1331,14 @@ def _materials_inp_block(
             lines.append(f"*MATERIAL, NAME={mname}")
             lines.append("*ELASTIC")
             lines.append(f"{E:.6e}, {nu:.6g}")
+            # Plastisite (0.6.4): `plastic` = [(σ_true_MPa, ε_p), …] izotropik
+            # pekleşme. Yalnız istekte plasticity açıkken snapshot'a konur;
+            # yoksa malzeme lineer elastik kalır (eski davranış birebir).
+            plastic = m.get("plastic") or []
+            if plastic:
+                lines.append("*PLASTIC")
+                for sigma_mpa, eps_p in plastic:
+                    lines.append(f"{float(sigma_mpa):.6g}, {float(eps_p):.6g}")
             lines.append("*DENSITY")
             lines.append(f"{rho:.6e}")
             seen_mat.add(mname)
@@ -1724,6 +1733,7 @@ def _static_step_block(
     dimension: int = 3,
     nlgeom: bool = False,
     n_increments: int = 20,
+    plastic: bool = False,
 ) -> str:
     """Statik çözüm adımı. `nlgeom=True` ise büyük deformasyon.
 
@@ -1741,11 +1751,15 @@ def _static_step_block(
     tek artım yeterli olduğu için o satır sade bırakılıyor.
     """
     out = _output_qualifier(dimension)
-    if nlgeom:
+    if nlgeom or plastic:
+        # Plastisite de artımlı yükleme ister: akma yolu yük geçmişine
+        # bağlıdır, tek artımda Newton iterasyonu ıraksar. NLGEOM anahtarı
+        # yalnız istenirse — plastik ama küçük deformasyon geçerli bir kombinasyon.
         inc = max(1, int(n_increments))
         first = 1.0 / inc
+        kw = ", NLGEOM" if nlgeom else ""
         head = (
-            f"*STEP, NLGEOM, INC={max(100, inc * 5)}\n"
+            f"*STEP{kw}, INC={max(100, inc * 5)}\n"
             f"*STATIC\n"
             f"{first:g}, 1.0, {first / 100:g}, {first:g}\n"
         )

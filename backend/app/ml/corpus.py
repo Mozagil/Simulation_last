@@ -82,6 +82,9 @@ class CorpusSpec:
     #: kurar. Aynı modele sokmak, iki farklı fonksiyonu tek fonksiyona
     #: uydurmaya çalışmaktır.
     nlgeom: bool = False
+    #: Plastik koşular (0.6.4) ayrı fizik: akma sonrası gerilme eğriye
+    #: yapışır. Varsayılan korpuslara girmez.
+    plastic: bool = False
 
     def __post_init__(self) -> None:
         # NLGEOM setinde iki lineer kapı anlamsız: (1) u/L > 0.10 kapısı —
@@ -254,6 +257,8 @@ def _row_reject(run: AnalysisRun, geo: Geometry, spec: CorpusSpec) -> str | None
         return "no_template"
     # Eski run'larda bu bayrak yok; yokluğu "lineer" demektir.
     if bool((run.scalars or {}).get("_nlgeom", False)) != bool(spec.nlgeom):
+        return "wrong_kinematics"
+    if bool((run.scalars or {}).get("_plastic", False)) != bool(spec.plastic):
         return "wrong_kinematics"
     if _analysis_type(run) != spec.analysis_type:
         return "wrong_analysis"
