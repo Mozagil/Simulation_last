@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.templates.base import BBox, GeometryTemplate, Region, plane_at
 from app.templates.base import AnalyticInput
-from app.templates.beam_section import cantilever_fl_over_ei
 
 REGION_BOLTS = "civata_delikleri"
 REGION_LOAD = "bacak_ucu"
@@ -78,8 +77,25 @@ def _is_hole_face(bbox: BBox, params: BaseModel, tol: float = 1e-3) -> bool:
 
 
 def _analytic(p: LBracketBoltedParams, a: AnalyticInput) -> dict[str, float]:
+    """Yatay bacak konsolu + dik bacağın cıvata hattı–köşe arası dönmesi.
+
+    Köşeyi ankastre saymak yetmez — ÖLÇÜLDÜ (2026-09-28, es=6.4, S235,
+    500 N): salt konsol 0.536 mm derken FEA 1.46 mm. Dik bacak cıvata
+    hattından (y = hv − e) köşeye kadar `Lv` boyunca M = F·lh momentiyle
+    döner; köşe dönmesi θ = M·Lv/(EI) uç sehimine θ·lh ekler:
+        δ = F·lh²/(EI) · (lh/3 + Lv)
+    Bu formülle 1.57 mm (FEA'ya +%7: cıvata hattı tam ankastre değil,
+    delik çevresi esner). Gerilme referansı yatay bacak kökü (M·c/I);
+    delik kenarındaki yığılma dahil değil — `max_von_mises_away` ile
+    karşılaştırılmalı (ölçüm: 93.8 vs 93.7 MPa).
+    """
+    e_mpa = a.youngs_modulus_pa / 1e6
     inertia = p.width * p.thickness**3 / 12.0
-    return cantilever_fl_over_ei(p.horizontal_length, inertia, p.thickness / 2.0, a.force_n, a.youngs_modulus_pa)
+    lh = p.horizontal_length
+    lv = max(p.vertical_height - p.edge_distance - p.thickness, 0.0)
+    tip = a.force_n * lh**2 / (e_mpa * inertia) * (lh / 3.0 + lv)
+    sigma = a.force_n * lh * (p.thickness / 2.0) / inertia
+    return {"max_displacement": tip, "max_von_mises": sigma}
 
 
 L_BRACKET_BOLTED = GeometryTemplate(

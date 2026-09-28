@@ -210,10 +210,14 @@ ilginç vakalar.
 - [x] L-köşebent
 
 **Grup 3 — makine elemanları**
-- [ ] T-braket (kaburgalı ve kaburgasız)
-- [ ] L-braket, delikli bağlantı
-- [ ] Flanş (cıvata delikli)
-- [ ] Kademeli mil (çap geçişinde gerilme yığılması, fillet yarıçapı parametre)
+- [x] T-braket (kaburgalı ve kaburgasız) — `t_bracket`, 2026-09-25
+- [x] L-braket, delikli bağlantı — `l_bracket_bolted` (ankastre delik yüzeylerinde)
+- [x] Flanş (cıvata delikli) — `flange` (analitik yok)
+- [x] Kademeli mil (çap geçişinde gerilme yığılması, fillet yarıçapı parametre) —
+      `stepped_shaft` (omuz filleti geometride, Kt Peterson/Norton)
+      Dördü OCC geometrisi + hacim testiyle doğrulandı (`test_templates_grup3.py`);
+      ccx uçtan uca doğrulaması 2026-09-28'de (aşağıda 0.4.7). DOE/eğitim YOK —
+      kapsam kararı: kiriş bitmeden başka şablona eğitim başlamaz.
 
 **Grup 4 — çentikli/kritik vakalar**
 - [x] Çentikli çubuk (U ve V çentik)
@@ -255,6 +259,21 @@ kirişte her model iyi görünür.
 **0.4.6 — Grup 1'in tamamlanması**
 - [x] Kalan Grup 1 şablonları, her biri analitik referansıyla
 - [x] Her şablon için regresyon testi (parametre → beklenen sonuç aralığı)
+
+**0.4.7 — Grup 3 ccx doğrulaması** — ✅ 2026-09-28 (DOE/eğitim yok, kapsam kararı)
+Her şablon varsayılan parametre + varsayılan BC, S235, es = 0.8 × karakteristik
+uzunluk, C3D10; delikli/filletli olanlarda `HighOrderOptimize` açık. Hepsi
+yakınsadı.
+
+| şablon | düğüm | u_max FEA / analitik | σ FEA (maskeli) / analitik | not |
+|---|---|---|---|---|
+| T-braket | 7 528 | 0.236 / 0.233 mm (+1.7%) | 53.9 / 58.6 MPa (−8%) | plaka konsolu referansı tutuyor |
+| T-braket, kaburgalı | 8 220 | 0.076 / — | 70.9 / — | kaburga 3× sertleştiriyor; analitik yalnız kaburgasız (belgeli) |
+| L-braket, delikli | 6 677 | 1.461 / **1.57** (−7%) | 93.7 / 93.8 MPa | salt konsol formülü 0.536 mm diyordu (2.7× yanlış) → dik bacak dönmesi eklendi |
+| Flanş | 7 948 | 0.0066 / — | 13.3 (ham 38.9) | analitik yok; delik kenarı yığılması ham tepede |
+| Kademeli mil | 103 575 | 0.0561 / 0.0520 (+8%) | 55.1 / 64.9 (Kt) (−15%) | L1/D1 = 2, kiriş kabulü zayıf; fillet es = 0.8r ile tam çözülmüyor (kök filleti dersi) — DOE öncesi yerel inceltme + yakınsama ölçümü şart |
+
+Run'lar DB'de: "grup3 dogrulama …" (1460–1464).
 
 ### Faz 0.5 ile ilişkisi
 
@@ -361,7 +380,8 @@ Her adım tek başına doğrulanabilir ve bir sonraki adıma geçmeden önce tes
 - [x] Kalite seti her şablon için kurulabilir (analitiği olan 12 şablon);
       aralıklar şablona özgü ve sabit — set bir referanstır, aynı tohum aynı
       200 örneği üretir
-- [ ] ~200 run üret — **kod hazır, çalıştırılmadı** (ccx işaretli koşu gerekiyor)
+- [x] ~200 run üret — kiriş 200 (study 3, korpus `kiris-v2` 192), plaka 198
+      (study 5, `plaka-v1`), NLGEOM kiriş 150 (study 6, `kiris-nlgeom-v1`)
 - [x] Analitik kontrol: kiriş ailesinde kapalı form çözüm bilindiği için her run'ın
       sapması ölçülür — bu, veri üretiminin kendisinde hata olup olmadığını gösterir
 - [x] Aykırı değer taraması (yakınsamamış çözüm, mekanizma, dejenere mesh)
@@ -448,35 +468,33 @@ doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
 
 ### Adımlar
 
-**0.6.1 — Yakınsama denetimi (önce bu)**
-- [ ] CalculiX `.sta` / `.cvg` dosyalarının okunması: artım sayısı, cutback,
-      son yakınsamış artım, iterasyon sayısı
-- [ ] `AnalysisRun`'a yakınsama özeti (`converged`, `n_increments`, `n_cutbacks`)
-- [ ] Yakınsamamış / kısmi çözüm `solved` sayılmaz; DOE kalite taramasında
-      ayrı etiket (`not_converged`), eğitim verisine girmez
-- [ ] Regresyon testi: bilerek yakınsamayan bir vaka kurulup `solved` olmadığı
-      doğrulanır
+**0.6.1 — Yakınsama denetimi (önce bu)** — ✅ 2026-09-19
+- [x] CalculiX `.sta` / `.cvg` dosyalarının okunması: artım sayısı, cutback,
+      son yakınsamış artım, iterasyon sayısı (`parse_ccx_sta`)
+- [x] `AnalysisRun`'a yakınsama özeti (`_solver_converged`, `_n_increments`, `_n_cutbacks`)
+- [x] Yakınsamamış / kısmi çözüm `solved` sayılmaz; korpus kapısı `not_converged`
+- [x] Regresyon testi: gerçek ccx ile bilerek yakınsamayan tek-eleman vaka
 
-**0.6.2 — Tekillik ve mesh'ten bağımsız gerilme hedefi**
-- [ ] Şablonlara fillet parametresi (ankastre kökü, omuz geçişleri) — gerçek
-      parçalarda zaten var, tekilliği geometrik olarak kaldırır
-- [ ] Hot-spot ekstrapolasyonu: yüzeyde 0.4t ve 1.0t mesafelerinden okuyup
-      köşeye doğrultma (kaynak yorulmasındaki standart yaklaşım)
-- [ ] `scalars`'a hem tepe (`max_von_mises`) hem hot-spot (`hotspot_von_mises`)
-      yazılır; hangisinin mesh'e duyarlı olduğu belgelenir
-- [ ] Mesh yakınsama çalışması: aynı geometri 4–5 farklı oranda çözülüp
-      tepe ve hot-spot değerlerinin davranışı ölçülür (tepe yakınsamaz,
-      hot-spot yakınsamalı — kanıtlanmalı)
-- [ ] Surrogate hedefi hot-spot'a taşınır; tepe değer kayıtta kalır
+**0.6.2 — Tekillik ve mesh'ten bağımsız gerilme hedefi** — ✅ 2026-09-24/25 (sonuç plandan farklı)
+- [x] Şablonlara fillet parametresi: kiriş kök filleti (`root_fillet` + duvar bloğu),
+      kademeli mil omuz filleti. Ölçüm: filletli kirişte tepe gerilme global
+      mesh'le yakınsamıyor, yerel inceltme ister → DOE'de kullanılmadı
+- [x] Hot-spot ekstrapolasyonu: uygulandı ve **ölçümle elendi** (en gürültülü hedef)
+- [x] `scalars`'a tepe (`max_von_mises`), kısıt maskeli (`max_von_mises_away`) ve
+      tepe merkezli (`max_von_mises_near_peak`) yazılır; mesh duyarlılığı ölçüldü
+- [x] Mesh yakınsama çalışması (kiriş 8 basamak, plaka 5): tepe yakınsamıyor
+      (%5.6 gürültü, +%10 sapma), maskeli yakınsıyor (%1.2, −%0.8)
+- [x] Surrogate hedefi `max_von_mises_away` (kirişte en iyi, hibrit MAPE %0.6);
+      plakada ham tepe zaten yakınsıyor (delik kenarı tekil değil); tepe kayıtta
 
-**0.6.3 — Büyük deformasyon (NLGEOM)**
-- [ ] `*STEP, NLGEOM` + artım kontrolü (`*STATIC` başlangıç/min/maks artım)
-- [ ] Analiz tipi seçimi: `linear` / `nlgeom` (mevcut `analysis_type` alanı)
-- [ ] Doğrulama: kiriş büyük deplasman vakası, literatür referansıyla
-      (uç yüklü ankastre kiriş büyük deformasyon kapalı formu mevcut)
-- [ ] Analitik karşılaştırma nlgeom koşularda "geçerli değil" olarak atlanır
-- [ ] Küçük deformasyon sınırını aşan DOE örneklerinin işaretlenmesi
-      (deplasman / karakteristik uzunluk oranı eşiği)
+**0.6.3 — Büyük deformasyon (NLGEOM)** — ✅ 2026-09-25/27
+- [x] `*STEP, NLGEOM` + artım kontrolü (`nlgeom`, `n_increments`)
+- [x] Seçim: çözüm panelinde NLGEOM anahtarı; ön kontrol u/L > 0.10 ise "NLGEOM ile
+      çözülsün mü?" sorusu (karar kullanıcının); `POST /surrogate/screen`
+- [x] Doğrulama: α = FL²/EI = 1 kirişte Bisshopp–Drucker kesin çözümüyle %0.2
+      (`test_nlgeom.py`)
+- [x] Korpus NLGEOM'da lineer analitik kapısını kapatır, u/L kapısı 0.5
+- [x] DOE ön elemesi u/L alt/üst sınırı; korpus `wrong_kinematics` ayrımı
 
 **0.6.4 — Plastisite**
 - [ ] Malzeme modeline pekleşme eğrisi (`*PLASTIC`, izotropik; gerilme–plastik
@@ -490,11 +508,24 @@ doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
 - [ ] Doğrulama: tek eksenli çekme numunesi (dogbone) — akma sonrası davranış
       malzeme eğrisiyle birebir eşleşmeli
 
-**0.6.5 — Surrogate tarafının uyarlanması**
-- [ ] Eğitim verisine yakınsama ve analiz tipi bayrakları; doğrusal ve
-      doğrusal olmayan koşular AYRI modeller (karıştırmak ikisini de bozar)
-- [ ] Doğrusal olmayan koşuda ekstrapolasyon koruması daha katı: yük seviyesi
-      eğitim aralığının dışındaysa tahmin reddedilir
+**0.6.5 — Surrogate tarafının uyarlanması** — ✅ 2026-09-27 (kiriş)
+- [x] Eğitim verisinde `_solver_converged`, `_analysis_type`, `_nlgeom` bayrakları;
+      lineer ve NLGEOM AYRI modeller (`uploads/models/<şablon>/[nlgeom/]`),
+      NLGEOM istenip yoksa lineere düşmez. Kiriş NLGEOM hibrit holdout u_max MAPE %0.49
+- [x] Ekstrapolasyon: reddedilmez, `domain_violations` ile hangi girdinin dışarıda
+      olduğu döner (karar kullanıcının); tek malzemeli korpusta sabit sütun
+      katsayı patlaması düzeltildi
+
+**0.6.6 — Roadmap dışı eklenenler (2026-09-25 … 28)**
+- [x] ML Stüdyo paneli: 1 · Model / 2 · Tahmin / 3 · Eğitim; toplu tarama
+      (`/surrogate/predict/sweep`); Tahmin vs FEA doğrulama tablosu (`/surrogate/validate`)
+- [x] Akma kontrolünde gerilme kaynağı seçimi (otomatik / maskeli / ham tepe)
+- [x] WeWeb bağlantısı: Bearer API anahtarı, `users` + `geometries.owner_id`,
+      `AUTH_REQUIRED`, CORS; `scripts/create_api_key.py`
+- [x] Testler ayrı `cae_test` veritabanında; model yedeği `scripts/backup_models.py`
+- [x] GNN alan modeli: mimari taraması yapıldı, ölçüt tutmadı → "prototip" etiketi,
+      ürün dışı (bkz. TODO 1.3c)
+- [x] gmsh `HighOrderOptimize` anahtarı (varsayılan kapalı)
 
 ### Çıkış kriteri
 
