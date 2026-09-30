@@ -88,7 +88,11 @@ export default function SurrogatePanel({
   templateId,
   onPrediction,
   onCorpusChange,
+  view = "all",
 }: {
+  /** ML Stüdyo aşaması: "model" → 1·Model + 3·Eğitim, "predict" → 2·Tahmin
+   * (toplu tarama, Tahmin vs FEA dahil). "all" tek panelde hepsi. */
+  view?: "all" | "model" | "predict";
   refreshKey?: number;
   geometryId?: number | null;
   runId?: number | null;
@@ -482,16 +486,20 @@ export default function SurrogatePanel({
   const pred = paramResult?.predictions;
   const fea = paramResult?.fea;
   const dev = paramResult?.deviation_pct;
+  const showModel = view !== "predict";
+  const showPredict = view !== "model";
 
   return (
     <div className="panel dataset-panel">
-      <span className="eyebrow">Surrogate</span>
-      <h1>Hızlı tahmin</h1>
+      <span className="eyebrow">{view === "model" ? "0.5.6 RF · 0.6.3 loglinear · 0.6.4 hybrid" : "Surrogate"}</span>
+      <h1>{view === "model" ? "Vekil model" : "Hızlı tahmin"}</h1>
       <p className="lead">
-        Eğitilmiş model, yeni bir tasarım için sonucu ccx çalıştırmadan verir.
-        Tahmin tam çözüm değildir; eğitim uzayı dışında bayrakla döner.
+        {view === "model"
+          ? "Şablon başına ayrı model; korpus tek şablondan dondurulur, model o korpusla eğitilir."
+          : "Eğitilmiş model, yeni bir tasarım için sonucu ccx çalıştırmadan verir. Tahmin tam çözüm değildir; eğitim uzayı dışında bayrakla döner."}
       </p>
 
+      {showModel && (<>
       {/* ── 1 · Model ─────────────────────────────────────────────── */}
       <p className="material-assignments-title">1 · Model</p>
       <div className="mesh-grid">
@@ -553,6 +561,9 @@ export default function SurrogatePanel({
         <p className="material-assign-hint">Bu şablonda model eğitilmedi — 3 · Eğitim bölümüne bak.</p>
       )}
 
+      </>)}
+
+      {showPredict && (<>
       {/* ── 2 · Tahmin ────────────────────────────────────────────── */}
       <p className="material-assignments-title">2 · Tahmin</p>
       <div className="mesh-grid">
@@ -958,6 +969,9 @@ export default function SurrogatePanel({
         )}
       </details>
 
+      </>)}
+
+      {showModel && (<>
       {/* ── 3 · Eğitim (gelişmiş) ─────────────────────────────────── */}
       <details className="surrogate-exponents" data-testid="training-section">
         <summary>3 · Eğitim (gelişmiş) — set, eğit, GNN, açık run</summary>
@@ -1130,6 +1144,7 @@ export default function SurrogatePanel({
           </span>
         </div>
       </details>
+      </>)}
 
     </div>
   );

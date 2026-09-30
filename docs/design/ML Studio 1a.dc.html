@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/styles.css">
+<script src="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/_ds_bundle.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent-900)}
+:root{--run:#8a5a1f;--run-bg:#f6ecdc;--ok:#3a6248;--ok-bg:#e6eee9}
+.k{font-family:var(--font-heading);font-weight:700;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--color-neutral-700)}
+.h{font-family:var(--font-heading);font-weight:600;letter-spacing:.03em}
+.sb{font-size:11.5px;color:var(--color-neutral-700)}
+.st{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;font-size:10.5px;font-weight:600;border:1px solid;white-space:nowrap}
+.st-run{background:var(--run-bg);border-color:var(--run);color:var(--run)}
+.st-ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.st-idle{background:var(--color-neutral-200);border-color:var(--color-divider);color:var(--color-neutral-700)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:12px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;color:var(--color-text)}
+.chip:hover{background:var(--color-accent-100)}
+.chip[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.num{min-height:28px;width:70px;padding:2px 7px;font:inherit;font-size:12.5px;text-align:right;color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-divider);box-sizing:border-box}
+.num:hover{border-color:var(--color-neutral-600)}
+.num:focus-visible{outline:2px solid var(--color-accent);outline-offset:1px}
+.stage{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 18px;border-right:1px solid var(--color-divider);position:relative;cursor:pointer}
+.stage:hover{background:var(--color-neutral-100)}
+.pane-l{border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0}
+.pane-r{display:flex;flex-direction:column;min-height:0;overflow-y:auto;padding:16px 22px 22px;gap:18px}
+.phead{padding:16px 20px 12px;display:flex;align-items:flex-end;gap:12px;border-bottom:1px solid var(--color-divider)}
+.pfoot{padding:12px 20px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100);display:flex;align-items:center;gap:10px}
+.box{border:1px solid var(--color-divider);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.row{display:grid;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--color-neutral-200)}
+.big{font-family:var(--font-heading);font-weight:600;font-size:30px;line-height:1}
+</style>
+</helmet>
+
+<main style="width:1440px;height:900px;display:grid;grid-template-rows:48px 84px minmax(0,1fr);overflow:hidden;background:var(--color-bg);margin:0 auto">
+
+  <header style="display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"></circle><circle cx="5" cy="18" r="2"></circle><circle cx="19" cy="12" r="2"></circle><path d="M7 6.5l10 4.7M7 17.5l10-4.7"></path></svg>
+    <span class="h" style="font-size:16px">ML STÜDYO</span>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="k">Şablon</span>
+    <span class="chip" aria-pressed="true">Ankastre kiriş</span>
+    <span class="chip">Delikli plaka</span>
+    <span style="margin-left:auto" class="sb">Her şablon ayrı model · korpus tek şablondan eğitilir</span>
+    <a href="Workbench v4.dc.html" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px;display:inline-flex;align-items:center">Tezgaha dön</a>
+  </header>
+
+  <nav style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--color-divider)">
+    <sc-for list="{{ stages }}" as="s" hint-placeholder-count="5">
+      <div class="stage" onClick="{{ s.go }}" style="background:{{ s.bg }};color:{{ s.fg }}">
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="h" style="font-size:12px;letter-spacing:.08em;opacity:.8">{{ s.phase }}</span>
+          <span class="h" style="font-size:16px;text-transform:uppercase;letter-spacing:.06em">{{ s.name }}</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:8px;font-size:11.5px">
+          <span style="width:7px;height:7px;background:{{ s.dot }};flex-shrink:0"></span>{{ s.meta }}
+        </span>
+        <span style="position:absolute;left:0;right:0;bottom:0;height:3px;background:{{ s.bar }}"></span>
+      </div>
+    </sc-for>
+  </nav>
+
+  <!-- ============ DOE ============ -->
+  <sc-if value="{{ isDoe }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+      <div class="pane-l">
+        <div class="phead">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">0.5 · DOE</span><span class="h" style="font-size:22px">Tasarım uzayı</span></span>
+          <span class="sb" style="margin-left:auto;text-align:right;line-height:1.4">Açık bant = taranan aralık<br>▼ = şablon varsayılanı</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 12px">
+          <sc-for list="{{ params }}" as="p" hint-placeholder-count="5">
+            <div class="row" style="grid-template-columns:150px minmax(0,1fr);gap:16px">
+              <span style="display:flex;flex-direction:column;gap:5px">
+                <span style="display:flex;align-items:baseline;gap:7px">
+                  <em class="h" style="font-style:italic;font-size:18px;color:var(--color-accent-800)">{{ p.sym }}</em>
+                  <span style="font-size:13px;font-weight:600">{{ p.name }}</span>
+                </span>
+                <span class="seg" style="height:24px;align-self:flex-start">
+                  <span class="seg-opt" style="padding:0 9px;font-size:11px;background:var(--color-accent);color:var(--color-bg)">Aralık</span>
+                  <span class="seg-opt" style="padding:0 9px;font-size:11px">Sabit</span>
+                </span>
+              </span>
+              <span style="display:flex;flex-direction:column;gap:6px">
+                <span style="position:relative;height:26px">
+                  <span style="position:absolute;left:0;right:0;top:12px;height:2px;background:var(--color-neutral-300)"></span>
+                  <span style="position:absolute;top:6px;height:14px;left:{{ p.left }};width:{{ p.width }};background:var(--color-accent-200);border:1px solid var(--color-accent)"></span>
+                  <span style="position:absolute;top:3px;left:{{ p.left }};width:2px;height:20px;background:var(--color-accent-800);margin-left:-1px"></span>
+                  <span style="position:absolute;top:3px;left:{{ p.right }};width:2px;height:20px;background:var(--color-accent-800);margin-left:-1px"></span>
+                  <span style="position:absolute;top:-4px;left:{{ p.defLeft }};transform:translateX(-50%);font-size:9px;color:var(--color-neutral-800)">▼</span>
+                </span>
+                <span style="display:flex;align-items:center;gap:8px">
+                  <span class="sb" style="width:34px">{{ p.lo }}</span>
+                  <input class="num" value="{{ p.min }}"><span class="sb">–</span><input class="num" value="{{ p.max }}">
+                  <span class="sb">{{ p.unit }}</span>
+                  <span class="sb" style="margin-left:auto">{{ p.hi }}</span>
+                </span>
+              </span>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 0">
+            <span class="k" style="width:150px">Malzeme</span>
+            <span class="chip" aria-pressed="true">S235JR</span><span class="chip" aria-pressed="true">AlMg3</span><span class="chip">Ti-6Al-4V</span>
+            <span class="sb">örnekler dengeli dağılır</span>
+          </div>
+        </div>
+        <div class="pfoot">
+          <span class="k">Örnek</span><input class="num" value="200" style="width:64px">
+          <span class="k">Tohum</span><input class="num" value="2026" style="width:64px">
+          <label class="sb" style="display:flex;align-items:center;gap:6px"><input type="checkbox" checked style="accent-color:var(--color-accent)">ccx çalıştır</label>
+          <button type="button" class="btn btn-secondary" style="margin-left:auto;height:32px;font-size:12px">200'lük kalite seti</button>
+          <button type="button" class="btn btn-primary blueprint" style="height:32px;font-size:12px;padding:0 16px"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>DOE başlat</button>
+        </div>
+      </div>
+      <div class="pane-r">
+        <div style="display:flex;align-items:flex-end;gap:12px">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Çalışma #14 · kalite seti · 200 örnek</span><span class="h" style="font-size:22px">Sonuç dağılımı</span></span>
+          <span class="st st-ok" style="margin-left:auto">tamamlandı</span>
+          <button type="button" class="btn btn-ghost" style="height:28px;font-size:12px;padding:0 10px">Tabloyu aç</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;height:16px;border:1px solid var(--color-divider)"><span style="width:92%;background:var(--ok)"></span><span style="width:5.5%;background:var(--run)"></span><span style="width:2.5%;background:var(--color-neutral-400)"></span></span>
+          <span style="display:flex;gap:18px" class="sb">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:var(--ok)"></span>ok 184</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:var(--run)"></span>analytic_warn 11</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:var(--color-neutral-400)"></span>inp_only 5</span>
+          </span>
+        </div>
+        <sc-for list="{{ strips }}" as="s" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 150px;gap:14px;align-items:center">
+            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600">{{ s.label }}</span><span class="sb">{{ s.unit }}</span></span>
+            <svg viewBox="0 0 600 44" preserveAspectRatio="none" style="width:100%;height:44px;display:block">
+              <line x1="0" y1="22" x2="600" y2="22" stroke="var(--color-neutral-300)"></line>
+              <rect x="{{ s.iqrX }}" y="10" width="180" height="24" fill="var(--color-accent-100)" stroke="var(--color-accent-300)"></rect>
+              <sc-for list="{{ s.dots }}" as="d" hint-placeholder-count="30"><circle cx="{{ d.x }}" cy="{{ d.y }}" r="2.6" fill="{{ d.c }}" fill-opacity=".85"></circle></sc-for>
+              <line x1="{{ s.meanX }}" y1="4" x2="{{ s.meanX }}" y2="40" stroke="var(--color-accent-900)" stroke-width="1.5"></line>
+            </svg>
+            <span style="display:flex;flex-direction:column;gap:2px;text-align:right"><span style="font-size:13px"><span class="sb">ort </span><strong>{{ s.mean }}</strong></span><span class="sb">{{ s.range }}</span></span>
+          </div>
+        </sc-for>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span class="k">En çok sapan 4 örnek · analitik referansa göre</span>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+            <sc-for list="{{ outliers }}" as="o" hint-placeholder-count="4">
+              <div class="box" style="cursor:pointer;gap:6px">
+                <span style="display:flex;align-items:center;justify-content:space-between"><strong style="font-size:13px">#{{ o.i }}</strong><span class="st {{ o.cls }}">{{ o.q }}</span></span>
+                <span class="h" style="font-size:22px;color:{{ o.color }}">{{ o.dev }}</span>
+                <span class="sb">{{ o.params }}</span>
+                <span class="sb" style="color:var(--color-accent-700)">Run'ı aç →</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ VERİ SETİ ============ -->
+  <sc-if value="{{ isData }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+      <div class="pane-l">
+        <div class="phead">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">0.5 · Veri seti</span><span class="h" style="font-size:22px">Eğitim verisi</span></span>
+          <span class="st st-run" style="margin-left:auto">son yedek 6 gün önce</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:18px">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--color-divider)">
+            <sc-for list="{{ dataStats }}" as="d" hint-placeholder-count="5">
+              <span style="display:flex;flex-direction:column;gap:5px;padding:12px;border-right:1px solid var(--color-divider)">
+                <span class="big" style="color:{{ d.c }}">{{ d.v }}</span><span class="sb">{{ d.k }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="display:flex;align-items:center;gap:14px">
+              <span class="k">Şablona göre</span>
+              <span class="sb" style="display:flex;align-items:center;gap:6px;margin-left:auto"><span style="width:8px;height:8px;background:var(--color-accent)"></span>çözülmüş</span>
+              <span class="sb" style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:var(--color-accent-200)"></span>çözülmemiş</span>
+              <span class="sb" style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:var(--run)"></span>dışlanan</span>
+            </span>
+            <sc-for list="{{ byTemplate }}" as="t" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 70px;gap:12px;align-items:center">
+                <span style="font-size:13px;font-weight:600">{{ t.name }}</span>
+                <span style="display:flex;height:14px;background:var(--color-neutral-200)">
+                  <span style="width:{{ t.sw }};background:var(--color-accent)"></span>
+                  <span style="width:{{ t.uw }};background:var(--color-accent-200)"></span>
+                  <span style="width:{{ t.xw }};background:var(--run)"></span>
+                </span>
+                <span style="font-size:12.5px;text-align:right"><strong>{{ t.solved }}</strong><span class="sb"> / {{ t.runs }}</span></span>
+              </div>
+            </sc-for>
+            <span class="sb" style="line-height:1.5">Her şablon ayrı bir model demektir — korpus tek şablondan eğitilir. Arşiv ise hepsini birlikte taşır.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="display:flex;align-items:center"><span class="k">Eğitim setleri · donmuş korpuslar</span><button type="button" class="btn btn-ghost" style="margin-left:auto;height:26px;font-size:11.5px;padding:0 8px">+ Yeni set dondur</button></span>
+            <sc-for list="{{ corpora }}" as="c" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid {{ c.bd }};background:{{ c.bg }};cursor:pointer">
+                <span style="display:flex;flex-direction:column;gap:2px"><strong style="font-size:13px">{{ c.name }}</strong><span class="sb">{{ c.sub }}</span></span>
+                <span class="sb">{{ c.manual }}</span>
+                <span style="font-size:13px;font-weight:600">{{ c.runs }} run</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <div class="pane-r">
+        <div style="display:flex;flex-direction:column;gap:2px"><span class="k">Yedekle ve taşı</span><span class="h" style="font-size:22px">Dışa / içe aktar</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--run);background:var(--run-bg)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--run)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"></path><path d="M12 10v4M12 17h.01"></path></svg>
+          <span style="font-size:12.5px;color:var(--run)">Analiz geçmişi ve çözüm dosyaları yalnız bu ortamda yaşar. Ortam silinirse veri de gider — düzenli arşiv alın.</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <div class="box blueprint" style="position:relative;gap:10px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M4 19h16"></path></svg>
+            <span class="h" style="font-size:18px">Tümünü indir</span>
+            <span class="sb" style="line-height:1.45">Tüm veritabanı satırları ve çözüm dosyaları (.frd.gz, .train.npz) tek arşivde.</span>
+            <label class="sb" style="display:flex;align-items:center;gap:6px"><input type="checkbox" checked style="accent-color:var(--color-accent)">Yalnız çözülmüş run'lar</label>
+            <span class="sb">~412 run · tahmini 1.8 GB</span>
+            <button type="button" class="btn btn-primary" style="height:34px;font-size:12.5px;margin-top:auto">Arşivi indir</button>
+          </div>
+          <div class="box" style="gap:10px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l8-4 8 4-8 4z"></path><path d="M4 12l8 4 8-4"></path><path d="M4 17l8 4 8-4"></path></svg>
+            <span class="h" style="font-size:18px">Eğitim setini indir</span>
+            <span class="sb" style="line-height:1.45">Yalnız donmuş setin run'ları + setin tanımı. Temiz veriyi taşımanın tek yolu.</span>
+            <span style="display:flex;flex-wrap:wrap;gap:5px">
+              <span class="chip" aria-pressed="true">kiris_v3 · 184</span><span class="chip">kiris_v2 · 142</span><span class="chip">plaka_v1 · 96</span>
+            </span>
+            <button type="button" class="btn btn-secondary" style="height:34px;font-size:12.5px;margin-top:auto">kiris_v3'ü indir</button>
+          </div>
+          <div class="box" style="gap:10px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 5-6"></path><path d="M4 4h16v16H4z"></path></svg>
+            <span class="h" style="font-size:18px">Seçili run'lar</span>
+            <span class="sb" style="line-height:1.45">Analiz Geçmişi'nde işaretlenen run'lar. Geçmişte seçim yoksa pasif.</span>
+            <span style="display:flex;align-items:baseline;gap:6px"><span class="big">12</span><span class="sb">run seçili</span></span>
+            <button type="button" class="btn btn-secondary" style="height:34px;font-size:12.5px;margin-top:auto">Seçili 12 run'ı indir</button>
+          </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:18px;padding:22px 24px;border:1.5px dashed var(--color-accent);background:var(--color-neutral-100);cursor:pointer">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 19h16"></path></svg>
+          <span style="display:flex;flex-direction:column;gap:4px">
+            <span class="h" style="font-size:18px">İçe aktar</span>
+            <span class="sb">.tar.gz / .tgz arşivini bırakın veya seçin</span>
+            <span class="sb">İçe aktarma hiçbir kaydı silmez, ekler — aynı arşivi iki kez almak kayıtları çoğaltır.</span>
+          </span>
+          <span class="btn btn-secondary" style="margin-left:auto;height:34px;font-size:12.5px;display:inline-flex;align-items:center;padding:0 16px">Dosya seç</span>
+          <input type="file" accept=".tar.gz,.tgz" style="display:none">
+        </label>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span class="k">Son işlemler</span>
+          <sc-for list="{{ dataLog }}" as="l" hint-placeholder-count="3">
+            <span style="display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:12px;padding:8px 0;border-bottom:1px solid var(--color-neutral-200);font-size:12.5px">
+              <span class="sb">{{ l.t }}</span><span>{{ l.msg }}</span><span class="st {{ l.cls }}">{{ l.tag }}</span>
+            </span>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ YAKINSAMA ============ -->
+  <sc-if value="{{ isConv }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+      <div class="pane-l">
+        <div class="phead">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">0.6.1 · Mesh</span><span class="h" style="font-size:22px">Yakınsama taraması</span></span>
+          <span class="sb" style="margin-left:auto;text-align:right;line-height:1.4">Geometri sabit<br>mesh incelir</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span class="k">Sabit geometri · ankastre kiriş</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+              <sc-for list="{{ convParams }}" as="p" hint-placeholder-count="3">
+                <label style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--color-divider)">
+                  <span style="display:flex;align-items:baseline;gap:6px"><em class="h" style="font-style:italic;font-size:16px;color:var(--color-accent-800)">{{ p.sym }}</em><span class="sb">{{ p.name }}</span></span>
+                  <span style="display:flex;align-items:baseline;gap:5px"><input class="num" value="{{ p.v }}" style="width:100%;text-align:left;font-size:15px;font-weight:600"><span class="sb">{{ p.unit }}</span></span>
+                </label>
+              </sc-for>
+            </div>
+            <span style="display:flex;align-items:center;gap:8px"><span class="k" style="width:70px">Malzeme</span><span class="chip" aria-pressed="true">S235JR</span><span class="chip">AlMg3</span></span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="display:flex;align-items:center;gap:10px">
+              <span class="k">Basamaklar</span>
+              <span class="seg" style="height:26px;margin-left:auto">
+                <span class="seg-opt" style="padding:0 10px;font-size:11.5px;background:var(--color-accent);color:var(--color-bg)">Oran · es/t</span>
+                <span class="seg-opt" style="padding:0 10px;font-size:11.5px">Mutlak mm</span>
+              </span>
+            </span>
+            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:0;border:1px solid var(--color-divider)">
+              <sc-for list="{{ steps }}" as="s" hint-placeholder-count="8">
+                <span style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0 8px;border-right:1px solid var(--color-divider)">
+                  <span style="width:{{ s.w }};height:{{ s.w }};border:1px solid var(--color-accent-800);background:var(--color-accent-100)"></span>
+                  <strong style="font-size:13px">{{ s.r }}</strong>
+                  <span class="sb" style="font-size:10.5px">{{ s.es }}</span>
+                </span>
+              </sc-for>
+            </div>
+            <span style="display:flex;align-items:center;justify-content:space-between" class="sb"><span>← kaba</span><span>8 basamak · eleman = oran × kalınlık</span><span>ince →</span></span>
+            <span style="display:flex;gap:6px"><button type="button" class="btn btn-ghost" style="height:26px;font-size:11.5px;padding:0 8px">+ Basamak</button><button type="button" class="btn btn-ghost" style="height:26px;font-size:11.5px;padding:0 8px">Varsayılana dön</button></span>
+          </div>
+          <div class="box" style="background:var(--color-neutral-100)">
+            <span class="sb" style="line-height:1.5">DOE aralığını seçmeden önce hangi çözünürlük bandının kararlı olduğunu burada ölçün. Eleman boyutu surrogate'in girdisinde; yakınsamamış bantta toplanan veri modele ayrıklaştırma hatasını fizik diye öğretir.</span>
+          </div>
+        </div>
+        <div class="pfoot">
+          <span class="sb">Solver gerçekten çalışır · 8 basamak ≈ 100 s</span>
+          <button type="button" class="btn btn-primary blueprint" style="margin-left:auto;height:32px;font-size:12px;padding:0 16px"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Taramayı başlat</button>
+        </div>
+      </div>
+      <div class="pane-r">
+        <div style="display:flex;align-items:flex-end;gap:12px">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">8/8 basamak çözüldü · geometri #212 · S235JR</span><span class="h" style="font-size:22px">Hedefler düğüm sayısıyla</span></span>
+          <span class="st st-ok" style="margin-left:auto">kararlı bant oran ≤ 0.8</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <sc-for list="{{ conv }}" as="c" hint-placeholder-count="2">
+            <div class="box" style="gap:10px">
+              <span style="display:flex;align-items:baseline;justify-content:space-between"><strong style="font-size:13.5px">{{ c.label }}</strong><span class="sb" style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:1.5px dashed var(--run)"></span>analitik {{ c.ref }}</span></span>
+              <svg viewBox="0 0 400 170" style="width:100%;height:190px;display:block">
+                <rect x="0.5" y="0.5" width="399" height="169" fill="none" stroke="var(--color-divider)"></rect>
+                <rect x="{{ c.bandX }}" y="1" width="{{ c.bandW }}" height="168" fill="var(--ok-bg)"></rect>
+                <line x1="0" y1="{{ c.refY }}" x2="400" y2="{{ c.refY }}" stroke="var(--run)" stroke-dasharray="5 4" stroke-width="1.5"></line>
+                <polyline points="{{ c.pts }}" fill="none" stroke="var(--color-accent-700)" stroke-width="2"></polyline>
+                <sc-for list="{{ c.dots }}" as="d" hint-placeholder-count="8"><rect x="{{ d.x }}" y="{{ d.y }}" width="7" height="7" fill="var(--color-bg)" stroke="var(--color-accent-800)" stroke-width="1.5"></rect></sc-for>
+              </svg>
+              <span style="display:flex;justify-content:space-between" class="sb"><span>2.1 k düğüm</span><span>düğüm sayısı (log)</span><span>186 k</span></span>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:8px;border-top:1px solid var(--color-neutral-200)">
+                <span style="display:flex;flex-direction:column;gap:2px"><span class="k">En ince</span><strong style="font-size:16px">{{ c.fine }}</strong></span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Son iki basamak</span><strong style="font-size:16px;color:var(--ok)">{{ c.last }}</strong></span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Analitiğe göre</span><strong style="font-size:16px">{{ c.vsRef }}</strong></span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span class="k">Basamak başına · Δ önceki basamağa göre</span>
+          <div style="display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--color-divider)">
+            <sc-for list="{{ stepRes }}" as="s" hint-placeholder-count="8">
+              <span style="display:flex;flex-direction:column;gap:4px;padding:10px;border-right:1px solid var(--color-divider)">
+                <span style="display:flex;justify-content:space-between"><strong style="font-size:12.5px">{{ s.r }}</strong><span class="sb" style="font-size:10.5px">{{ s.n }}</span></span>
+                <span style="font-size:12.5px">{{ s.vm }}</span>
+                <span style="height:4px;background:var(--color-neutral-200);display:block"><span style="display:block;height:100%;width:{{ s.w }};background:{{ s.c }}"></span></span>
+                <span style="font-size:11px;font-weight:600;color:{{ s.c }}">{{ s.d }}</span>
+              </span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ MODEL ============ -->
+  <sc-if value="{{ isModel }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+      <div class="pane-l">
+        <div class="phead">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">0.5.6 RF · 0.6.3 loglinear · 0.6.4 hybrid</span><span class="h" style="font-size:22px">Vekil model</span></span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="k" style="width:90px">Korpus</span>
+            <span class="chip" aria-pressed="true">kiris_v3 · 184 run</span><span class="chip">kiris_v2 · 142</span>
+            <label class="sb" style="margin-left:auto;display:flex;align-items:center;gap:6px"><input type="checkbox" style="accent-color:var(--color-accent)">NLGEOM</label>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span class="k">Skaler modeller · test MAPE</span>
+            <sc-for list="{{ modelCards }}" as="m" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 110px;gap:12px;align-items:center;padding:12px 14px;border:1px solid {{ m.bd }};background:{{ m.bg }}">
+                <span style="display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px"><strong class="h" style="font-size:17px">{{ m.name }}</strong><span class="st {{ m.cls }}">{{ m.state }}</span></span>
+                  <span class="sb">{{ m.desc }}</span>
+                </span>
+                <span style="display:flex;flex-direction:column;gap:5px">
+                  <span style="display:flex;align-items:center;gap:6px"><span class="k" style="width:12px">u</span><span style="flex:1;height:6px;background:var(--color-neutral-200);display:block"><span style="display:block;height:100%;width:{{ m.uw }};background:{{ m.c }}"></span></span><span style="font-size:12px;width:48px;text-align:right">{{ m.u }}</span></span>
+                  <span style="display:flex;align-items:center;gap:6px"><span class="k" style="width:12px">σ</span><span style="flex:1;height:6px;background:var(--color-neutral-200);display:block"><span style="display:block;height:100%;width:{{ m.sw }};background:{{ m.c }}"></span></span><span style="font-size:12px;width:48px;text-align:right">{{ m.s }}</span></span>
+                </span>
+                <span style="display:flex;flex-direction:column;gap:5px">
+                  <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 8px">Yeniden eğit</button>
+                  <button type="button" class="btn btn-ghost" style="height:24px;font-size:11px;padding:0 8px">{{ m.cta }}</button>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="display:flex;align-items:center"><span class="k">Alan modeli · GNN</span><span class="st st-idle" style="margin-left:auto">deneysel</span></span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--color-divider)">
+              <span style="display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-right:1px solid var(--color-divider)"><span class="k">Düğüm RMSE · u</span><strong style="font-size:15px">0.041 mm</strong></span>
+              <span style="display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-right:1px solid var(--color-divider)"><span class="k">Düğüm RMSE · σ</span><strong style="font-size:15px">6.8 MPa</strong></span>
+              <span style="display:flex;flex-direction:column;gap:3px;padding:10px 12px"><span class="k">Holdout</span><strong style="font-size:15px">yok</strong><span class="sb" style="font-size:10.5px">az örnek · ayrılmadı</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="pfoot">
+          <span class="sb">Eğitim tek şablon + tek korpus ile çalışır</span>
+          <button type="button" class="btn btn-secondary" style="margin-left:auto;height:32px;font-size:12px">GNN eğit</button>
+          <button type="button" class="btn btn-primary blueprint" style="height:32px;font-size:12px;padding:0 16px"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Üçünü de eğit</button>
+        </div>
+      </div>
+      <div class="pane-r">
+        <div style="display:flex;align-items:flex-end;gap:12px">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Doğrulama · hybrid · 184 çözülmüş run · ccx çalışmaz</span><span class="h" style="font-size:22px">Tahmin ↔ FEA</span></span>
+          <span class="seg" style="height:26px;margin-left:auto">
+            <span class="seg-opt" style="padding:0 10px;font-size:11.5px">u</span>
+            <span class="seg-opt" style="padding:0 10px;font-size:11.5px;background:var(--color-accent);color:var(--color-bg)">σ</span>
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:16px">
+          <div class="box">
+            <svg viewBox="0 0 400 260" style="width:100%;height:280px;display:block">
+              <rect x="30.5" y="0.5" width="369" height="239" fill="none" stroke="var(--color-divider)"></rect>
+              <polygon points="30,240 400,0 400,14 52,240" fill="var(--color-accent-100)"></polygon>
+              <polygon points="30,240 400,0 380,0 30,226" fill="var(--color-accent-100)"></polygon>
+              <line x1="30" y1="240" x2="400" y2="0" stroke="var(--color-accent-300)" stroke-dasharray="5 4"></line>
+              <sc-for list="{{ valPts }}" as="p" hint-placeholder-count="30"><circle cx="{{ p.x }}" cy="{{ p.y }}" r="3" fill="{{ p.c }}" fill-opacity=".8"></circle></sc-for>
+              <text x="34" y="256" font-size="10" fill="var(--color-neutral-700)" font-family="Barlow">FEA σ (MPa) →</text>
+              <text x="2" y="12" font-size="10" fill="var(--color-neutral-700)" font-family="Barlow">tahmin</text>
+            </svg>
+            <span class="sb">Açık bant ±%5 · amber = uzay dışı örnek</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ valStats }}" as="v" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1px solid var(--color-divider)"><span class="k">{{ v.k }}</span><strong class="h" style="font-size:24px;color:{{ v.c }}">{{ v.v }}</strong></span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="display:flex;align-items:center"><span class="k">loglinear üsleri · σ ∝ Π xᵢ^aᵢ</span><span class="sb" style="margin-left:auto">kiriş teorisi: L¹ · b⁻¹ · t⁻² · F¹</span></span>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--color-divider)">
+            <sc-for list="{{ exps }}" as="e" hint-placeholder-count="6">
+              <span style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-right:1px solid var(--color-divider);background:{{ e.bg }}">
+                <em class="h" style="font-style:italic;font-size:16px;color:var(--color-accent-800)">{{ e.f }}</em>
+                <span style="position:relative;width:14px;height:60px;background:var(--color-neutral-200)">
+                  <span style="position:absolute;left:0;right:0;top:50%;height:1px;background:var(--color-neutral-600)"></span>
+                  <span style="position:absolute;left:0;right:0;top:{{ e.top }};height:{{ e.hh }};background:{{ e.c }}"></span>
+                </span>
+                <strong style="font-size:13px">{{ e.v }}</strong>
+                <span class="sb" style="font-size:10px">{{ e.note }}</span>
+              </span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ TAHMİN ============ -->
+  <sc-if value="{{ isPred }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+      <div class="pane-l">
+        <div class="phead">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Surrogate · ccx yok</span><span class="h" style="font-size:22px">Parametreden tahmin</span></span>
+          <span class="sb" style="margin-left:auto;text-align:right;line-height:1.4">Bant = eğitim kutusu<br>■ = girilen değer</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 12px">
+          <sc-for list="{{ predIn }}" as="p" hint-placeholder-count="5">
+            <div class="row" style="grid-template-columns:150px minmax(0,1fr) 92px">
+              <span style="display:flex;align-items:baseline;gap:7px"><em class="h" style="font-style:italic;font-size:18px;color:var(--color-accent-800)">{{ p.sym }}</em><span style="font-size:13px;font-weight:600">{{ p.name }}</span></span>
+              <span style="display:flex;flex-direction:column;gap:4px">
+                <span style="position:relative;height:20px">
+                  <span style="position:absolute;left:0;right:0;top:9px;height:2px;background:var(--color-neutral-300)"></span>
+                  <span style="position:absolute;top:5px;height:10px;left:{{ p.tl }};width:{{ p.tw }};background:var(--color-accent-200);border:1px solid var(--color-accent-300)"></span>
+                  <span style="position:absolute;top:2px;left:{{ p.pos }};width:12px;height:16px;margin-left:-6px;background:{{ p.knob }}"></span>
+                </span>
+                <span class="sb" style="font-size:10.5px;color:{{ p.nc }}">{{ p.note }}</span>
+              </span>
+              <span style="display:flex;align-items:center;gap:5px"><input class="num" value="{{ p.v }}" style="border-color:{{ p.bd }}"><span class="sb">{{ p.unit }}</span></span>
+            </div>
+          </sc-for>
+          <div style="display:flex;flex-direction:column;gap:10px;padding:14px 0">
+            <span style="display:flex;align-items:center;gap:10px"><span class="k" style="width:150px">Malzeme</span><span class="chip" aria-pressed="true">S235JR</span><span class="chip">AlMg3</span></span>
+            <span style="display:flex;align-items:center;gap:10px"><span class="k" style="width:150px">Model</span><span class="chip">auto</span><span class="chip" aria-pressed="true">hybrid</span><span class="chip">loglinear</span><span class="chip">RF</span></span>
+            <span style="display:flex;align-items:center;gap:10px"><span class="k" style="width:150px">Akma gerilmesi</span>
+              <span class="seg" style="height:26px">
+                <span class="seg-opt" style="padding:0 10px;font-size:11.5px;background:var(--color-accent);color:var(--color-bg)">auto</span>
+                <span class="seg-opt" style="padding:0 10px;font-size:11.5px">maskeli</span>
+                <span class="seg-opt" style="padding:0 10px;font-size:11.5px">ham tepe</span>
+              </span>
+            </span>
+          </div>
+        </div>
+        <div class="pfoot">
+          <label class="sb" style="display:flex;align-items:center;gap:6px"><input type="checkbox" style="accent-color:var(--color-accent)">Run #212 ile karşılaştır</label>
+          <button type="button" class="btn btn-primary blueprint" style="margin-left:auto;height:32px;font-size:12px;padding:0 16px"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Tahmin et</button>
+        </div>
+      </div>
+      <div class="pane-r">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:12px">
+          <div class="box"><span class="k">Maks deplasman</span><span class="big">2.94 <span style="font-size:15px">mm</span></span><span class="sb">hybrid · uzay dışı</span></div>
+          <div class="box"><span class="k">Maks von Mises</span><span class="big">226.1 <span style="font-size:15px">MPa</span></span><span class="sb">maskeli · tekillik hariç</span></div>
+          <div class="box" style="border-color:var(--run);background:var(--run-bg)">
+            <span style="display:flex;justify-content:space-between"><span class="k" style="color:var(--run)">Akma kullanımı · S235JR</span><strong style="font-size:13px;color:var(--run)">%96</strong></span>
+            <span style="position:relative;height:10px;background:color-mix(in srgb,var(--run) 18%,transparent);display:block">
+              <span style="position:absolute;left:0;top:0;bottom:0;width:96%;background:var(--run)"></span>
+              <span style="position:absolute;right:0;top:-3px;width:2px;height:16px;background:var(--color-text)"></span>
+            </span>
+            <span style="font-size:12px;color:var(--run)">226.1 / 235 MPa · limit aşılmadı ama sınırda</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span class="k">Neden uzay dışı · eğitim kutusu ihlali</span>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 14px;border:1px solid var(--run);background:var(--run-bg)">
+            <span style="display:flex;flex-direction:column;gap:2px"><strong style="font-size:13.5px;color:var(--run)">L = 220 mm · üst sınırın üstünde</strong><span style="font-size:12px;color:var(--run)">eğitim aralığı 136 – 204 mm · 1.08×</span></span>
+            <button type="button" class="btn btn-secondary" style="height:28px;font-size:12px">L'yi 204'e çek</button>
+            <button type="button" class="btn btn-secondary" style="height:28px;font-size:12px">DOE'ye ekle</button>
+          </div>
+        </div>
+        <div class="box" style="gap:10px">
+          <span style="display:flex;align-items:center;gap:10px">
+            <span style="display:flex;flex-direction:column;gap:2px"><span class="k">Tek parametre tarama · 20 adım · tek istek</span><strong style="font-size:15px">σ max, L'ye göre</strong></span>
+            <span class="sb" style="margin-left:auto;display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:1.5px dashed var(--color-text)"></span>akma 235 MPa</span>
+            <span class="sb" style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--run-bg);border:1px solid var(--run)"></span>uzay dışı</span>
+          </span>
+          <svg viewBox="0 0 700 220" style="width:100%;height:230px;display:block">
+            <rect x="0.5" y="0.5" width="699" height="219" fill="none" stroke="var(--color-divider)"></rect>
+            <rect x="0" y="1" width="{{ sweepOodL }}" height="218" fill="var(--run-bg)"></rect>
+            <rect x="{{ sweepOodR }}" y="1" width="{{ sweepOodRW }}" height="218" fill="var(--run-bg)"></rect>
+            <line x1="0" y1="{{ yieldY }}" x2="700" y2="{{ yieldY }}" stroke="var(--color-text)" stroke-dasharray="6 4"></line>
+            <polyline points="{{ sweepPts }}" fill="none" stroke="var(--color-accent-700)" stroke-width="2"></polyline>
+            <sc-for list="{{ sweepDots }}" as="d" hint-placeholder-count="20"><circle cx="{{ d.x }}" cy="{{ d.y }}" r="3.4" fill="{{ d.c }}"></circle></sc-for>
+            <line x1="{{ curX }}" y1="0" x2="{{ curX }}" y2="220" stroke="var(--color-accent-900)" stroke-width="1.5"></line>
+          </svg>
+          <span style="display:flex;justify-content:space-between" class="sb"><span>L 120 mm</span><span>eğitim 136 – 204</span><span>L 240 mm</span></span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;initialStage&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;doe&quot;,&quot;data&quot;,&quot;conv&quot;,&quot;model&quot;,&quot;pred&quot;],&quot;default&quot;:&quot;doe&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Görünüm&quot;}}">
+class Component extends DCLogic {
+  state = { stage: this.props.initialStage ?? "doe" };
+  renderVals() {
+    let seed = 2026;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const pct = v => (Math.max(0, Math.min(1, v)) * 100).toFixed(1) + "%";
+    const OK = "var(--color-accent)", WARN = "var(--run)";
+    const cur = this.state.stage;
+
+    const stageDef = [
+      ["doe", "0.5", "DOE", "#14 · 200 örnek", "var(--ok)"],
+      ["data", "0.5", "Veri seti", "412 run · 3 korpus", "var(--run)"],
+      ["conv", "0.6.1", "Yakınsama", "8/8 basamak", "var(--ok)"],
+      ["model", "0.5.6–0.6.4", "Model", "hybrid · σ %1.86", "var(--ok)"],
+      ["pred", "surrogate", "Tahmin", "uzay dışı 1", "var(--run)"],
+    ];
+    const stages = stageDef.map(([id, phase, name, meta, dot]) => {
+      const a = id === cur;
+      return { phase, name, meta, dot, go: () => this.setState({ stage: id }),
+        bg: a ? "var(--color-accent-100)" : "var(--color-bg)",
+        fg: a ? "var(--color-accent-900)" : "var(--color-text)",
+        bar: a ? "var(--color-accent)" : "transparent" };
+    });
+
+    const pdef = [["L","Uzunluk","mm",80,260,136,204,170],["b","Genişlik","mm",10,40,16,24,20],["t","Kalınlık","mm",4,20,8,12,10],["es/t","Eleman oranı","×",0.2,2,0.5,1.2,0.8],["k","Yük katsayısı","×",0.1,3,0.5,2,1]];
+    const params = pdef.map(([sym,name,unit,lo,hi,mn,mx,df]) => { const f = v => (v-lo)/(hi-lo); return { sym,name,unit,lo,hi,min:mn,max:mx,left:pct(f(mn)),right:pct(f(mx)),width:pct(f(mx)-f(mn)),defLeft:pct(f(df)) }; });
+
+    const mkStrip = (label, unit, mean, spread, lo, hi, fmt) => {
+      const dots = []; let sum = 0;
+      for (let i = 0; i < 70; i++) { const v = Math.min(hi, Math.max(lo, mean + (rnd()+rnd()+rnd()-1.5)*spread)); sum += v; dots.push({ x: ((v-lo)/(hi-lo)*600).toFixed(1), y: (12+rnd()*20).toFixed(1), c: rnd() < 0.07 ? WARN : OK }); }
+      const m = sum/70, mx = (m-lo)/(hi-lo)*600;
+      return { label, unit, dots, mean: fmt(m), range: `${fmt(lo)} – ${fmt(hi)}`, meanX: mx.toFixed(1), iqrX: (mx-90).toFixed(1) };
+    };
+    const sg = v => (v >= 0 ? "+" : "") + v.toFixed(1);
+    const strips = [
+      mkStrip("Maks deplasman","mm",1.3,0.9,0.2,3.4,v=>v.toFixed(2)),
+      mkStrip("Maks von Mises","MPa",150,90,40,320,v=>v.toFixed(0)),
+      mkStrip("Δ deplasman","% analitiğe göre",0.4,2.4,-4,6,sg),
+      mkStrip("Δ von Mises","% analitiğe göre",1.2,4,-6,12,sg),
+    ];
+    const outliers = [
+      { i:"117", q:"analytic_warn", cls:"st-run", dev:"+11.4%", color:"var(--run)", params:"L 201 · t 8.2 · es/t 1.18" },
+      { i:"63", q:"analytic_warn", cls:"st-run", dev:"+9.8%", color:"var(--run)", params:"L 198 · t 8.4 · es/t 1.11" },
+      { i:"142", q:"analytic_warn", cls:"st-run", dev:"−7.2%", color:"var(--run)", params:"L 139 · t 11.8 · es/t 1.20" },
+      { i:"8", q:"ok", cls:"st-ok", dev:"+4.9%", color:"var(--color-text)", params:"L 187 · t 9.0 · es/t 1.02" },
+    ];
+
+    const dataStats = [
+      { v:"412", k:"çözülmüş run", c:"var(--color-text)" },
+      { v:"318", k:"eğitim .npz", c:"var(--color-text)" },
+      { v:"46", k:"geometri", c:"var(--color-text)" },
+      { v:"3", k:"malzeme", c:"var(--color-text)" },
+      { v:"9", k:"çözülmemiş", c:"var(--run)" },
+    ];
+    const tpl = (name, solved, runs, excl) => ({ name, solved, runs, sw: pct((solved-excl)/300), uw: pct((runs-solved)/300), xw: pct(excl/300) });
+    const byTemplate = [tpl("cantilever_beam",248,252,7), tpl("plate_hole",121,125,3), tpl("şablonsuz",43,44,0)];
+    const corpora = [
+      { name:"kiris_v3", sub:"cantilever_beam · donduruldu 21.09 · 14:02", manual:"6 elle", runs:"184", bd:"var(--color-accent)", bg:"var(--color-accent-100)" },
+      { name:"kiris_v2", sub:"cantilever_beam · donduruldu 12.09 · 10:40", manual:"—", runs:"142", bd:"var(--color-divider)", bg:"var(--color-bg)" },
+      { name:"plaka_v1", sub:"plate_hole · donduruldu 18.09 · 16:15", manual:"2 elle", runs:"96", bd:"var(--color-divider)", bg:"var(--color-bg)" },
+    ];
+    const dataLog = [
+      { t:"21.09 · 14:08", msg:"kiris_v3 eğitim seti indirildi (setin tanımı da arşivde)", tag:"dışa", cls:"st-idle" },
+      { t:"19.09 · 09:30", msg:"İçe aktarıldı — runs: 38, geometries: 6", tag:"içe", cls:"st-ok" },
+      { t:"15.09 · 17:52", msg:"Arşiv indirildi · 364 run", tag:"dışa", cls:"st-idle" },
+    ];
+
+    const convParams = [{ sym:"L", name:"Uzunluk", v:"180", unit:"mm" },{ sym:"b", name:"Genişlik", v:"20", unit:"mm" },{ sym:"t", name:"Kalınlık", v:"10", unit:"mm" }];
+    const ratios = [1.5,1.2,1.0,0.8,0.6,0.5,0.4,0.3];
+    const steps = ratios.map(r => ({ r: r.toFixed(1), es: (r*10).toFixed(0) + " mm", w: (6 + r*12).toFixed(0) + "px" }));
+    const xs = [22,64,106,152,202,254,312,378];
+    const curve = (vals, lo, hi, ref, fine, last, vsRef, label, refLabel) => {
+      const y = v => 160 - (v-lo)/(hi-lo)*150;
+      return { label, ref: refLabel, fine, last, vsRef,
+        pts: vals.map((v,i)=>`${xs[i]},${y(v).toFixed(1)}`).join(" "),
+        dots: vals.map((v,i)=>({ x: xs[i]-3.5, y: (y(v)-3.5).toFixed(1) })),
+        refY: y(ref).toFixed(1), bandX: "140", bandW: "259" };
+    };
+    const vmV = [138,149,155,158.4,160.1,161.0,161.3,161.5], uV = [1.12,1.17,1.19,1.198,1.203,1.205,1.206,1.206];
+    const conv = [
+      curve(vmV,130,166,160.8,"161.5 MPa","+0.1%","+0.4%","Maks von Mises · MPa","160.8"),
+      curve(uV,1.10,1.22,1.206,"1.206 mm","0.0%","0.0%","Maks deplasman · mm","1.206"),
+    ];
+    const nodes = ["2.1k","3.9k","6.4k","12k","27k","46k","88k","186k"];
+    const stepRes = vmV.map((v,i) => {
+      const d = i ? (v - vmV[i-1]) / vmV[i-1] * 100 : null;
+      const big = d != null && Math.abs(d) > 2;
+      return { r: ratios[i].toFixed(1), n: nodes[i], vm: v.toFixed(1) + " MPa",
+        d: d == null ? "—" : sg(d) + "%", w: d == null ? "0%" : pct(Math.abs(d)/8),
+        c: d == null ? "var(--color-neutral-700)" : big ? "var(--run)" : "var(--ok)" };
+    });
+
+    const modelCards = [
+      { name:"loglinear", desc:"log-log lineer · güç yasası", state:"eğitildi", cls:"st-idle", u:"%0.16", s:"%1.97", uw:"1.4%", sw:"16.9%", c:"var(--color-accent-600)", bd:"var(--color-divider)", bg:"var(--color-bg)", cta:"Aktif yap" },
+      { name:"hybrid", desc:"log-log iskelet + RF artık", state:"aktif", cls:"st-ok", u:"%0.17", s:"%1.86", uw:"1.5%", sw:"15.9%", c:"var(--ok)", bd:"var(--color-accent)", bg:"var(--color-accent-100)", cta:"Aktif" },
+      { name:"RF", desc:"random forest", state:"eğitildi", cls:"st-idle", u:"%18.87", s:"%11.69", uw:"100%", sw:"100%", c:"var(--run)", bd:"var(--color-divider)", bg:"var(--color-bg)", cta:"Aktif yap" },
+    ];
+    const valPts = [];
+    for (let i = 0; i < 64; i++) {
+      const v = 40 + rnd()*280, ood = rnd() < 0.06;
+      const p = v * (1 + (rnd()-0.5) * (ood ? 0.22 : 0.05));
+      valPts.push({ x: (30 + (v-40)/280*370).toFixed(1), y: (240 - (p-40)/280*240).toFixed(1), c: ood ? WARN : "var(--color-accent-700)" });
+    }
+    const valStats = [
+      { k:"Örnek", v:"184", c:"var(--color-text)" },
+      { k:"Ort. |Δσ|", v:"%1.86", c:"var(--ok)" },
+      { k:"Ort. |Δu|", v:"%0.17", c:"var(--ok)" },
+      { k:"Maks |Δu|", v:"%0.9", c:"var(--color-text)" },
+    ];
+    const exp = (f, v, note, ident) => {
+      const h = Math.min(1, Math.abs(v)/3) * 50;
+      return { f, v: (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2), note, top: v >= 0 ? (50 - h).toFixed(0) + "%" : "50%", hh: h.toFixed(0) + "%",
+        c: ident ? "var(--color-accent-700)" : "var(--color-neutral-400)", bg: ident ? "var(--color-bg)" : "var(--color-neutral-100)" };
+    };
+    const exps = [exp("L",1.01,"beklenen +1",true),exp("b",-0.99,"beklenen −1",true),exp("t",-2.02,"beklenen −2",true),exp("F",1.00,"beklenen +1",true),exp("E",0.00,"sabit sütun",false),exp("es",0.03,"eşdoğrusal",false)];
+
+    const pin = (sym,name,unit,v,lo,hi,tl,th,oob,note) => ({ sym,name,unit,v,note,
+      tl: pct((tl-lo)/(hi-lo)), tw: pct((th-tl)/(hi-lo)), pos: pct((v-lo)/(hi-lo)),
+      knob: oob ? "var(--run)" : "var(--color-accent-800)", nc: oob ? "var(--run)" : "var(--color-neutral-700)", bd: oob ? "var(--run)" : "var(--color-divider)" });
+    const predIn = [
+      pin("L","Uzunluk","mm",220,80,260,136,204,true,"eğitim 136–204 · 1.08× üstünde"),
+      pin("b","Genişlik","mm",20,10,40,16,24,false,"eğitim 16–24"),
+      pin("t","Kalınlık","mm",10,4,20,8,12,false,"eğitim 8–12"),
+      pin("es","Eleman boyutu","mm",8,2,24,4,14.4,false,"eğitim 4–14.4"),
+      pin("F","Kuvvet","N",1500,0,4000,750,3000,false,"varsayılan −1500 N × 0.5–2"),
+    ];
+    const sx = L => (L - 120) / 120 * 700, sy = s => 210 - (s - 60) / 240 * 200;
+    const sweepDots = [], sp = [];
+    for (let i = 0; i < 20; i++) {
+      const L = 120 + i * 120 / 19, s = 162 * (L / 180);
+      const ood = L < 136 || L > 204;
+      sp.push(`${sx(L).toFixed(1)},${sy(s).toFixed(1)}`);
+      sweepDots.push({ x: sx(L).toFixed(1), y: sy(s).toFixed(1), c: s > 235 ? "var(--color-text)" : ood ? WARN : "var(--color-accent-700)" });
+    }
+
+    return {
+      isDoe: cur === "doe", isData: cur === "data", isConv: cur === "conv", isModel: cur === "model", isPred: cur === "pred",
+      stages, params, strips, outliers, dataStats, byTemplate, corpora, dataLog,
+      convParams, steps, conv, stepRes, modelCards, valPts, valStats, exps, predIn,
+      sweepPts: sp.join(" "), sweepDots, sweepOodL: sx(136).toFixed(1), sweepOodR: sx(204).toFixed(1), sweepOodRW: (700 - sx(204)).toFixed(1),
+      yieldY: sy(235).toFixed(1), curX: sx(220).toFixed(1),
+    };
+  }
+}
+</script>
+</body>
+</html>

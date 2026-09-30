@@ -1176,21 +1176,132 @@ p {
    panellerin render edildiği değişir, veri akışı aynı. */
 .ml-studio-page {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   height: 100vh;
   background: var(--bg);
   color: var(--ink);
   overflow: hidden;
 }
 
+/* Tek aşama görünür (ML Studio 1a): panel tam genişlik, içerik 1440'ta durur. */
 .ml-studio-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 22px 22px;
   overflow-y: auto;
   min-height: 0;
+}
+
+.ml-studio-body > .panel {
+  max-width: 1400px;
+}
+
+.ml-studio-label {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ml-studio-chip-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+}
+
+.ml-studio-tagline {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+/* ---- aşama çubuğu: DOE → Veri seti → Yakınsama → Model → Tahmin ---- */
+.ml-stage-nav {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.ml-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-height: 64px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ml-stage:last-child {
+  border-right: 0;
+}
+
+.ml-stage:hover {
+  background: var(--surface-2);
+}
+
+.ml-stage.active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.ml-stage.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent);
+}
+
+.ml-stage-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-head);
+  font-weight: 600;
+}
+
+.ml-stage-phase {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+.ml-stage-name {
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ml-stage-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  min-height: 14px;
+}
+
+.ml-stage-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  flex-shrink: 0;
 }
 
 .ml-studio-back {

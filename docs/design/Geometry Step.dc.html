@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/styles.css">
+<script src="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/_ds_bundle.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent-900)}
+:root{--wb-run:#8a5a1f;--wb-run-bg:#f6ecdc;--wb-ok:#3a6248;--wb-ok-bg:#e6eee9}
+.wb-row{display:flex;align-items:center}
+.wb-k{font-family:var(--font-heading);font-weight:700;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--color-neutral-700)}
+.wb-tab{font-family:var(--font-heading);font-weight:600;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase;padding:0 15px;height:100%;display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--color-neutral-700);border-bottom:2px solid transparent}
+.wb-tab:hover{background:var(--color-neutral-200)}
+.wb-tab[aria-selected="true"]{color:var(--color-accent-800);border-bottom-color:var(--color-accent);background:var(--color-accent-100)}
+.wb-tr{display:grid;align-items:center;gap:8px;padding:3px 10px;font-size:12.5px;cursor:pointer;border-left:2px solid transparent}
+.wb-tr:hover{background:var(--color-neutral-200)}
+.wb-tr[aria-selected="true"]{background:var(--color-accent-100);border-left-color:var(--color-accent)}
+.wb-sub{color:var(--color-neutral-800)}
+.wb-m{font-size:10.5px;color:var(--color-neutral-700);justify-self:end;white-space:nowrap}
+.wb-ic{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-neutral-800);cursor:pointer}
+.wb-ic svg{display:block}
+.wb-ic:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.wb-sel{display:flex;flex-direction:column;align-items:center;gap:2px;width:52px;padding:4px 0;border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-neutral-800);cursor:pointer;font-family:var(--font-heading);font-weight:600;font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+.wb-sel svg{display:block}
+.wb-sel:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.wb-sel[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-f{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--color-neutral-700)}
+.wb-in{min-height:28px;padding:4px 7px;font:inherit;font-size:12.5px;color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-divider);width:100%;box-sizing:border-box}
+.wb-in:hover{border-color:var(--color-neutral-600)}
+.wb-in:focus-visible{border-color:var(--color-accent);outline:none}
+.wb-sec{padding:11px 13px;border-bottom:1px solid var(--color-divider);display:flex;flex-direction:column;gap:9px}
+.wb-ov{background:color-mix(in srgb,var(--color-bg) 94%,transparent);border:1px solid var(--color-divider)}
+.wb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;font-size:11.5px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;color:var(--color-text)}
+.wb-chip:hover{background:var(--color-accent-100)}
+.wb-chip[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-sb{font-size:11px;color:var(--color-neutral-700);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.wb-li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--color-divider);background:var(--color-bg);font-size:12px}
+.wb-st{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;font-size:10.5px;font-weight:600;border:1px solid}
+.wb-st-ok{background:var(--wb-ok-bg);border-color:var(--wb-ok);color:var(--wb-ok)}
+.wb-st-idle{background:var(--color-neutral-200);border-color:var(--color-divider);color:var(--color-neutral-700)}
+.wb-op{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;text-align:left;color:var(--color-text);font:inherit;font-size:12.5px}
+.wb-op:hover{background:var(--color-accent-100);border-color:var(--color-accent)}
+.wb-op svg{flex-shrink:0;color:var(--color-neutral-800)}
+.wb-op:hover svg{color:var(--color-accent-800)}
+.wb-drop{display:flex;flex-direction:column;align-items:center;gap:14px;padding:44px 52px;border:1.5px dashed var(--color-accent);background:color-mix(in srgb,var(--color-bg) 92%,transparent);cursor:pointer}
+.wb-drop:hover{background:var(--color-accent-100)}
+</style>
+</helmet>
+
+<main style="display:grid;grid-template-rows:46px 56px 46px minmax(0,1fr) 202px 26px;height:960px;min-width:1320px;background:var(--color-bg);overflow:hidden">
+
+  <header class="wb-row" style="gap:13px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span style="display:flex;align-items:center;gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9"></path></svg>
+      <span style="font-family:var(--font-heading);font-weight:600;font-size:16px;letter-spacing:.02em">SIMÜLASYON TEZGAHI</span>
+    </span>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="wb-row" style="gap:8px;font-size:13px">
+      <strong style="font-weight:600">{{ caseName }}</strong>
+      <span class="tag tag-neutral">{{ fileTag }}</span>
+    </span>
+    <span style="margin-left:auto"></span>
+    <a href="ML Studio.dc.html" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px;display:inline-flex;align-items:center;gap:7px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"></circle><circle cx="5" cy="18" r="2"></circle><circle cx="19" cy="12" r="2"></circle><path d="M7 6.5l10 4.7M7 17.5l10-4.7"></path></svg>
+      ML Stüdyo
+    </a>
+    <button type="button" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px" disabled>Mesh adımına geç</button>
+  </header>
+
+  <div class="wb-row" style="gap:12px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-bg)">
+    <span class="wb-k" style="writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.16em">Analiz tipi</span>
+    <span style="display:flex;gap:7px">
+      <span style="display:flex;flex-direction:column;gap:3px;padding:7px 12px;border:1px solid var(--color-accent);background:var(--color-accent);color:var(--color-bg);min-width:132px">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v9a5 5 0 0 0 5 5h9"></path><path d="M17 15l3 4-4 1"></path><path d="M3 5h5"></path></svg>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.07em;text-transform:uppercase">Durability</span>
+        </span>
+        <span style="font-size:11px;color:color-mix(in srgb,var(--color-bg) 85%,transparent)">CalculiX · statik</span>
+      </span>
+      <span class="wb-sb" style="white-space:normal;max-width:196px;line-height:1.4">Geometri ve mesh adımları üç analiz tipinde ortaktır.</span>
+    </span>
+    <span style="width:1px;height:34px;background:var(--color-divider)"></span>
+    <nav class="wb-row" style="align-self:stretch;height:100%">
+      <span class="wb-tab" aria-selected="true">1 Geometri</span>
+      <span class="wb-tab">2 Mesh</span>
+      <span class="wb-tab">3 Malzeme</span>
+      <span class="wb-tab">4 Durability</span>
+      <span class="wb-tab">5 Sonuçlar</span>
+    </nav>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="wb-st {{ stepStatusClass }}">{{ stepStatus }}</span>
+      <button type="button" class="btn btn-secondary" style="height:27px;font-size:11.5px;padding:0 10px">+ Yeni vaka</button>
+    </span>
+  </div>
+
+  <div class="wb-row" style="gap:9px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span style="display:flex;gap:4px">
+      <span class="wb-sel" title="Parça seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path></svg>Parça
+      </span>
+      <span class="wb-sel" aria-pressed="true" title="Yüzey seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 8l9-5 9 5-9 5z"></path><path d="M3 8v3l9 5 9-5V8"></path></svg>Yüzey
+      </span>
+      <span class="wb-sel" title="Kenar seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 19L19 5"></path><circle cx="5" cy="19" r="1.6" fill="currentColor"></circle><circle cx="19" cy="5" r="1.6" fill="currentColor"></circle></svg>Kenar
+      </span>
+      <span class="wb-sel" title="Nokta seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3" fill="currentColor"></circle><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path></svg>Nokta
+      </span>
+    </span>
+    <span style="width:1px;height:22px;background:var(--color-divider)"></span>
+    <span class="wb-chip">Görünürlük<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span>
+    <span class="wb-chip">Geometri araçları<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="wb-sb">{{ selectionNote }}</span>
+      <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Bölge oluştur</button>
+    </span>
+  </div>
+
+  <section style="display:grid;grid-template-columns:280px minmax(0,1fr) 308px;min-height:0">
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <div class="wb-row" style="gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-divider)">
+        <span class="wb-k">Model ağacı</span>
+        <input class="wb-in" placeholder="Ara…" style="margin-left:auto;width:92px;min-height:24px;font-size:11.5px">
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 0">
+        <sc-if value="{{ hasGeometry }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-tr" style="grid-template-columns:1fr auto;font-weight:600">
+            <span style="display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path></svg>{{ caseName }}
+            </span><span class="wb-m">3 parça</span>
+          </div>
+          <div class="wb-tr" aria-selected="true" style="grid-template-columns:1fr auto;padding-left:26px;font-weight:600"><span>Geometri</span><span class="wb-m">128 yüzey</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #1</span><span class="wb-m">solid · 64 yüzey</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #2</span><span class="wb-m">solid · 42 yüzey</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #3</span><span class="wb-m">solid · 22 yüzey</span></div>
+          <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Bölgeler</span><span class="wb-m">2</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>ankastre_uc</span><span class="wb-m">yüzey 12</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>yuk_yuzeyi</span><span class="wb-m">yüzey 42, 43</span></div>
+          <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Mesh</span><span class="wb-st wb-st-idle">yok</span></div>
+          <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Malzeme</span><span class="wb-st wb-st-idle">yok</span></div>
+        </sc-if>
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:18px 14px;display:flex;flex-direction:column;gap:10px">
+            <span class="wb-sb" style="white-space:normal;line-height:1.5">Ağaç, geometri yüklendikten sonra parçaları, bölgeleri ve sonraki adımları listeler.</span>
+            <span style="display:flex;flex-direction:column;gap:4px">
+              <sc-for list="{{ emptyTree }}" as="e" hint-placeholder-count="4">
+                <span style="display:flex;align-items:center;gap:8px;padding:5px 9px;border:1px dashed var(--color-divider);font-size:12px;color:var(--color-neutral-700)">
+                  <span style="width:5px;height:5px;background:var(--color-neutral-400);display:block"></span>{{ e }}
+                </span>
+              </sc-for>
+            </span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="border-top:1px solid var(--color-divider);background:var(--color-bg)">
+        <div class="wb-row" style="padding:7px 12px;border-bottom:1px solid var(--color-divider)"><span class="wb-k">{{ detailsTitle }}</span></div>
+        <sc-for list="{{ details }}" as="d" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:104px 1fr;font-size:11.5px;border-bottom:1px solid var(--color-neutral-200)">
+            <span style="padding:4px 10px;border-right:1px solid var(--color-divider);color:var(--color-neutral-700)">{{ d.k }}</span>
+            <span style="padding:4px 10px">{{ d.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <div style="position:relative;min-width:0;background:var(--color-surface);display:flex;align-items:center;justify-content:center">
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:20px;padding:24px">
+          <label class="wb-drop blueprint" style="position:relative">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path>
+              <path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path>
+            </svg>
+            <span style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <span style="font-family:var(--font-heading);font-weight:600;font-size:22px;letter-spacing:.03em">GEOMETRİ YÜKLE</span>
+              <span style="font-size:13px;color:var(--color-neutral-800)">Dosyayı buraya bırakın veya seçin</span>
+              <span class="wb-sb">.step · .stp · .iges · .igs — en fazla 200 MB</span>
+            </span>
+            <span style="display:flex;gap:8px">
+              <span class="btn btn-primary" style="height:34px;font-size:12.5px;padding:0 18px;display:inline-flex;align-items:center">Dosya seç</span>
+              <span class="btn btn-secondary" style="height:34px;font-size:12.5px;padding:0 14px;display:inline-flex;align-items:center">Şablondan başla</span>
+            </span>
+            <input type="file" style="display:none">
+          </label>
+
+          <div style="display:flex;gap:10px;align-items:stretch">
+            <div class="card" style="width:270px;padding:12px 13px;display:flex;flex-direction:column;gap:8px">
+              <span class="wb-k">Son vakalar</span>
+              <sc-for list="{{ recents }}" as="r" hint-placeholder-count="3">
+                <button type="button" class="wb-op">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 8 8"></path><path d="M4 12V7"></path><path d="M4 12h5"></path></svg>
+                  <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                    <span>{{ r.name }}</span>
+                    <span class="wb-sb">{{ r.sub }}</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+            <div class="card" style="width:270px;padding:12px 13px;display:flex;flex-direction:column;gap:8px">
+              <span class="wb-k">Parametrik şablonlar</span>
+              <sc-for list="{{ templates }}" as="t" hint-placeholder-count="3">
+                <button type="button" class="wb-op">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 4h16v16H4z"></path><path d="M4 10h16M10 4v16"></path></svg>
+                  <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                    <span>{{ t.name }}</span>
+                    <span class="wb-sb">{{ t.sub }}</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasGeometry }}" hint-placeholder-val="{{ false }}">
+        <span style="font-size:13px;color:var(--color-neutral-700)">3B görünüm · geometri · yüzey #42, #43 seçili</span>
+
+        <div style="position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:5px">
+          <span class="wb-ic" title="Görünümü sıfırla"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 8 8"></path><path d="M4 12V7"></path><path d="M4 12h5"></path></svg></span>
+          <span class="wb-ic" title="Yakınlaştır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M10.5 8v5M8 10.5h5"></path></svg></span>
+          <span class="wb-ic" title="Uzaklaştır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M8 10.5h5"></path></svg></span>
+          <span class="wb-ic" title="Sığdır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path></svg></span>
+          <span class="wb-ic" title="Kesit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path></svg></span>
+        </div>
+
+        <div class="wb-ov" style="position:absolute;top:14px;right:14px;padding:9px 12px;display:grid;grid-template-columns:auto auto;gap:4px 14px">
+          <sc-for list="{{ geoStats }}" as="s" hint-placeholder-count="5">
+            <span class="wb-sb">{{ s.k }}</span><span style="font-size:11.5px;text-align:right;font-weight:600">{{ s.v }}</span>
+          </sc-for>
+        </div>
+
+        <div class="wb-ov" style="position:absolute;bottom:14px;left:14px;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+          <span class="wb-k">Gösterim</span>
+          <span style="display:flex;gap:5px">
+            <span class="wb-chip" aria-pressed="true">Katı</span>
+            <span class="wb-chip">Tel kafes</span>
+            <span class="wb-chip">Kenarlar</span>
+          </span>
+        </div>
+
+        <div class="wb-ov" style="position:absolute;bottom:14px;right:14px;padding:9px 12px;display:flex;align-items:center;gap:16px">
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="wb-k">Sınırlayıcı kutu</span><strong style="font-size:14px">184 × 96 × 42 mm</strong></span>
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="wb-k">Hacim</span><strong style="font-size:14px">142 380 mm³</strong></span>
+        </div>
+      </sc-if>
+    </div>
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--color-divider);background:var(--color-bg)">
+      <div class="wb-row" style="gap:8px;padding:9px 13px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+        <span>
+          <span class="card-kicker" style="display:block">Adım 1 · Geometri</span>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:17px;line-height:1.1">{{ panelTitle }}</span>
+        </span>
+        <span class="wb-st {{ stepStatusClass }}" style="margin-left:auto">{{ stepStatus }}</span>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto">
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+          <div class="wb-sec">
+            <span class="wb-k">Nasıl başlanır</span>
+            <sc-for list="{{ howTo }}" as="h" hint-placeholder-count="4">
+              <span style="display:flex;gap:9px;font-size:12.5px;line-height:1.45">
+                <span style="font-family:var(--font-heading);font-weight:700;font-size:12px;color:var(--color-accent-800);flex-shrink:0">{{ h.n }}</span>
+                <span>{{ h.t }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Desteklenen formatlar</span>
+            <span class="wb-li">STEP<span class="wb-m">.step · .stp</span></span>
+            <span class="wb-li">IGES<span class="wb-m">.iges · .igs</span></span>
+            <span class="wb-sb" style="white-space:normal;line-height:1.45">Mesh dosyası (.inp, .msh) 2. adımdan içe aktarılır.</span>
+          </div>
+          <div class="wb-sec" style="border-bottom:none">
+            <span class="wb-k">İçe aktarma ayarı</span>
+            <label class="wb-f"><span>Birim</span><input class="wb-in" value="mm"></label>
+            <label class="wb-sb" style="gap:7px"><input type="checkbox" checked style="accent-color:var(--color-accent)">Yüklemede otomatik onar (heal)</label>
+            <label class="wb-sb" style="gap:7px"><input type="checkbox" style="accent-color:var(--color-accent)">Küçük fillet'leri bastır</label>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasGeometry }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-sec">
+            <span class="wb-k">Dosya</span>
+            <span class="wb-li">braket_v3.step<span class="wb-m">18.4 MB</span></span>
+            <div style="display:flex;gap:7px">
+              <button type="button" class="btn btn-secondary" style="flex:1;height:28px;font-size:11.5px">Değiştir</button>
+              <button type="button" class="btn btn-ghost" style="flex:1;height:28px;font-size:11.5px">İndir</button>
+            </div>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Onarım ve hazırlık</span>
+            <button type="button" class="wb-op">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l3-3 3 3-3 3"></path><path d="M17 4v9a5 5 0 0 1-5 5H4"></path><path d="M7 15l-3 3 3 3"></path></svg>
+              <span style="display:flex;flex-direction:column;gap:1px"><span>Heal</span><span class="wb-sb">açık kenar ve boşlukları kapat</span></span>
+            </button>
+            <button type="button" class="wb-op">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10a6 6 0 0 1 6-6h10"></path><path d="M4 20h4"></path></svg>
+              <span style="display:flex;flex-direction:column;gap:1px"><span>Fillet kaldır</span><span class="wb-sb">yarıçap ≤ 2 mm</span></span>
+            </button>
+            <button type="button" class="wb-op">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 8l9-5 9 5-9 5z"></path><path d="M3 15l9 5 9-5"></path></svg>
+              <span style="display:flex;flex-direction:column;gap:1px"><span>Midsurface</span><span class="wb-sb">seçili 2 yüzeyden orta yüzey</span></span>
+            </button>
+            <button type="button" class="wb-op">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 19"></path><path d="M4 14v5h5"></path><path d="M20 4h-9a2 2 0 0 0-2 2v9h9a2 2 0 0 0 2-2z"></path></svg>
+              <span style="display:flex;flex-direction:column;gap:1px"><span>Yüzey kopyala</span><span class="wb-sb">kalınlık/2 kaydır</span></span>
+            </button>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-row" style="gap:8px"><span class="wb-k">Adlandırılmış bölgeler</span><span class="wb-m" style="margin-left:auto">2</span></span>
+            <span class="wb-li" style="border-left:2px solid var(--color-accent)">ankastre_uc<span class="wb-m">yüzey 12</span></span>
+            <span class="wb-li">yuk_yuzeyi<span class="wb-m">yüzey 42, 43</span></span>
+            <div style="display:flex;gap:7px">
+              <input class="wb-in" placeholder="Bölge adı" style="flex:1">
+              <button type="button" class="btn btn-secondary" style="height:28px;font-size:11.5px;padding:0 10px;white-space:nowrap">+ Ekle</button>
+            </div>
+            <span class="wb-sb" style="white-space:normal;line-height:1.45">Bölgeler 4. adımda sınır koşulu atamak için kullanılır.</span>
+          </div>
+          <div class="wb-sec" style="border-bottom:none">
+            <span class="wb-k">Kontrol</span>
+            <span class="wb-li">Kapalı katı<span class="wb-st wb-st-ok">geçti</span></span>
+            <span class="wb-li">Serbest kenar<span class="wb-st wb-st-ok">0</span></span>
+            <span class="wb-li">Çakışan yüzey<span class="wb-st wb-st-idle">2 uyarı</span></span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="padding:10px 13px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100);display:flex;gap:7px">
+        <button type="button" class="btn btn-secondary" style="flex:1;height:32px;font-size:12px">Geri al</button>
+        <button type="button" class="btn btn-primary" style="flex:2;height:32px;font-size:12px">{{ primaryAction }}</button>
+      </div>
+    </aside>
+  </section>
+
+  <section style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--color-divider);background:var(--color-bg)">
+    <div class="wb-row" style="height:32px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <span class="wb-tab" aria-selected="true" style="font-size:11.5px;padding:0 13px">Vaka kitaplığı<span class="tag tag-accent" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">6</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">İçe aktarma günlüğü</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:7px;padding-right:13px">
+        <span class="wb-sb">Satıra tıklayın · geometri ve adımlar yüklenir</span>
+        <span class="wb-ic" title="Dock'u daralt" style="width:24px;height:24px;border:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg></span>
+      </span>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:0 13px">
+      <table class="table" style="font-size:12.5px">
+        <thead>
+          <tr><th style="width:52px">#</th><th>Vaka</th><th style="width:150px">Dosya</th><th style="width:96px">Parça</th><th style="width:110px">Analiz tipi</th><th style="width:124px">Tarih</th><th style="width:120px"></th></tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ library }}" as="l" hint-placeholder-count="4">
+            <tr>
+              <td style="color:var(--color-neutral-700)">{{ l.id }}</td>
+              <td style="font-weight:600">{{ l.name }}</td>
+              <td style="color:var(--color-neutral-700)">{{ l.file }}</td>
+              <td>{{ l.parts }}</td>
+              <td>{{ l.type }}</td>
+              <td style="color:var(--color-neutral-700)">{{ l.date }}</td>
+              <td>
+                <span style="display:flex;gap:5px;justify-content:flex-end">
+                  <button type="button" class="btn btn-secondary" style="height:24px;font-size:11px;padding:0 9px">Aç</button>
+                  <button type="button" class="btn btn-ghost" style="height:24px;font-size:11px;padding:0 7px">Kopyala</button>
+                </span>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="wb-row" style="gap:16px;padding:0 14px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span class="wb-sb">{{ footerNote }}</span>
+    <span class="wb-sb">Birim mm · N · MPa</span>
+    <span style="margin-left:auto"></span>
+    <span class="wb-sb">Backend localhost:8000</span>
+    <span class="wb-sb"><span style="width:6px;height:6px;background:var(--wb-ok);display:inline-block"></span>bağlı</span>
+  </footer>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1560,&quot;height&quot;:960},&quot;geometryLoaded&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Durum&quot;},&quot;caseName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;braket_v3&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Durum&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const loaded = this.props.geometryLoaded ?? false;
+
+    const base = {
+      hasGeometry: loaded,
+      isEmpty: !loaded,
+      caseName: this.props.caseName ?? "braket_v3",
+      emptyTree: ["Geometri", "Bölgeler", "Mesh", "Malzeme"],
+      recents: [
+        { name: "braket_v3", sub: "braket_v3.step · 3 parça · dün" },
+        { name: "braket kalın", sub: "braket_v2.step · 3 parça · 13.09" },
+        { name: "kapak_montaj", sub: "kapak.step · 5 parça · 11.09" },
+      ],
+      templates: [
+        { name: "cantilever_beam", sub: "L × b × h · parametrik" },
+        { name: "plate_hole", sub: "delikli plaka · gerilme yığılması" },
+        { name: "L_bracket", sub: "köşebent · fillet yarıçapı" },
+      ],
+      howTo: [
+        { n: "01", t: "STEP veya IGES dosyasını bırakın; parçalar ve yüzeyler otomatik okunur." },
+        { n: "02", t: "Gerekirse onarım araçlarıyla açık kenarları kapatın, küçük fillet'leri kaldırın." },
+        { n: "03", t: "Sınır koşulu uygulanacak yüzeyleri seçip adlandırılmış bölge oluşturun." },
+        { n: "04", t: "2. adımda mesh üretin; analiz tipi vaka açılışında seçilmiştir." },
+      ],
+      geoStats: [
+        { k: "parça", v: "3" },
+        { k: "yüzey", v: "128" },
+        { k: "kenar", v: "312" },
+        { k: "nokta", v: "196" },
+        { k: "birim", v: "mm" },
+      ],
+      library: [
+        { id: "#12", name: "braket_v3", file: "braket_v3.step", parts: "3", type: "Crash", date: "14.09 · 21:04" },
+        { id: "#9", name: "braket kalın", file: "braket_v2.step", parts: "3", type: "Durability", date: "13.09 · 18:05" },
+        { id: "#7", name: "kapak_montaj", file: "kapak.step", parts: "5", type: "Modal", date: "11.09 · 15:40" },
+        { id: "#4", name: "cantilever ref", file: "şablon", parts: "1", type: "Durability", date: "10.09 · 09:14" },
+      ],
+    };
+
+    const empty = {
+      fileTag: "dosya yok",
+      stepStatus: "geometri bekleniyor",
+      stepStatusClass: "wb-st-idle",
+      selectionNote: "Seçim için geometri gerekir",
+      detailsTitle: "Detaylar",
+      details: [
+        { k: "dosya", v: "—" },
+        { k: "parça", v: "—" },
+        { k: "yüzey", v: "—" },
+        { k: "birim", v: "mm" },
+        { k: "durum", v: "yükleme bekleniyor" },
+      ],
+      panelTitle: "Geometri yükle",
+      primaryAction: "Dosya seç",
+      footerNote: "Geometri yüklenmedi · sonraki adımlar kilitli",
+    };
+
+    const full = {
+      fileTag: "braket_v3.step",
+      stepStatus: "hazır",
+      stepStatusClass: "wb-st-ok",
+      selectionNote: "Seçili: yüzey #42, #43 · 842 düğüm",
+      detailsTitle: "Detaylar · yüzey #42",
+      details: [
+        { k: "id", v: "yüzey 42" },
+        { k: "parça", v: "#1" },
+        { k: "alan", v: "1 284 mm²" },
+        { k: "tip", v: "düzlem" },
+        { k: "bölge", v: "yuk_yuzeyi" },
+      ],
+      panelTitle: "Geometri hazırlığı",
+      primaryAction: "Mesh adımına geç",
+      footerNote: "3 parça · 128 yüzey · 2 bölge",
+    };
+
+    return { ...base, ...(loaded ? full : empty) };
+  }
+}
+</script>
+</body>
+</html>

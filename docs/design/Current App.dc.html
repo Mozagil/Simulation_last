@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f6f7;color:#2a2e33;font-family:"Barlow",sans-serif}
+a{color:#00b4c8}a:hover{color:#00a0b2}
+input[type=range]{accent-color:#00b4c8}
+</style>
+</helmet>
+<main style="display:grid;grid-template-columns:400px 1fr;grid-template-rows:auto 1fr;height:100vh;gap:0">
+
+  <div style="grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #d8dcdf;background:#fff">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="color:#00b4c8;font-size:15px">◆</span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase">CALCULIX · DURABILITY / braket_v3.step</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="display:flex;align-items:center;gap:7px;font-size:12px;color:#6e757c;white-space:nowrap">
+        <span style="width:7px;height:7px;border-radius:50%;background:#1c7a3d;flex-shrink:0"></span>bitti · ccx
+      </span>
+      <button type="button" style="padding:9px 16px;border:none;border-radius:2px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em;cursor:pointer;white-space:nowrap">▶ RUN SIMULATION</button>
+      <div style="display:flex;align-items:center;gap:4px;padding-left:6px;border-left:1px solid #d8dcdf">
+        <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#6e757c;white-space:nowrap"><span>100%</span><input type="range" min="0" max="100" step="5" value="100" style="width:60px"></label>
+        <button type="button" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #00b4c8;border-radius:4px;background:#00b4c8;color:#fff;font-size:13px;cursor:pointer">☀</button>
+        <button type="button" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fbfcfc;color:#6e757c;font-size:13px;cursor:pointer">●</button>
+      </div>
+      <button type="button" style="padding:6px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer">«</button>
+      <button type="button" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer"><span>☀</span><span>Aydınlık</span></button>
+    </div>
+  </div>
+
+  <div style="grid-row:2;display:flex;flex-direction:column;gap:16px;padding:16px;overflow-y:auto;min-height:0;border-right:1px solid #d8dcdf;background:#fbfcfc">
+
+    <button type="button" style="text-align:left;padding:10px 12px;border:1px solid #d8dcdf;border-left:2px solid #00b4c8;border-radius:2px;background:#e2f6f8;color:#2a2e33;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;cursor:pointer">1 · GEOMETRY</button>
+
+    <div style="width:100%;padding:24px;border:1px solid #d8dcdf;border-radius:3px;background:#fff;text-align:left;align-self:flex-start">
+      <span style="display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;margin-bottom:12px;font-family:'Barlow Condensed',sans-serif">Faz 0 · Geometri önizleme</span>
+      <h1 style="margin:0 0 12px;font-size:28px;line-height:1.15;font-family:'Barlow Condensed',sans-serif">Geometri yükle</h1>
+      <label style="display:flex;align-items:center;justify-content:center;padding:20px 16px;border:1.5px dashed #d8dcdf;border-radius:2px;cursor:pointer;text-align:center;font-size:14px;font-weight:500;color:#00b4c8;background:#e2f6f8"><span>Dosya seç (.step / .iges)</span></label>
+      <p style="margin:14px 0 0;font-size:13px;color:#2a2e33;word-break:break-all">braket_v3.step — yüklendi</p>
+      <div style="margin-top:18px;padding:12px 14px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;padding:8px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+          <p style="display:flex;justify-content:space-between;margin:0;font-size:11px;color:#2a2e33"><span style="color:#6e757c">part count</span>3</p>
+          <p style="display:flex;justify-content:space-between;margin:0;font-size:11px;color:#2a2e33"><span style="color:#6e757c">face count</span>128</p>
+          <p style="display:flex;justify-content:space-between;margin:0;font-size:11px;color:#2a2e33"><span style="color:#6e757c">edge / point</span>312 / 196</p>
+        </div>
+        <p style="margin:0;font-size:14px;color:#2a2e33">Yüzey <strong style="color:#d97757">#42, #43</strong> seçili</p>
+
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:12px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e757c;font-family:'Barlow Condensed',sans-serif;padding-left:2px">GEOMETRİ</div>
+          <div style="display:flex;flex-direction:column;gap:4px;padding:4px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;font-weight:500;cursor:pointer">Heal</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;font-weight:500;cursor:pointer">Fillet kaldır</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;font-weight:500;cursor:pointer">Midsurface (2 yüzey)</button>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:12px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e757c;font-family:'Barlow Condensed',sans-serif;padding-left:2px">PHYSICAL GROUP'LAR</div>
+          <div style="display:flex;flex-direction:column;gap:4px;padding:4px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:500;cursor:pointer">fixed_face</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:1px solid transparent;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;font-weight:500;cursor:pointer">load_face</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:4px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e757c;font-family:'Barlow Condensed',sans-serif;padding-left:2px">İŞLEMLER</div>
+          <div style="display:flex;flex-direction:column;gap:4px;padding:4px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Yüzey kopyala</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Kalınlık/2 kaydır</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Solid gizle</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Surface gizle</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Mesh gizle</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Mesh tel kafes</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Kenar çizgileri (açık)</button>
+            <button type="button" style="width:100%;text-align:left;padding:6px 10px;border:none;border-radius:2px;background:transparent;color:#6e757c;font-size:12px;cursor:pointer">Geri al</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
+      <button type="button" style="margin-top:20px;padding:8px 14px;border:1px solid #d8dcdf;border-radius:2px;background:transparent;color:#2a2e33;font-size:13px;cursor:pointer">🔄 Yeni Case Başlat</button>
+      <span style="font-size:10px;color:#6e757c">Önceki analiz Geçmiş'te kalır; Sil ile kaldırabilirsiniz.</span>
+    </div>
+
+    <div style="width:100%;padding:24px;border:1px solid #d8dcdf;border-radius:3px;background:#fff;max-height:340px;display:flex;flex-direction:column">
+      <span style="display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;margin-bottom:12px;font-family:'Barlow Condensed',sans-serif">Faz 0 · Geçmiş</span>
+      <h1 style="margin:0 0 12px;font-size:28px;line-height:1.15;font-family:'Barlow Condensed',sans-serif">Analiz Geçmişi (3)</h1>
+      <p style="margin:0 0 24px;color:#6e757c;font-size:15px;line-height:1.5">Satıra tıklayınca incelersiniz. Düzenle tüm adımları geri yükler; Sil kaydı kaldırır. Karşılaştırmak için soldan 2 run işaretleyin.</p>
+      <ul style="list-style:none;margin:0;padding:0;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ runs }}" as="r" hint-placeholder-count="3">
+          <li style="display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid #d8dcdf;border-radius:2px">
+            <label style="padding-top:2px"><input type="checkbox"></label>
+            <div style="flex:1;min-width:0;text-align:left">
+              <div style="font-size:12px;font-weight:600;color:#2a2e33;display:flex;align-items:center;gap:6px">{{ r.name }}<span style="font-size:9px;padding:1px 5px;border-radius:2px;text-transform:uppercase;font-weight:700;background:#dff3e6;color:#1c7a3d">{{ r.status }}</span></div>
+              <div style="font-size:10px;color:#6e757c;margin-top:2px">{{ r.sub }}</div>
+              <div style="font-size:10px;color:#6e757c;margin-top:2px">{{ r.scalar }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+              <button type="button" style="padding:4px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">Düzenle</button>
+              <button type="button" style="padding:4px 8px;border:1px solid #a13d3d;border-radius:2px;background:transparent;color:#a13d3d;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">Sil</button>
+            </div>
+          </li>
+        </sc-for>
+      </ul>
+    </div>
+
+    <button type="button" style="text-align:left;padding:10px 12px;border:1px solid #d8dcdf;border-radius:2px;background:#fff;color:#6e757c;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;cursor:pointer">2 · MESH</button>
+
+    <div style="width:100%;padding:24px;border:1px solid #d8dcdf;border-radius:3px;background:#fff">
+      <span style="display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;margin-bottom:12px;font-family:'Barlow Condensed',sans-serif">Faz 0 · Mesh</span>
+      <h1 style="margin:0 0 12px;font-size:22px;line-height:1.15;font-family:'Barlow Condensed',sans-serif">Mesh</h1>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6e757c"><span>Eleman boyutu</span><input type="number" value="4" style="width:100%;padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;font-size:13px;color:#2a2e33;background:#fbfcfc"></label>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:10px">
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#6e757c;font-size:12px;font-weight:500;cursor:pointer;text-align:left">2D shell</button>
+        <button type="button" style="padding:7px 8px;border:1px solid #00b4c8;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:500;cursor:pointer;text-align:left">3D solid</button>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6e757c;margin-top:10px"><span>Eleman tipi</span><select style="width:100%;padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;font-size:13px;color:#2a2e33;background:#fbfcfc"><option>tet</option></select></label>
+      <p style="margin:10px 0 0;font-size:11px;line-height:1.35;color:#6e757c">Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).</p>
+      <button type="button" style="margin-top:10px;width:100%;padding:9px 8px;border:none;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Mesh üret</button>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:10px">
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer;text-align:left">Kalite</button>
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer;text-align:left">Free edge</button>
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer;text-align:left">Equivalence</button>
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer;text-align:left">Rigid body</button>
+        <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;cursor:pointer;text-align:left">NSET</button>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #d8dcdf;font-size:11px;color:#6e757c;line-height:1.45">
+        <p style="margin:0 0 4px;font-size:11px;color:#2a2e33">Solid · tet · size 4</p>
+        <p style="margin:0 0 4px;font-size:11px;color:#2a2e33">48 210 düğüm · 26 884 eleman</p>
+        <ul style="margin:4px 0 0;padding-left:14px"><li>C3D10: 26884</li></ul>
+      </div>
+    </div>
+
+    <button type="button" style="text-align:left;padding:10px 12px;border:1px solid #d8dcdf;border-radius:2px;background:#fff;color:#6e757c;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;cursor:pointer">3 · MATERIAL</button>
+
+    <div style="width:100%;padding:24px;border:1px solid #d8dcdf;border-radius:3px;background:#fff">
+      <span style="display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;margin-bottom:12px;font-family:'Barlow Condensed',sans-serif">Faz 0 · Malzeme</span>
+      <h1 style="margin:0 0 12px;font-size:22px;line-height:1.15;font-family:'Barlow Condensed',sans-serif">Malzeme</h1>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6e757c;margin-bottom:12px"><span>Kütüphane</span><select style="width:100%;padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;font-size:13px;color:#2a2e33;background:#fbfcfc"><option>S235JR (steel)</option></select></label>
+      <div style="display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid #d8dcdf;font-size:12px;color:#2a2e33">
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">E</span>210 GPa</p>
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">ν</span>0.30</p>
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">ρ</span>7850 kg/m³</p>
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">Rp0.2</span>235 MPa</p>
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">Rm</span>360 MPa</p>
+        <p style="display:flex;justify-content:space-between;gap:12px;margin:0;font-size:12px"><span style="color:#6e757c;font-weight:500">S-N</span>tahmini</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" style="flex:1;padding:9px 8px;border:none;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:600;cursor:pointer">ATA</button>
+        <button type="button" style="flex:1;padding:8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:12px;font-weight:500;cursor:pointer">+ ÖZEL</button>
+      </div>
+      <button type="button" style="margin-top:10px;padding:0;border:none;background:none;color:#6e757c;font-size:11px;cursor:pointer;text-align:left;display:block">▸ Gelişmiş (component / kalınlık)</button>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #d8dcdf">
+        <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#6e757c;text-transform:uppercase;letter-spacing:.04em">Atamalar</p>
+        <ul style="margin:0;padding:0;list-style:none">
+          <li style="font-size:12px;color:#2a2e33;padding:4px 0;border-bottom:1px solid #e7eaec">Parça #1 → S235JR (steel)</li>
+          <li style="font-size:12px;color:#2a2e33;padding:4px 0;border-bottom:1px solid #e7eaec">Parça #2 → AlMg3 (aluminium)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:4px;margin:4px 0 8px;padding:4px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+      <button type="button" style="flex:1;padding:8px 12px;border:none;border-radius:4px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer">DURABILITY</button>
+      <button type="button" style="flex:1;padding:8px 12px;border:none;border-radius:4px;background:transparent;color:#6e757c;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer">MODAL</button>
+    </div>
+
+    <button type="button" style="text-align:left;padding:10px 12px;border:1px solid #d8dcdf;border-left:2px solid #00b4c8;border-radius:2px;background:#e2f6f8;color:#2a2e33;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;cursor:pointer">4 · BOUNDARY CONDITIONS</button>
+
+    <div style="width:100%;padding:24px;border:1px solid #d8dcdf;border-radius:3px;background:#fff">
+      <span style="display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;margin-bottom:12px;font-family:'Barlow Condensed',sans-serif">Faz 0 · CalculiX</span>
+      <h1 style="margin:0 0 12px;font-size:22px;line-height:1.15;font-family:'Barlow Condensed',sans-serif">Solver / BC</h1>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;padding:8px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+        <p style="display:flex;justify-content:space-between;margin:0;font-size:11px;color:#2a2e33"><span style="color:#6e757c">element size</span>4 mm</p>
+        <p style="display:flex;justify-content:space-between;margin:0;font-size:11px;color:#2a2e33"><span style="color:#6e757c">scheme</span>3D · tet</p>
+      </div>
+      <p style="margin:0 0 16px;color:#6e757c;font-size:13px;line-height:1.5">Mesh elemanına tıklayın → BC türü seçin → ekleyin.</p>
+      <div style="margin-top:10px;padding:12px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc">
+        <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#6e757c;text-transform:uppercase;letter-spacing:.04em">BC türü</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <button type="button" style="padding:6px 8px;border:1px solid #00b4c8;border-radius:2px;background:#e2f6f8;color:#00b4c8;font-size:11px;font-weight:600;cursor:pointer">Fixed</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Force</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Pressure</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Displacement</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Sliding</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Bearing</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Gravity</button>
+          <button type="button" style="padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#2a2e33;font-size:11px;font-weight:600;cursor:pointer">Rigid body</button>
+        </div>
+        <p style="margin:8px 0 0;font-size:11px;color:#6e757c">Yüzeydeki tüm düğümleri sabitler (U1=U2=U3=0).</p>
+        <button type="button" style="margin-top:10px;width:100%;padding:9px 8px;border:none;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:600;cursor:pointer">+ BC Ekle</button>
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid #d8dcdf">
+        <div style="display:flex;align-items:baseline;justify-content:space-between">
+          <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#6e757c;text-transform:uppercase;letter-spacing:.04em">BC LİSTESİ</p>
+          <span style="font-size:10px;font-weight:700;color:#00b4c8">3</span>
+        </div>
+        <ul style="list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px">
+          <li style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid #d8dcdf;border-left:2px solid #00b4c8;border-radius:2px;background:#fff;font-size:12px;color:#2a2e33"><span>Fixed · yüzey 12 (842 düğüm)</span><button type="button" style="flex-shrink:0;padding:2px 6px;border:1px solid #d8dcdf;border-radius:4px;background:transparent;font-size:10px;cursor:pointer;color:#6e757c">⋯</button></li>
+          <li style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fff;font-size:12px;color:#2a2e33"><span>Force · Fz=−1500 N · yüzey 42</span><button type="button" style="flex-shrink:0;padding:2px 6px;border:1px solid #d8dcdf;border-radius:4px;background:transparent;font-size:10px;cursor:pointer;color:#6e757c">⋯</button></li>
+          <li style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid #d8dcdf;border-radius:2px;background:#fff;font-size:12px;color:#2a2e33"><span>Pressure · 2.5 MPa · yüzey 43</span><button type="button" style="flex-shrink:0;padding:2px 6px;border:1px solid #d8dcdf;border-radius:4px;background:transparent;font-size:10px;cursor:pointer;color:#6e757c">⋯</button></li>
+        </ul>
+      </div>
+    </div>
+
+    <button type="button" style="text-align:left;padding:10px 12px;border:1px solid #d8dcdf;border-radius:2px;background:#fff;color:#6e757c;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;cursor:pointer">6 · RESULTS</button>
+  </div>
+
+  <div style="grid-row:2;min-width:0;min-height:0;overflow:hidden;background:#e9ecee;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:4px;padding:6px 10px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+      <button type="button" title="Geri al" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 8a5 5 0 1 1 5 5 M3 8V5 M3 8h3"></path></svg></button>
+      <button type="button" title="Yakınlaştır" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4"></circle><path d="M10 10l3 3 M7 5v4 M5 7h4"></path></svg></button>
+      <button type="button" title="Uzaklaştır" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4"></circle><path d="M10 10l3 3 M5 7h4"></path></svg></button>
+      <button type="button" title="Görünümü sığdır" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6V3h3 M13 6V3h-3 M3 10v3h3 M13 10v3h-3"></path></svg></button>
+      <span style="width:1px;height:18px;background:#d8dcdf;margin:0 4px"></span>
+      <button type="button" title="Mesh göster" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #00b4c8;border-radius:4px;background:#00b4c8;color:#fff;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3h10v10H3z M3 8h10 M8 3v10"></path></svg></button>
+      <button type="button" title="Mesh tel kafes" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 5h10v6H3z M3 5l10 6 M13 5L3 11"></path></svg></button>
+      <button type="button" title="Solid gizle" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3"></path></svg></button>
+      <button type="button" title="Surface gizle" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3"></path></svg></button>
+      <span style="width:1px;height:18px;background:#d8dcdf;margin:0 4px"></span>
+      <button type="button" title="Parça" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3"></path></svg></button>
+      <button type="button" title="Yüzey" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #00b4c8;border-radius:4px;background:#00b4c8;color:#fff;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" fill-opacity="0.25" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 6l5-3 5 3-5 3z"></path></svg></button>
+      <button type="button" title="Kenar" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12L13 4"></path></svg></button>
+      <button type="button" title="Nokta" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5"></circle></svg></button>
+      <span style="width:1px;height:18px;background:#d8dcdf;margin:0 4px"></span>
+      <button type="button" title="Mesh kalite hesapla" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid #d8dcdf;border-radius:4px;background:#fff;color:#6e757c;cursor:pointer"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 13V4 M3 13h10 M6 11V7 M9 11V5 M12 11V8"></path></svg></button>
+    </div>
+    <div style="flex:1;min-height:0;display:flex;flex-direction:row;align-items:stretch">
+      <div style="flex:1 1 auto;min-width:0;min-height:0;position:relative;display:flex;background:#e9ecee">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#6e757c;font-size:13px">3B görünüm (three.js canvas)</div>
+
+        <div style="position:absolute;z-index:4;top:14px;left:14px;padding:8px 12px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;border-radius:2px;color:#2a2e33;font-family:'JetBrains Mono',monospace;font-size:11px">
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" checked>Sonuçları göster (48210 nokta)</label>
+        </div>
+
+        <div style="position:absolute;z-index:4;top:14px;right:14px;width:168px;padding:12px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;border-radius:2px;color:#2a2e33;font-family:'JetBrains Mono',monospace;font-size:11px">
+          <div style="font-size:10px;letter-spacing:.04em;color:#6e757c;margin-bottom:8px">VON MISES</div>
+          <div style="display:flex;gap:4px;margin-bottom:10px">
+            <button type="button" style="flex:1;background:#00b4c8;border:1px solid #00b4c8;color:#fff;font-family:inherit;font-size:10px;padding:5px 6px;border-radius:4px;cursor:pointer">VM</button>
+            <button type="button" style="flex:1;background:#f4f6f7;border:1px solid #d8dcdf;color:#2a2e33;font-family:inherit;font-size:10px;padding:5px 6px;border-radius:4px;cursor:pointer">U</button>
+            <button type="button" style="flex:1;background:#f4f6f7;border:1px solid #d8dcdf;color:#2a2e33;font-family:inherit;font-size:10px;padding:5px 6px;border-radius:4px;cursor:pointer">SF</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="width:18px;height:140px;border-radius:4px;border:1px solid #d8dcdf;background:linear-gradient(to top,#2f7fd1,#4fbf6a,#f5c63c,#d93b2b);flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;justify-content:space-between;height:140px;font-size:10px;color:#2a2e33"><span>184.2</span><span>147.4</span><span>110.5</span><span>73.7</span><span>36.8</span><span>0.0</span></div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:10px;color:#6e757c;display:flex;justify-content:space-between;align-items:center;gap:6px">min<input value="0" style="width:80px;background:#fbfcfc;border:1px solid #d8dcdf;color:#2a2e33;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:4px"></label>
+            <label style="font-size:10px;color:#6e757c;display:flex;justify-content:space-between;align-items:center;gap:6px">max<input value="184.2" style="width:80px;background:#fbfcfc;border:1px solid #d8dcdf;color:#2a2e33;font-family:inherit;font-size:11px;padding:3px 6px;border-radius:4px"></label>
+          </div>
+          <div style="margin-top:8px;font-size:10px;color:#6e757c">auto max 184.2 MPa</div>
+        </div>
+
+        <div style="position:absolute;z-index:4;bottom:14px;right:14px;padding:12px 14px;width:220px;display:flex;flex-direction:column;gap:10px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;border-radius:2px;color:#2a2e33;font-family:'JetBrains Mono',monospace;font-size:11px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:#6e757c">Deformasyon ölçeği · 40×<input type="range" min="0" max="200" value="40" style="width:100%"></label>
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox">Kenarları göster</label>
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox">Animasyon</label>
+        </div>
+      </div>
+
+      <div style="width:168px;flex-shrink:0;border-left:1px solid #d8dcdf;background:#fff;padding:12px 10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto">
+        <p style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#00b4c8;font-family:'Barlow Condensed',sans-serif;margin:0">Mesh</p>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6e757c"><span>Eleman boyutu</span><input value="4" style="width:100%;padding:6px 8px;border:1px solid #d8dcdf;border-radius:2px;font-size:13px;color:#2a2e33;background:#fbfcfc"></label>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button type="button" style="padding:7px 8px;border:1px solid #d8dcdf;border-radius:2px;background:#fbfcfc;color:#6e757c;font-size:12px;cursor:pointer;text-align:left">2D shell</button>
+          <button type="button" style="padding:7px 8px;border:1px solid #00b4c8;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;cursor:pointer;text-align:left">3D solid</button>
+        </div>
+        <button type="button" style="padding:9px 8px;border:none;border-radius:2px;background:#00b4c8;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Mesh üret</button>
+        <p style="margin:0;font-size:11px;line-height:1.35;color:#6e757c">48 210 düğüm · 26 884 eleman</p>
+      </div>
+    </div>
+
+    <div style="display:flex;border-top:1px solid #d8dcdf;background:#fbfcfc">
+      <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:12px 16px;border-right:1px solid #d8dcdf">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#6e757c">{{ m.label }}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#00b4c8">{{ m.value }}</div>
+          <div style="font-size:10px;color:#6e757c">{{ m.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      runs: [
+        { name: "Run #3", status: "solved", sub: "braket_v3.step · 3D · 08.09.2026 13:42", scalar: "VM max: 1.84e+2 · Deplasman max: 3.10e-1" },
+        { name: "braket kalın", status: "solved", sub: "braket_v2.step · 3D · 07.09.2026 18:05", scalar: "VM max: 1.21e+2 · Deplasman max: 1.90e-1" },
+        { name: "Run #1", status: "inp_only", sub: "braket_v1.step · 2D · 06.09.2026 09:14", scalar: "" },
+      ],
+      metrics: [
+        { label: "MAX VON MISES", value: "184.2", sub: "MPa · düğüm 21 480" },
+        { label: "MAX DEPLASMAN", value: "0.310", sub: "mm · düğüm 4 022" },
+        { label: "MIN SAFETY FACTOR", value: "1.28", sub: "Rp0.2 235 MPa" },
+        { label: "ÇÖZÜM SÜRESİ", value: "42 s", sub: "ccx · 26 884 eleman" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

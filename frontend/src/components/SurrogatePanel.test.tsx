@@ -107,6 +107,19 @@ describe("SurrogatePanel", () => {
     await waitFor(() => expect(onPrediction).toHaveBeenCalledTimes(1));
   });
 
+  it("view=predict yalnız 2·Tahmin'i, view=model yalnız 1·Model + 3·Eğitim'i gösterir", async () => {
+    const { unmount } = render(<SurrogatePanel view="predict" />);
+    expect(await screen.findByText("2 · Tahmin")).toBeInTheDocument();
+    expect(screen.queryByText("1 · Model")).toBeNull();
+    expect(screen.queryByTestId("training-section")).toBeNull();
+    unmount();
+    render(<SurrogatePanel view="model" />);
+    expect(await screen.findByText("1 · Model")).toBeInTheDocument();
+    expect(screen.getByTestId("training-section")).toBeInTheDocument();
+    expect(screen.queryByText("2 · Tahmin")).toBeNull();
+    expect(screen.queryByTestId("sweep-section")).toBeNull();
+  });
+
   it("parametreyle tahmin ccx/run istemez ve sayıları gösterir", async () => {
     vi.mocked(fetchSurrogateStatus).mockResolvedValue({
       scalar_rf: { n_samples: 22, has_holdout: true, metrics: { test: { max_displacement: { r2: -3.9, mae: 1, mape: 1 } } } },

@@ -64,6 +64,7 @@ import ComparisonView from "./components/ComparisonView";
 import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
+import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
 import {
@@ -481,6 +482,8 @@ function App() {
   // Aynı App state'ini paylaşırlar (runsHistory, geometryId vb.) — sadece
   // hangi panellerin render edildiği değişir.
   const [workspace, setWorkspace] = useState<"workbench" | "ml">("workbench");
+  // ML Stüdyo'da açık aşama (DOE → Veri seti → Yakınsama → Model → Tahmin).
+  const [mlStage, setMlStage] = useState<MlStage>("doe");
   const [caseNameInput, setCaseNameInput] = useState("");
 
   /** Geometri ya da mesh mutasyona uğradığında (heal, defeature, offset,
@@ -2568,14 +2571,6 @@ function App() {
       <main className="ml-studio-page">
         <div className="toolbar">
           <div className="toolbar-left">
-            <button
-              type="button"
-              className="ml-studio-back"
-              onClick={() => setWorkspace("workbench")}
-            >
-              ‹ Tezgaha dön
-            </button>
-            <span className="app-brand-divider" />
             <span className="app-brand">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="5" cy="6" r="2" />
@@ -2585,25 +2580,52 @@ function App() {
               </svg>
               <span className="app-brand-title">ML STÜDYO</span>
             </span>
-            <span className="tag tag-neutral">faz 0.5 · 0.6</span>
+            <span className="app-brand-divider" />
+            <span className="ml-studio-label">Şablon</span>
+            <span className="ml-studio-chip ml-studio-chip-active" data-testid="ml-template-chip">
+              {activeTemplateId ?? "seçilmedi — tezgahta şablon üret"}
+            </span>
           </div>
           <div className="toolbar-actions">
+            <span className="ml-studio-tagline">Her şablon ayrı model · korpus tek şablondan eğitilir</span>
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <button
+              type="button"
+              className="ml-studio-back"
+              onClick={() => setWorkspace("workbench")}
+            >
+              Tezgaha dön
+            </button>
           </div>
         </div>
 
-        <div className="ml-studio-body">
-        <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
-        <ConvergencePanel templateId={activeTemplateId} />
-        <DoePanel
-          refreshKey={runsHistory.length}
-          templateId={activeTemplateId}
-          onOpenRun={(runId) => {
-            setWorkspace("workbench");
-            void handleOpenRunForEdit(runId);
+        <MlStudioNav
+          stage={mlStage}
+          onSelect={setMlStage}
+          meta={{
+            doe: activeTemplateId ?? undefined,
+            data: `${runsHistory.length} run`,
           }}
         />
+
+        <div className="ml-studio-body">
+        {mlStage === "data" && (
+          <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+        )}
+        {mlStage === "conv" && <ConvergencePanel templateId={activeTemplateId} />}
+        {mlStage === "doe" && (
+          <DoePanel
+            refreshKey={runsHistory.length}
+            templateId={activeTemplateId}
+            onOpenRun={(runId) => {
+              setWorkspace("workbench");
+              void handleOpenRunForEdit(runId);
+            }}
+          />
+        )}
+        {(mlStage === "model" || mlStage === "pred") && (
         <SurrogatePanel
+          view={mlStage === "model" ? "model" : "predict"}
           refreshKey={runsHistory.length}
           geometryId={geometryId}
           templateId={activeTemplateId}
@@ -2624,6 +2646,7 @@ function App() {
             }
           }}
         />
+        )}
         </div>
       </main>
     );
