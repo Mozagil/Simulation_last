@@ -8,6 +8,7 @@ vi.mock("../api/doe", () => ({
   createDoeStudy: vi.fn(),
   startQualitySet: vi.fn(),
   fetchDoeQuality: vi.fn(),
+  fetchDoeResults: vi.fn(),
 }));
 
 vi.mock("../api/materials", () => ({
@@ -18,7 +19,7 @@ vi.mock("../api/templates", () => ({
   fetchTemplates: vi.fn(),
 }));
 
-import { createDoeStudy, fetchDoeQuality, fetchDoeStudies, startQualitySet } from "../api/doe";
+import { createDoeStudy, fetchDoeQuality, fetchDoeResults, fetchDoeStudies, startQualitySet } from "../api/doe";
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates } from "../api/templates";
 
@@ -69,6 +70,7 @@ describe("DoePanel", () => {
     vi.mocked(createDoeStudy).mockReset();
     vi.mocked(startQualitySet).mockReset();
     vi.mocked(fetchDoeQuality).mockReset();
+    vi.mocked(fetchDoeResults).mockReset();
     vi.mocked(fetchMaterials).mockReset();
     vi.mocked(fetchTemplates).mockReset();
     vi.mocked(fetchTemplates).mockResolvedValue([CANTILEVER, PLATE] as never);
@@ -95,6 +97,36 @@ describe("DoePanel", () => {
       counts: { inp_only: 8 },
       cases: [],
     });
+  });
+
+  it("en yeni çalışmayı seçip sonuçlarını çeker; çip ile başka çalışmaya geçer", async () => {
+    const study = (id: number) => ({
+      id,
+      name: null,
+      template_id: "cantilever_beam",
+      seed: 1,
+      status: "completed",
+      message: null,
+      n_cases: 2,
+      counts: {},
+      cases: [],
+    });
+    vi.mocked(fetchDoeStudies).mockResolvedValue([study(9), study(8)]);
+    vi.mocked(fetchDoeResults).mockImplementation(async (id: number) => ({
+      study_id: id,
+      template_id: "cantilever_beam",
+      param_columns: ["length"],
+      constant_params: {},
+      scalar_columns: {},
+      rows: [],
+      stats: {},
+    }));
+    render(<DoePanel />);
+    await waitFor(() => expect(fetchDoeResults).toHaveBeenCalledWith(9));
+    expect(await screen.findByText(/Çalışma #9 · 2 örnek/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "#8" }));
+    await waitFor(() => expect(fetchDoeResults).toHaveBeenCalledWith(8));
+    expect(await screen.findByText(/Çalışma #8 · 2 örnek/)).toBeInTheDocument();
   });
 
   it("varsayılan aralıklarla DOE başlatır", async () => {

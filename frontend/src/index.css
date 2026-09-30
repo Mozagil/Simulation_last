@@ -4124,6 +4124,269 @@ p {
   color: var(--muted);
 }
 
+/* ---- DOE sağ pano: sonuç dağılımı ---- */
+:root {
+  --doe-ok: #3a6248;
+  --doe-ok-bg: #e6eee9;
+  --doe-warn: #8a5a1f;
+  --doe-warn-bg: #f6ecdc;
+}
+
+[data-theme="dark"] {
+  --doe-ok: #7fb58f;
+  --doe-ok-bg: rgba(127, 181, 143, 0.16);
+  --doe-warn: #d9a45b;
+  --doe-warn-bg: rgba(217, 164, 91, 0.16);
+}
+
+.doe-study-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.doe-study-chips > .ml-k {
+  margin-right: 4px;
+}
+
+.doe-dist {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.doe-dist-msg {
+  margin: -8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.doe-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doe-st-ok {
+  border-color: var(--doe-ok);
+  background: var(--doe-ok-bg);
+  color: var(--doe-ok);
+}
+
+.doe-st-warn {
+  border-color: var(--doe-warn);
+  background: var(--doe-warn-bg);
+  color: var(--doe-warn);
+}
+
+.doe-phead-r > .doe-st {
+  margin-left: auto;
+}
+
+.doe-btn-ghost {
+  height: 28px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-hover);
+}
+
+.doe-qbar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doe-qbar {
+  display: flex;
+  height: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.doe-qbar-seg {
+  display: block;
+  height: 100%;
+}
+
+.doe-qbar-ok {
+  background: var(--doe-ok);
+}
+
+.doe-qbar-warn {
+  background: var(--doe-warn);
+}
+
+.doe-qbar-other {
+  background: var(--disabled);
+}
+
+.doe-qbar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.doe-qbar-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doe-qbar-swatch {
+  width: 8px;
+  height: 8px;
+}
+
+.doe-strip {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 150px;
+  gap: 14px;
+  align-items: center;
+}
+
+.doe-strip-label,
+.doe-strip-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doe-strip-stats {
+  text-align: right;
+  font-size: 13px;
+}
+
+.doe-strip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.doe-strip-unit {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.doe-strip-empty {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.doe-strip-svg {
+  width: 100%;
+  height: 44px;
+  display: block;
+}
+
+.doe-strip-axis {
+  stroke: var(--border);
+}
+
+.doe-strip-iqr {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-opacity: 0.5;
+}
+
+.doe-strip-dot {
+  fill-opacity: 0.85;
+}
+
+.doe-strip-dot-ok {
+  fill: var(--accent);
+}
+
+.doe-strip-dot-warn {
+  fill: var(--doe-warn);
+}
+
+.doe-strip-dot-other {
+  fill: var(--disabled);
+}
+
+.doe-strip-mean {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.doe-outliers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doe-outlier-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.doe-outlier {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.doe-outlier:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.doe-outlier:disabled {
+  cursor: default;
+}
+
+.doe-outlier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.doe-outlier-dev {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 22px;
+}
+
+.doe-outlier-dev-warn {
+  color: var(--doe-warn);
+}
+
+.doe-outlier-params,
+.doe-outlier-link {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.doe-outlier-link {
+  color: var(--accent-hover);
+}
+
+@media (max-width: 1200px) {
+  .doe-outlier-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .param-symbol {
   margin-left: 6px;
   padding: 0 5px;
