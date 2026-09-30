@@ -437,7 +437,7 @@ describe("SurrogatePanel", () => {
     // L=500 kutuda; Fy=-500 kutunun altında → tahmin yapılmadan işaretli
     expect(await screen.findByTestId("band-length")).toHaveTextContent("eğitim 401.2 – 699.2");
     expect(screen.getByTestId("band-length")).not.toHaveClass("sg-ood-text");
-    expect(screen.getByTestId("band-load_fy")).toHaveTextContent("altında");
+    expect(screen.getByTestId("band-load_fy")).toHaveTextContent("eğitim -219.2 – -40.5");
     expect(screen.getByTestId("band-load_fy")).toHaveClass("sg-ood-text");
     expect(screen.getByTestId("band-width")).toHaveTextContent("eğitim kutusu bilinmiyor");
     fireEvent.change(screen.getByLabelText("Fy (N)"), { target: { value: "-100" } });
