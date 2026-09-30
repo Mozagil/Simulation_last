@@ -17,6 +17,7 @@ vi.mock("../api/surrogate", () => ({
   predictSweep: vi.fn(),
   fetchValidation: vi.fn(),
   fetchCorpusMembership: vi.fn(),
+  fetchSurrogateBounds: vi.fn(),
 }));
 
 import {
@@ -30,6 +31,7 @@ import {
   predictSweep,
   fetchValidation,
   fetchCorpusMembership,
+  fetchSurrogateBounds,
   trainScalarRf,
 } from "../api/surrogate";
 import { fetchTemplates } from "../api/templates";
@@ -70,6 +72,8 @@ describe("SurrogatePanel", () => {
       field_gnn: null,
     });
     vi.mocked(fetchCorpusList).mockResolvedValue([]);
+    vi.mocked(fetchSurrogateBounds).mockReset();
+    vi.mocked(fetchSurrogateBounds).mockResolvedValue(null);
     vi.mocked(fetchTemplates).mockResolvedValue([CANTILEVER] as never);
   });
 
@@ -412,6 +416,32 @@ describe("SurrogatePanel", () => {
       expect(fetchValidation).toHaveBeenLastCalledWith(expect.objectContaining({ runIds: null, limit: 10 })),
     );
     expect(screen.getByLabelText("Son N run")).toBeEnabled();
+  });
+
+  it("eğitim kutusu bantları tahminden önce gelir; kutu dışı girdi hemen işaretlenir", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null, scalar_loglinear: null,
+      scalar_hybrid: { n_samples: 192, has_holdout: true, metrics: {} },
+      templates: {}, field_gnn: null,
+    });
+    vi.mocked(fetchSurrogateBounds).mockResolvedValue({
+      template_id: "cantilever_beam", model_kind: "hybrid", nlgeom: false, n_samples: 192,
+      features: [
+        { feature: "length", min: 401.2, max: 699.2 },
+        { feature: "thickness", min: 10.01, max: 16 },
+        { feature: "load_fy", min: -219.2, max: -40.5 },
+      ],
+    });
+    render(<SurrogatePanel view="predict" />);
+    await waitFor(() => expect(fetchSurrogateBounds).toHaveBeenCalledWith("cantilever_beam", "hybrid", false));
+    // L=500 kutuda; Fy=-500 kutunun altında → tahmin yapılmadan işaretli
+    expect(await screen.findByTestId("band-length")).toHaveTextContent("eğitim 401.2 – 699.2");
+    expect(screen.getByTestId("band-length")).not.toHaveClass("sg-ood-text");
+    expect(screen.getByTestId("band-load_fy")).toHaveTextContent("altında");
+    expect(screen.getByTestId("band-load_fy")).toHaveClass("sg-ood-text");
+    expect(screen.getByTestId("band-width")).toHaveTextContent("eğitim kutusu bilinmiyor");
+    fireEvent.change(screen.getByLabelText("Fy (N)"), { target: { value: "-100" } });
+    expect(screen.getByTestId("band-load_fy")).not.toHaveClass("sg-ood-text");
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {

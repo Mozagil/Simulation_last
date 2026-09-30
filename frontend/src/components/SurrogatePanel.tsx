@@ -7,6 +7,8 @@ import {
   evaluateForCorpus,
   fetchCorpusList,
   fetchCorpusMembership,
+  fetchSurrogateBounds,
+  type SurrogateBounds,
   fetchSurrogateStatus,
   freezeCorpus,
   predictFromParams,
@@ -122,6 +124,8 @@ export default function SurrogatePanel({
   // Sessiz doğrulama `busy`'yi kilitlemez: eğitim/dondurma düğmeleri o
   // sırada tıklanabilir kalmalı.
   const [validating, setValidating] = useState(false);
+  // Aktif modelin eğitim kutusu: bantlar tahminden önce çizilir.
+  const [bounds, setBounds] = useState<SurrogateBounds | null>(null);
   // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
   const [sweepParam, setSweepParam] = useState<string>("");
   const [sweepMin, setSweepMin] = useState("");
@@ -517,6 +521,26 @@ export default function SurrogatePanel({
   // oluştur" N ve ad süzgeciyle elle yenilemek için kalır.
   const activeReady = active != null;
   useEffect(() => {
+    let cancelled = false;
+    if (!activeReady) {
+      setBounds(null);
+      return;
+    }
+    // Promise.resolve: çağrı senkron patlarsa (örn. mock) efekt render'ı düşürmesin.
+    Promise.resolve()
+      .then(() => fetchSurrogateBounds(predictTemplate, scalarModel, nlgeom))
+      .then((b) => {
+        if (!cancelled) setBounds(b ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setBounds(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeReady, predictTemplate, scalarModel, nlgeom, status]);
+
+  useEffect(() => {
     if (view === "predict" || !activeReady) return;
     // Açılışta durum, korpus ve model türü arka arkaya oturur; kısa bekleme
     // ile tek istek atılır.
@@ -544,6 +568,9 @@ export default function SurrogatePanel({
     : null;
   const violationByFeature = new Map(
     (paramResult?.domain_violations ?? []).map((v) => [v.feature, v] as const),
+  );
+  const boundsByFeature = new Map(
+    (bounds?.features ?? []).map((b) => [b.feature, { min: b.min, max: b.max }] as const),
   );
 
   async function handleTrainAll() {
@@ -1053,7 +1080,7 @@ export default function SurrogatePanel({
             <span className="ml-h">Parametreden tahmin</span>
           </span>
           <span className="doe-phead-hint">
-            Bant = eğitim kutusu (tahmin sonrası, uzay dışı girdide)
+            Bant = eğitim kutusu{bounds ? ` · ${bounds.model_kind}` : ""}
             <br />■ = girilen değer
           </span>
         </div>
@@ -1081,16 +1108,24 @@ export default function SurrogatePanel({
               set: setFy,
             },
           ].map((row) => {
-            const viol = violationByFeature.get(row.key);
             const val = Number(row.value);
-            let lo = viol ? Math.min(viol.min, val) : NaN;
-            let hi = viol ? Math.max(viol.max, val) : NaN;
-            if (viol) {
+            // Bant kaynağı: eğitim kutusu (tahminden önce de var); yoksa son
+            // tahminin ihlal satırı. Uzay dışı = değer kutunun dışında.
+            const bb = boundsByFeature.get(row.key);
+            const vv = violationByFeature.get(row.key);
+            const box = bb ?? (vv ? { min: vv.min, max: vv.max } : null);
+            const outside = box != null && Number.isFinite(val) && (val < box.min || val > box.max);
+            const viol = outside;
+            let lo = box ? Math.min(box.min, Number.isFinite(val) ? val : box.min) : NaN;
+            let hi = box ? Math.max(box.max, Number.isFinite(val) ? val : box.max) : NaN;
+            if (box) {
               const span = hi - lo || Math.abs(hi) || 1;
               lo -= span * 0.08;
               hi += span * 0.08;
             }
             const pct = (v: number) => `${Math.max(0, Math.min(1, (v - lo) / (hi - lo || 1))) * 100}%`;
+            const factor =
+              outside && box ? (val < box.min ? box.min / (val || 1e-12) : val / (box.max || 1e-12)) : null;
             return (
               <div className="sg-pred-row" key={row.key}>
                 <span className="doe-line-title">
@@ -1100,23 +1135,25 @@ export default function SurrogatePanel({
                 <span className="sg-pred-bar-wrap">
                   <span className="sg-pred-bar" aria-hidden="true">
                     <span className="doe-bar-track" />
-                    {viol && (
+                    {box && (
                       <span
                         className="sg-pred-band"
-                        style={{ left: pct(viol.min), width: `calc(${pct(viol.max)} - ${pct(viol.min)})` }}
+                        style={{ left: pct(box.min), width: `calc(${pct(box.max)} - ${pct(box.min)})` }}
                       />
                     )}
                     <span
-                      className={viol ? "sg-pred-knob sg-pred-knob-ood" : "sg-pred-knob"}
-                      style={{ left: viol ? pct(val) : "50%" }}
+                      className={outside ? "sg-pred-knob sg-pred-knob-ood" : "sg-pred-knob"}
+                      style={{ left: box ? pct(val) : "50%" }}
                     />
                   </span>
-                  <span className={viol ? "ds-sb sg-ood-text" : "ds-sb"}>
-                    {viol
-                      ? `eğitim ${fmtNum(viol.min)} – ${fmtNum(viol.max)}${viol.factor ? ` · ${viol.factor.toFixed(2)}× ${viol.side === "below" ? "altında" : "üstünde"}` : ""}`
-                      : paramResult
-                        ? "eğitim kutusunda"
-                        : " "}
+                  <span className={outside ? "ds-sb sg-ood-text" : "ds-sb"} data-testid={`band-${row.key}`}>
+                    {box
+                      ? `eğitim ${fmtNum(box.min)} – ${fmtNum(box.max)}${
+                          outside && factor != null && Number.isFinite(factor)
+                            ? ` · ${factor.toFixed(2)}× ${val < box.min ? "altında" : "üstünde"}`
+                            : ""
+                        }`
+                      : "eğitim kutusu bilinmiyor"}
                   </span>
                 </span>
                 <span className="sg-pred-input">

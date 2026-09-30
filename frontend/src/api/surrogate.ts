@@ -312,6 +312,29 @@ export async function fetchValidation(opts: {
   return (await res.json()) as ValidationResult;
 }
 
+export interface SurrogateBounds {
+  template_id: string;
+  model_kind: ScalarModelKind;
+  nlgeom: boolean;
+  n_samples: number | null;
+  /** Ham özellik uzayında eğitim min–max; `domain_violations` ile aynı sınırlar. */
+  features: { feature: string; min: number; max: number }[];
+}
+
+/** Aktif modelin eğitim kutusu — tahmin ekranı bantları tahminden önce çizer.
+ * Model yoksa null (404), hata değil: bant çizilmez. */
+export async function fetchSurrogateBounds(
+  templateId: string,
+  model: ScalarModelKind | "auto" = "auto",
+  nlgeom = false,
+): Promise<SurrogateBounds | null> {
+  const q = query({ template_id: templateId, model, nlgeom });
+  const res = await fetch(`${API_BASE_URL}/surrogate/bounds${q}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new SurrogateApiError(await parseError(res, "Eğitim kutusu alınamadı"));
+  return (await res.json()) as SurrogateBounds;
+}
+
 export async function fetchCorpusList(): Promise<CorpusListItem[]> {
   const res = await fetch(`${API_BASE_URL}/surrogate/corpus`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Eğitim setleri alınamadı"));
