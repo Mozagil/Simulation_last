@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DoePanel from "./DoePanel";
 
@@ -8,6 +8,7 @@ vi.mock("../api/doe", () => ({
   createDoeStudy: vi.fn(),
   startQualitySet: vi.fn(),
   fetchDoeQuality: vi.fn(),
+  fetchDoeResults: vi.fn(),
 }));
 
 vi.mock("../api/materials", () => ({
@@ -18,7 +19,7 @@ vi.mock("../api/templates", () => ({
   fetchTemplates: vi.fn(),
 }));
 
-import { createDoeStudy, fetchDoeQuality, fetchDoeStudies, startQualitySet } from "../api/doe";
+import { createDoeStudy, fetchDoeQuality, fetchDoeResults, fetchDoeStudies, startQualitySet } from "../api/doe";
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates } from "../api/templates";
 
@@ -69,6 +70,7 @@ describe("DoePanel", () => {
     vi.mocked(createDoeStudy).mockReset();
     vi.mocked(startQualitySet).mockReset();
     vi.mocked(fetchDoeQuality).mockReset();
+    vi.mocked(fetchDoeResults).mockReset();
     vi.mocked(fetchMaterials).mockReset();
     vi.mocked(fetchTemplates).mockReset();
     vi.mocked(fetchTemplates).mockResolvedValue([CANTILEVER, PLATE] as never);
@@ -97,6 +99,36 @@ describe("DoePanel", () => {
     });
   });
 
+  it("en yeni çalışmayı seçip sonuçlarını çeker; çip ile başka çalışmaya geçer", async () => {
+    const study = (id: number) => ({
+      id,
+      name: null,
+      template_id: "cantilever_beam",
+      seed: 1,
+      status: "completed",
+      message: null,
+      n_cases: 2,
+      counts: {},
+      cases: [],
+    });
+    vi.mocked(fetchDoeStudies).mockResolvedValue([study(9), study(8)]);
+    vi.mocked(fetchDoeResults).mockImplementation(async (id: number) => ({
+      study_id: id,
+      template_id: "cantilever_beam",
+      param_columns: ["length"],
+      constant_params: {},
+      scalar_columns: {},
+      rows: [],
+      stats: {},
+    }));
+    render(<DoePanel />);
+    await waitFor(() => expect(fetchDoeResults).toHaveBeenCalledWith(9));
+    expect(await screen.findByText(/Çalışma #9 · 2 örnek/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "#8" }));
+    await waitFor(() => expect(fetchDoeResults).toHaveBeenCalledWith(8));
+    expect(await screen.findByText(/Çalışma #8 · 2 örnek/)).toBeInTheDocument();
+  });
+
   it("varsayılan aralıklarla DOE başlatır", async () => {
     render(<DoePanel />);
     expect(await screen.findByLabelText("Uzunluk min")).toHaveValue(400);
@@ -123,7 +155,9 @@ describe("DoePanel", () => {
     fireEvent.change(min, { target: { value: "300" } });
     fireEvent.change(screen.getByLabelText("Uzunluk maks"), { target: { value: "900" } });
     // Kalınlığı sabitle
-    fireEvent.change(screen.getByLabelText("Kalınlık tarama tipi"), { target: { value: "fixed" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Kalınlık tarama tipi" })).getByRole("button", { name: "Sabit" }),
+    );
     fireEvent.change(screen.getByLabelText("Kalınlık sabit değer"), { target: { value: "15" } });
 
     fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
@@ -187,7 +221,7 @@ describe("DoePanel", () => {
     render(<DoePanel />);
     await screen.findByLabelText("Uzunluk min");
     // İlk malzeme varsayılan seçili; ikincisini de işaretle.
-    fireEvent.click(screen.getByLabelText("AlMg3"));
+    fireEvent.click(screen.getByRole("button", { name: "AlMg3" }));
     fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
     await waitFor(() => expect(createDoeStudy).toHaveBeenCalledTimes(1));
     expect(vi.mocked(createDoeStudy).mock.calls[0][0].material_ids).toEqual([3, 4]);
@@ -196,7 +230,9 @@ describe("DoePanel", () => {
   it("sabit mm moduna geçince oran değil mutlak boyut gönderir", async () => {
     render(<DoePanel />);
     await screen.findByLabelText("Uzunluk min");
-    fireEvent.change(screen.getByLabelText("Eleman boyutu tipi"), { target: { value: "mm" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Eleman boyutu tipi" })).getByRole("button", { name: "Sabit mm" }),
+    );
     fireEvent.change(screen.getByLabelText("Eleman boyutu min"), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText("Eleman boyutu maks"), { target: { value: "9" } });
 
@@ -210,7 +246,7 @@ describe("DoePanel", () => {
   it("malzeme seçilmezse istek göndermez", async () => {
     render(<DoePanel />);
     await screen.findByLabelText("Uzunluk min");
-    fireEvent.click(screen.getByLabelText("S235")); // varsayılan seçimi kaldır
+    fireEvent.click(screen.getByRole("button", { name: "S235" })); // varsayılan seçimi kaldır
     fireEvent.click(screen.getByRole("button", { name: "DOE başlat" }));
     await waitFor(() =>
       expect(screen.getByText(/En az bir malzeme/)).toBeInTheDocument(),

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/styles.css">
+<script src="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/_ds_bundle.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent-900)}
+.wb-row{display:flex;align-items:center}
+.wb-k{font-family:var(--font-heading);font-weight:700;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.wb-tab{font-family:var(--font-heading);font-weight:600;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase;padding:0 16px;height:100%;display:flex;align-items:center;gap:7px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 62%,transparent);border-bottom:2px solid transparent}
+.wb-tab:hover{background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+.wb-tab[aria-selected="true"]{color:var(--color-accent-800);border-bottom-color:var(--color-accent);background:var(--color-accent-100)}
+.wb-tr{display:grid;align-items:center;gap:8px;padding:3px 10px;font-size:12.5px;cursor:pointer;border-left:2px solid transparent}
+.wb-tr:hover{background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+.wb-tr[aria-selected="true"]{background:var(--color-accent-100);border-left-color:var(--color-accent)}
+.wb-m{font-size:10.5px;color:color-mix(in srgb,var(--color-text) 52%,transparent);justify-self:end;white-space:nowrap}
+.wb-ic{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--color-divider);background:var(--color-bg);color:color-mix(in srgb,var(--color-text) 66%,transparent);cursor:pointer}
+.wb-ic:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.wb-ic[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-fl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.wb-f{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:color-mix(in srgb,var(--color-text) 60%,transparent)}
+.wb-in{min-height:28px;padding:4px 7px;font:inherit;font-size:12.5px;color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-divider);width:100%;box-sizing:border-box}
+.wb-in:hover{border-color:color-mix(in srgb,var(--color-text) 45%,transparent)}
+.wb-in:focus-visible{border-color:var(--color-accent);outline:none}
+.wb-sec{padding:11px 13px;border-bottom:1px solid var(--color-divider);display:flex;flex-direction:column;gap:9px}
+.wb-ov{position:absolute;background:color-mix(in srgb,var(--color-bg) 93%,transparent);border:1px solid var(--color-divider);backdrop-filter:blur(2px)}
+.wb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;font-size:11.5px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;color:var(--color-text)}
+.wb-chip:hover{background:var(--color-accent-100)}
+.wb-chip[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-sb{font-size:11px;color:color-mix(in srgb,var(--color-text) 58%,transparent);display:flex;align-items:center;gap:7px;white-space:nowrap}
+</style>
+</helmet>
+
+<main style="display:grid;grid-template-rows:48px 38px 40px minmax(0,1fr) 214px 28px;height:960px;min-width:1320px;background:var(--color-bg);overflow:hidden">
+
+  <header class="wb-row" style="gap:14px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span style="display:flex;align-items:center;gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9"></path></svg>
+      <span style="font-family:var(--font-heading);font-weight:600;font-size:17px;letter-spacing:.02em">SIMÜLASYON TEZGAHI</span>
+    </span>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="wb-row" style="gap:7px;font-size:13px">
+      <span style="color:color-mix(in srgb,var(--color-text) 55%,transparent)">Vaka</span>
+      <strong style="font-weight:600">braket_v3</strong>
+      <span class="tag tag-neutral">braket_v3.step</span>
+      <span class="tag tag-outline">cantilever_beam</span>
+    </span>
+    <span style="margin-left:auto"></span>
+    <span class="wb-row" style="gap:8px;padding:0 12px;border:1px solid var(--color-divider);height:30px">
+      <span style="width:7px;height:7px;background:var(--color-accent);flex-shrink:0"></span>
+      <span style="font-size:12px">OpenRadioss · cycle 8 420 · %63</span>
+      <span style="width:66px;height:4px;background:var(--color-neutral-300);display:block"><span style="display:block;width:63%;height:100%;background:var(--color-accent)"></span></span>
+    </span>
+    <button type="button" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 11px">Kuyruk 2</button>
+    <button type="button" class="btn btn-primary blueprint" style="height:30px;font-size:12px;letter-spacing:.09em;font-family:var(--font-heading);font-weight:600;padding:0 18px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"></path></svg>ÇÖZ
+    </button>
+  </header>
+
+  <nav class="wb-row" style="border-bottom:1px solid var(--color-divider);background:var(--color-bg)">
+    <span class="wb-tab">Geometri</span>
+    <span class="wb-tab">Mesh</span>
+    <span class="wb-tab">Malzeme</span>
+    <span class="wb-tab" aria-selected="true">Analizler<span class="tag tag-accent" style="font-family:var(--font-body);letter-spacing:0;padding:1px 7px">3</span></span>
+    <span class="wb-tab">Sonuçlar</span>
+    <span class="wb-tab">Çalışmalar<span class="tag tag-neutral" style="font-family:var(--font-body);letter-spacing:0;padding:1px 7px">DOE · ML</span></span>
+    <span style="margin-left:auto;padding-right:14px;display:flex;align-items:center;gap:8px">
+      <span class="wb-k">Faz 1.9</span>
+      <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Yeni vaka</button>
+    </span>
+  </nav>
+
+  <div class="wb-row" style="gap:10px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span class="wb-k">Seçim</span>
+    <span class="seg" style="height:28px">
+      <span class="seg-opt" style="padding:0 11px;font-size:12px">Parça</span>
+      <span class="seg-opt" style="padding:0 11px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">Yüzey</span>
+      <span class="seg-opt" style="padding:0 11px;font-size:12px">Kenar</span>
+      <span class="seg-opt" style="padding:0 11px;font-size:12px">Nokta</span>
+    </span>
+    <span class="seg" style="height:28px">
+      <span class="seg-opt" style="padding:0 11px;font-size:12px">Mesh eleman</span>
+      <span class="seg-opt" style="padding:0 11px;font-size:12px">Mesh düğüm</span>
+    </span>
+    <span style="width:1px;height:18px;background:var(--color-divider)"></span>
+    <span class="wb-chip">Görünürlük ▾</span>
+    <span class="wb-chip">Mesh araçları ▾</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="wb-sb">Seçili: yüzey #42, #43 · 842 düğüm</span>
+      <button type="button" class="btn btn-secondary" style="height:28px;font-size:11.5px;padding:0 10px">Grup oluştur</button>
+      <button type="button" class="btn btn-secondary" style="height:28px;font-size:11.5px;padding:0 10px">STEP indir</button>
+    </span>
+  </div>
+
+  <section style="display:grid;grid-template-columns:288px minmax(0,1fr) 312px;min-height:0">
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <div class="wb-row" style="gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-divider)">
+        <span class="wb-k">Model ağacı</span>
+        <input class="wb-in" placeholder="Ara…" style="margin-left:auto;width:96px;min-height:24px;font-size:11.5px">
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 0">
+        <div class="wb-tr" style="grid-template-columns:1fr auto;font-weight:600">
+          <span style="display:flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path></svg>braket_v3
+          </span><span class="wb-m">3 parça</span>
+        </div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Geometri</span><span class="wb-m">128 yüzey</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Bölgeler</span><span class="wb-m">2 adlandırılmış</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>ankastre_uc</span><span class="wb-m">yüzey</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>yuk_yuzeyi</span><span class="wb-m">yüzey</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Component'ler</span><span class="wb-m">3</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #1</span><span class="wb-m">S235JR · solid</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #2</span><span class="wb-m">AlMg3 · shell 3 mm</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #3</span><span class="tag tag-accent-2" style="padding:1px 7px;font-size:10px">atama yok</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Mesh</span><span class="wb-m">tet · 4 mm</span></div>
+
+        <div class="wb-row" style="gap:8px;margin:11px 10px 5px;padding:5px 9px;border:1px solid var(--color-divider);background:var(--color-bg)">
+          <span class="wb-k">1 · Durability</span><span class="wb-m" style="margin-left:auto">CalculiX</span>
+        </div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Durability 1</span><span class="wb-m">VM 184.2</span></div>
+
+        <div class="wb-row" style="gap:8px;margin:11px 10px 5px;padding:5px 9px;border:1px solid var(--color-divider);background:var(--color-bg)">
+          <span class="wb-k">2 · Modal</span><span class="wb-m" style="margin-left:auto">CalculiX</span>
+        </div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Modal 1</span><span class="wb-m">6 mod · f₁ 214 Hz</span></div>
+
+        <div class="wb-row" style="gap:8px;margin:11px 10px 5px;padding:5px 9px;border:1px solid var(--color-accent);background:var(--color-accent-100)">
+          <span class="wb-k" style="color:var(--color-accent-800)">3 · Crash</span><span class="wb-m" style="margin-left:auto;color:var(--color-accent-800)">OpenRadioss</span>
+        </div>
+        <div class="wb-tr" aria-selected="true" style="grid-template-columns:1fr auto;padding-left:26px;font-weight:600"><span>Crash 1</span><span class="tag tag-accent" style="padding:1px 7px;font-size:10px">%63</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>Senaryo</span><span class="wb-m">rigid_wall</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>Malzeme kanunu</span><span class="wb-m">LAW2 plastik</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>Sınır koşulları</span><span class="wb-m">2</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:38px;color:color-mix(in srgb,var(--color-text) 72%,transparent)"><span>Job</span><span class="wb-m">7f3a91 · çalışıyor</span></div>
+      </div>
+
+      <div style="border-top:1px solid var(--color-divider);background:var(--color-bg)">
+        <div class="wb-row" style="padding:7px 12px;border-bottom:1px solid var(--color-divider)"><span class="wb-k">Detaylar · yüzey #42</span></div>
+        <sc-for list="{{ details }}" as="d" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:104px 1fr;font-size:11.5px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">
+            <span style="padding:4px 10px;border-right:1px solid var(--color-divider);color:color-mix(in srgb,var(--color-text) 58%,transparent)">{{ d.k }}</span>
+            <span style="padding:4px 10px">{{ d.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <div style="position:relative;min-width:0;background:var(--color-surface);display:flex;align-items:center;justify-content:center">
+      <span style="font-size:13px;color:color-mix(in srgb,var(--color-text) 45%,transparent)">3B görünüm · crash deformasyonu t = 6.3 ms</span>
+
+      <div style="position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:5px">
+        <sc-for list="{{ viewTools }}" as="t" hint-placeholder-count="6">
+          <span class="wb-ic" title="{{ t.title }}"><span style="font-size:13px">{{ t.g }}</span></span>
+        </sc-for>
+      </div>
+
+      <div class="wb-ov blueprint" style="top:14px;right:14px;width:176px;padding:11px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="wb-k" style="margin-bottom:8px">Alan</div>
+        <div style="display:flex;gap:4px;margin-bottom:10px">
+          <span class="wb-chip" aria-pressed="true" style="flex:1;justify-content:center;padding:4px 0">VM</span>
+          <span class="wb-chip" style="flex:1;justify-content:center;padding:4px 0">U</span>
+          <span class="wb-chip" style="flex:1;justify-content:center;padding:4px 0">εp</span>
+        </div>
+        <div style="display:flex;gap:9px">
+          <span style="width:16px;height:132px;border:1px solid var(--color-divider);background:linear-gradient(to top,var(--color-accent-900),var(--color-accent-600),var(--color-accent-300),var(--color-neutral-100));flex-shrink:0"></span>
+          <span style="display:flex;flex-direction:column;justify-content:space-between;height:132px;font-size:10.5px;color:color-mix(in srgb,var(--color-text) 70%,transparent)">
+            <span>312.6</span><span>234.5</span><span>156.3</span><span>78.2</span><span>0.0</span>
+          </span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px">
+          <label class="wb-f"><span>min</span><input class="wb-in" value="0"></label>
+          <label class="wb-f"><span>max</span><input class="wb-in" value="312.6"></label>
+        </div>
+      </div>
+
+      <div style="position:absolute;left:14px;right:14px;bottom:14px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
+        <div class="wb-ov" style="position:static;flex:0 0 auto;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+          <span class="wb-k">Deformasyon</span>
+          <input type="range" min="0" max="100" value="40" style="width:118px;accent-color:var(--color-accent)">
+          <label class="wb-sb" style="gap:6px"><input type="checkbox" style="accent-color:var(--color-accent)">Kenarlar</label>
+        </div>
+
+        <div class="wb-ov" style="position:static;flex:1 1 220px;min-width:0;padding:8px 12px;display:flex;align-items:center;gap:9px">
+          <span class="wb-ic" style="border:none;width:22px;height:22px;flex-shrink:0">◀</span>
+          <span class="wb-ic" aria-pressed="true" style="width:24px;height:24px;flex-shrink:0">▶</span>
+          <span class="wb-ic" style="border:none;width:22px;height:22px;flex-shrink:0">▶</span>
+          <span style="flex:1;min-width:40px;height:4px;background:var(--color-neutral-300);position:relative">
+            <span style="position:absolute;inset:0 37% 0 0;background:var(--color-accent)"></span>
+            <span style="position:absolute;left:63%;top:-4px;width:2px;height:12px;background:var(--color-accent-800)"></span>
+          </span>
+          <span class="wb-sb" style="flex-shrink:0">t 6.3 / 10.0 ms</span>
+        </div>
+
+        <div class="wb-ov" style="position:static;flex:0 0 auto;padding:9px 12px;display:grid;grid-template-columns:auto auto;gap:4px 14px">
+          <sc-for list="{{ scalars }}" as="s" hint-placeholder-count="6">
+            <span class="wb-sb">{{ s.k }}</span><span style="font-size:11.5px;text-align:right;font-weight:600">{{ s.v }}</span>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--color-divider);background:var(--color-bg)">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--color-divider)">
+        <span style="display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-right:1px solid var(--color-divider);cursor:pointer;background:var(--color-bg)">
+          <span class="wb-k">Durability</span>
+          <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">1 analiz · solved</span>
+        </span>
+        <span style="display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-right:1px solid var(--color-divider);cursor:pointer;background:var(--color-bg)">
+          <span class="wb-k">Modal</span>
+          <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)">1 analiz · 6 mod</span>
+        </span>
+        <span style="display:flex;flex-direction:column;gap:2px;padding:8px 10px;cursor:pointer;background:var(--color-accent);color:var(--color-bg)">
+          <span class="wb-k" style="color:var(--color-bg)">Crash</span>
+          <span style="font-size:11px;color:color-mix(in srgb,var(--color-bg) 82%,transparent)">1 analiz · %63</span>
+        </span>
+      </div>
+      <div class="wb-row" style="gap:8px;padding:9px 13px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+        <span>
+          <span class="card-kicker" style="display:block">Analiz · OpenRadioss</span>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:17px;line-height:1.1">Crash 1</span>
+        </span>
+        <span class="tag tag-accent" style="margin-left:auto">çalışıyor</span>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto">
+        <div class="wb-sec">
+          <span class="wb-k">Senaryo</span>
+          <span class="seg" style="height:30px">
+            <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">Rigid wall</span>
+            <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px">Plaka–küre</span>
+          </span>
+          <span class="wb-sb" style="white-space:normal;line-height:1.45">Durability sonuçları bu sekmede değişmez. 3D tet mesh + malzeme ataması gerekir. Birim mm–ms (1 m/s = 1 mm/ms).</span>
+        </div>
+
+        <div class="wb-sec">
+          <span class="wb-k">Kinematik</span>
+          <div class="wb-fl">
+            <label class="wb-f"><span>Hız (m/s)</span><input class="wb-in" value="10"></label>
+            <label class="wb-f"><span>Açı (°)</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>t_end (ms)</span><input class="wb-in" value="10"></label>
+          </div>
+        </div>
+
+        <div class="wb-sec">
+          <span class="wb-k">Rigid wall · nokta / normal</span>
+          <div class="wb-fl">
+            <label class="wb-f"><span>x</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>y</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>z</span><input class="wb-in" value="0"></label>
+          </div>
+          <div class="wb-fl">
+            <label class="wb-f"><span>nx</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>ny</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>nz</span><input class="wb-in" value="1"></label>
+          </div>
+        </div>
+
+        <div class="wb-sec">
+          <span class="wb-k">Malzeme kanunu</span>
+          <span class="seg" style="height:30px">
+            <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px">LAW1 elastik</span>
+            <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">LAW2 plastik</span>
+          </span>
+          <div class="wb-fl">
+            <label class="wb-f"><span>σy (Pa)</span><input class="wb-in" placeholder="atanan"></label>
+            <label class="wb-f"><span>b (MPa)</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>n</span><input class="wb-in" value="1"></label>
+          </div>
+        </div>
+
+        <div class="wb-sec">
+          <span class="wb-k">Eleman · /PROP/TYPE14</span>
+          <div class="wb-fl">
+            <label class="wb-f"><span>Isolid</span><input class="wb-in" value="1"></label>
+            <label class="wb-f"><span>Ismstr</span><input class="wb-in" value="0"></label>
+            <label class="wb-f"><span>NIP</span><input class="wb-in" value="1"></label>
+          </div>
+        </div>
+
+        <div class="wb-sec" style="border-bottom:none">
+          <span class="wb-k">Job · 7f3a91</span>
+          <span style="width:100%;height:5px;background:var(--color-neutral-300);display:block"><span style="display:block;width:63%;height:100%;background:var(--color-accent)"></span></span>
+          <span class="wb-sb">cycle 8 420 · t = 6.3 ms · %63</span>
+          <a href="#" style="font-size:11.5px">starter .rad indir</a>
+        </div>
+      </div>
+
+      <div style="padding:10px 13px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100);display:flex;flex-direction:column;gap:8px">
+        <label class="wb-sb" style="gap:7px"><input type="checkbox" checked style="accent-color:var(--color-accent)">OpenRadioss çalıştır (kuruluysa)</label>
+        <div style="display:flex;gap:7px">
+          <button type="button" class="btn btn-secondary" style="flex:1;height:32px;font-size:12px">Kopyala</button>
+          <button type="button" class="btn btn-primary" style="flex:2;height:32px;font-size:12px">.rad üret / çöz</button>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--color-divider);background:var(--color-bg)">
+    <div class="wb-row" style="height:34px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <span class="wb-tab" aria-selected="true" style="font-size:11.5px;padding:0 13px">Geçmiş<span class="tag tag-accent" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">6</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Karşılaştır<span class="tag tag-neutral" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">2</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Analitik referans</span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">DOE<span class="tag tag-neutral" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">3</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Surrogate<span class="tag tag-neutral" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">R² 0.94</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Veri seti<span class="tag tag-neutral" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">412</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Solver log</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:7px;padding-right:13px">
+        <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Seçili 2'yi karşılaştır</button>
+        <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Arşiv indir</button>
+        <span class="wb-ic" style="width:24px;height:24px;border:none">▾</span>
+      </span>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:0 13px">
+      <table class="table" style="font-size:12.5px">
+        <thead>
+          <tr>
+            <th style="width:26px"></th><th style="width:52px">#</th><th>Ad</th><th style="width:96px">Tip</th><th style="width:88px">Durum</th>
+            <th style="width:150px">Skaler</th><th style="width:106px">Mesh</th><th style="width:124px">Tarih</th><th style="width:130px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ runs }}" as="r" hint-placeholder-count="6">
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--color-accent)"></td>
+              <td style="color:color-mix(in srgb,var(--color-text) 55%,transparent)">{{ r.id }}</td>
+              <td style="font-weight:600">{{ r.name }}</td>
+              <td>{{ r.type }}</td>
+              <td><span class="tag tag-neutral" style="padding:1px 8px">{{ r.status }}</span></td>
+              <td>{{ r.scalar }}</td>
+              <td style="color:color-mix(in srgb,var(--color-text) 62%,transparent)">{{ r.mesh }}</td>
+              <td style="color:color-mix(in srgb,var(--color-text) 62%,transparent)">{{ r.date }}</td>
+              <td>
+                <span style="display:flex;gap:5px;justify-content:flex-end">
+                  <button type="button" class="btn btn-secondary" style="height:24px;font-size:11px;padding:0 9px">Yükle</button>
+                  <button type="button" class="btn btn-ghost" style="height:24px;font-size:11px;padding:0 7px">İndir</button>
+                </span>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="wb-row" style="gap:16px;padding:0 14px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span class="wb-sb">48 210 düğüm · 26 884 eleman · C3D10</span>
+    <span class="wb-sb">minSJ 0.42 · aspect 3.1</span>
+    <span class="wb-sb">Birim mm · ms · Pa</span>
+    <span style="margin-left:auto"></span>
+    <span class="wb-sb">Eğitim örneği 412 · çözülmemiş 9</span>
+    <span class="wb-sb">Backend localhost:8000</span>
+    <span class="wb-sb"><span style="width:6px;height:6px;background:var(--color-accent);display:inline-block"></span>bağlı</span>
+  </footer>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1560,&quot;height&quot;:960}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      visToggles: ["Solid", "Surface", "Mesh", "Tel kafes", "Kenar"],
+      viewTools: [
+        { g: "⟲", title: "Görünümü sıfırla" },
+        { g: "+", title: "Yakınlaştır" },
+        { g: "−", title: "Uzaklaştır" },
+        { g: "⤢", title: "Sığdır" },
+        { g: "▦", title: "Mesh" },
+        { g: "◆", title: "Kesit" },
+      ],
+      details: [
+        { k: "id", v: "yüzey 42" },
+        { k: "parça", v: "#1 · Parça #1" },
+        { k: "alan", v: "1 284 mm²" },
+        { k: "düğüm", v: "842" },
+        { k: "bölge", v: "yuk_yuzeyi" },
+      ],
+      scalars: [
+        { k: "HIC15", v: "212.4" },
+        { k: "acc_peak", v: "38.1 g" },
+        { k: "IE final", v: "1.82 kJ" },
+        { k: "KE final", v: "0.24 kJ" },
+        { k: "RWALL Fmax", v: "46.3 kN" },
+        { k: "εp max", v: "0.071" },
+      ],
+      runs: [
+        { id: "#12", name: "Crash rigid wall 10 m/s", type: "Crash", status: "çalışıyor", scalar: "HIC15 212.4", mesh: "tet · 4 mm", date: "14.09 · 21:04" },
+        { id: "#11", name: "Modal 6 mod", type: "Modal", status: "solved", scalar: "f₁ 214.3 Hz", mesh: "tet · 4 mm", date: "14.09 · 18:22" },
+        { id: "#10", name: "Durability uç yükü", type: "Durability", status: "solved", scalar: "VM 184.2 MPa", mesh: "tet · 4 mm", date: "14.09 · 13:42" },
+        { id: "#9", name: "braket kalın", type: "Durability", status: "solved", scalar: "VM 121.0 MPa", mesh: "tet · 5 mm", date: "13.09 · 18:05" },
+        { id: "#8", name: "DOE cantilever LHS · 08", type: "DOE", status: "solved", scalar: "sapma %3.1", mesh: "tet · 6 mm", date: "12.09 · 09:30" },
+        { id: "#7", name: "Surrogate tahmin", type: "Surrogate", status: "tahmin", scalar: "R² 0.94 · uzay içi", mesh: "—", date: "11.09 · 16:48" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

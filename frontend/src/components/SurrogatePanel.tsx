@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
 import { numberFieldsFromSchema, type JsonSchema } from "../templates/schemaForm";
@@ -6,13 +6,16 @@ import {
   addRunsToCorpus,
   evaluateForCorpus,
   fetchCorpusList,
+  fetchCorpusMembership,
   fetchSurrogateStatus,
   freezeCorpus,
   predictFromParams,
   predictSweep,
+  type SweepPoint,
   type SweepResult,
   fetchValidation,
   type ValidationResult,
+  type ValidationRow,
   predictSurrogate,
   trainFieldGnn,
   trainScalarRf,
@@ -88,7 +91,11 @@ export default function SurrogatePanel({
   templateId,
   onPrediction,
   onCorpusChange,
+  view = "all",
 }: {
+  /** ML Stüdyo aşaması: "model" → 1·Model + 3·Eğitim, "predict" → 2·Tahmin
+   * (toplu tarama, Tahmin vs FEA dahil). "all" tek panelde hepsi. */
+  view?: "all" | "model" | "predict";
   refreshKey?: number;
   geometryId?: number | null;
   runId?: number | null;
@@ -105,6 +112,16 @@ export default function SurrogatePanel({
   const [validateLimit, setValidateLimit] = useState("10");
   const [validateName, setValidateName] = useState("");
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [validateTarget, setValidateTarget] = useState<"u" | "vm">("vm");
+  // Doğrulamayı seçili korpusun run'larıyla sınırla: son N run'a plastisite /
+  // deplasman kontrolü koşuları da girer, lineer model onları tahmin edemez.
+  const [validateCorpusOnly, setValidateCorpusOnly] = useState(true);
+  // Otomatik (sessiz) doğrulamanın hatası; mesaj/hata alanına yazılmaz ki
+  // eğitim/dondurma bildirimlerini silmesin.
+  const [validateError, setValidateError] = useState<string | null>(null);
+  // Sessiz doğrulama `busy`'yi kilitlemez: eğitim/dondurma düğmeleri o
+  // sırada tıklanabilir kalmalı.
+  const [validating, setValidating] = useState(false);
   // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
   const [sweepParam, setSweepParam] = useState<string>("");
   const [sweepMin, setSweepMin] = useState("");
@@ -169,7 +186,6 @@ export default function SurrogatePanel({
   }, []);
   const [fz, setFz] = useState("0");
   const [compareOpenRun, setCompareOpenRun] = useState(true);
-  const autoPickedCorpus = useRef(false);
 
   const reload = useCallback(() => {
     fetchSurrogateStatus(predictTemplate, nlgeom)
@@ -178,13 +194,13 @@ export default function SurrogatePanel({
     fetchCorpusList()
       .then((list) => {
         setCorpora(list);
+        // Bu şablonun en yeni seti seçilir; başka şablonun seti seçiliyse
+        // düşer (eğitim/doğrulama şablon + korpus uyumu ister). Kullanıcının
+        // bu şablon için seçtiği set korunur.
         setCorpus((prev) => {
-          if (prev) return prev;
-          if (!autoPickedCorpus.current && list.length > 0) {
-            autoPickedCorpus.current = true;
-            return list[list.length - 1].name;
-          }
-          return prev;
+          const mine = list.filter((c) => !c.template_id || c.template_id === predictTemplate);
+          if (prev && mine.some((c) => c.name === prev)) return prev;
+          return mine.length > 0 ? mine[mine.length - 1].name : "";
         });
       })
       .catch(() => setCorpora([]));
@@ -202,16 +218,16 @@ export default function SurrogatePanel({
   // tahmin yanitindaki model_kind daima gosterilir.
   const [scalarModel, setScalarModel] = useState<ScalarModelKind>(DEFAULT_MODEL);
 
-  async function handleTrainRf() {
+  async function handleTrainRf(kind: ScalarModelKind = scalarModel) {
     setBusy("rf");
     setError(null);
     setMessage(null);
     try {
-      const r = await trainScalarRf(corpus || null, scalarModel, predictTemplate, nlgeom);
+      const r = await trainScalarRf(corpus || null, kind, predictTemplate, nlgeom);
       const info = r?.corpus;
       const droppedN = Object.values(info?.dropped ?? {}).reduce((a, b) => a + b, 0);
       const flaggedN = Object.values(info?.flagged ?? {}).reduce((a, b) => a + b, 0);
-      let msg = `${MODEL_LABEL[scalarModel]} eğitildi · ${r?.n_samples ?? "?"} örnek`;
+      let msg = `${MODEL_LABEL[kind]} eğitildi · ${r?.n_samples ?? "?"} örnek`;
       msg += corpus ? ` · set ${corpus}` : " · canlı süzgeç";
       if (info?.template_id) msg += ` · ${info.template_id}`;
       if (droppedN > 0) msg += ` · atılan ${droppedN}`;
@@ -357,31 +373,51 @@ export default function SurrogatePanel({
     };
   }
 
-  async function handleValidate() {
-    setBusy("validate");
-    setError(null);
-    setMessage(null);
+  /** Tahmin vs FEA. `silent`: aşama açılınca/ayar değişince kendiliğinden;
+   * mesaj alanına dokunmaz, hatayı kendi satırına yazar. */
+  async function handleValidate(silent = false) {
+    setValidating(true);
+    if (!silent) {
+      setBusy("validate");
+      setError(null);
+      setMessage(null);
+    }
+    setValidateError(null);
     setValidation(null);
     try {
+      const corpusOnly = validateCorpusOnly && corpus !== "";
+      let runIds: number[] | null = null;
+      if (corpusOnly) {
+        const m = await fetchCorpusMembership(corpus);
+        runIds = [...m.auto, ...m.manual_pass, ...m.manual_override];
+      }
       const result = await fetchValidation({
         templateId: predictTemplate,
         model: scalarModel,
         nlgeom,
-        limit: Math.max(1, Math.min(200, Math.round(num(validateLimit)) || 10)),
+        limit: corpusOnly
+          ? Math.max(1, Math.min(200, runIds?.length ?? 1))
+          : Math.max(1, Math.min(200, Math.round(num(validateLimit)) || 10)),
         nameContains: validateName.trim() || null,
+        runIds,
       });
       setValidation(result);
       const sk = Object.values(result.skipped).reduce((a, b) => a + b, 0);
-      setMessage(
-        `Tahmin vs FEA: ${result.n} run` +
-          (result.mean_abs_dev_u_pct != null ? ` · ort |sapma| u ${result.mean_abs_dev_u_pct.toFixed(2)}%` : "") +
-          (result.mean_abs_dev_vm_pct != null ? ` · σ ${result.mean_abs_dev_vm_pct.toFixed(2)}%` : "") +
-          (sk > 0 ? ` · ${sk} run atlandı (kinematik/özellik)` : ""),
-      );
+      if (!silent) {
+        setMessage(
+          `Tahmin vs FEA: ${result.n} run` +
+            (result.mean_abs_dev_u_pct != null ? ` · ort |sapma| u ${result.mean_abs_dev_u_pct.toFixed(2)}%` : "") +
+            (result.mean_abs_dev_vm_pct != null ? ` · σ ${result.mean_abs_dev_vm_pct.toFixed(2)}%` : "") +
+            (sk > 0 ? ` · ${sk} run atlandı (kinematik/özellik)` : ""),
+        );
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.");
+      const m = e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.";
+      if (silent) setValidateError(m);
+      else setError(m);
     } finally {
-      setBusy(null);
+      setValidating(false);
+      if (!silent) setBusy(null);
     }
   }
 
@@ -476,635 +512,324 @@ export default function SurrogatePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // Model aşaması açıkken doğrulama kendiliğinden gelir: ccx çalışmaz,
+  // ucuz. Model / şablon / kinematik / korpus değişince yenilenir; "Tabloyu
+  // oluştur" N ve ad süzgeciyle elle yenilemek için kalır.
+  const activeReady = active != null;
+  useEffect(() => {
+    if (view === "predict" || !activeReady) return;
+    // Açılışta durum, korpus ve model türü arka arkaya oturur; kısa bekleme
+    // ile tek istek atılır.
+    const t = window.setTimeout(() => void handleValidate(true), 150);
+    return () => window.clearTimeout(t);
+    // handleValidate her render'da yeni; tetikleyiciler açıkça listeleniyor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, activeReady, predictTemplate, nlgeom, scalarModel, corpus, validateCorpusOnly]);
+
   const predictFields = numberFieldsFromSchema(
     (templates.find((t) => t.id === predictTemplate)?.params_schema ?? {}) as JsonSchema,
   );
   const pred = paramResult?.predictions;
   const fea = paramResult?.fea;
   const dev = paramResult?.deviation_pct;
+  const showModel = view !== "predict";
+  const showPredict = view !== "model";
+  const kinds: ScalarModelKind[] = ["hybrid", "loglinear", "rf"];
+  const mapePct = (info: ScalarModelInfo | null | undefined, key: string): number | null => {
+    const v = info?.metrics?.test?.[key]?.mape;
+    return typeof v === "number" && Number.isFinite(v) ? v * 100 : null;
+  };
+  const materialName = materialId
+    ? materials.find((m) => String(m.id) === materialId)?.name ?? `malzeme #${materialId}`
+    : null;
+  const violationByFeature = new Map(
+    (paramResult?.domain_violations ?? []).map((v) => [v.feature, v] as const),
+  );
 
-  return (
-    <div className="panel dataset-panel">
-      <span className="eyebrow">Surrogate</span>
-      <h1>Hızlı tahmin</h1>
-      <p className="lead">
-        Eğitilmiş model, yeni bir tasarım için sonucu ccx çalıştırmadan verir.
-        Tahmin tam çözüm değildir; eğitim uzayı dışında bayrakla döner.
-      </p>
+  async function handleTrainAll() {
+    for (const k of kinds) {
+      // Sırayla; biri patlarsa handleTrainRf hatayı gösterir, döngü durur.
+      // eslint-disable-next-line no-await-in-loop
+      await handleTrainRf(k);
+      if (error) break;
+    }
+  }
 
-      {/* ── 1 · Model ─────────────────────────────────────────────── */}
-      <p className="material-assignments-title">1 · Model</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>Şablon</span>
-          <select value={predictTemplate} onChange={(e) => setPredictTemplate(e.target.value)}>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-                {status?.templates?.[t.id]?.length
-                  ? ` · ${status.templates[t.id].length} model`
-                  : " · model yok"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mesh-field">
-          <span>Kinematik</span>
-          <select
-            value={nlgeom ? "nlgeom" : "linear"}
-            disabled={busy !== null}
-            onChange={(e) => setNlgeom(e.target.value === "nlgeom")}
-            title="Lineer: küçük deformasyon (u/L < 0.10). NLGEOM: büyük deformasyon — ayrı korpus, ayrı model."
-          >
-            <option value="linear">Lineer (küçük deformasyon)</option>
-            <option value="nlgeom">NLGEOM (büyük deformasyon)</option>
-          </select>
-        </label>
-        <label className="mesh-field">
-          <span>Model türü</span>
-          <select
-            value={scalarModel}
-            disabled={busy !== null}
-            onChange={(e) => setScalarModel(e.target.value as ScalarModelKind)}
-          >
-            {(["hybrid", "loglinear", "rf"] as ScalarModelKind[]).map((k) => (
-              <option key={k} value={k}>
-                {MODEL_LABEL[k]}
-                {byKind[k] ? ` · ${byKind[k]?.n_samples} örnek` : " · eğitilmedi"}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {active ? (
-        <p className="material-assign-hint" data-testid="model-status-line">
-          {MODEL_LABEL[scalarModel]} · {active.n_samples} örnek ·{" "}
-          {active.has_holdout
-            ? `holdout u_max MAPE ${fmtPct((active.metrics?.test?.max_displacement?.mape ?? NaN) * 100)} · R² ${fmtR2(active.metrics?.test?.max_displacement?.r2)}`
-            : `holdout yok · eğitim R² ${fmtR2(active.metrics?.train?.max_displacement?.r2)}`}
-          {nlgeom ? " · NLGEOM" : " · lineer"}
-        </p>
-      ) : nlgeom ? (
-        <p className="material-assign-hint" data-testid="nlgeom-model-missing">
-          Bu şablonda NLGEOM modeli eğitilmedi — 3 · Eğitim bölümünden NLGEOM korpusuyla eğit;
-          tahmin lineer modele düşmez.
-        </p>
-      ) : (
-        <p className="material-assign-hint">Bu şablonda model eğitilmedi — 3 · Eğitim bölümüne bak.</p>
-      )}
+  /** Uzay dışı bir girdiyi eğitim sınırına çeker — kullanıcı tıklar, araç
+   * kendiliğinden değiştirmez. */
+  function clampToBound(feature: string, bound: number, side: "below" | "above") {
+    // Sınırın İÇİNE yuvarla (6 anlamlı basamak): dışa yuvarlanırsa nokta
+    // yine uzay dışı kalır ve düğme boşa basılmış olur.
+    const scale = Math.pow(10, Math.floor(Math.log10(Math.abs(bound) || 1)) - 5);
+    const inward = side === "below" ? Math.ceil(bound / scale) * scale : Math.floor(bound / scale) * scale;
+    const v = String(Number(inward.toPrecision(6)));
+    if (feature === "load_fy") setFy(v);
+    else if (feature === "load_fx") setFx(v);
+    else if (feature === "load_fz") setFz(v);
+    else if (feature === "element_size") setElementSize(v);
+    else if (feature === "youngs_modulus") setYoungs(v);
+    else if (feature === "poisson_ratio") setPoisson(v);
+    else setParams((p) => ({ ...p, [feature]: v }));
+  }
 
-      {/* ── 2 · Tahmin ────────────────────────────────────────────── */}
-      <p className="material-assignments-title">2 · Tahmin</p>
-      <div className="mesh-grid">
-        {predictFields.filter((f) => !f.optional).map((f) => (
-          <label className="mesh-field" key={f.name}>
-            <span>
-              {f.symbol ? `${f.symbol} · ` : ""}
-              {f.label}
-              {f.unit ? ` (${f.unit})` : ""}
-            </span>
-            <input
-              value={params[f.name] ?? String(f.defaultValue)}
-              onChange={(e) => setParams((p) => ({ ...p, [f.name]: e.target.value }))}
-            />
-          </label>
+  const templateSelect = (
+    <span className="cv-row">
+      <span className="ml-k cv-k-90">Şablon</span>
+      <select
+        className="cv-template"
+        aria-label="Şablon"
+        value={predictTemplate}
+        onChange={(e) => setPredictTemplate(e.target.value)}
+      >
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+            {status?.templates?.[t.id]?.length ? ` · ${status.templates[t.id].length} model` : " · model yok"}
+          </option>
         ))}
-        <label className="mesh-field">
-          <span>Fy (N)</span>
-          <input value={fy} onChange={(e) => setFy(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Malzeme (akma kontrolü)</span>
-          <select
-            value={materialId}
-            onChange={(e) => setMaterialId(e.target.value)}
-            title="Tahmin edilen gerilme bu malzemenin akma sınırıyla karşılaştırılır"
-          >
-            <option value="">— seçilmedi —</option>
-            {materials.map((m) => (
-              <option key={m.id} value={String(m.id)}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <details className="surrogate-exponents">
-        <summary>Diğer yük bileşenleri, isteğe bağlı geometri, malzeme sabitleri, mesh, akma ölçütü</summary>
-        <div className="mesh-grid">
-          {predictFields.filter((f) => f.optional).map((f) => (
-            <label className="mesh-field" key={f.name}>
-              <span>
-                {f.symbol ? `${f.symbol} · ` : ""}
-                {f.label}
-                {f.unit ? ` (${f.unit})` : ""}
-              </span>
-              <input
-                value={params[f.name] ?? String(f.defaultValue)}
-                onChange={(e) => setParams((p) => ({ ...p, [f.name]: e.target.value }))}
-              />
-            </label>
-          ))}
-          <label className="mesh-field">
-            <span>Fx (N)</span>
-            <input value={fx} onChange={(e) => setFx(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Fz (N)</span>
-            <input value={fz} onChange={(e) => setFz(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>E (Pa)</span>
-            <input value={youngs} onChange={(e) => setYoungs(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>ν</span>
-            <input value={poisson} onChange={(e) => setPoisson(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Eleman (mm)</span>
-            <input value={elementSize} onChange={(e) => setElementSize(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Akma gerilmesi</span>
-            <select
-              value={stressSource}
-              onChange={(e) => setStressSource(e.target.value as "auto" | "away" | "peak")}
-              title="Maskeli: kısıttan 1×T uzakta (tekillik dışarıda, kirişte teoriye ±%1). Ham tepe: mesh'teki en yüksek değer, tekillik dahil (kirişte ~%10 yüksek)."
-            >
-              <option value="auto">otomatik (maskeli varsa)</option>
-              <option value="away">maskeli (tekillik dışı)</option>
-              <option value="peak">ham tepe (tekillik dahil)</option>
-            </select>
-          </label>
-        </div>
-      </details>
-      <label className="dataset-filter">
-        <input
-          type="checkbox"
-          checked={compareOpenRun}
-          disabled={runId == null}
-          onChange={(e) => setCompareOpenRun(e.target.checked)}
-        />
-        Açık run ile FEA kıyasla{runId == null ? " (run yok)" : ` (run ${runId})`}
-      </label>
-      <div className="doe-actions">
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={!canParamsPredict}
-          onClick={() => void handleParamsPredict()}
-        >
-          {busy === "params" ? "Tahmin…" : "Tahmin et"}
-        </button>
-      </div>
+      </select>
+    </span>
+  );
 
-      {pred && (
-        <div className="surrogate-pred-table">
-          <div className="results-stats-row">
-            <span>Tahmin u_max</span>
-            <strong>{fmtNum(pred.max_displacement)} mm</strong>
-          </div>
-          <div className="results-stats-row">
-            <span>Tahmin VM_max</span>
-            <strong>{fmtNum(pred.max_von_mises)} MPa</strong>
-          </div>
-          {paramResult?.out_of_domain && (
-            <div className="predict-warning predict-warning-ood">
-              <strong>Eğitim uzayı dışı</strong>
-              {paramResult.domain_violations && paramResult.domain_violations.length > 0 ? (
-                <>
-                  <table className="predict-warning-table">
-                    <tbody>
-                      {paramResult.domain_violations.map((v) => (
-                        <tr key={v.feature}>
-                          <td>{v.feature}</td>
-                          <td className="predict-warning-num">{fmtNum(v.value)}</td>
-                          <td className="predict-warning-range">
-                            eğitim: {fmtNum(v.min)} … {fmtNum(v.max)}
-                          </td>
-                          <td>
-                            {v.factor
-                              ? `${v.factor.toFixed(1)}× ${v.side === "below" ? "küçük" : "büyük"}`
-                              : v.side === "below"
-                                ? "altında"
-                                : "üstünde"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <span className="predict-warning-note">
-                    Model bu aralıkta hiç örnek görmedi. Log-log model kuvvet
-                    yasası öğrendiği için sınırın dışında da makul sonuç
-                    verebilir, ama garanti yoktur — uzaklaştıkça bozulur ve
-                    bozulduğunu söylemez.
-                  </span>
-                </>
-              ) : (
-                <span className="predict-warning-note">
-                  Sayı gösterilir, güvenilmez.
-                </span>
-              )}
-            </div>
-          )}
-          {paramResult?.yield_check?.exceeds_limit && (
-            <div
-              className={
-                paramResult.yield_check.exceeds_yield
-                  ? "predict-warning predict-warning-yield"
-                  : "predict-warning"
-              }
-            >
-              <strong>
-                {paramResult.yield_check.exceeds_yield
-                  ? "Akma aşılıyor — sonuç geçersiz"
-                  : "Akmaya yaklaşıyor"}
-              </strong>
-              <span className="predict-warning-note">
-                {paramResult.yield_check.material}: tahmin{" "}
-                {fmtNum(paramResult.yield_check.sigma_mpa)} MPa (
-                {paramResult.yield_check.source === "max_von_mises" ? "ham tepe" : "maskeli"}), akma{" "}
-                {fmtNum(paramResult.yield_check.yield_mpa)} MPa
-                {paramResult.yield_check.utilisation != null &&
-                  ` (%${(paramResult.yield_check.utilisation * 100).toFixed(0)} kullanım)`}
-                .{" "}
-                {paramResult.yield_check.exceeds_yield
-                  ? "Malzeme plastik davranır; hem lineer FEA hem bu tahmin gerçeği temsil etmez. Yükü azaltın, kesiti büyütün ya da daha yüksek dayanımlı malzeme seçin."
-                  : "Elastik sınırın yakınında — tasarım marjı dar."}
-              </span>
-            </div>
-          )}
-          {fea && (
-            <>
-              <div className="results-stats-row">
-                <span>FEA u_max (run {fea.run_id})</span>
-                <strong>{fmtNum(fea.max_displacement)} mm</strong>
-              </div>
-              <div className="results-stats-row">
-                <span>Sapma u</span>
-                <strong>{fmtPct(dev?.max_displacement_pct)}</strong>
-              </div>
-              <div className="results-stats-row">
-                <span>FEA VM_max</span>
-                <strong>{fmtNum(fea.max_von_mises)} MPa</strong>
-              </div>
-              <div className="results-stats-row">
-                <span>Sapma VM</span>
-                <strong>{fmtPct(dev?.max_von_mises_pct)}</strong>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+  const nlgeomMissingNote =
+    nlgeom && !active ? (
+      <p className="sg-note sg-note-warn" data-testid="nlgeom-model-missing">
+        Bu şablonda NLGEOM modeli eğitilmedi — NLGEOM korpusuyla eğit; tahmin lineer modele düşmez.
+      </p>
+    ) : null;
 
+  const feedback = (
+    <>
       {message && <p className="dataset-message">{message}</p>}
       {error && <p className="dataset-error">{error}</p>}
-      {/* ── Toplu tarama (2 · Tahmin'in devamı) ───────────────────── */}
-      <details className="surrogate-exponents" data-testid="sweep-section">
-        <summary>Toplu tarama — bir parametreyi aralıkta değiştir, N tahmin tek seferde</summary>
-        <p className="material-assign-hint" data-testid="sweep-fixed-inputs">
-          Taranmayan girdiler yukarıdaki 2 · Tahmin formundan alınır:{" "}
-          {predictFields
-            .filter((f) => !f.optional && f.name !== sweepParam)
-            .map((f) => `${f.symbol ?? f.label}=${params[f.name] ?? String(f.defaultValue)}`)
-            .concat(
-              sweepParam !== "load_fy" ? [`Fy=${fy}`] : [],
-              materialId
-                ? [materials.find((m) => String(m.id) === materialId)?.name ?? `malzeme #${materialId}`]
-                : ["malzeme seçilmedi"],
-              [nlgeom ? "NLGEOM" : "lineer"],
-            )
-            .join(" · ")}
-          . Eğitim aralığı dışındaki girdi her noktayı &quot;uzay dışı&quot; yapar.
-        </p>
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>Parametre</span>
-            <select value={sweepParam} onChange={(e) => setSweepParam(e.target.value)}>
-              <option value="">— seç —</option>
-              {predictFields.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.symbol ? `${f.symbol} · ` : ""}
-                  {f.label}
-                </option>
-              ))}
-              <option value="load_fy">Fy (N)</option>
-              <option value="load_fx">Fx (N)</option>
-              <option value="load_fz">Fz (N)</option>
-              <option value="element_size">Eleman (mm)</option>
-            </select>
-          </label>
-          <label className="mesh-field">
-            <span>Min</span>
-            <input value={sweepMin} onChange={(e) => setSweepMin(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Max</span>
-            <input value={sweepMax} onChange={(e) => setSweepMax(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Adım sayısı (2–200)</span>
-            <input value={sweepN} onChange={(e) => setSweepN(e.target.value)} />
-          </label>
+    </>
+  );
+
+  /* ================= MODEL AŞAMASI ================= */
+  const modelStage = (
+    <div className="doe-stage sg-stage" data-testid="model-stage">
+      <div className="doe-pane-l">
+        <div className="doe-phead">
+          <span className="doe-phead-title">
+            <span className="ml-k">0.5.6 RF · 0.6.3 loglinear · 0.6.4 hybrid</span>
+            <span className="ml-h">Vekil model</span>
+          </span>
         </div>
-        <div className="doe-actions">
-          <button
-            type="button"
-            className="material-assign-button"
-            disabled={!canParamsPredict || !sweepParam || sweepMin === "" || sweepMax === ""}
-            onClick={() => void handleSweep()}
-          >
-            {busy === "sweep" ? "Taranıyor…" : "Tara"}
-          </button>
-        </div>
-        {sweepResult && sweepResult.points.length > 0 && (
-          <div className="surrogate-pred-table" data-testid="sweep-result">
-            <SweepChart result={sweepResult} />
-            <table className="doe-table">
-              <thead>
-                <tr>
-                  <th>{sweepResult.sweep_param}</th>
-                  <th>u_max (mm)</th>
-                  <th>σ_max (MPa)</th>
-                  <th>durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sweepResult.points.map((p) => (
-                  <tr
-                    key={p.value}
-                    className={p.out_of_domain || p.exceeds_yield ? "doe-table-row-flagged" : undefined}
-                  >
-                    <td>{fmtNum(p.value)}</td>
-                    <td>{fmtNum(p.max_displacement)}</td>
-                    <td>{fmtNum(p.max_von_mises)}</td>
-                    <td>
-                      {[
-                        p.out_of_domain
-                          ? `uzay dışı${p.violations?.length ? `: ${p.violations.map(violationLabel).join(", ")}` : ""}`
-                          : null,
-                        p.exceeds_yield ? "akıyor" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </details>
-
-      {/* ── Tahmin vs FEA ─────────────────────────────────────────── */}
-      <details className="surrogate-exponents" data-testid="validate-section" open>
-        <summary>Tahmin vs FEA — çözülmüş run'larda model ne kadar şaşıyor</summary>
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>Son N run</span>
-            <input value={validateLimit} onChange={(e) => setValidateLimit(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Ad içerir (isteğe bağlı)</span>
-            <input
-              value={validateName}
-              placeholder="örn. OOD deneme"
-              onChange={(e) => setValidateName(e.target.value)}
-            />
-          </label>
-          <div className="mesh-field">
-            <span>&nbsp;</span>
-            <button
-              type="button"
-              className="material-assign-button"
-              disabled={!canParamsPredict}
-              onClick={() => void handleValidate()}
-            >
-              {busy === "validate" ? "Hesaplanıyor…" : "Tabloyu oluştur"}
-            </button>
-          </div>
-        </div>
-        {validation && (
-          <div className="surrogate-pred-table" data-testid="validate-result">
-            <div className="dataset-stats">
-              <div>
-                <strong>{validation.n}</strong>
-                <span>run</span>
-              </div>
-              <div>
-                <strong>{validation.mean_abs_dev_u_pct != null ? `${validation.mean_abs_dev_u_pct.toFixed(2)}%` : "—"}</strong>
-                <span>ort |sapma| u_max</span>
-              </div>
-              <div>
-                <strong>{validation.mean_abs_dev_vm_pct != null ? `${validation.mean_abs_dev_vm_pct.toFixed(2)}%` : "—"}</strong>
-                <span>ort |sapma| σ</span>
-              </div>
-              <div>
-                <strong>{validation.max_abs_dev_u_pct != null ? `${validation.max_abs_dev_u_pct.toFixed(2)}%` : "—"}</strong>
-                <span>en kötü u_max</span>
-              </div>
-            </div>
-            <div className="validate-table-wrap">
-            <table className="doe-table">
-              <thead>
-                <tr>
-                  <th>run</th>
-                  <th>tasarım</th>
-                  <th>FEA u_max</th>
-                  <th>tahmin</th>
-                  <th>sapma</th>
-                  <th>FEA σ</th>
-                  <th>tahmin</th>
-                  <th>sapma</th>
-                  <th>durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {validation.rows.map((r) => (
-                  <tr key={r.run_id} className={r.out_of_domain ? "doe-table-row-flagged" : undefined}>
-                    <td>{r.run_id}{r.name ? ` · ${r.name}` : ""}</td>
-                    <td>
-                      {Object.entries(r.params)
-                        .filter(([k]) => ["length", "thickness", "width", "height", "diameter"].includes(k))
-                        .map(([k, v]) => `${violationLabel(k)}=${fmtNum(v)}`)
-                        .concat([`Fy=${fmtNum(r.load_fy)}`])
-                        .join(" · ")}
-                    </td>
-                    <td>{fmtNum(r.fea_u)} mm</td>
-                    <td>{fmtNum(r.pred_u)}</td>
-                    <td>{r.dev_u_pct != null ? `${r.dev_u_pct >= 0 ? "+" : ""}${r.dev_u_pct.toFixed(1)}%` : "—"}</td>
-                    <td>{fmtNum(r.fea_vm)} MPa</td>
-                    <td>{fmtNum(r.pred_vm)}</td>
-                    <td>{r.dev_vm_pct != null ? `${r.dev_vm_pct >= 0 ? "+" : ""}${r.dev_vm_pct.toFixed(1)}%` : "—"}</td>
-                    <td>
-                      {[
-                        r.out_of_domain ? `uzay dışı: ${r.violations.map(violationLabel).join(", ")}` : null,
-                        r.u_over_l != null && r.u_over_l > 0.1 ? `u/L ${r.u_over_l.toFixed(2)}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-            <p className="filename">
-              σ sütunu maskeli gerilme (`{validation.rows[0]?.vm_key ?? "max_von_mises"}`). Run'lar
-              zaten çözülmüş; ccx çalışmadı.
-            </p>
-          </div>
-        )}
-      </details>
-
-      {/* ── 3 · Eğitim (gelişmiş) ─────────────────────────────────── */}
-      <details className="surrogate-exponents" data-testid="training-section">
-        <summary>3 · Eğitim (gelişmiş) — set, eğit, GNN, açık run</summary>
-        <div className="dataset-stats">
-          <div>
-            <strong>{active?.n_samples ?? "—"}</strong>
-            <span>{MODEL_LABEL[scalarModel]} örnek</span>
-          </div>
-          <div>
-            <strong>
-              {active?.has_holdout
-                ? fmtR2(active?.metrics?.test?.max_displacement?.r2)
-                : fmtR2(active?.metrics?.train?.max_displacement?.r2)}
-            </strong>
-            <span>{active?.has_holdout ? "test R² disp" : "eğitim R² disp (holdout yok)"}</span>
-          </div>
-          <div>
-            <strong>{fmtPct((active?.metrics?.test?.max_displacement?.mape ?? NaN) * 100)}</strong>
-            <span>test MAPE disp</span>
-          </div>
-          <div>
-            <strong>{gnn?.n_samples ?? "—"}</strong>
-            <span>GNN graf</span>
-          </div>
-        </div>
-
-        {scalarModel !== "rf" && active?.exponents?.max_displacement && (
-          <details className="surrogate-exponents">
-            <summary>Öğrenilen üsler — deplasman (log-log modelin katsayıları)</summary>
-            <table className="doe-table">
-              <thead>
-                <tr>
-                  <th>özellik</th>
-                  <th>üs</th>
-                  <th>okunabilir mi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {active.exponents.max_displacement.map((e) => (
-                  <tr key={e.feature} className={e.identifiable ? undefined : "doe-table-row-flagged"}>
-                    <td>{e.feature}</td>
-                    <td>{e.exponent == null ? "—" : e.exponent.toFixed(4)}</td>
-                    <td>{e.identifiable ? "evet" : (e.reason ?? "hayır")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="filename">
-              Bir sütun korpus boyunca sabitse ya da başka bir sütunla eşdoğrusalsa
-              katsayısı &quot;üs&quot; olarak okunamaz — tahmin bundan zarar görmez,
-              yorum görür.
-            </p>
-          </details>
-        )}
-
-        <p className="material-assignments-title">Eğitim seti</p>
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>Kullanılan set</span>
-            <select value={corpus} onChange={(e) => setCorpus(e.target.value)}>
-              <option value="">Canlı süzgeç (dondurulmamış)</option>
-              {corpora.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} · {c.n_runs} run{c.n_manual > 0 ? ` (+${c.n_manual} manuel)` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mesh-field">
-            <span>Yeni set adı</span>
-            <input value={newCorpusName} onChange={(e) => setNewCorpusName(e.target.value)} />
-          </label>
-          <div className="mesh-field">
-            <span>&nbsp;</span>
-            <button
-              type="button"
-              className="material-secondary-button"
-              disabled={busy !== null || newCorpusName.trim() === ""}
-              onClick={() => void handleFreeze()}
-            >
-              {busy === "freeze" ? "Donduruluyor…" : "Seti dondur"}
-            </button>
-          </div>
-        </div>
-
-        {corpus && (
-          <div className="doe-actions">
-            <button
-              type="button"
-              className="material-secondary-button"
-              disabled={busy !== null || runId == null}
-              onClick={() => void handleEvaluate()}
-            >
-              {busy === "evaluate"
-                ? "Bakılıyor…"
-                : runId == null
-                  ? "Açık run yok"
-                  : `Run ${runId} karnesi`}
-            </button>
-          </div>
-        )}
-
-        {verdict && (
-          <div className="surrogate-pred-table">
-            <div className="results-stats-row">
-              <span>Run {verdict.run_id}</span>
-              <strong>{verdict.ok ? "süzgeci geçti" : reasonText(verdict.reason)}</strong>
-            </div>
-            <div className="results-stats-row">
-              <span>u / L</span>
-              <strong>{verdict.u_over_L != null ? verdict.u_over_L.toFixed(3) : "—"}</strong>
-            </div>
-            <div className="results-stats-row">
-              <span>Mesh sapması</span>
-              <strong>
-                {verdict.mesh_deviation != null ? fmtPct(verdict.mesh_deviation * 100) : "—"}
-              </strong>
-            </div>
-            <div className="doe-actions">
+        <div className="doe-pane-body ds-body">
+          {templateSelect}
+          <span className="cv-row">
+            <span className="ml-k cv-k-90">Korpus</span>
+            <span className="doe-chips" role="group" aria-label="Kullanılan set">
               <button
                 type="button"
-                className="material-assign-button"
+                className={corpus === "" ? "doe-chip active" : "doe-chip"}
+                aria-pressed={corpus === ""}
                 disabled={busy !== null}
-                onClick={() => void handleAddToCorpus(!verdict.ok)}
+                onClick={() => setCorpus("")}
+                title="Dondurulmamış: eğitim anında süzgeçten geçen run'lar"
               >
-                {busy === "add"
-                  ? "Ekleniyor…"
-                  : verdict.ok
-                    ? "Sete ekle"
-                    : "Yine de ekle (override)"}
+                canlı süzgeç
               </button>
+              {corpora.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  className={corpus === c.name ? "doe-chip active" : "doe-chip"}
+                  aria-pressed={corpus === c.name}
+                  disabled={busy !== null}
+                  onClick={() => setCorpus(c.name)}
+                  title={c.template_id ?? undefined}
+                >
+                  {c.name} · {c.n_runs} run{c.n_manual > 0 ? ` (+${c.n_manual})` : ""}
+                </button>
+              ))}
+            </span>
+            <label className="doe-pfoot-check sg-nlgeom" title="Lineer: küçük deformasyon (u/L < 0.10). NLGEOM: büyük deformasyon — ayrı korpus, ayrı model.">
+              <input
+                type="checkbox"
+                checked={nlgeom}
+                disabled={busy !== null}
+                onChange={(e) => setNlgeom(e.target.checked)}
+              />
+              NLGEOM
+            </label>
+          </span>
+
+          <div className="ds-section">
+            <span className="ml-k">Skaler modeller · test MAPE{nlgeom ? " · NLGEOM" : " · lineer"}</span>
+            {kinds.map((k) => {
+              const info = byKind[k];
+              const isActive = k === scalarModel;
+              const u = mapePct(info, "max_displacement");
+              const s = mapePct(info, "max_von_mises");
+              const bar = (v: number | null) => `${Math.min(100, (v ?? 0) * 5)}%`;
+              return (
+                <div
+                  key={k}
+                  className={isActive ? "sg-model active" : "sg-model"}
+                  data-testid={`model-card-${k}`}
+                >
+                  <span className="sg-model-main">
+                    <span className="sg-model-title">
+                      <strong className="ml-h sg-model-name">{k === "rf" ? "RF" : k}</strong>
+                      <span className={`doe-st ${isActive && info ? "doe-st-ok" : ""}`}>
+                        {info ? (isActive ? "aktif" : "eğitildi") : "eğitilmedi"}
+                      </span>
+                    </span>
+                    <span className="ds-sb">
+                      {MODEL_LABEL[k]}
+                      {info ? ` · ${info.n_samples ?? "?"} örnek` : ""}
+                      {info && !info.has_holdout ? " · holdout yok" : ""}
+                    </span>
+                  </span>
+                  <span className="sg-model-bars">
+                    <span className="sg-bar-row">
+                      <span className="ml-k sg-bar-k sg-k-keep">u</span>
+                      <span className="sg-bar"><span style={{ width: bar(u) }} /></span>
+                      <span className="sg-bar-v">{u == null ? "—" : `%${u.toFixed(2)}`}</span>
+                    </span>
+                    <span className="sg-bar-row">
+                      <span className="ml-k sg-bar-k sg-k-keep">σ</span>
+                      <span className="sg-bar"><span style={{ width: bar(s) }} /></span>
+                      <span className="sg-bar-v">{s == null ? "—" : `%${s.toFixed(2)}`}</span>
+                    </span>
+                  </span>
+                  <span className="sg-model-actions">
+                    <button
+                      type="button"
+                      className="doe-btn sg-btn-sm"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        setScalarModel(k);
+                        void handleTrainRf(k);
+                      }}
+                    >
+                      {busy === "rf" && scalarModel === k ? "Eğitiliyor…" : `${MODEL_LABEL[k]} eğit`}
+                    </button>
+                    <button
+                      type="button"
+                      className="doe-btn doe-btn-ghost sg-btn-xs"
+                      aria-pressed={isActive}
+                      disabled={busy !== null || !info || isActive}
+                      onClick={() => setScalarModel(k)}
+                    >
+                      {isActive ? "Aktif" : "Aktif yap"}
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+            {nlgeomMissingNote}
+          </div>
+
+          <div className="ds-section">
+            <span className="ds-legend-row">
+              <span className="ml-k">Alan modeli · GNN</span>
+              <span className="doe-st sg-right">prototip</span>
+            </span>
+            <div className="ds-stats sg-gnn">
+              <span>
+                <span className="ml-k sg-k-keep">Düğüm RMSE · u</span>
+                <strong>
+                  {gnn?.metrics?.node_rmse?.displacement_mm != null
+                    ? `${fmtNum(gnn.metrics.node_rmse.displacement_mm)} mm`
+                    : "—"}
+                </strong>
+              </span>
+              <span>
+                <span className="ml-k sg-k-keep">Düğüm RMSE · σ</span>
+                <strong>
+                  {gnn?.metrics?.node_rmse?.von_mises_mpa != null
+                    ? `${fmtNum(gnn.metrics.node_rmse.von_mises_mpa)} MPa`
+                    : "—"}
+                </strong>
+              </span>
+              <span>
+                <span className="ml-k sg-k-keep">Holdout u_max</span>
+                <strong>{gnnHoldoutUmax != null ? `${fmtNum(gnnHoldoutUmax)} mm` : "yok"}</strong>
+                <span className="ds-sb">{gnn ? `${gnn.n_samples ?? "?"} graf` : "eğitilmedi"}</span>
+              </span>
+            </div>
+            {/* TODO 1.3b: başarı ölçütü (holdout u_max hatası < %5) tutmadı. */}
+            <div className="predict-warning" role="note" data-testid="gnn-prototype-note">
+              <strong>GNN alan modeli prototip — sonuçlar geçersiz</strong>
+              <span className="predict-warning-note">
+                Başarı ölçütü (holdout u_max hatası &lt; %5) karşılanmadı. Açık run tahmini GNN varken
+                kontur olarak onun çıktısını gösterir.
+                {gnnHoldoutUmax != null && ` Son eğitim holdout u_max RMSE: ${fmtNum(gnnHoldoutUmax)} mm.`}
+              </span>
             </div>
           </div>
-        )}
 
-        <div className="doe-actions">
+          <div className="ds-section">
+            <span className="ml-k">Eğitim seti · dondur, açık run'ı karneyle ekle</span>
+            <span className="cv-row">
+              <input
+                className="doe-num ds-freeze-input"
+                aria-label="Yeni set adı"
+                value={newCorpusName}
+                onChange={(e) => setNewCorpusName(e.target.value)}
+              />
+              <button
+                type="button"
+                className="doe-btn sg-btn-sm"
+                disabled={busy !== null || newCorpusName.trim() === ""}
+                onClick={() => void handleFreeze()}
+              >
+                {busy === "freeze" ? "Donduruluyor…" : "Seti dondur"}
+              </button>
+              {corpus && (
+                <button
+                  type="button"
+                  className="doe-btn sg-btn-sm"
+                  disabled={busy !== null || runId == null}
+                  onClick={() => void handleEvaluate()}
+                >
+                  {busy === "evaluate" ? "Bakılıyor…" : runId == null ? "Açık run yok" : `Run ${runId} karnesi`}
+                </button>
+              )}
+            </span>
+            {verdict && (
+              <div className="sg-verdict">
+                <div className="results-stats-row">
+                  <span>Run {verdict.run_id}</span>
+                  <strong>{verdict.ok ? "süzgeci geçti" : reasonText(verdict.reason)}</strong>
+                </div>
+                <div className="results-stats-row">
+                  <span>u / L</span>
+                  <strong>{verdict.u_over_L != null ? verdict.u_over_L.toFixed(3) : "—"}</strong>
+                </div>
+                <div className="results-stats-row">
+                  <span>Mesh sapması</span>
+                  <strong>{verdict.mesh_deviation != null ? fmtPct(verdict.mesh_deviation * 100) : "—"}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="doe-btn doe-btn-primary sg-btn-sm"
+                  disabled={busy !== null}
+                  onClick={() => void handleAddToCorpus(!verdict.ok)}
+                >
+                  {busy === "add" ? "Ekleniyor…" : verdict.ok ? "Sete ekle" : "Yine de ekle (override)"}
+                </button>
+              </div>
+            )}
+          </div>
+          {!showPredict && feedback}
+        </div>
+        <div className="doe-pfoot">
+          <span className="ds-sb">Eğitim tek şablon + tek korpus ile çalışır</span>
           <button
             type="button"
-            className="material-assign-button"
-            disabled={busy !== null}
-            onClick={() => void handleTrainRf()}
+            className="doe-btn doe-btn-ghost sg-right"
+            disabled={busy !== null || !canRunPredict}
+            onClick={() => void handlePredict()}
+            title="Tezgahta açık run/geometri için tahmin; GNN varken kontur"
           >
-            {busy === "rf" ? "Eğitiliyor…" : `${MODEL_LABEL[scalarModel]} eğit`}
+            {busy === "pred" ? "Tahmin…" : "Açık run tahmini"}
           </button>
           <button
             type="button"
-            className="material-secondary-button"
+            className="doe-btn"
             disabled={busy !== null}
             onClick={() => void handleTrainGnn()}
           >
@@ -1112,25 +837,678 @@ export default function SurrogatePanel({
           </button>
           <button
             type="button"
-            className="material-secondary-button"
-            disabled={busy !== null || !canRunPredict}
-            onClick={() => void handlePredict()}
+            className="doe-btn doe-btn-primary"
+            disabled={busy !== null}
+            onClick={() => void handleTrainAll()}
           >
-            {busy === "pred" ? "Tahmin…" : "Açık run tahmini"}
+            Üçünü de eğit
           </button>
         </div>
+      </div>
 
-        {/* TODO 1.3b: başarı ölçütü (holdout u_max hatası < %5) tutmadı. */}
-        <div className="predict-warning" role="note" data-testid="gnn-prototype-note">
-          <strong>GNN alan modeli prototip — sonuçlar geçersiz</strong>
-          <span className="predict-warning-note">
-            Başarı ölçütü (holdout u_max hatası &lt; %5) karşılanmadı. Açık run
-            tahmini GNN varken kontur olarak onun çıktısını gösterir.
-            {gnnHoldoutUmax != null && ` Son eğitim holdout u_max RMSE: ${fmtNum(gnnHoldoutUmax)} mm.`}
+      <div className="doe-pane-r cv-right">
+        <div className="doe-phead-r">
+          <span className="doe-phead-title">
+            <span className="ml-k">
+              Doğrulama · {MODEL_LABEL[scalarModel]} ·{" "}
+              {validation ? `${validation.n} çözülmüş run` : "çözülmüş run'lar"}
+              {validateCorpusOnly && corpus ? ` · ${corpus}` : ""} · ccx çalışmaz
+            </span>
+            <span className="ml-h">Tahmin ↔ FEA</span>
+          </span>
+          <span className="doe-seg cv-seg" role="group" aria-label="Doğrulama hedefi">
+            <button
+              type="button"
+              className={validateTarget === "u" ? "doe-seg-opt active" : "doe-seg-opt"}
+              aria-pressed={validateTarget === "u"}
+              onClick={() => setValidateTarget("u")}
+            >
+              u
+            </button>
+            <button
+              type="button"
+              className={validateTarget === "vm" ? "doe-seg-opt active" : "doe-seg-opt"}
+              aria-pressed={validateTarget === "vm"}
+              onClick={() => setValidateTarget("vm")}
+            >
+              σ
+            </button>
           </span>
         </div>
-      </details>
+        <span className="cv-row">
+          <label className="doe-pfoot-check" title="Kapalıyken şablonun son N çözülmüş run'ı — plastisite/deplasman kontrolü koşuları da girer.">
+            <input
+              type="checkbox"
+              checked={validateCorpusOnly && corpus !== ""}
+              disabled={corpus === "" || busy !== null}
+              onChange={(e) => setValidateCorpusOnly(e.target.checked)}
+            />
+            {corpus ? `yalnız ${corpus}` : "korpus seçilmedi"}
+          </label>
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Son N run</span>
+            <input
+              className="doe-num"
+              aria-label="Son N run"
+              value={validateLimit}
+              disabled={validateCorpusOnly && corpus !== ""}
+              onChange={(e) => setValidateLimit(e.target.value)}
+            />
+          </label>
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Ad içerir</span>
+            <input
+              className="doe-num ds-freeze-input"
+              aria-label="Ad içerir (isteğe bağlı)"
+              value={validateName}
+              placeholder="örn. OOD deneme"
+              onChange={(e) => setValidateName(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="doe-btn doe-btn-primary sg-right"
+            disabled={!canParamsPredict}
+            onClick={() => void handleValidate(false)}
+          >
+            {validating ? "Hesaplanıyor…" : "Tabloyu oluştur"}
+          </button>
+        </span>
 
+        {validateError && <p className="dataset-error">{validateError}</p>}
+        {!validation && !validateError && (
+          <p className="doe-empty">
+            {validating
+              ? "Hesaplanıyor — çözülmüş run'lar modelden geçiriliyor, ccx çalışmıyor."
+              : "Çözülmüş run'larda aktif modelin sapması. Run'lar zaten çözülmüş; ccx çalışmaz."}
+          </p>
+        )}
+
+        {validation && (
+          <div data-testid="validate-result" className="ds-section">
+            <div className="sg-val-grid">
+              <div className="cv-card">
+                <ValidationScatter rows={validation.rows} target={validateTarget} />
+                <span className="ds-sb">Açık bant ±%5 · kahverengi = uzay dışı run</span>
+              </div>
+              <div className="sg-val-stats">
+                <span><span className="ml-k">Örnek</span><strong className="ml-h">{validation.n}</strong></span>
+                <span>
+                  <span className="ml-k sg-k-keep">Ort. |Δσ|</span>
+                  <strong className="ml-h">
+                    {validation.mean_abs_dev_vm_pct != null ? `%${validation.mean_abs_dev_vm_pct.toFixed(2)}` : "—"}
+                  </strong>
+                </span>
+                <span>
+                  <span className="ml-k sg-k-keep">Ort. |Δu|</span>
+                  <strong className="ml-h">
+                    {validation.mean_abs_dev_u_pct != null ? `%${validation.mean_abs_dev_u_pct.toFixed(2)}` : "—"}
+                  </strong>
+                </span>
+                <span>
+                  <span className="ml-k sg-k-keep">Maks |Δu|</span>
+                  <strong className="ml-h">
+                    {validation.max_abs_dev_u_pct != null ? `%${validation.max_abs_dev_u_pct.toFixed(2)}` : "—"}
+                  </strong>
+                </span>
+              </div>
+            </div>
+            <details className="surrogate-exponents">
+              <summary>Satırlar · {validation.rows.length} run</summary>
+              <div className="validate-table-wrap">
+                <table className="doe-table">
+                  <thead>
+                    <tr>
+                      <th>run</th>
+                      <th>tasarım</th>
+                      <th>FEA u_max</th>
+                      <th>tahmin</th>
+                      <th>sapma</th>
+                      <th>FEA σ</th>
+                      <th>tahmin</th>
+                      <th>sapma</th>
+                      <th>durum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {validation.rows.map((r) => (
+                      <tr key={r.run_id} className={r.out_of_domain ? "doe-table-row-flagged" : undefined}>
+                        <td>{r.run_id}{r.name ? ` · ${r.name}` : ""}</td>
+                        <td>
+                          {Object.entries(r.params)
+                            .filter(([k]) => ["length", "thickness", "width", "height", "diameter"].includes(k))
+                            .map(([k, v]) => `${violationLabel(k)}=${fmtNum(v)}`)
+                            .concat([`Fy=${fmtNum(r.load_fy)}`])
+                            .join(" · ")}
+                        </td>
+                        <td>{fmtNum(r.fea_u)} mm</td>
+                        <td>{fmtNum(r.pred_u)}</td>
+                        <td>{r.dev_u_pct != null ? `${r.dev_u_pct >= 0 ? "+" : ""}${r.dev_u_pct.toFixed(1)}%` : "—"}</td>
+                        <td>{fmtNum(r.fea_vm)} MPa</td>
+                        <td>{fmtNum(r.pred_vm)}</td>
+                        <td>{r.dev_vm_pct != null ? `${r.dev_vm_pct >= 0 ? "+" : ""}${r.dev_vm_pct.toFixed(1)}%` : "—"}</td>
+                        <td>
+                          {[
+                            r.out_of_domain ? `uzay dışı: ${r.violations.map(violationLabel).join(", ")}` : null,
+                            r.u_over_l != null && r.u_over_l > 0.1 ? `u/L ${r.u_over_l.toFixed(2)}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="ds-sb">
+                σ sütunu maskeli gerilme (`{validation.rows[0]?.vm_key ?? "max_von_mises"}`). Run'lar zaten
+                çözülmüş; ccx çalışmadı.
+              </p>
+            </details>
+          </div>
+        )}
+
+        {scalarModel !== "rf" && active?.exponents?.max_displacement && (
+          <div className="ds-section" data-testid="exponents-section">
+            <span className="ds-legend-row">
+              <span className="ml-k">Öğrenilen üsler · {scalarModel} · u ∝ Π xᵢ^aᵢ</span>
+              <span className="ds-sb sg-right">
+                bir sütun sabitse ya da eşdoğrusalsa katsayı üs olarak okunamaz — tahmin bundan zarar görmez, yorum görür
+              </span>
+            </span>
+            <div className="sg-exps">
+              {active.exponents.max_displacement.map((e) => {
+                const v = e.exponent;
+                const h = v == null ? 0 : Math.min(1, Math.abs(v) / 3) * 50;
+                return (
+                  <span key={e.feature} className={e.identifiable ? "sg-exp" : "sg-exp sg-exp-dim"}>
+                    <em className="doe-line-sym cv-sym">{violationLabel(e.feature)}</em>
+                    <span className="sg-exp-bar" aria-hidden="true">
+                      <span className="sg-exp-zero" />
+                      <span
+                        className="sg-exp-fill"
+                        style={{ top: v != null && v >= 0 ? `${50 - h}%` : "50%", height: `${h}%` }}
+                      />
+                    </span>
+                    <strong>{v == null ? "—" : v.toFixed(4)}</strong>
+                    <span className="ds-sb sg-exp-note">{e.identifiable ? "okunabilir" : (e.reason ?? "okunamaz")}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ================= TAHMİN AŞAMASI ================= */
+  const yc = paramResult?.yield_check ?? null;
+  const predictStage = (
+    <div className="doe-stage sg-stage" data-testid="predict-stage">
+      <div className="doe-pane-l">
+        <div className="doe-phead">
+          <span className="doe-phead-title">
+            <span className="ml-k">Surrogate · ccx yok</span>
+            <span className="ml-h">Parametreden tahmin</span>
+          </span>
+          <span className="doe-phead-hint">
+            Bant = eğitim kutusu (tahmin sonrası, uzay dışı girdide)
+            <br />■ = girilen değer
+          </span>
+        </div>
+        <div className="doe-pane-body sg-pred-body">
+          {!showModel && templateSelect}
+          {[
+            ...predictFields
+              .filter((f) => !f.optional)
+              .map((f) => ({
+                key: f.name,
+                sym: f.symbol ?? "",
+                name: f.label,
+                unit: f.unit ?? "",
+                ariaLabel: `${f.symbol ? `${f.symbol} · ` : ""}${f.label}`,
+                value: params[f.name] ?? String(f.defaultValue),
+                set: (v: string) => setParams((p) => ({ ...p, [f.name]: v })),
+              })),
+            {
+              key: "load_fy",
+              sym: "Fy",
+              name: "Kuvvet",
+              unit: "N",
+              ariaLabel: "Fy (N)",
+              value: fy,
+              set: setFy,
+            },
+          ].map((row) => {
+            const viol = violationByFeature.get(row.key);
+            const val = Number(row.value);
+            let lo = viol ? Math.min(viol.min, val) : NaN;
+            let hi = viol ? Math.max(viol.max, val) : NaN;
+            if (viol) {
+              const span = hi - lo || Math.abs(hi) || 1;
+              lo -= span * 0.08;
+              hi += span * 0.08;
+            }
+            const pct = (v: number) => `${Math.max(0, Math.min(1, (v - lo) / (hi - lo || 1))) * 100}%`;
+            return (
+              <div className="sg-pred-row" key={row.key}>
+                <span className="doe-line-title">
+                  {row.sym ? <em className="doe-line-sym">{row.sym}</em> : null}
+                  <span className="doe-line-name">{row.name}</span>
+                </span>
+                <span className="sg-pred-bar-wrap">
+                  <span className="sg-pred-bar" aria-hidden="true">
+                    <span className="doe-bar-track" />
+                    {viol && (
+                      <span
+                        className="sg-pred-band"
+                        style={{ left: pct(viol.min), width: `calc(${pct(viol.max)} - ${pct(viol.min)})` }}
+                      />
+                    )}
+                    <span
+                      className={viol ? "sg-pred-knob sg-pred-knob-ood" : "sg-pred-knob"}
+                      style={{ left: viol ? pct(val) : "50%" }}
+                    />
+                  </span>
+                  <span className={viol ? "ds-sb sg-ood-text" : "ds-sb"}>
+                    {viol
+                      ? `eğitim ${fmtNum(viol.min)} – ${fmtNum(viol.max)}${viol.factor ? ` · ${viol.factor.toFixed(2)}× ${viol.side === "below" ? "altında" : "üstünde"}` : ""}`
+                      : paramResult
+                        ? "eğitim kutusunda"
+                        : " "}
+                  </span>
+                </span>
+                <span className="sg-pred-input">
+                  <input
+                    className={viol ? "doe-num sg-num-ood" : "doe-num"}
+                    aria-label={row.ariaLabel}
+                    value={row.value}
+                    onChange={(e) => row.set(e.target.value)}
+                  />
+                  <span className="ds-sb">{row.unit}</span>
+                </span>
+              </div>
+            );
+          })}
+
+          <div className="sg-pred-opts">
+            <span className="cv-row">
+              <span className="ml-k sg-k-150">Malzeme</span>
+              <span className="doe-chips" role="group" aria-label="Malzeme (akma kontrolü)">
+                <button
+                  type="button"
+                  className={materialId === "" ? "doe-chip active" : "doe-chip"}
+                  aria-pressed={materialId === ""}
+                  onClick={() => setMaterialId("")}
+                  title="Akma kontrolü atlanır; E ve ν ayrı alanlarda"
+                >
+                  yok
+                </button>
+                {materials.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={materialId === String(m.id) ? "doe-chip active" : "doe-chip"}
+                    aria-pressed={materialId === String(m.id)}
+                    onClick={() => setMaterialId(String(m.id))}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </span>
+            </span>
+            <span className="cv-row">
+              <span className="ml-k sg-k-150">Model</span>
+              <span className="doe-chips" role="group" aria-label="Model türü">
+                {kinds.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={scalarModel === k ? "doe-chip active" : "doe-chip"}
+                    aria-pressed={scalarModel === k}
+                    disabled={!byKind[k] || busy !== null}
+                    title={byKind[k] ? MODEL_LABEL[k] : `${MODEL_LABEL[k]} · bu şablonda eğitilmedi`}
+                    onClick={() => setScalarModel(k)}
+                  >
+                    {k === "rf" ? "RF" : k}
+                  </button>
+                ))}
+              </span>
+              <span className="ds-sb">{nlgeom ? "NLGEOM" : "lineer"}</span>
+            </span>
+            <span className="cv-row">
+              <span className="ml-k sg-k-150">Akma gerilmesi</span>
+              <span className="doe-seg" role="group" aria-label="Akma gerilmesi">
+                {(
+                  [
+                    ["auto", "auto"],
+                    ["away", "maskeli"],
+                    ["peak", "ham tepe"],
+                  ] as const
+                ).map(([v, l]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={stressSource === v ? "doe-seg-opt active" : "doe-seg-opt"}
+                    aria-pressed={stressSource === v}
+                    onClick={() => setStressSource(v)}
+                    title="Maskeli: kısıttan 1×T uzakta (tekillik dışarıda). Ham tepe: mesh'teki en yüksek değer, tekillik dahil."
+                  >
+                    {l}
+                  </button>
+                ))}
+              </span>
+            </span>
+          </div>
+
+          <details className="surrogate-exponents">
+            <summary>Diğer yük bileşenleri, isteğe bağlı geometri, malzeme sabitleri, mesh</summary>
+            <div className="mesh-grid">
+              {predictFields.filter((f) => f.optional).map((f) => (
+                <label className="mesh-field" key={f.name}>
+                  <span>
+                    {f.symbol ? `${f.symbol} · ` : ""}
+                    {f.label}
+                    {f.unit ? ` (${f.unit})` : ""}
+                  </span>
+                  <input
+                    value={params[f.name] ?? String(f.defaultValue)}
+                    onChange={(e) => setParams((p) => ({ ...p, [f.name]: e.target.value }))}
+                  />
+                </label>
+              ))}
+              <label className="mesh-field">
+                <span>Fx (N)</span>
+                <input value={fx} onChange={(e) => setFx(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>Fz (N)</span>
+                <input value={fz} onChange={(e) => setFz(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>E (Pa)</span>
+                <input value={youngs} onChange={(e) => setYoungs(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>ν</span>
+                <input value={poisson} onChange={(e) => setPoisson(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>Eleman (mm)</span>
+                <input value={elementSize} onChange={(e) => setElementSize(e.target.value)} />
+              </label>
+            </div>
+          </details>
+          {!showModel && nlgeomMissingNote}
+        </div>
+        <div className="doe-pfoot">
+          <label className="doe-pfoot-check">
+            <input
+              type="checkbox"
+              checked={compareOpenRun}
+              disabled={runId == null}
+              onChange={(e) => setCompareOpenRun(e.target.checked)}
+            />
+            {runId == null ? "Açık run yok — FEA kıyası kapalı" : `Run #${runId} ile karşılaştır`}
+          </label>
+          <button
+            type="button"
+            className="doe-btn doe-btn-primary sg-right"
+            disabled={!canParamsPredict}
+            onClick={() => void handleParamsPredict()}
+          >
+            {busy === "params" ? "Tahmin…" : "Tahmin et"}
+          </button>
+        </div>
+      </div>
+
+      <div className="doe-pane-r cv-right">
+        {!pred && (
+          <p className="doe-empty">
+            {active
+              ? `${MODEL_LABEL[scalarModel]} hazır · ${active.n_samples ?? "?"} örnek. Soldan girdileri verip "Tahmin et".`
+              : "Bu şablonda model yok — Model aşamasından eğit."}
+          </p>
+        )}
+        {pred && (
+          <>
+            <div className="sg-res-grid">
+              <div className="cv-card sg-res">
+                <span className="ml-k">Maks deplasman</span>
+                <span className="ds-big">
+                  {fmtNum(pred.max_displacement)} <span className="sg-unit">mm</span>
+                </span>
+                <span className="ds-sb">
+                  {paramResult?.model_kind ?? scalarModel} · {paramResult?.out_of_domain ? "uzay dışı" : "uzay içi"}
+                </span>
+              </div>
+              <div className="cv-card sg-res">
+                <span className="ml-k">Maks von Mises</span>
+                <span className="ds-big">
+                  {fmtNum(pred.max_von_mises)} <span className="sg-unit">MPa</span>
+                </span>
+                <span className="ds-sb">
+                  {yc
+                    ? yc.source === "max_von_mises"
+                      ? "ham tepe · tekillik dahil"
+                      : "maskeli · tekillik hariç"
+                    : "ham tepe · tekillik dahil"}
+                </span>
+              </div>
+              {yc ? (
+                <div
+                  className={`cv-card sg-res ${yc.exceeds_yield ? "sg-yield-over" : yc.exceeds_limit ? "sg-yield-near" : ""}`}
+                  data-testid="yield-card"
+                >
+                  <span className="sg-yield-head">
+                    <span className="ml-k">Akma kullanımı · {yc.material}</span>
+                    <strong>{yc.utilisation != null ? `%${(yc.utilisation * 100).toFixed(0)}` : "—"}</strong>
+                  </span>
+                  <span className="sg-yield-bar" aria-hidden="true">
+                    <span style={{ width: `${Math.min(100, (yc.utilisation ?? 0) * 100)}%` }} />
+                    <span className="sg-yield-limit" />
+                  </span>
+                  <span className="ds-sb">
+                    {fmtNum(yc.sigma_mpa)} / {fmtNum(yc.yield_mpa)} MPa ·{" "}
+                    {yc.exceeds_yield
+                      ? "akma aşılıyor — malzeme plastik, tahmin geçersiz"
+                      : yc.exceeds_limit
+                        ? "limit aşılmadı ama sınırda"
+                        : "elastik bölgede"}
+                  </span>
+                </div>
+              ) : (
+                <div className="cv-card sg-res">
+                  <span className="ml-k">Akma kullanımı</span>
+                  <span className="ds-sb">Malzeme seçilmedi; akma kontrolü atlandı.</span>
+                </div>
+              )}
+            </div>
+
+            {paramResult?.out_of_domain && (
+              <div className="ds-section" data-testid="ood-section">
+                <span className="ml-k">Neden uzay dışı · eğitim kutusu ihlali</span>
+                {(paramResult.domain_violations ?? []).length === 0 && (
+                  <p className="ds-sb">Sayı gösterilir, güvenilmez. Model bu noktayı hiç görmedi.</p>
+                )}
+                {(paramResult.domain_violations ?? []).map((v) => {
+                  const bound = v.side === "below" ? v.min : v.max;
+                  return (
+                    <div className="sg-ood" key={v.feature}>
+                      <span className="sg-ood-main">
+                        <strong>
+                          {violationLabel(v.feature)} = {fmtNum(v.value)} ·{" "}
+                          {v.side === "below" ? "alt sınırın altında" : "üst sınırın üstünde"}
+                        </strong>
+                        <span>
+                          eğitim aralığı {fmtNum(v.min)} – {fmtNum(v.max)}
+                          {v.factor ? ` · ${v.factor.toFixed(2)}×` : ""}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="doe-btn sg-btn-sm"
+                        onClick={() => clampToBound(v.feature, bound, v.side)}
+                      >
+                        {violationLabel(v.feature)}&apos;yi {fmtNum(bound)}&apos;e çek
+                      </button>
+                    </div>
+                  );
+                })}
+                <span className="ds-sb">
+                  Log-log model kuvvet yasası öğrendiği için sınırın dışında da makul sonuç verebilir, ama
+                  garanti yoktur — uzaklaştıkça bozulur ve bozulduğunu söylemez.
+                </span>
+              </div>
+            )}
+
+            {fea && (
+              <div className="cv-card sg-fea" data-testid="fea-compare">
+                <span className="ml-k">FEA kıyası · run {fea.run_id} · çözülmüş</span>
+                <div className="sg-fea-grid">
+                  <span><span className="ds-sb">FEA u_max (run {fea.run_id})</span><strong>{fmtNum(fea.max_displacement)} mm</strong></span>
+                  <span><span className="ds-sb">Sapma u</span><strong>{fmtPct(dev?.max_displacement_pct)}</strong></span>
+                  <span><span className="ds-sb">FEA VM_max</span><strong>{fmtNum(fea.max_von_mises)} MPa</strong></span>
+                  <span><span className="ds-sb">Sapma VM</span><strong>{fmtPct(dev?.max_von_mises_pct)}</strong></span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="cv-card sg-sweep" data-testid="sweep-section">
+          <span className="ds-legend-row">
+            <span className="doe-phead-title">
+              <span className="ml-k">Tek parametre tarama · {sweepN} adım · tek istek</span>
+              <strong className="sg-sweep-title">
+                {sweepResult
+                  ? `σ max, ${violationLabel(sweepResult.sweep_param)}'e göre`
+                  : "bir parametreyi aralıkta değiştir, N tahmin tek seferde"}
+              </strong>
+            </span>
+            <span className="ds-sb sg-right sg-legend">
+              <span className="cv-ref-swatch sg-yield-swatch" />
+              akma{yc ? ` ${fmtNum(yc.yield_mpa)} MPa` : ""}
+            </span>
+            <span className="ds-sb sg-legend">
+              <span className="sg-ood-swatch" />
+              uzay dışı
+            </span>
+          </span>
+          <p className="ds-sb" data-testid="sweep-fixed-inputs">
+            Taranmayan girdiler soldaki formdan alınır:{" "}
+            {predictFields
+              .filter((f) => !f.optional && f.name !== sweepParam)
+              .map((f) => `${f.symbol ?? f.label}=${params[f.name] ?? String(f.defaultValue)}`)
+              .concat(
+                sweepParam !== "load_fy" ? [`Fy=${fy}`] : [],
+                materialName ? [materialName] : ["malzeme seçilmedi"],
+                [nlgeom ? "NLGEOM" : "lineer"],
+              )
+              .join(" · ")}
+            . Eğitim aralığı dışındaki girdi her noktayı &quot;uzay dışı&quot; yapar.
+          </p>
+          <span className="cv-row sg-sweep-form">
+            <label className="doe-pfoot-field">
+              <span className="ml-k">Parametre</span>
+              <select
+                className="cv-template sg-sweep-select"
+                aria-label="Parametre"
+                value={sweepParam}
+                onChange={(e) => setSweepParam(e.target.value)}
+              >
+                <option value="">— seç —</option>
+                {predictFields.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.symbol ? `${f.symbol} · ` : ""}
+                    {f.label}
+                  </option>
+                ))}
+                <option value="load_fy">Fy (N)</option>
+                <option value="load_fx">Fx (N)</option>
+                <option value="load_fz">Fz (N)</option>
+                <option value="element_size">Eleman (mm)</option>
+              </select>
+            </label>
+            <label className="doe-pfoot-field">
+              <span className="ml-k">Min</span>
+              <input className="doe-num" aria-label="Min" value={sweepMin} onChange={(e) => setSweepMin(e.target.value)} />
+            </label>
+            <label className="doe-pfoot-field">
+              <span className="ml-k">Max</span>
+              <input className="doe-num" aria-label="Max" value={sweepMax} onChange={(e) => setSweepMax(e.target.value)} />
+            </label>
+            <label className="doe-pfoot-field">
+              <span className="ml-k">Adım</span>
+              <input
+                className="doe-num"
+                aria-label="Adım sayısı (2–200)"
+                value={sweepN}
+                onChange={(e) => setSweepN(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="doe-btn doe-btn-primary sg-right"
+              disabled={!canParamsPredict || !sweepParam || sweepMin === "" || sweepMax === ""}
+              onClick={() => void handleSweep()}
+            >
+              {busy === "sweep" ? "Taranıyor…" : "Tara"}
+            </button>
+          </span>
+          {sweepResult && sweepResult.points.length > 0 && (
+            <div data-testid="sweep-result" className="ds-section">
+              <SweepChart result={sweepResult} yieldMpa={yc?.yield_mpa ?? null} />
+              <details className="surrogate-exponents">
+                <summary>Noktalar · {sweepResult.points.length}</summary>
+                <table className="doe-table">
+                  <thead>
+                    <tr>
+                      <th>{sweepResult.sweep_param}</th>
+                      <th>u_max (mm)</th>
+                      <th>σ_max (MPa)</th>
+                      <th>durum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sweepResult.points.map((p) => (
+                      <tr
+                        key={p.value}
+                        className={p.out_of_domain || p.exceeds_yield ? "doe-table-row-flagged" : undefined}
+                      >
+                        <td>{fmtNum(p.value)}</td>
+                        <td>{fmtNum(p.max_displacement)}</td>
+                        <td>{fmtNum(p.max_von_mises)}</td>
+                        <td>
+                          {[
+                            p.out_of_domain
+                              ? `uzay dışı${p.violations?.length ? `: ${p.violations.map(violationLabel).join(", ")}` : ""}`
+                              : null,
+                            p.exceeds_yield ? "akıyor" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            </div>
+          )}
+        </div>
+        {showPredict && feedback}
+      </div>
+    </div>
+  );
+
+  if (view === "model") return modelStage;
+  if (view === "predict") return predictStage;
+  return (
+    <div className="sg-all">
+      {modelStage}
+      {predictStage}
     </div>
   );
 }
@@ -1145,48 +1523,115 @@ function violationLabel(key: string): string {
   return short[key] ?? key;
 }
 
-/** u_max'ın taranan parametreye göre eğrisi; uzay dışı / akan noktalar içi boş. */
-function SweepChart({ result }: { result: SweepResult }) {
-  const pts = result.points.filter((p) => p.max_displacement != null && Number.isFinite(p.max_displacement));
+/** Tahmin ↔ FEA saçılımı: x FEA, y tahmin; ±%5 bant; uzay dışı run kahverengi. */
+function ValidationScatter({ rows, target }: { rows: ValidationRow[]; target: "u" | "vm" }) {
+  const pts = rows
+    .map((r) => ({
+      x: target === "u" ? r.fea_u : r.fea_vm,
+      y: target === "u" ? r.pred_u : r.pred_vm,
+      ood: r.out_of_domain,
+      id: r.run_id,
+    }))
+    .filter((p): p is { x: number; y: number; ood: boolean; id: number } =>
+      p.x != null && p.y != null && Number.isFinite(p.x) && Number.isFinite(p.y),
+    );
+  const W = 400;
+  const H = 260;
+  const L = 30;
+  const B = 240;
+  if (pts.length === 0) {
+    return <p className="ds-sb">Bu hedef için karşılaştırılacak satır yok.</p>;
+  }
+  const all = pts.flatMap((p) => [p.x, p.y]);
+  const lo = Math.min(...all);
+  const hi = Math.max(...all);
+  const span = hi - lo || Math.abs(hi) || 1;
+  const a = lo - span * 0.05;
+  const b = hi + span * 0.05;
+  const sx = (v: number) => L + ((v - a) / (b - a)) * (W - L);
+  const sy = (v: number) => B - ((v - a) / (b - a)) * B;
+  const band = (k: number) => `${sx(a)},${sy(a * k)} ${sx(b)},${sy(b * k)}`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="sg-scatter" role="img" aria-label={`Tahmin ↔ FEA saçılımı, ${pts.length} run`}>
+      <rect x={L + 0.5} y="0.5" width={W - L - 1} height={B - 1} className="cv-frame" />
+      <polygon points={`${band(0.95)} ${sx(b)},${sy(b * 1.05)} ${sx(a)},${sy(a * 1.05)}`} className="sg-band" />
+      <line x1={sx(a)} y1={sy(a)} x2={sx(b)} y2={sy(b)} className="sg-diag" />
+      {pts.map((p) => (
+        <circle key={p.id} cx={sx(p.x)} cy={sy(p.y)} r="3" className={p.ood ? "sg-pt sg-pt-ood" : "sg-pt"}>
+          <title>{`run ${p.id} · FEA ${fmtNum(p.x)} · tahmin ${fmtNum(p.y)}`}</title>
+        </circle>
+      ))}
+      <text x={L + 4} y={H - 4} className="sg-axis-text">FEA {target === "u" ? "u (mm)" : "σ (MPa)"} →</text>
+      <text x="2" y="12" className="sg-axis-text">tahmin</text>
+    </svg>
+  );
+}
+
+/** Taranan parametreye göre σ_max (yoksa u_max) eğrisi; akma çizgisi kesikli,
+ * uzay dışı noktalar kahverengi. */
+function SweepChart({ result, yieldMpa }: { result: SweepResult; yieldMpa: number | null }) {
+  const useSigma = result.points.some((p) => p.max_von_mises != null);
+  const pick = (p: SweepPoint) => (useSigma ? p.max_von_mises : p.max_displacement);
+  const pts = result.points.filter((p) => pick(p) != null && Number.isFinite(pick(p) as number));
   if (pts.length < 2) return null;
-  const W = 320;
-  const H = 120;
-  const pad = { l: 44, r: 8, t: 8, b: 22 };
+  const W = 700;
+  const H = 220;
   const xs = pts.map((p) => p.value);
-  const ys = pts.map((p) => p.max_displacement as number);
+  const ys = pts.map((p) => pick(p) as number);
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
-  const y0 = 0;
-  const y1 = Math.max(...ys) || 1;
-  const sx = (x: number) => pad.l + ((x - x0) / (x1 - x0 || 1)) * (W - pad.l - pad.r);
-  const sy = (y: number) => H - pad.b - ((y - y0) / (y1 - y0 || 1)) * (H - pad.t - pad.b);
-  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.value).toFixed(1)},${sy(p.max_displacement as number).toFixed(1)}`).join(" ");
+  const yTop = Math.max(...ys, useSigma && yieldMpa != null ? yieldMpa : 0) * 1.08 || 1;
+  const sx = (x: number) => ((x - x0) / (x1 - x0 || 1)) * W;
+  const sy = (y: number) => H - (y / yTop) * H;
+  const path = pts.map((p) => `${sx(p.value).toFixed(1)},${sy(pick(p) as number).toFixed(1)}`).join(" ");
+  // Uzay dışı bölgeler: ardışık OOD noktaların x aralığı
+  const oodRects: { x: number; w: number }[] = [];
+  let start: number | null = null;
+  pts.forEach((p, i) => {
+    if (p.out_of_domain && start == null) start = i;
+    const end = !p.out_of_domain || i === pts.length - 1;
+    if (start != null && end) {
+      const last = p.out_of_domain ? i : i - 1;
+      const xa = sx(pts[start].value) - (start > 0 ? (sx(pts[start].value) - sx(pts[start - 1].value)) / 2 : 0);
+      const xb = sx(pts[last].value) + (last < pts.length - 1 ? (sx(pts[last + 1].value) - sx(pts[last].value)) / 2 : 0);
+      oodRects.push({ x: xa, w: Math.max(0, xb - xa) });
+      start = null;
+    }
+  });
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label={`u_max – ${result.sweep_param} eğrisi, ${pts.length} nokta`}
-      className="sweep-chart"
-    >
-      <line x1={pad.l} y1={H - pad.b} x2={W - pad.r} y2={H - pad.b} className="template-schematic-dim" />
-      <line x1={pad.l} y1={pad.t} x2={pad.l} y2={H - pad.b} className="template-schematic-dim" />
-      <text x={pad.l - 4} y={pad.t + 8} textAnchor="end" className="template-schematic-label">{fmtNum(y1)}</text>
-      <text x={pad.l - 4} y={H - pad.b} textAnchor="end" className="template-schematic-label">0</text>
-      <text x={pad.l} y={H - 6} className="template-schematic-label">{fmtNum(x0)}</text>
-      <text x={W - pad.r} y={H - 6} textAnchor="end" className="template-schematic-label">{fmtNum(x1)}</text>
-      <text x={(pad.l + W - pad.r) / 2} y={H - 6} textAnchor="middle" className="template-schematic-label">
-        {result.sweep_param} → u_max (mm)
-      </text>
-      <path d={path} fill="none" className="template-schematic-load" />
-      {pts.map((p) => (
-        <circle
-          key={p.value}
-          cx={sx(p.value)}
-          cy={sy(p.max_displacement as number)}
-          r={3}
-          className={p.out_of_domain || p.exceeds_yield ? "sweep-point-flagged" : "sweep-point"}
-        />
-      ))}
-    </svg>
+    <>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`${useSigma ? "σ_max" : "u_max"} – ${result.sweep_param} eğrisi, ${pts.length} nokta`}
+        className="sweep-chart sg-sweep-svg"
+        preserveAspectRatio="none"
+      >
+        <rect x="0.5" y="0.5" width={W - 1} height={H - 1} className="cv-frame" />
+        {oodRects.map((r, i) => (
+          <rect key={i} x={r.x} y="1" width={r.w} height={H - 2} className="sg-ood-rect" />
+        ))}
+        {useSigma && yieldMpa != null && (
+          <line x1="0" y1={sy(yieldMpa)} x2={W} y2={sy(yieldMpa)} className="sg-yield-line" />
+        )}
+        <polyline points={path} className="cv-line" />
+        {pts.map((p) => (
+          <circle
+            key={p.value}
+            cx={sx(p.value)}
+            cy={sy(pick(p) as number)}
+            r="3.4"
+            className={p.out_of_domain ? "sg-pt sg-pt-ood" : p.exceeds_yield ? "sg-pt sg-pt-yield" : "sg-pt"}
+          >
+            <title>{`${result.sweep_param}=${fmtNum(p.value)} · ${useSigma ? "σ" : "u"} ${fmtNum(pick(p))}${p.out_of_domain ? " · uzay dışı" : ""}${p.exceeds_yield ? " · akıyor" : ""}`}</title>
+          </circle>
+        ))}
+      </svg>
+      <span className="cv-axis ds-sb">
+        <span>{violationLabel(result.sweep_param)} {fmtNum(x0)}</span>
+        <span>{useSigma ? "σ_max (MPa)" : "u_max (mm)"} · {pts.length} nokta{result.n_out_of_domain > 0 ? ` · ${result.n_out_of_domain} uzay dışı` : ""}</span>
+        <span>{violationLabel(result.sweep_param)} {fmtNum(x1)}</span>
+      </span>
+    </>
   );
 }

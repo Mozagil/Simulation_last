@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/styles.css">
+<script src="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/_ds_bundle.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent-900)}
+:root{--wb-run:#8a5a1f;--wb-run-bg:#f6ecdc;--wb-ok:#3a6248;--wb-ok-bg:#e6eee9}
+.ml-row{display:flex;align-items:center}
+.ml-k{font-family:var(--font-heading);font-weight:700;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--color-neutral-700)}
+.ml-h{font-family:var(--font-heading);font-weight:600;letter-spacing:.03em}
+.ml-sb{font-size:11.5px;color:var(--color-neutral-700)}
+.ml-st{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;font-size:10.5px;font-weight:600;border:1px solid}
+.ml-st-run{background:var(--wb-run-bg);border-color:var(--wb-run);color:var(--wb-run)}
+.ml-st-ok{background:var(--wb-ok-bg);border-color:var(--wb-ok);color:var(--wb-ok)}
+.ml-st-idle{background:var(--color-neutral-200);border-color:var(--color-divider);color:var(--color-neutral-700)}
+.ml-in{min-height:30px;padding:5px 8px;font:inherit;font-size:13px;color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-divider);width:100%;box-sizing:border-box}
+.ml-in:hover{border-color:var(--color-neutral-600)}
+.ml-in:focus-visible{border-color:var(--color-accent);outline:none}
+.ml-f{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--color-neutral-700)}
+.ml-card{border:1px solid var(--color-divider);background:var(--color-bg);display:flex;flex-direction:column}
+.ml-ch{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)}
+.ml-cb{padding:13px;display:flex;flex-direction:column;gap:11px}
+.ml-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;color:var(--color-text)}
+.ml-chip:hover{background:var(--color-accent-100)}
+.ml-chip[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.ml-step{display:flex;align-items:center;gap:10px;padding:8px 14px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer}
+.ml-step[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.ml-step[aria-pressed="true"] .ml-sb{color:color-mix(in srgb,var(--color-bg) 85%,transparent)}
+.ml-num{font-family:var(--font-heading);font-weight:700;font-size:15px;letter-spacing:.04em}
+.ml-li{display:grid;align-items:center;gap:10px;padding:6px 10px;border:1px solid var(--color-divider);background:var(--color-bg);font-size:12.5px}
+</style>
+</helmet>
+
+<main style="display:grid;grid-template-rows:46px 60px minmax(0,1fr) 26px;height:960px;min-width:1320px;background:var(--color-bg);overflow:hidden">
+
+  <header class="ml-row" style="gap:13px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <a href="Workbench v4.dc.html" class="ml-row" style="gap:7px;color:var(--color-text)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>
+      <span style="font-size:12.5px">Tezgaha dön</span>
+    </a>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="ml-row" style="gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"></circle><circle cx="5" cy="18" r="2"></circle><circle cx="19" cy="12" r="2"></circle><path d="M7 6.5l10 4.7M7 17.5l10-4.7"></path></svg>
+      <span class="ml-h" style="font-size:16px">ML STÜDYO</span>
+      <span class="ml-sb">faz 0.5 · 0.6</span>
+    </span>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="ml-sb">Kaynak vaka ailesi <strong style="color:var(--color-text)">cantilever_beam</strong> · hedef <strong style="color:var(--color-text)">VM max</strong></span>
+    <span style="margin-left:auto"></span>
+    <span class="ml-row" style="gap:8px;padding:0 11px;height:30px;border:1px solid var(--wb-run);background:var(--wb-run-bg)">
+      <span style="width:7px;height:7px;background:var(--wb-run);flex-shrink:0"></span>
+      <span style="font-size:12px;color:var(--wb-run)">DOE kuyruğu · 18/24 örnek</span>
+    </span>
+    <button type="button" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px">Veri seti dışa aktar</button>
+  </header>
+
+  <div class="ml-row" style="gap:10px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-bg)">
+    <span class="ml-step" aria-pressed="true">
+      <span class="ml-num">0.5</span>
+      <span style="display:flex;flex-direction:column;gap:1px">
+        <span class="ml-h" style="font-size:13px;letter-spacing:.07em;text-transform:uppercase">Veri üretimi</span>
+        <span class="ml-sb">DOE · LHS örnekleme · çözüm kuyruğu</span>
+      </span>
+    </span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M14 7l5 5-5 5"></path></svg>
+    <span class="ml-step">
+      <span class="ml-num">0.6</span>
+      <span style="display:flex;flex-direction:column;gap:1px">
+        <span class="ml-h" style="font-size:13px;letter-spacing:.07em;text-transform:uppercase">Model eğitimi</span>
+        <span class="ml-sb">Random forest · GNN · tahmin</span>
+      </span>
+    </span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span style="display:flex;flex-direction:column;gap:1px;align-items:flex-end"><span class="ml-k">Veri seti</span><strong style="font-size:15px">412 örnek</strong></span>
+      <span style="display:flex;flex-direction:column;gap:1px;align-items:flex-end"><span class="ml-k">Aktif model</span><strong style="font-size:15px;color:var(--wb-ok)">R² 0.94</strong></span>
+    </span>
+  </div>
+
+  <section style="display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr) 316px;gap:1px;background:var(--color-divider);min-height:0">
+
+    <div style="background:var(--color-bg);overflow-y:auto;min-height:0;padding:14px;display:flex;flex-direction:column;gap:14px">
+
+      <div class="ml-card blueprint">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="ml-ch">
+          <span class="ml-num" style="color:var(--color-accent-800)">0.5</span>
+          <span style="display:flex;flex-direction:column">
+            <span class="ml-k">Tasarım uzayı</span>
+            <span class="ml-h" style="font-size:17px">Parametreler ve örnekleme</span>
+          </span>
+          <span class="ml-st ml-st-run" style="margin-left:auto">çalışıyor</span>
+        </div>
+        <div class="ml-cb">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <label class="ml-f"><span>Şablon</span><input class="ml-in" value="cantilever_beam"></label>
+            <label class="ml-f"><span>Örnekleme</span><input class="ml-in" value="LHS (latin hypercube)"></label>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr auto;gap:10px;padding:0 10px">
+              <span class="ml-k">Parametre</span><span class="ml-k">Min</span><span class="ml-k">Max</span><span class="ml-k">Birim</span><span class="ml-k">Aktif</span>
+            </div>
+            <sc-for list="{{ params }}" as="p" hint-placeholder-count="5">
+              <div class="ml-li" style="grid-template-columns:1.3fr 1fr 1fr 1fr auto">
+                <span>{{ p.name }}</span><span>{{ p.min }}</span><span>{{ p.max }}</span>
+                <span style="color:var(--color-neutral-700)">{{ p.unit }}</span>
+                <input type="checkbox" checked style="accent-color:var(--color-accent)">
+              </div>
+            </sc-for>
+            <button type="button" class="btn btn-ghost" style="height:28px;font-size:12px;align-self:flex-start;padding:0 8px">+ Parametre ekle</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <label class="ml-f"><span>Örnek sayısı</span><input class="ml-in" value="24"></label>
+            <label class="ml-f"><span>Mesh boyutu (mm)</span><input class="ml-in" value="6"></label>
+            <label class="ml-f"><span>Paralel job</span><input class="ml-in" value="4"></label>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--wb-run);background:var(--wb-run-bg)">
+            <span style="flex:1;height:5px;background:color-mix(in srgb,var(--wb-run) 22%,transparent);display:block"><span style="display:block;width:75%;height:100%;background:var(--wb-run)"></span></span>
+            <span style="font-size:12px;color:var(--wb-run);white-space:nowrap">18 / 24 çözüldü · 2 sırada · 4 çalışıyor</span>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" style="flex:1;height:34px;font-size:12.5px">Uzayı önizle</button>
+            <button type="button" class="btn btn-primary" style="flex:2;height:34px;font-size:12.5px">DOE çalıştır</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-card">
+        <div class="ml-ch">
+          <span class="ml-k">Faz 0.5 · üretilen örnekler</span>
+          <span class="ml-sb" style="margin-left:auto">son 6</span>
+        </div>
+        <div style="padding:0 13px 13px">
+          <table class="table" style="font-size:12.5px">
+            <thead><tr><th style="width:44px">#</th><th>L (mm)</th><th>b×h</th><th>F (N)</th><th>VM max</th><th style="width:96px">Durum</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ samples }}" as="s" hint-placeholder-count="6">
+                <tr>
+                  <td style="color:var(--color-neutral-700)">{{ s.i }}</td><td>{{ s.L }}</td><td>{{ s.bh }}</td><td>{{ s.F }}</td>
+                  <td>{{ s.vm }}</td><td><span class="ml-st {{ s.cls }}">{{ s.status }}</span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--color-bg);overflow-y:auto;min-height:0;padding:14px;display:flex;flex-direction:column;gap:14px">
+
+      <div class="ml-card blueprint">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="ml-ch">
+          <span class="ml-num" style="color:var(--color-accent-800)">0.6</span>
+          <span style="display:flex;flex-direction:column">
+            <span class="ml-k">Vekil model</span>
+            <span class="ml-h" style="font-size:17px">Eğitim ve doğrulama</span>
+          </span>
+          <span class="ml-st ml-st-ok" style="margin-left:auto">eğitildi</span>
+        </div>
+        <div class="ml-cb">
+          <div style="display:flex;gap:6px">
+            <span class="ml-chip" aria-pressed="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"></path><path d="M12 13l-5-4M12 13l5-4"></path><path d="M7 9V5M17 9V5M12 9V4"></path></svg>
+              Random forest
+            </span>
+            <span class="ml-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2"></circle><circle cx="18" cy="7" r="2"></circle><circle cx="12" cy="17" r="2"></circle><path d="M8 7h8M7.3 8.8l3.4 6.4M16.7 8.8l-3.4 6.4"></path></svg>
+              GNN (mesh grafı)
+            </span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <label class="ml-f"><span>Hedef</span><input class="ml-in" value="VM max"></label>
+            <label class="ml-f"><span>Ağaç sayısı</span><input class="ml-in" value="300"></label>
+            <label class="ml-f"><span>Test oranı</span><input class="ml-in" value="0.2"></label>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px;padding:9px 10px;border:1px solid var(--color-divider)">
+                <span class="ml-k">{{ m.k }}</span>
+                <strong style="font-size:17px;color:{{ m.color }}">{{ m.v }}</strong>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span class="ml-k">Parametre önemi</span>
+            <sc-for list="{{ importance }}" as="i" hint-placeholder-count="5">
+              <span style="display:grid;grid-template-columns:104px 1fr 42px;align-items:center;gap:9px;font-size:12px">
+                <span>{{ i.name }}</span>
+                <span style="height:8px;background:var(--color-neutral-200);display:block"><span style="display:block;width:{{ i.w }};height:100%;background:var(--color-accent)"></span></span>
+                <span style="text-align:right;color:var(--color-neutral-700)">{{ i.v }}</span>
+              </span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" style="flex:1;height:34px;font-size:12.5px">Model indir</button>
+            <button type="button" class="btn btn-primary" style="flex:2;height:34px;font-size:12.5px">Yeniden eğit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-card">
+        <div class="ml-ch">
+          <span class="ml-k">Doğrulama · tahmin ↔ çözüm</span>
+          <span class="ml-sb" style="margin-left:auto">83 test örneği</span>
+        </div>
+        <div class="ml-cb">
+          <svg viewBox="0 0 320 190" style="width:100%;height:190px;display:block">
+            <rect x="34" y="8" width="272" height="152" fill="none" stroke="var(--color-divider)"></rect>
+            <line x1="34" y1="160" x2="306" y2="8" stroke="var(--color-accent-300)" stroke-width="1.5" stroke-dasharray="4 4"></line>
+            <sc-for list="{{ scatter }}" as="p" hint-placeholder-count="14">
+              <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3.2" fill="var(--color-accent-700)" fill-opacity=".8"></circle>
+            </sc-for>
+            <text x="34" y="178" font-size="10" fill="var(--color-neutral-700)" font-family="Barlow">0</text>
+            <text x="286" y="178" font-size="10" fill="var(--color-neutral-700)" font-family="Barlow">320 MPa</text>
+            <text x="6" y="14" font-size="10" fill="var(--color-neutral-700)" font-family="Barlow">tahmin</text>
+          </svg>
+          <span class="ml-sb">Kırmızı çizgi yerine kesikli referans: y = x. Sapma bandı ±%6.</span>
+        </div>
+      </div>
+    </div>
+
+    <aside style="background:var(--color-bg);overflow-y:auto;min-height:0;display:flex;flex-direction:column">
+      <div class="ml-ch" style="border-bottom:1px solid var(--color-divider)">
+        <span style="display:flex;flex-direction:column">
+          <span class="ml-k">Hızlı tahmin</span>
+          <span class="ml-h" style="font-size:16px">Çözmeden sonuç</span>
+        </span>
+        <span class="ml-st ml-st-ok" style="margin-left:auto">uzay içi</span>
+      </div>
+
+      <div style="padding:13px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--color-divider)">
+        <sc-for list="{{ predictInputs }}" as="p" hint-placeholder-count="4">
+          <label class="ml-f"><span>{{ p.label }}</span><input class="ml-in" value="{{ p.value }}"></label>
+        </sc-for>
+        <button type="button" class="btn btn-primary" style="height:34px;font-size:12.5px">Tahmin et</button>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:11px 12px;border:1px solid var(--wb-ok);background:var(--wb-ok-bg)">
+          <span class="ml-k" style="color:var(--wb-ok)">Tahmin · VM max</span>
+          <strong style="font-size:24px;color:var(--wb-ok)">171.4 MPa</strong>
+          <span class="ml-sb" style="color:var(--wb-ok)">±10.3 MPa · analitik referans 168.0 MPa</span>
+        </div>
+        <span class="ml-sb" style="line-height:1.5">Tahmin, tasarım uzayının içinde kalan girdiler için geçerlidir. Uzay dışına çıkan değer uyarı verir ve gerçek çözüm önerilir.</span>
+      </div>
+
+      <div class="ml-ch" style="border-bottom:1px solid var(--color-divider)">
+        <span class="ml-k">Veri seti</span>
+        <span class="ml-sb" style="margin-left:auto">412 örnek · 9 eksik</span>
+      </div>
+      <div style="padding:13px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--color-divider)">
+        <sc-for list="{{ datasetRows }}" as="d" hint-placeholder-count="4">
+          <span class="ml-li" style="grid-template-columns:1fr auto">{{ d.k }}<span style="color:var(--color-neutral-700)">{{ d.v }}</span></span>
+        </sc-for>
+        <div style="display:flex;gap:7px">
+          <button type="button" class="btn btn-secondary" style="flex:1;height:30px;font-size:12px">İçe aktar</button>
+          <button type="button" class="btn btn-secondary" style="flex:1;height:30px;font-size:12px">CSV indir</button>
+        </div>
+      </div>
+
+      <div class="ml-ch" style="border-bottom:1px solid var(--color-divider)">
+        <span class="ml-k">Model sürümleri</span>
+      </div>
+      <div style="padding:13px;display:flex;flex-direction:column;gap:7px">
+        <sc-for list="{{ versions }}" as="v" hint-placeholder-count="3">
+          <span class="ml-li" style="grid-template-columns:1fr auto auto;border-left:2px solid {{ v.bar }}">
+            <span style="display:flex;flex-direction:column;gap:1px"><span>{{ v.name }}</span><span class="ml-sb">{{ v.sub }}</span></span>
+            <span style="font-weight:600">{{ v.r2 }}</span>
+            <span class="ml-st {{ v.cls }}">{{ v.state }}</span>
+          </span>
+        </sc-for>
+      </div>
+    </aside>
+  </section>
+
+  <footer class="ml-row" style="gap:16px;padding:0 14px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span class="ml-sb">Faz 0.5 DOE · 24 örnek kuyrukta</span>
+    <span class="ml-sb">Faz 0.6 RF v3 aktif · GNN v1 deneysel</span>
+    <span style="margin-left:auto"></span>
+    <span class="ml-sb">Backend localhost:8000</span>
+    <span class="ml-sb"><span style="width:6px;height:6px;background:var(--wb-ok);display:inline-block"></span>bağlı</span>
+  </footer>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1560,&quot;height&quot;:960}}">
+class Component extends DCLogic {
+  renderVals() {
+    const ok = "ml-st-ok", run = "ml-st-run", idle = "ml-st-idle";
+    return {
+      params: [
+        { name: "Uzunluk L", min: "80", max: "260", unit: "mm" },
+        { name: "Genişlik b", min: "10", max: "40", unit: "mm" },
+        { name: "Yükseklik h", min: "8", max: "30", unit: "mm" },
+        { name: "Kuvvet F", min: "500", max: "3000", unit: "N" },
+        { name: "E modülü", min: "68", max: "210", unit: "GPa" },
+      ],
+      samples: [
+        { i: "18", L: "212", bh: "26 × 18", F: "2 400", vm: "268.1", status: "solved", cls: ok },
+        { i: "17", L: "148", bh: "32 × 24", F: "1 750", vm: "141.6", status: "solved", cls: ok },
+        { i: "16", L: "96", bh: "14 × 11", F: "980", vm: "203.9", status: "solved", cls: ok },
+        { i: "19", L: "240", bh: "18 × 12", F: "2 900", vm: "—", status: "çalışıyor", cls: run },
+        { i: "20", L: "184", bh: "22 × 27", F: "1 200", vm: "—", status: "sırada", cls: idle },
+        { i: "21", L: "118", bh: "38 × 29", F: "620", vm: "—", status: "sırada", cls: idle },
+      ],
+      metrics: [
+        { k: "R²", v: "0.94", color: "var(--wb-ok)" },
+        { k: "MAE", v: "8.2", color: "var(--color-text)" },
+        { k: "RMSE", v: "12.6", color: "var(--color-text)" },
+        { k: "Eğitim", v: "329", color: "var(--color-text)" },
+      ],
+      importance: [
+        { name: "Kuvvet F", v: "0.41", w: "82%" },
+        { name: "Yükseklik h", v: "0.27", w: "54%" },
+        { name: "Uzunluk L", v: "0.18", w: "36%" },
+        { name: "Genişlik b", v: "0.09", w: "18%" },
+        { name: "E modülü", v: "0.05", w: "10%" },
+      ],
+      scatter: [
+        { x: 62, y: 132 }, { x: 88, y: 118 }, { x: 104, y: 99 }, { x: 121, y: 96 },
+        { x: 138, y: 84 }, { x: 150, y: 78 }, { x: 166, y: 66 }, { x: 178, y: 61 },
+        { x: 194, y: 52 }, { x: 208, y: 44 }, { x: 226, y: 38 }, { x: 244, y: 28 },
+        { x: 262, y: 24 }, { x: 284, y: 16 },
+      ],
+      predictInputs: [
+        { label: "Uzunluk L (mm)", value: "160" },
+        { label: "Genişlik b (mm)", value: "24" },
+        { label: "Yükseklik h (mm)", value: "18" },
+        { label: "Kuvvet F (N)", value: "1 800" },
+      ],
+      datasetRows: [
+        { k: "Durability örneği", v: "268" },
+        { k: "Modal örneği", v: "91" },
+        { k: "Crash örneği", v: "53" },
+        { k: "Son ekleme", v: "14.09 · 21:04" },
+      ],
+      versions: [
+        { name: "RF v3", sub: "300 ağaç · 412 örnek", r2: "0.94", state: "aktif", cls: ok, bar: "var(--wb-ok)" },
+        { name: "GNN v1", sub: "mesh grafı · 6 katman", r2: "0.89", state: "deneysel", cls: run, bar: "var(--wb-run)" },
+        { name: "RF v2", sub: "200 ağaç · 310 örnek", r2: "0.91", state: "arşiv", cls: idle, bar: "var(--color-divider)" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

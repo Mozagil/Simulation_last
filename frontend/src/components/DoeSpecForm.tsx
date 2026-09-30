@@ -9,6 +9,11 @@
  *
  * BC senaryosu şablonun `default_bcs`'inden gelir; yük büyüklüğü `load_scale`
  * ile taranır (yönü ve tipi korur, basınçta da çalışır).
+ *
+ * Görsel dil: Claude Design "ML Studio 1a" — satır başına sembol + ad,
+ * Aralık/Sabit anahtarı; sağda tarama bandı (açık mavi), uçlarda gösterim
+ * sınırları, ▼ şablon varsayılanı. Bant salt gösterimdir; değerler kutulara
+ * yazılır.
  */
 
 import { useMemo } from "react";
@@ -51,8 +56,11 @@ export function initialStateFor(template: GeometryTemplateInfo): DoeFormState {
   const params: Record<string, ParamRow> = {};
   for (const f of numberFieldsFromSchema(schema)) {
     const d = f.defaultValue;
+    // Varsayılanı 0 olan parametre (örn. kök fillet yarıçapı) ±%20 ile 0–0
+    // olur; aralık geçersiz. Böyle parametre sabit başlar, kullanıcı isterse
+    // aralığa çevirip sınır yazar.
     params[f.name] = {
-      mode: "range",
+      mode: d === 0 ? "fixed" : "range",
       fixed: String(d),
       min: String(Number((d * (1 - SPREAD)).toFixed(4))),
       max: String(Number((d * (1 + SPREAD)).toFixed(4))),
@@ -154,12 +162,229 @@ export function buildSpec(
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Görsel yardımcılar                                                   */
+/* ------------------------------------------------------------------ */
+
+/** 2 anlamlı basamağa yuvarlanmış "temiz" sınır (80, 260, 0.2 …). */
+function nice(v: number, up: boolean): number {
+  if (!Number.isFinite(v) || v === 0) return v;
+  const p = Math.pow(10, Math.floor(Math.log10(Math.abs(v))) - 1);
+  return (up ? Math.ceil(v / p) : Math.floor(v / p)) * p;
+}
+
+/** Bant için gösterim sınırları: varsayılanın 0.4–1.6 katı, kullanıcının
+ * girdiği aralığı da kapsayacak şekilde genişler. Şema üst sınır vermiyor;
+ * bu yalnız gösterim ölçeğidir, doğrulama değildir. */
+function displayBounds(def: number, lo: number, hi: number, floor: number | null): [number, number] {
+  let a = nice(def * 0.4, false);
+  let b = nice(def * 1.6, true);
+  if (Number.isFinite(lo)) a = Math.min(a, nice(lo, false));
+  if (Number.isFinite(hi)) b = Math.max(b, nice(hi, true));
+  if (floor != null) a = Math.max(a, floor);
+  if (b <= a) b = a + Math.abs(a || 1);
+  return [a, b];
+}
+
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  return String(Number(v.toPrecision(4)));
+}
+
+function pct(v: number): string {
+  return `${(Math.max(0, Math.min(1, v)) * 100).toFixed(1)}%`;
+}
+
+/** Tarama bandı: çizgi üstünde açık mavi bant (min–max), uçlarda dikey
+ * çubuklar, ▼ varsayılan. Sabit modda bant yerine tek dikey işaret. */
+function RangeBar({
+  lo,
+  hi,
+  min,
+  max,
+  def,
+  fixed,
+}: {
+  lo: number;
+  hi: number;
+  min: number;
+  max: number;
+  def: number;
+  fixed: number | null;
+}) {
+  const f = (v: number) => (v - lo) / (hi - lo);
+  const left = pct(f(min));
+  const right = pct(f(max));
+  const width = pct(Math.max(0, f(max) - f(min)));
+  return (
+    <span className="doe-bar" aria-hidden="true">
+      <span className="doe-bar-track" />
+      {fixed == null ? (
+        <>
+          <span className="doe-bar-band" style={{ left, width }} />
+          <span className="doe-bar-end" style={{ left }} />
+          <span className="doe-bar-end" style={{ left: right }} />
+        </>
+      ) : (
+        <span className="doe-bar-fixed" style={{ left: pct(f(fixed)) }} />
+      )}
+      <span className="doe-bar-def" style={{ left: pct(f(def)) }}>
+        ▼
+      </span>
+    </span>
+  );
+}
+
+function ModeSwitch({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <span className="doe-seg" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          className={o.value === value ? "doe-seg-opt active" : "doe-seg-opt"}
+          aria-pressed={o.value === value}
+          disabled={disabled}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Tek parametre satırı: sol sembol/ad/anahtar, sağ bant + kutular. */
+function ParamLine({
+  sym,
+  name,
+  unit,
+  mode,
+  modeLabel,
+  modeOptions,
+  onMode,
+  bounds,
+  def,
+  min,
+  max,
+  fixed,
+  onMin,
+  onMax,
+  onFixed,
+  minLabel,
+  maxLabel,
+  fixedLabel,
+  disabled,
+  note,
+}: {
+  sym: string | null;
+  name: string;
+  unit: string | null;
+  mode: string;
+  modeLabel: string;
+  modeOptions: { value: string; label: string }[];
+  onMode: (v: string) => void;
+  bounds: [number, number];
+  def: number;
+  min: string;
+  max: string;
+  fixed: string | null;
+  onMin: (v: string) => void;
+  onMax: (v: string) => void;
+  onFixed?: (v: string) => void;
+  minLabel: string;
+  maxLabel: string;
+  fixedLabel?: string;
+  disabled: boolean;
+  note?: string;
+}) {
+  const [lo, hi] = bounds;
+  const isFixed = fixed != null;
+  return (
+    <div className="doe-line">
+      <span className="doe-line-head">
+        <span className="doe-line-title">
+          {sym ? <em className="doe-line-sym">{sym}</em> : null}
+          <span className="doe-line-name">{name}</span>
+        </span>
+        <ModeSwitch label={modeLabel} value={mode} options={modeOptions} disabled={disabled} onChange={onMode} />
+      </span>
+      <span className="doe-line-body">
+        <RangeBar
+          lo={lo}
+          hi={hi}
+          min={Number(min)}
+          max={Number(max)}
+          def={def}
+          fixed={isFixed ? Number(fixed) : null}
+        />
+        <span className="doe-line-inputs">
+          <span className="doe-line-bound">{fmt(lo)}</span>
+          {isFixed ? (
+            <input
+              className="doe-num"
+              type="number"
+              step="any"
+              aria-label={fixedLabel}
+              value={fixed ?? ""}
+              disabled={disabled}
+              onChange={(e) => onFixed?.(e.target.value)}
+            />
+          ) : (
+            <>
+              <input
+                className="doe-num"
+                type="number"
+                step="any"
+                aria-label={minLabel}
+                value={min}
+                disabled={disabled}
+                onChange={(e) => onMin(e.target.value)}
+              />
+              <span className="doe-line-dash">–</span>
+              <input
+                className="doe-num"
+                type="number"
+                step="any"
+                aria-label={maxLabel}
+                value={max}
+                disabled={disabled}
+                onChange={(e) => onMax(e.target.value)}
+              />
+            </>
+          )}
+          {unit ? <span className="doe-line-unit">{unit}</span> : null}
+          {note ? <span className="doe-line-note">{note}</span> : null}
+          <span className="doe-line-bound doe-line-bound-hi">{fmt(hi)}</span>
+        </span>
+      </span>
+    </div>
+  );
+}
+
 interface DoeSpecFormProps {
   templates: GeometryTemplateInfo[];
   state: DoeFormState;
   busy: boolean;
   onChange: (next: DoeFormState) => void;
 }
+
+const MODE_OPTIONS = [
+  { value: "range", label: "Aralık" },
+  { value: "fixed", label: "Sabit" },
+];
 
 export default function DoeSpecForm({ templates, state, busy, onChange }: DoeSpecFormProps) {
   const template = templates.find((t) => t.id === state.templateId) ?? null;
@@ -179,170 +404,136 @@ export default function DoeSpecForm({ templates, state, busy, onChange }: DoeSpe
     });
   }
 
+  const isRatio = state.elementMode === "ratio";
+  const [rLo, rHi] = template?.default_element_ratio ?? [0.5, 1.2];
+  const elemDef = isRatio ? Math.sqrt(rLo * rHi) : 9;
+  const elemBounds: [number, number] = isRatio
+    ? [Math.min(0.2, Number(state.elementMin) || 0.2), Math.max(2, Number(state.elementMax) || 2)]
+    : [Math.min(2, Number(state.elementMin) || 2), Math.max(24, Number(state.elementMax) || 24)];
+  const loadBounds: [number, number] = [
+    Math.min(0.1, Number(state.loadMin) || 0.1),
+    Math.max(3, Number(state.loadMax) || 3),
+  ];
+
   return (
     <div className="doe-spec-form">
-      <label className="mesh-field">
-        <span>Şablon</span>
-        <select
-          value={state.templateId}
-          disabled={busy || templates.length === 0}
-          onChange={(e) => {
-            const t = templates.find((x) => x.id === e.target.value);
-            if (t) onChange({ ...initialStateFor(t), nSamples: state.nSamples, seed: state.seed });
-          }}
-        >
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {enumFields.map((f) => (
-        <label key={f.name} className="mesh-field">
-          <span>{f.label}</span>
+      <div className="doe-selects">
+        <label className="mesh-field">
+          <span>Şablon</span>
           <select
-            value={state.enums[f.name] ?? f.defaultValue}
-            disabled={busy}
-            onChange={(e) => onChange({ ...state, enums: { ...state.enums, [f.name]: e.target.value } })}
+            value={state.templateId}
+            disabled={busy || templates.length === 0}
+            onChange={(e) => {
+              const t = templates.find((x) => x.id === e.target.value);
+              if (t) onChange({ ...initialStateFor(t), nSamples: state.nSamples, seed: state.seed });
+            }}
           >
-            {f.options.map((o) => (
-              <option key={o} value={o}>
-                {o}
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </select>
         </label>
-      ))}
+
+        {enumFields.map((f) => (
+          <label key={f.name} className="mesh-field">
+            <span>{f.label}</span>
+            <select
+              value={state.enums[f.name] ?? f.defaultValue}
+              disabled={busy}
+              onChange={(e) => onChange({ ...state, enums: { ...state.enums, [f.name]: e.target.value } })}
+            >
+              {f.options.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
 
       {fields.map((f) => {
         const row = state.params[f.name];
         if (!row) return null;
+        const fixed = row.mode === "fixed";
+        const bounds = displayBounds(
+          f.defaultValue,
+          fixed ? Number(row.fixed) : Number(row.min),
+          fixed ? Number(row.fixed) : Number(row.max),
+          f.exclusiveMin,
+        );
         return (
-          <div key={f.name} className="doe-param-row">
-            <div className="doe-param-head">
-              <span className="doe-param-name">
-                {f.label}
-                {f.symbol ? <em className="param-symbol">{f.symbol}</em> : null}
-                {f.unit ? ` (${f.unit})` : ""}
-              </span>
-              <select
-                aria-label={`${f.label} tarama tipi`}
-                value={row.mode}
-                disabled={busy}
-                onChange={(e) => setParam(f.name, { mode: e.target.value as ParamMode })}
-              >
-                <option value="range">Aralık</option>
-                <option value="fixed">Sabit</option>
-              </select>
-            </div>
-            {row.mode === "fixed" ? (
-              <input
-                type="number"
-                step="any"
-                aria-label={`${f.label} sabit değer`}
-                value={row.fixed}
-                disabled={busy}
-                onChange={(e) => setParam(f.name, { fixed: e.target.value })}
-              />
-            ) : (
-              <div className="doe-param-range">
-                <input
-                  type="number"
-                  step="any"
-                  aria-label={`${f.label} min`}
-                  value={row.min}
-                  disabled={busy}
-                  onChange={(e) => setParam(f.name, { min: e.target.value })}
-                />
-                <span>–</span>
-                <input
-                  type="number"
-                  step="any"
-                  aria-label={`${f.label} maks`}
-                  value={row.max}
-                  disabled={busy}
-                  onChange={(e) => setParam(f.name, { max: e.target.value })}
-                />
-              </div>
-            )}
-          </div>
+          <ParamLine
+            key={f.name}
+            sym={f.symbol}
+            name={f.label}
+            unit={f.unit}
+            mode={row.mode}
+            modeLabel={`${f.label} tarama tipi`}
+            modeOptions={MODE_OPTIONS}
+            onMode={(v) => setParam(f.name, { mode: v as ParamMode })}
+            bounds={bounds}
+            def={f.defaultValue}
+            min={row.min}
+            max={row.max}
+            fixed={fixed ? row.fixed : null}
+            onMin={(v) => setParam(f.name, { min: v })}
+            onMax={(v) => setParam(f.name, { max: v })}
+            onFixed={(v) => setParam(f.name, { fixed: v })}
+            minLabel={`${f.label} min`}
+            maxLabel={`${f.label} maks`}
+            fixedLabel={`${f.label} sabit değer`}
+            disabled={busy}
+          />
         );
       })}
 
-      <div className="doe-param-row">
-        <div className="doe-param-head">
-          <span className="doe-param-name">
-            {state.elementMode === "ratio" ? "Eleman oranı (×)" : "Eleman boyutu (mm)"}
-          </span>
-          <select
-            aria-label="Eleman boyutu tipi"
-            value={state.elementMode}
-            disabled={busy || template?.has_characteristic_length === false}
-            onChange={(e) =>
-              onChange({ ...state, elementMode: e.target.value as "ratio" | "mm" })
-            }
-          >
-            <option value="ratio">Oranlı</option>
-            <option value="mm">Sabit mm</option>
-          </select>
-        </div>
-        <div className="doe-param-range">
-          <input
-            type="number"
-            step="any"
-            aria-label="Eleman boyutu min"
-            value={state.elementMin}
-            disabled={busy}
-            onChange={(e) => onChange({ ...state, elementMin: e.target.value })}
-          />
-          <span>–</span>
-          <input
-            type="number"
-            step="any"
-            aria-label="Eleman boyutu maks"
-            value={state.elementMax}
-            disabled={busy}
-            onChange={(e) => onChange({ ...state, elementMax: e.target.value })}
-          />
-        </div>
-        {state.elementMode === "ratio" && (
-          <p className="filename">
-            Eleman boyutu = oran × şablonun karakteristik uzunluğu (kirişte kesit
-            kalınlığı, delikli plakada delik çapı). Geometri değişirken mesh
-            çözünürlüğü sabit kalır.
-          </p>
-        )}
-      </div>
+      <ParamLine
+        sym={isRatio ? "es/t" : "es"}
+        name={isRatio ? "Eleman oranı" : "Eleman boyutu"}
+        unit={isRatio ? "×" : "mm"}
+        mode={state.elementMode}
+        modeLabel="Eleman boyutu tipi"
+        modeOptions={[
+          { value: "ratio", label: "Oranlı" },
+          { value: "mm", label: "Sabit mm" },
+        ]}
+        onMode={(v) => onChange({ ...state, elementMode: v as "ratio" | "mm" })}
+        bounds={elemBounds}
+        def={elemDef}
+        min={state.elementMin}
+        max={state.elementMax}
+        fixed={null}
+        onMin={(v) => onChange({ ...state, elementMin: v })}
+        onMax={(v) => onChange({ ...state, elementMax: v })}
+        minLabel="Eleman boyutu min"
+        maxLabel="Eleman boyutu maks"
+        disabled={busy || (template?.has_characteristic_length === false && isRatio)}
+        note={isRatio ? "× karakteristik uzunluk" : undefined}
+      />
 
-      <div className="doe-param-row">
-        <div className="doe-param-head">
-          <span className="doe-param-name">Yük katsayısı (×)</span>
-        </div>
-        <div className="doe-param-range">
-          <input
-            type="number"
-            step="any"
-            aria-label="Yük katsayısı min"
-            value={state.loadMin}
-            disabled={busy}
-            onChange={(e) => onChange({ ...state, loadMin: e.target.value })}
-          />
-          <span>–</span>
-          <input
-            type="number"
-            step="any"
-            aria-label="Yük katsayısı maks"
-            value={state.loadMax}
-            disabled={busy}
-            onChange={(e) => onChange({ ...state, loadMax: e.target.value })}
-          />
-        </div>
-        <p className="filename">
-          Şablonun varsayılan yükü bu katsayıyla çarpılır; yön ve tip korunur.
-        </p>
-      </div>
+      <ParamLine
+        sym="k"
+        name="Yük katsayısı"
+        unit="×"
+        mode="range"
+        modeLabel="Yük katsayısı tarama tipi"
+        modeOptions={[{ value: "range", label: "Aralık" }]}
+        onMode={() => undefined}
+        bounds={loadBounds}
+        def={1}
+        min={state.loadMin}
+        max={state.loadMax}
+        fixed={null}
+        onMin={(v) => onChange({ ...state, loadMin: v })}
+        onMax={(v) => onChange({ ...state, loadMax: v })}
+        minLabel="Yük katsayısı min"
+        maxLabel="Yük katsayısı maks"
+        disabled={busy}
+        note="× şablon yükü"
+      />
     </div>
   );
 }

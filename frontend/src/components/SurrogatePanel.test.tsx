@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SurrogatePanel from "./SurrogatePanel";
 
@@ -16,6 +16,7 @@ vi.mock("../api/surrogate", () => ({
   predictFromParams: vi.fn(),
   predictSweep: vi.fn(),
   fetchValidation: vi.fn(),
+  fetchCorpusMembership: vi.fn(),
 }));
 
 import {
@@ -28,6 +29,7 @@ import {
   predictSurrogate,
   predictSweep,
   fetchValidation,
+  fetchCorpusMembership,
   trainScalarRf,
 } from "../api/surrogate";
 import { fetchTemplates } from "../api/templates";
@@ -107,6 +109,20 @@ describe("SurrogatePanel", () => {
     await waitFor(() => expect(onPrediction).toHaveBeenCalledTimes(1));
   });
 
+  it("view=predict yalnız 2·Tahmin'i, view=model yalnız 1·Model + 3·Eğitim'i gösterir", async () => {
+    const { unmount } = render(<SurrogatePanel view="predict" />);
+    expect(await screen.findByTestId("predict-stage")).toBeInTheDocument();
+    expect(screen.getByTestId("sweep-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("model-stage")).toBeNull();
+    expect(screen.queryByTestId("gnn-prototype-note")).toBeNull();
+    unmount();
+    render(<SurrogatePanel view="model" />);
+    expect(await screen.findByTestId("model-stage")).toBeInTheDocument();
+    expect(screen.getByTestId("gnn-prototype-note")).toBeInTheDocument();
+    expect(screen.queryByTestId("predict-stage")).toBeNull();
+    expect(screen.queryByTestId("sweep-section")).toBeNull();
+  });
+
   it("parametreyle tahmin ccx/run istemez ve sayıları gösterir", async () => {
     vi.mocked(fetchSurrogateStatus).mockResolvedValue({
       scalar_rf: { n_samples: 22, has_holdout: true, metrics: { test: { max_displacement: { r2: -3.9, mae: 1, mape: 1 } } } },
@@ -144,9 +160,10 @@ describe("SurrogatePanel", () => {
       "rf",
       false,
     );
-    expect(await screen.findByText(/Tahmin u_max/)).toBeInTheDocument();
-    expect(screen.getByText(/24.100 mm/)).toBeInTheDocument();
+    expect(await screen.findByText("Maks deplasman")).toBeInTheDocument();
+    expect(screen.getByText("24.100")).toBeInTheDocument();
     expect(screen.getByText(/FEA u_max \(run 4\)/)).toBeInTheDocument();
+    expect(screen.getByTestId("fea-compare")).toHaveTextContent("23.900 mm");
   });
 
   it("seti dondurur ve eğitimi o setle çalıştırır", async () => {
@@ -203,9 +220,9 @@ describe("SurrogatePanel", () => {
     });
     render(<SurrogatePanel geometryId={1} runId={263} />);
 
-    fireEvent.change(await screen.findByLabelText("Kullanılan set"), {
-      target: { value: "kiris-v1" },
-    });
+    fireEvent.click(
+      within(await screen.findByRole("group", { name: "Kullanılan set" })).getByRole("button", { name: /kiris-v1/ }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Run 263 karnesi" }));
     await waitFor(() => expect(evaluateForCorpus).toHaveBeenCalledWith("kiris-v1", [263]));
     expect(await screen.findByText(/u\/L eşiği aşıldı/)).toBeInTheDocument();
@@ -258,7 +275,7 @@ describe("SurrogatePanel", () => {
     );
 
     // RF'e geçilince üs tablosu kalkar ve eğitim o türe gider.
-    fireEvent.change(screen.getByLabelText("Model türü"), { target: { value: "rf" } });
+    fireEvent.click(within(screen.getByTestId("model-card-rf")).getByRole("button", { name: "Aktif yap" }));
     expect(screen.queryByText(/Öğrenilen üsler/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Random Forest eğit" }));
     await waitFor(() =>
@@ -270,7 +287,7 @@ describe("SurrogatePanel", () => {
     vi.mocked(trainScalarRf).mockResolvedValue({ n_samples: 12, metrics: {} });
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: /Hibrit .* eğit/ });
-    fireEvent.change(screen.getByLabelText("Kinematik"), { target: { value: "nlgeom" } });
+    fireEvent.click(screen.getByLabelText("NLGEOM"));
     await waitFor(() =>
       expect(fetchSurrogateStatus).toHaveBeenLastCalledWith("cantilever_beam", true),
     );
@@ -283,7 +300,7 @@ describe("SurrogatePanel", () => {
   it("NLGEOM modeli yokken not gösterir ve tahmin butonu kapalı", async () => {
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: /Hibrit .* eğit/ });
-    fireEvent.change(screen.getByLabelText("Kinematik"), { target: { value: "nlgeom" } });
+    fireEvent.click(screen.getByLabelText("NLGEOM"));
     expect(await screen.findByTestId("nlgeom-model-missing")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tahmin et" })).toBeDisabled();
   });
@@ -346,17 +363,55 @@ describe("SurrogatePanel", () => {
     });
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: "Tahmin et" });
+    // Model hazır olunca doğrulama kendiliğinden gelir (korpus yok → son N run).
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(
+        expect.objectContaining({ templateId: "cantilever_beam", model: "hybrid", nlgeom: false, limit: 10, runIds: null }),
+      ),
+    );
+    const before = vi.mocked(fetchValidation).mock.calls.length;
     fireEvent.change(screen.getByLabelText("Ad içerir (isteğe bağlı)"), { target: { value: "OOD deneme" } });
     fireEvent.click(screen.getByRole("button", { name: "Tabloyu oluştur" }));
-    await waitFor(() => expect(fetchValidation).toHaveBeenCalledTimes(1));
-    expect(fetchValidation).toHaveBeenCalledWith(
+    await waitFor(() => expect(fetchValidation).toHaveBeenCalledTimes(before + 1));
+    expect(fetchValidation).toHaveBeenLastCalledWith(
       expect.objectContaining({ templateId: "cantilever_beam", model: "hybrid", nlgeom: false, limit: 10, nameContains: "OOD deneme" }),
     );
     const table = await screen.findByTestId("validate-result");
     expect(table).toHaveTextContent("1457 · OOD deneme A");
     expect(table).toHaveTextContent("uzay dışı: L");
     expect(table).toHaveTextContent("uzay dışı: T, Fy · u/L 0.14");
-    expect(table).toHaveTextContent("0.20%");
+    expect(table).toHaveTextContent("%0.20");
+  });
+
+  it("doğrulama seçili korpusun run'larıyla sınırlanır; anahtar kapanınca son N run", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null, scalar_loglinear: null,
+      scalar_hybrid: { n_samples: 184, has_holdout: true, metrics: {} },
+      templates: {}, field_gnn: null,
+    });
+    vi.mocked(fetchCorpusList).mockResolvedValue([
+      { name: "kiris_v3", frozen_at: null, n_runs: 3, template_id: "cantilever_beam", n_manual: 1 },
+    ]);
+    vi.mocked(fetchCorpusMembership).mockResolvedValue({
+      name: "kiris_v3", frozen_at: null, auto: [11, 12], manual_pass: [13], manual_override: [],
+    });
+    vi.mocked(fetchValidation).mockResolvedValue({
+      template_id: "cantilever_beam", model_kind: "hybrid", nlgeom: false, n: 3, skipped: {},
+      mean_abs_dev_u_pct: 0.1, mean_abs_dev_vm_pct: 0.2, max_abs_dev_u_pct: 0.3, rows: [],
+    });
+    render(<SurrogatePanel view="model" />);
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(expect.objectContaining({ runIds: [11, 12, 13], limit: 3 })),
+    );
+    expect(fetchCorpusMembership).toHaveBeenCalledWith("kiris_v3");
+    expect(await screen.findByText(/3 çözülmüş run · kiris_v3/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Son N run")).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText("yalnız kiris_v3"));
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(expect.objectContaining({ runIds: null, limit: 10 })),
+    );
+    expect(screen.getByLabelText("Son N run")).toBeEnabled();
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {
@@ -469,8 +524,8 @@ describe("SurrogatePanel — şablona göre tahmin", () => {
       field_gnn: null,
     });
     render(<SurrogatePanel />);
-    const select = (await screen.findByLabelText("Model türü")) as HTMLSelectElement;
-    await waitFor(() => expect(select.value).toBe("rf"));
+    const card = await screen.findByTestId("model-card-rf");
+    await waitFor(() => expect(within(card).getByRole("button", { name: "Aktif" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Tahmin et" })).toBeEnabled();
   });
 });

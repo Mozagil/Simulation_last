@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#f2f2f3">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#f2f2f3"></rect>
+    <g transform="translate(360 160)" fill="none" stroke="#5980a6" stroke-width="26" stroke-linejoin="round">
+      <path d="M240 60l200 116v232L240 524 40 408V176z"></path>
+      <path d="M240 60v464M40 176l400 232M440 176L40 408"></path>
+    </g>
+    <rect x="360" y="636" width="480" height="26" fill="#5980a6"></rect>
+  </svg>
+</template>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/styles.css">
+<script src="_ds/industry-0aaa44fa-c423-4d7f-b856-c0ff7fe23ee0/_ds_bundle.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-variant-numeric:tabular-nums}
+a{color:var(--color-accent-700);text-decoration:none}a:hover{color:var(--color-accent-900)}
+:root{--wb-run:#8a5a1f;--wb-run-bg:#f6ecdc;--wb-ok:#3a6248;--wb-ok-bg:#e6eee9}
+.wb-row{display:flex;align-items:center}
+.wb-k{font-family:var(--font-heading);font-weight:700;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--color-neutral-700)}
+.wb-tab{font-family:var(--font-heading);font-weight:600;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase;padding:0 15px;height:100%;display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--color-neutral-700);border-bottom:2px solid transparent}
+.wb-tab:hover{background:var(--color-neutral-200)}
+.wb-tab[aria-selected="true"]{color:var(--color-accent-800);border-bottom-color:var(--color-accent);background:var(--color-accent-100)}
+.wb-type{display:flex;flex-direction:column;gap:3px;padding:7px 12px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;min-width:132px}
+.wb-type:hover{background:var(--color-accent-100)}
+.wb-type[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-type[aria-pressed="true"] .wb-k,.wb-type[aria-pressed="true"] .wb-sb{color:color-mix(in srgb,var(--color-bg) 85%,transparent)}
+.wb-tr{display:grid;align-items:center;gap:8px;padding:3px 10px;font-size:12.5px;cursor:pointer;border-left:2px solid transparent}
+.wb-tr:hover{background:var(--color-neutral-200)}
+.wb-tr[aria-selected="true"]{background:var(--color-accent-100);border-left-color:var(--color-accent)}
+.wb-sub{color:var(--color-neutral-800)}
+.wb-m{font-size:10.5px;color:var(--color-neutral-700);justify-self:end;white-space:nowrap}
+.wb-ic{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-neutral-800);cursor:pointer}
+.wb-ic svg{display:block}
+.wb-ic:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.wb-ic[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-sel{display:flex;flex-direction:column;align-items:center;gap:2px;width:52px;padding:4px 0;border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-neutral-800);cursor:pointer;font-family:var(--font-heading);font-weight:600;font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+.wb-sel svg{display:block}
+.wb-sel:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.wb-sel[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-f{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--color-neutral-700)}
+.wb-fl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.wb-in{min-height:28px;padding:4px 7px;font:inherit;font-size:12.5px;color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-divider);width:100%;box-sizing:border-box}
+.wb-in:hover{border-color:var(--color-neutral-600)}
+.wb-in:focus-visible{border-color:var(--color-accent);outline:none}
+.wb-sec{padding:11px 13px;border-bottom:1px solid var(--color-divider);display:flex;flex-direction:column;gap:9px}
+.wb-ov{background:color-mix(in srgb,var(--color-bg) 94%,transparent);border:1px solid var(--color-divider)}
+.wb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;font-size:11.5px;border:1px solid var(--color-divider);background:var(--color-bg);cursor:pointer;color:var(--color-text)}
+.wb-chip:hover{background:var(--color-accent-100)}
+.wb-chip[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-bg)}
+.wb-sb{font-size:11px;color:var(--color-neutral-700);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.wb-li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--color-divider);background:var(--color-bg);font-size:12px}
+.wb-st{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;font-size:10.5px;font-weight:600;border:1px solid}
+.wb-st-run{background:var(--wb-run-bg);border-color:var(--wb-run);color:var(--wb-run)}
+.wb-st-ok{background:var(--wb-ok-bg);border-color:var(--wb-ok);color:var(--wb-ok)}
+.wb-st-idle{background:var(--color-neutral-200);border-color:var(--color-divider);color:var(--color-neutral-700)}
+</style>
+</helmet>
+
+<main style="display:grid;grid-template-rows:46px 56px 46px minmax(0,1fr) 202px 26px;height:960px;min-width:1320px;background:var(--color-bg);overflow:hidden">
+
+  <header class="wb-row" style="gap:13px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span style="display:flex;align-items:center;gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9"></path></svg>
+      <span style="font-family:var(--font-heading);font-weight:600;font-size:16px;letter-spacing:.02em">SIMÜLASYON TEZGAHI</span>
+    </span>
+    <span style="width:1px;height:20px;background:var(--color-divider)"></span>
+    <span class="wb-row" style="gap:8px;font-size:13px">
+      <strong style="font-weight:600">{{ caseName }}</strong>
+      <span class="tag tag-neutral">braket_v3.step</span>
+    </span>
+    <span style="margin-left:auto"></span>
+    <a href="ML Studio.dc.html" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px;display:inline-flex;align-items:center;gap:7px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"></circle><circle cx="5" cy="18" r="2"></circle><circle cx="19" cy="12" r="2"></circle><path d="M7 6.5l10 4.7M7 17.5l10-4.7"></path></svg>
+      ML Stüdyo · faz 0.5–0.6
+    </a>
+    <sc-if value="{{ solverRunning }}" hint-placeholder-val="{{ true }}">
+      <span class="wb-row" style="gap:8px;padding:0 11px;height:30px;border:1px solid var(--wb-run);background:var(--wb-run-bg)">
+        <span style="width:7px;height:7px;background:var(--wb-run);flex-shrink:0"></span>
+        <span style="font-size:12px;color:var(--wb-run)">{{ progressLabel }}</span>
+        <span style="width:54px;height:4px;background:color-mix(in srgb,var(--wb-run) 22%,transparent);display:block"><span style="display:block;width:63%;height:100%;background:var(--wb-run)"></span></span>
+      </span>
+    </sc-if>
+    <button type="button" class="btn btn-primary blueprint" style="height:30px;font-size:12px;letter-spacing:.09em;font-family:var(--font-heading);font-weight:600;padding:0 18px">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"></path></svg>ÇÖZ
+    </button>
+  </header>
+
+  <div class="wb-row" style="gap:12px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-bg)">
+    <span class="wb-k" style="writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.16em">Analiz tipi</span>
+    <span style="display:flex;gap:7px">
+      <span class="wb-type" aria-pressed="{{ isDurability }}">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v9a5 5 0 0 0 5 5h9"></path><path d="M17 15l3 4-4 1"></path><path d="M3 5h5"></path></svg>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.07em;text-transform:uppercase">Durability</span>
+        </span>
+        <span class="wb-sb">CalculiX · statik · 4 vaka</span>
+      </span>
+      <span class="wb-type" aria-pressed="{{ isModal }}">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12h3c1 0 1.5-7 3-7s2 14 3.5 14S16 5 17.5 5 19 12 20 12h2"></path></svg>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.07em;text-transform:uppercase">Modal</span>
+        </span>
+        <span class="wb-sb">CalculiX · frekans · 3 vaka</span>
+      </span>
+      <span class="wb-type" aria-pressed="{{ isCrash }}">
+        <span style="display:flex;align-items:center;gap:7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"></path><path d="M8 16l3-6 3 3 4-8"></path></svg>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.07em;text-transform:uppercase">Crash</span>
+        </span>
+        <span class="wb-sb">OpenRadioss · dinamik · 3 vaka</span>
+      </span>
+    </span>
+    <span style="width:1px;height:34px;background:var(--color-divider)"></span>
+    <nav class="wb-row" style="align-self:stretch;height:100%">
+      <span class="wb-tab">1 Geometri</span>
+      <span class="wb-tab">2 Mesh</span>
+      <span class="wb-tab">3 Malzeme</span>
+      <span class="wb-tab" aria-selected="true">4 {{ typeLabel }}</span>
+      <span class="wb-tab">5 Sonuçlar</span>
+    </nav>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="wb-st {{ statusClass }}">{{ statusLabel }}</span>
+      <button type="button" class="btn btn-secondary" style="height:27px;font-size:11.5px;padding:0 10px">+ Yeni vaka</button>
+    </span>
+  </div>
+
+  <div class="wb-row" style="gap:9px;padding:0 14px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span style="display:flex;gap:4px">
+      <span class="wb-sel" title="Parça seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path></svg>Parça
+      </span>
+      <span class="wb-sel" aria-pressed="true" title="Yüzey seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 8l9-5 9 5-9 5z"></path><path d="M3 8v3l9 5 9-5V8"></path></svg>Yüzey
+      </span>
+      <span class="wb-sel" title="Kenar seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5 19L19 5"></path><circle cx="5" cy="19" r="1.6" fill="currentColor"></circle><circle cx="19" cy="5" r="1.6" fill="currentColor"></circle></svg>Kenar
+      </span>
+      <span class="wb-sel" title="Nokta seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3" fill="currentColor"></circle><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path></svg>Nokta
+      </span>
+    </span>
+    <span style="width:1px;height:22px;background:var(--color-divider)"></span>
+    <span style="display:flex;gap:4px">
+      <span class="wb-sel" title="Mesh elemanı seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 4h16v16H4z"></path><path d="M4 12h16M12 4v16"></path></svg>Eleman
+      </span>
+      <span class="wb-sel" title="Mesh düğümü seç">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6h12v12H6z"></path><circle cx="6" cy="6" r="1.8" fill="currentColor"></circle><circle cx="18" cy="6" r="1.8" fill="currentColor"></circle><circle cx="6" cy="18" r="1.8" fill="currentColor"></circle><circle cx="18" cy="18" r="1.8" fill="currentColor"></circle></svg>Düğüm
+      </span>
+    </span>
+    <span style="width:1px;height:22px;background:var(--color-divider)"></span>
+    <span class="wb-chip">Görünürlük<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span>
+    <span class="wb-chip">Mesh araçları<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="wb-sb">Seçili: yüzey #42, #43 · 842 düğüm</span>
+      <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Grup oluştur</button>
+    </span>
+  </div>
+
+  <section style="display:grid;grid-template-columns:280px minmax(0,1fr) 308px;min-height:0">
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <div class="wb-row" style="gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-divider)">
+        <span class="wb-k">Model ağacı</span>
+        <input class="wb-in" placeholder="Ara…" style="margin-left:auto;width:92px;min-height:24px;font-size:11.5px">
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 0">
+        <div class="wb-tr" style="grid-template-columns:1fr auto;font-weight:600">
+          <span style="display:flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path></svg>{{ caseName }}
+          </span><span class="wb-m">3 parça</span>
+        </div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Geometri</span><span class="wb-m">128 yüzey</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Bölgeler</span><span class="wb-m">2 adlandırılmış</span></div>
+        <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>ankastre_uc</span><span class="wb-m">yüzey</span></div>
+        <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>yuk_yuzeyi</span><span class="wb-m">yüzey</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Component'ler</span><span class="wb-m">3</span></div>
+        <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #1</span><span class="wb-m">S235JR · solid</span></div>
+        <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #2</span><span class="wb-m">AlMg3 · shell 3 mm</span></div>
+        <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Parça #3</span><span class="wb-st wb-st-idle">atama yok</span></div>
+        <div class="wb-tr" style="grid-template-columns:1fr auto;padding-left:26px"><span>Mesh</span><span class="wb-m">tet · 4 mm</span></div>
+
+        <div class="wb-row" style="gap:8px;margin:11px 10px 5px;padding:5px 9px;border:1px solid var(--color-accent);background:var(--color-accent-100)">
+          <span class="wb-k" style="color:var(--color-accent-800)">{{ typeLabel }}</span>
+          <span class="wb-m" style="margin-left:auto;color:var(--color-accent-800)">{{ solverLabel }}</span>
+        </div>
+
+        <sc-if value="{{ isDurability }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-tr" aria-selected="true" style="grid-template-columns:1fr auto;padding-left:26px;font-weight:600"><span>Durability 1</span><span class="wb-st wb-st-ok">solved</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Sınır koşulları</span><span class="wb-m">3</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:50px"><span>Fixed · yüzey 12</span><span class="wb-m">842 düğüm</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:50px"><span>Force · Fz −1500 N</span><span class="wb-m">yüzey 42</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:50px"><span>Pressure · 2.5 MPa</span><span class="wb-m">yüzey 43</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Sonuç alanları</span><span class="wb-m">VM · U · SF</span></div>
+        </sc-if>
+
+        <sc-if value="{{ isModal }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-tr" aria-selected="true" style="grid-template-columns:1fr auto;padding-left:26px;font-weight:600"><span>Modal 1</span><span class="wb-st wb-st-ok">solved</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Kısıtlar</span><span class="wb-m">1 · yalnız Fixed</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:50px"><span>Fixed · yüzey 12</span><span class="wb-m">842 düğüm</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Frekans ayarı</span><span class="wb-m">6 mod · 0–2000 Hz</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Mod şekilleri</span><span class="wb-m">f₁ 214.3 Hz</span></div>
+        </sc-if>
+
+        <sc-if value="{{ isCrash }}" hint-placeholder-val="{{ true }}">
+          <div class="wb-tr" aria-selected="true" style="grid-template-columns:1fr auto;padding-left:26px;font-weight:600"><span>Crash 1</span><span class="wb-st wb-st-run">%63</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Senaryo</span><span class="wb-m">rigid_wall</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Bariyer</span><span class="wb-m">10 m/s · 0°</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Malzeme kanunu</span><span class="wb-m">LAW2 plastik</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Eleman · TYPE14</span><span class="wb-m">Isolid 1 · NIP 1</span></div>
+          <div class="wb-tr wb-sub" style="grid-template-columns:1fr auto;padding-left:38px"><span>Job</span><span class="wb-m">7f3a91</span></div>
+        </sc-if>
+      </div>
+
+      <div style="border-top:1px solid var(--color-divider);background:var(--color-bg)">
+        <div class="wb-row" style="padding:7px 12px;border-bottom:1px solid var(--color-divider)"><span class="wb-k">Detaylar · yüzey #42</span></div>
+        <sc-for list="{{ details }}" as="d" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:104px 1fr;font-size:11.5px;border-bottom:1px solid var(--color-neutral-200)">
+            <span style="padding:4px 10px;border-right:1px solid var(--color-divider);color:var(--color-neutral-700)">{{ d.k }}</span>
+            <span style="padding:4px 10px">{{ d.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <div style="position:relative;min-width:0;background:var(--color-surface);display:flex;align-items:center;justify-content:center">
+      <span style="font-size:13px;color:var(--color-neutral-700)">3B görünüm · {{ viewportNote }}</span>
+
+      <div style="position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:5px">
+        <span class="wb-ic" title="Görünümü sıfırla"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 8 8"></path><path d="M4 12V7"></path><path d="M4 12h5"></path></svg></span>
+        <span class="wb-ic" title="Yakınlaştır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M10.5 8v5M8 10.5h5"></path></svg></span>
+        <span class="wb-ic" title="Uzaklaştır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M8 10.5h5"></path></svg></span>
+        <span class="wb-ic" title="Sığdır"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path></svg></span>
+        <span class="wb-ic" title="Kesit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path></svg></span>
+      </div>
+
+      <div class="wb-ov blueprint" style="position:absolute;top:14px;right:14px;width:172px;padding:11px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="wb-k" style="margin-bottom:8px">Alan</div>
+        <div style="display:flex;gap:4px;margin-bottom:10px">
+          <sc-for list="{{ fields }}" as="f" hint-placeholder-count="3">
+            <span class="wb-chip" style="flex:1;justify-content:center;padding:4px 0">{{ f }}</span>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:9px">
+          <span style="width:16px;height:128px;border:1px solid var(--color-divider);background:linear-gradient(to top,var(--color-accent-900),var(--color-accent-600),var(--color-accent-300),var(--color-neutral-100));flex-shrink:0"></span>
+          <span style="display:flex;flex-direction:column;justify-content:space-between;height:128px;font-size:10.5px;color:var(--color-neutral-800)">
+            <sc-for list="{{ ticks }}" as="t" hint-placeholder-count="5">
+              <span>{{ t }}</span>
+            </sc-for>
+          </span>
+        </div>
+        <div style="font-size:10.5px;color:var(--color-neutral-700);margin-top:9px">{{ fieldUnit }}</div>
+      </div>
+
+      <div style="position:absolute;left:14px;right:14px;bottom:14px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
+
+        <sc-if value="{{ isDurability }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-ov" style="flex:0 0 auto;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+            <span class="wb-k">Deformasyon ölçeği · 40×</span>
+            <input type="range" min="0" max="200" value="40" style="width:148px;accent-color:var(--color-accent)">
+            <label class="wb-sb" style="gap:6px"><input type="checkbox" style="accent-color:var(--color-accent)">Kenarları göster</label>
+          </div>
+          <div class="wb-ov" style="flex:1 1 200px;min-width:0;padding:9px 12px;display:flex;align-items:center;gap:18px;justify-content:flex-end">
+            <span style="display:flex;flex-direction:column;gap:2px"><span class="wb-k">VM max</span><strong style="font-size:15px">184.2 MPa</strong></span>
+            <span style="display:flex;flex-direction:column;gap:2px"><span class="wb-k">U max</span><strong style="font-size:15px">0.310 mm</strong></span>
+            <span style="display:flex;flex-direction:column;gap:2px"><span class="wb-k">SF min</span><strong style="font-size:15px;color:var(--wb-ok)">1.28</strong></span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isModal }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-ov" style="flex:0 0 auto;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+            <span class="wb-k">Genlik ölçeği</span>
+            <input type="range" min="0" max="200" value="80" style="width:140px;accent-color:var(--color-accent)">
+            <label class="wb-sb" style="gap:6px"><input type="checkbox" checked style="accent-color:var(--color-accent)">Animasyon</label>
+          </div>
+          <div class="wb-ov" style="flex:1 1 220px;min-width:0;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+            <span class="wb-k">Mod şekli</span>
+            <span style="display:flex;flex-wrap:wrap;gap:5px">
+              <sc-for list="{{ modes }}" as="m" hint-placeholder-count="6">
+                <span class="wb-chip">{{ m }}</span>
+              </sc-for>
+            </span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCrash }}" hint-placeholder-val="{{ true }}">
+          <div class="wb-ov" style="flex:0 0 auto;padding:8px 11px;display:flex;flex-direction:column;gap:6px">
+            <span class="wb-k">Deformasyon</span>
+            <input type="range" min="0" max="100" value="40" style="width:116px;accent-color:var(--color-accent)">
+            <label class="wb-sb" style="gap:6px"><input type="checkbox" style="accent-color:var(--color-accent)">Kenarlar</label>
+          </div>
+          <div class="wb-ov" style="flex:1 1 220px;min-width:0;padding:8px 12px;display:flex;align-items:center;gap:9px">
+            <span class="wb-ic" title="Başa dön" style="border:none;width:22px;height:22px;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5v14L8 12z"></path><path d="M5 5v14"></path></svg></span>
+            <span class="wb-ic" aria-pressed="true" title="Oynat" style="width:24px;height:24px;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M7 4l13 8-13 8z"></path></svg></span>
+            <span class="wb-ic" title="Sona git" style="border:none;width:22px;height:22px;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v14l11-7z"></path><path d="M19 5v14"></path></svg></span>
+            <span style="flex:1;min-width:40px;height:4px;background:var(--color-neutral-300);position:relative">
+              <span style="position:absolute;inset:0 37% 0 0;background:var(--wb-run)"></span>
+              <span style="position:absolute;left:63%;top:-4px;width:2px;height:12px;background:var(--wb-run)"></span>
+            </span>
+            <span class="wb-sb" style="flex-shrink:0">t 6.3 / 10.0 ms</span>
+          </div>
+          <div class="wb-ov" style="flex:0 0 auto;padding:9px 12px;display:grid;grid-template-columns:auto auto;gap:4px 14px">
+            <sc-for list="{{ crashScalars }}" as="s" hint-placeholder-count="6">
+              <span class="wb-sb">{{ s.k }}</span><span style="font-size:11.5px;text-align:right;font-weight:600">{{ s.v }}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <aside style="display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--color-divider);background:var(--color-bg)">
+      <div class="wb-row" style="gap:8px;padding:9px 13px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+        <span>
+          <span class="card-kicker" style="display:block">{{ typeLabel }} · {{ solverLabel }}</span>
+          <span style="font-family:var(--font-heading);font-weight:600;font-size:17px;line-height:1.1">{{ analysisName }}</span>
+        </span>
+        <span class="wb-st {{ statusClass }}" style="margin-left:auto">{{ statusLabel }}</span>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto">
+
+        <sc-if value="{{ isDurability }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-sec">
+            <span class="wb-k">Yükleme adımı</span>
+            <span class="seg" style="height:30px">
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">Statik</span>
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px">Yorulma</span>
+            </span>
+            <span class="wb-sb" style="white-space:normal;line-height:1.45">Mesh yüzeyine tıklayın, türü seçin, ekleyin. Emniyet katsayısı Rp0.2 = 235 MPa'ya göre.</span>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Sınır koşulu ekle</span>
+            <span style="display:flex;flex-wrap:wrap;gap:5px">
+              <sc-for list="{{ bcTypes }}" as="b" hint-placeholder-count="8">
+                <span class="wb-chip">{{ b }}</span>
+              </sc-for>
+            </span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>Fx (N)</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>Fy (N)</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>Fz (N)</span><input class="wb-in" value="-1500"></label>
+            </div>
+            <button type="button" class="btn btn-secondary" style="height:30px;font-size:12px">+ Seçili yüzeye ekle</button>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-row" style="gap:8px"><span class="wb-k">Sınır koşulları</span><span class="wb-m" style="margin-left:auto">3</span></span>
+            <span class="wb-li" style="border-left:2px solid var(--color-accent)">Fixed · yüzey 12<span class="wb-m">842 düğüm</span></span>
+            <span class="wb-li">Force · Fz −1500 N<span class="wb-m">yüzey 42</span></span>
+            <span class="wb-li">Pressure · 2.5 MPa<span class="wb-m">yüzey 43</span></span>
+          </div>
+          <div class="wb-sec" style="border-bottom:none">
+            <span class="wb-k">Çözücü · CalculiX</span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>Adım</span><input class="wb-in" value="1"></label>
+              <label class="wb-f"><span>NLGEOM</span><input class="wb-in" value="kapalı"></label>
+              <label class="wb-f"><span>Çıktı</span><input class="wb-in" value=".frd"></label>
+            </div>
+            <span class="wb-sb">Son çözüm 42 s · 26 884 eleman</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isModal }}" hint-placeholder-val="{{ false }}">
+          <div class="wb-sec">
+            <span class="wb-k">Frekans ayarı</span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>Mod sayısı</span><input class="wb-in" value="6"></label>
+              <label class="wb-f"><span>f min (Hz)</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>f max (Hz)</span><input class="wb-in" value="2000"></label>
+            </div>
+            <span class="wb-sb" style="white-space:normal;line-height:1.45">Modal analizde yük tanımlanmaz; yalnız kısıt kullanılır. Normalizasyon kütleye göre.</span>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Kısıt ekle</span>
+            <span style="display:flex;flex-wrap:wrap;gap:5px">
+              <span class="wb-chip" aria-pressed="true">Fixed</span>
+              <span class="wb-chip">Displacement</span>
+              <span class="wb-chip">Rigid body</span>
+            </span>
+            <span class="wb-li" style="border-left:2px solid var(--color-accent)">Fixed · yüzey 12<span class="wb-m">842 düğüm</span></span>
+            <span class="wb-sb">Force / Pressure bu tipte devre dışı.</span>
+          </div>
+          <div class="wb-sec" style="border-bottom:none">
+            <span class="wb-row" style="gap:8px"><span class="wb-k">Özdeğerler</span><span class="wb-m" style="margin-left:auto">6 mod</span></span>
+            <sc-for list="{{ modeRows }}" as="m" hint-placeholder-count="6">
+              <span class="wb-li"><span>Mod {{ m.n }}</span><span>{{ m.f }}</span><span class="wb-m">{{ m.kind }}</span></span>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCrash }}" hint-placeholder-val="{{ true }}">
+          <div class="wb-sec">
+            <span class="wb-k">Senaryo</span>
+            <span class="seg" style="height:30px">
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">Rigid wall</span>
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px">Plaka–küre</span>
+            </span>
+            <span class="wb-sb" style="white-space:normal;line-height:1.45">3D tet mesh + malzeme ataması gerekir. Birim mm–ms (1 m/s = 1 mm/ms).</span>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Kinematik</span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>Hız (m/s)</span><input class="wb-in" value="10"></label>
+              <label class="wb-f"><span>Açı (°)</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>t_end (ms)</span><input class="wb-in" value="10"></label>
+            </div>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Rigid wall · nokta / normal</span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>x</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>y</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>z</span><input class="wb-in" value="0"></label>
+            </div>
+            <div class="wb-fl">
+              <label class="wb-f"><span>nx</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>ny</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>nz</span><input class="wb-in" value="1"></label>
+            </div>
+          </div>
+          <div class="wb-sec">
+            <span class="wb-k">Malzeme kanunu</span>
+            <span class="seg" style="height:30px">
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px">LAW1 elastik</span>
+              <span class="seg-opt" style="flex:1;justify-content:center;padding:0 8px;font-size:12px;background:var(--color-accent);color:var(--color-bg)">LAW2 plastik</span>
+            </span>
+            <div class="wb-fl">
+              <label class="wb-f"><span>σy (Pa)</span><input class="wb-in" placeholder="atanan"></label>
+              <label class="wb-f"><span>b (MPa)</span><input class="wb-in" value="0"></label>
+              <label class="wb-f"><span>n</span><input class="wb-in" value="1"></label>
+            </div>
+          </div>
+          <div class="wb-sec" style="border-bottom:none">
+            <span class="wb-k">Job · 7f3a91</span>
+            <span style="width:100%;height:5px;background:var(--color-neutral-300);display:block"><span style="display:block;width:63%;height:100%;background:var(--wb-run)"></span></span>
+            <span class="wb-sb">cycle 8 420 · t = 6.3 ms · %63</span>
+            <a href="#">starter .rad indir</a>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="padding:10px 13px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100);display:flex;gap:7px">
+        <button type="button" class="btn btn-secondary" style="flex:1;height:32px;font-size:12px">Kopyala</button>
+        <button type="button" class="btn btn-primary" style="flex:2;height:32px;font-size:12px">{{ submitLabel }}</button>
+      </div>
+    </aside>
+  </section>
+
+  <section style="display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--color-divider);background:var(--color-bg)">
+    <div class="wb-row" style="height:32px;border-bottom:1px solid var(--color-divider);background:var(--color-neutral-100)">
+      <span class="wb-tab" aria-selected="true" style="font-size:11.5px;padding:0 13px">{{ typeLabel }} geçmişi<span class="tag tag-accent" style="font-family:var(--font-body);letter-spacing:0;padding:1px 6px">{{ runCount }}</span></span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Karşılaştır</span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">{{ extraTab }}</span>
+      <span class="wb-tab" style="font-size:11.5px;padding:0 13px">Solver log</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:7px;padding-right:13px">
+        <span class="wb-sb">Yalnız {{ typeLabel }} vakaları</span>
+        <button type="button" class="btn btn-secondary" style="height:26px;font-size:11.5px;padding:0 10px">Arşiv indir</button>
+        <span class="wb-ic" title="Dock'u daralt" style="width:24px;height:24px;border:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg></span>
+      </span>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:0 13px">
+      <table class="table" style="font-size:12.5px">
+        <thead>
+          <tr>
+            <th style="width:26px"></th><th style="width:52px">#</th><th>Ad</th><th style="width:96px">Durum</th>
+            <th style="width:210px">{{ metricHead }}</th><th style="width:106px">Mesh</th><th style="width:124px">Tarih</th><th style="width:130px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ runs }}" as="r" hint-placeholder-count="4">
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--color-accent)"></td>
+              <td style="color:var(--color-neutral-700)">{{ r.id }}</td>
+              <td style="font-weight:600">{{ r.name }}</td>
+              <td><span class="wb-st {{ r.cls }}">{{ r.status }}</span></td>
+              <td>{{ r.scalar }}</td>
+              <td style="color:var(--color-neutral-700)">{{ r.mesh }}</td>
+              <td style="color:var(--color-neutral-700)">{{ r.date }}</td>
+              <td>
+                <span style="display:flex;gap:5px;justify-content:flex-end">
+                  <button type="button" class="btn btn-secondary" style="height:24px;font-size:11px;padding:0 9px">Yükle</button>
+                  <button type="button" class="btn btn-ghost" style="height:24px;font-size:11px;padding:0 7px">İndir</button>
+                </span>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="wb-row" style="gap:16px;padding:0 14px;border-top:1px solid var(--color-divider);background:var(--color-neutral-100)">
+    <span class="wb-sb">48 210 düğüm · 26 884 eleman · C3D10</span>
+    <span class="wb-sb">minSJ 0.42 · aspect 3.1</span>
+    <span class="wb-sb">Birim {{ units }}</span>
+    <span style="margin-left:auto"></span>
+    <span class="wb-sb">Backend localhost:8000</span>
+    <span class="wb-sb"><span style="width:6px;height:6px;background:var(--wb-ok);display:inline-block"></span>bağlı</span>
+  </footer>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1560,&quot;height&quot;:960},&quot;analysisType&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;durability&quot;,&quot;modal&quot;,&quot;crash&quot;],&quot;default&quot;:&quot;crash&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Vaka&quot;},&quot;caseName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;braket_v3&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Vaka&quot;},&quot;solverRunning&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Vaka&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const type = this.props.analysisType ?? "crash";
+    const running = this.props.solverRunning ?? true;
+
+    const base = {
+      caseName: this.props.caseName ?? "braket_v3",
+      solverRunning: running,
+      isDurability: type === "durability",
+      isModal: type === "modal",
+      isCrash: type === "crash",
+      details: [
+        { k: "id", v: "yüzey 42" },
+        { k: "parça", v: "#1 · Parça #1" },
+        { k: "alan", v: "1 284 mm²" },
+        { k: "düğüm", v: "842" },
+        { k: "bölge", v: "yuk_yuzeyi" },
+      ],
+      bcTypes: ["Fixed", "Force", "Pressure", "Displacement", "Sliding", "Bearing", "Gravity", "Rigid body"],
+      modes: ["1 · 214 Hz", "2 · 388 Hz", "3 · 502 Hz", "4 · 771 Hz", "5 · 940 Hz", "6 · 1.2 kHz"],
+      modeRows: [
+        { n: "1", f: "214.3 Hz", kind: "eğilme y" },
+        { n: "2", f: "388.1 Hz", kind: "eğilme z" },
+        { n: "3", f: "502.4 Hz", kind: "burulma" },
+        { n: "4", f: "771.0 Hz", kind: "eğilme y·2" },
+        { n: "5", f: "940.6 Hz", kind: "eğilme z·2" },
+        { n: "6", f: "1 204 Hz", kind: "karma" },
+      ],
+      crashScalars: [
+        { k: "HIC15", v: "212.4" },
+        { k: "acc_peak", v: "38.1 g" },
+        { k: "IE final", v: "1.82 kJ" },
+        { k: "KE final", v: "0.24 kJ" },
+        { k: "RWALL Fmax", v: "46.3 kN" },
+        { k: "εp max", v: "0.071" },
+      ],
+    };
+
+    const ok = "wb-st-ok", run = "wb-st-run", idle = "wb-st-idle";
+    const variants = {
+      durability: {
+        typeLabel: "Durability", solverLabel: "CalculiX", analysisName: "Durability 1",
+        statusLabel: "solved", statusClass: ok, progressLabel: "CalculiX · bitti · 42 s",
+        viewportNote: "von Mises · deformasyon 40×",
+        fields: ["VM", "U", "SF"], ticks: ["184.2", "138.2", "92.1", "46.1", "0.0"],
+        fieldUnit: "MPa · auto max 184.2", units: "mm · N · MPa",
+        submitLabel: ".inp üret / çöz", extraTab: "Analitik referans",
+        metricHead: "Skaler", runCount: "4",
+        runs: [
+          { id: "#10", name: "Uç yükü −1500 N", status: "solved", cls: ok, scalar: "VM 184.2 MPa · SF 1.28", mesh: "tet · 4 mm", date: "14.09 · 13:42" },
+          { id: "#9", name: "braket kalın", status: "solved", cls: ok, scalar: "VM 121.0 MPa · SF 1.94", mesh: "tet · 5 mm", date: "13.09 · 18:05" },
+          { id: "#6", name: "Basınç 2.5 MPa", status: "solved", cls: ok, scalar: "VM 96.4 MPa · SF 2.44", mesh: "tet · 4 mm", date: "12.09 · 11:20" },
+          { id: "#4", name: "İlk deneme", status: "inp_only", cls: idle, scalar: "—", mesh: "shell · 6 mm", date: "10.09 · 09:14" },
+        ],
+      },
+      modal: {
+        typeLabel: "Modal", solverLabel: "CalculiX", analysisName: "Modal 1",
+        statusLabel: "solved", statusClass: ok, progressLabel: "CalculiX · bitti · 68 s",
+        viewportNote: "mod 1 · 214.3 Hz · genlik 80×",
+        fields: ["Genlik", "Ux", "Uz"], ticks: ["1.00", "0.75", "0.50", "0.25", "0.00"],
+        fieldUnit: "normalize genlik · kütle", units: "mm · kg · Hz",
+        submitLabel: "Özdeğer çöz", extraTab: "Mod tablosu",
+        metricHead: "Frekanslar", runCount: "3",
+        runs: [
+          { id: "#11", name: "6 mod · 0–2000 Hz", status: "solved", cls: ok, scalar: "f₁ 214.3 · f₂ 388.1 Hz", mesh: "tet · 4 mm", date: "14.09 · 18:22" },
+          { id: "#8", name: "10 mod · 0–5000 Hz", status: "solved", cls: ok, scalar: "f₁ 213.9 · f₁₀ 3.4 kHz", mesh: "tet · 4 mm", date: "13.09 · 10:05" },
+          { id: "#5", name: "Kaba mesh kontrol", status: "solved", cls: ok, scalar: "f₁ 209.7 Hz", mesh: "tet · 8 mm", date: "11.09 · 15:40" },
+        ],
+      },
+      crash: {
+        typeLabel: "Crash", solverLabel: "OpenRadioss", analysisName: "Crash 1",
+        statusLabel: "çalışıyor · %63", statusClass: run, progressLabel: "OpenRadioss · cycle 8 420 · %63",
+        viewportNote: "crash deformasyonu t = 6.3 ms",
+        fields: ["VM", "U", "εp"], ticks: ["312.6", "234.5", "156.3", "78.2", "0.0"],
+        fieldUnit: "MPa · t = 6.3 ms", units: "mm · ms · Pa",
+        submitLabel: ".rad üret / çöz", extraTab: "Enerji dengesi",
+        metricHead: "Skaler", runCount: "3",
+        runs: [
+          { id: "#12", name: "Rigid wall 10 m/s", status: "çalışıyor", cls: run, scalar: "HIC15 212.4 · 38.1 g", mesh: "tet · 4 mm", date: "14.09 · 21:04" },
+          { id: "#7", name: "Plaka–küre 20 m/s", status: "solved", cls: ok, scalar: "HIC15 486.0 · 71.3 g", mesh: "tet · 4 mm", date: "13.09 · 14:11" },
+          { id: "#3", name: "LAW1 elastik kontrol", status: "rad_only", cls: idle, scalar: "—", mesh: "tet · 6 mm", date: "09.09 · 17:26" },
+        ],
+      },
+    };
+
+    return { ...base, ...(variants[type] ?? variants.crash) };
+  }
+}
+</script>
+</body>
+</html>

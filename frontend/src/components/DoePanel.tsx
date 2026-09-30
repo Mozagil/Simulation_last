@@ -11,20 +11,12 @@ import {
   type DoeResults,
   type DoeStudyInfo,
 } from "../api/doe";
-import DoeResultsTable from "./DoeResultsTable";
+import DoeDistribution from "./DoeDistribution";
 import DoeSpecForm, {
   buildSpec,
   initialStateFor,
   type DoeFormState,
 } from "./DoeSpecForm";
-
-function formatCounts(counts: Record<string, number> | undefined): string {
-  if (!counts) return "";
-  return Object.entries(counts)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}:${v}`)
-    .join(" · ");
-}
 
 interface DoePanelProps {
   refreshKey?: number;
@@ -39,10 +31,12 @@ interface DoePanelProps {
 export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanelProps) {
   const [studies, setStudies] = useState<DoeStudyInfo[]>([]);
   const [qualityById, setQualityById] = useState<Record<number, DoeQualityInfo>>({});
-  // Açık tablo: aynı anda tek çalışma; 200 satırlık tabloyu ikinci kez açmak
-  // gereksiz yer kaplar.
+  // Sağ panoda tek çalışma görünür (varsayılan: en yeni). Sonuçları seçilince
+  // çekilir; tablo ayrıca açılır — 200 satır varsayılan olarak kapalı.
+  const [selectedStudyId, setSelectedStudyId] = useState<number | null>(null);
   const [openResults, setOpenResults] = useState<DoeResults | null>(null);
   const [resultsBusy, setResultsBusy] = useState<number | null>(null);
+  const [tableOpen, setTableOpen] = useState(false);
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [form, setForm] = useState<DoeFormState | null>(null);
@@ -156,21 +150,37 @@ export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanel
 
   const templateName = templates.find((t) => t.id === form?.templateId)?.name ?? null;
 
-  async function handleToggleResults(studyId: number) {
-    if (openResults?.study_id === studyId) {
+  // Seçim yoksa en yeni çalışma; liste boşalırsa seçim düşer.
+  const selectedStudy =
+    studies.find((s) => s.id === selectedStudyId) ?? (studies.length > 0 ? studies[0] : null);
+
+  useEffect(() => {
+    if (!selectedStudy) {
       setOpenResults(null);
       return;
     }
-    setResultsBusy(studyId);
-    setError(null);
-    try {
-      setOpenResults(await fetchDoeResults(studyId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sonuç tablosu alınamadı.");
-    } finally {
-      setResultsBusy(null);
-    }
-  }
+    const id = selectedStudy.id;
+    const status = selectedStudy.status;
+    if (openResults?.study_id === id && status !== "running" && status !== "pending") return;
+    let cancelled = false;
+    setResultsBusy(id);
+    fetchDoeResults(id)
+      .then((r) => {
+        if (!cancelled) setOpenResults(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Sonuç tablosu alınamadı.");
+      })
+      .finally(() => {
+        if (!cancelled) setResultsBusy(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // openResults kasıtlı dışarıda: yeni sonucu set etmek efekti tekrar
+    // tetiklememeli; koşullar id/status üzerinden.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudy?.id, selectedStudy?.status]);
 
   async function handleQualitySet() {
     setBusy(true);
@@ -197,128 +207,140 @@ export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanel
   }
 
   return (
-    <div className="panel dataset-panel">
-      <span className="eyebrow">Faz 0.5 · DOE</span>
-      <h1>Toplu tarama</h1>
-      <p className="lead">
-        Seçtiğin şablondan Latin Hypercube örnekler. Her parametreyi sabit
-        tutabilir ya da aralık verip taratabilirsin. BC&apos;ler şablonun
-        varsayılanlarından gelir ve isimli bölgelere bağlanır; bir örnek
-        patlarsa diğerleri durmaz.
-      </p>
-      <p className="lead">
-        Kalite seti: seçili şablondan 200 örnek, tohum 2026. Aralıklar şablona
-        özgü ve sabittir — yukarıdaki form aralıkları kullanılmaz, çünkü set bir
-        referanstır: aynı tohum her zaman aynı 200 örneği üretir. Yük, şablonun
-        varsayılanının 0.4–1.6 katı. Kapalı form sapması ve kaba aykırı değerler
-        sayılır; mesh/BC önerisi yok. Kendi aralıklarını taramak için örnek
-        sayısını 200 yapıp &quot;DOE başlat&quot; kullan.
-      </p>
-
-      {form && (
-        <DoeSpecForm templates={templates} state={form} busy={busy} onChange={setForm} />
-      )}
-
-      <div className="doe-fields">
-        <fieldset className="doe-material-picker">
-          <legend>Malzeme</legend>
-          {materials.map((m) => (
-            <label key={m.id}>
-              <input
-                type="checkbox"
-                checked={materialIds.includes(m.id)}
-                disabled={busy}
-                onChange={(e) =>
-                  setMaterialIds((prev) =>
-                    e.target.checked ? [...prev, m.id] : prev.filter((x) => x !== m.id),
-                  )
-                }
-              />
-              {m.name}
-            </label>
-          ))}
-        </fieldset>
-        <label className="mesh-field">
-          <span>Örnek</span>
-          <input
-            value={form?.nSamples ?? ""}
-            disabled={busy || !form}
-            onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
-          />
-        </label>
-        <label className="mesh-field">
-          <span>Tohum</span>
-          <input
-            value={form?.seed ?? ""}
-            disabled={busy || !form}
-            onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
-          />
-        </label>
-        <label className="dataset-filter">
-          <input
-            type="checkbox"
-            checked={runSolver}
-            onChange={(e) => setRunSolver(e.target.checked)}
-          />
-          ccx çalıştır
-        </label>
+    <div className="doe-stage" data-testid="doe-stage">
+      {/* ── Sol pano: tasarım uzayı (ML Studio 1a) ─────────────────── */}
+      <div className="doe-pane-l">
+        <div className="doe-phead">
+          <span className="doe-phead-title">
+            <span className="ml-k">0.5 · DOE</span>
+            <span className="ml-h">Tasarım uzayı</span>
+          </span>
+          <span className="doe-phead-hint">
+            Açık bant = taranan aralık
+            <br />▼ = şablon varsayılanı
+          </span>
+        </div>
+        <div className="doe-pane-body">
+          {form && (
+            <DoeSpecForm templates={templates} state={form} busy={busy} onChange={setForm} />
+          )}
+          <div className="doe-material-row">
+            <span className="ml-k">Malzeme</span>
+            <span className="doe-chips">
+              {materials.map((m) => {
+                const on = materialIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={on ? "doe-chip active" : "doe-chip"}
+                    aria-pressed={on}
+                    disabled={busy}
+                    onClick={() =>
+                      setMaterialIds((prev) =>
+                        on ? prev.filter((x) => x !== m.id) : [...prev, m.id],
+                      )
+                    }
+                  >
+                    {m.name}
+                  </button>
+                );
+              })}
+            </span>
+            <span className="doe-material-hint">örnekler dengeli dağılır</span>
+          </div>
+        </div>
+        <div className="doe-pfoot">
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Örnek</span>
+            <input
+              className="doe-num"
+              aria-label="Örnek sayısı"
+              value={form?.nSamples ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
+            />
+          </label>
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Tohum</span>
+            <input
+              className="doe-num"
+              aria-label="Tohum"
+              value={form?.seed ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
+            />
+          </label>
+          <label className="doe-pfoot-check">
+            <input
+              type="checkbox"
+              checked={runSolver}
+              onChange={(e) => setRunSolver(e.target.checked)}
+            />
+            ccx çalıştır
+          </label>
+          <button
+            type="button"
+            className="doe-btn doe-btn-secondary"
+            disabled={busy}
+            title="Şablona özgü sabit aralıklarla 200 örnek, tohum 2026 — referans set; formdaki aralıklar kullanılmaz."
+            onClick={() => void handleQualitySet()}
+          >
+            {templateName ? `200'lük kalite seti · ${templateName}` : "200'lük kalite seti"}
+          </button>
+          <button
+            type="button"
+            className="doe-btn doe-btn-primary"
+            disabled={busy}
+            onClick={() => void handleStart()}
+          >
+            {busy ? "Çalışıyor…" : "DOE başlat"}
+          </button>
+        </div>
       </div>
 
-      <div className="doe-actions">
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={busy}
-          onClick={() => void handleStart()}
-        >
-          {busy ? "Çalışıyor…" : "DOE başlat"}
-        </button>
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={busy}
-          onClick={() => void handleQualitySet()}
-        >
-          {templateName ? `200'lük kalite seti · ${templateName}` : "200'lük kalite seti"}
-        </button>
-      </div>
-
-      {studies.length > 0 && (
-        <ul className="doe-study-list">
-          {studies.slice(0, 5).map((st) => {
-            const q = qualityById[st.id];
-            return (
-              <li key={st.id}>
-                <strong>#{st.id}</strong> {st.status} · {st.n_cases} örnek
-                {st.message ? ` · ${st.message}` : ""}
-                {q ? (
-                  <span className="doe-quality">
-                    {" "}
-                    · kalite ok:{q.n_ok}
-                    {formatCounts(q.counts) ? ` · ${formatCounts(q.counts)}` : ""}
-                  </span>
-                ) : null}
+      {/* ── Sağ pano: sonuç dağılımı (ML Studio 1a) ───────────────── */}
+      <div className="doe-pane-r">
+        {studies.length > 0 && (
+          <div className="doe-study-chips" role="group" aria-label="Çalışma seç">
+            <span className="ml-k">Çalışma</span>
+            {studies.slice(0, 5).map((st) => {
+              const on = selectedStudy?.id === st.id;
+              return (
                 <button
+                  key={st.id}
                   type="button"
-                  className="doe-results-toggle"
-                  disabled={resultsBusy !== null}
-                  onClick={() => void handleToggleResults(st.id)}
+                  className={on ? "doe-chip active" : "doe-chip"}
+                  aria-pressed={on}
+                  title={`${st.template_id} · ${st.status} · ${st.n_cases} örnek`}
+                  onClick={() => {
+                    setSelectedStudyId(st.id);
+                    setTableOpen(false);
+                  }}
                 >
-                  {openResults?.study_id === st.id
-                    ? "Tabloyu kapat"
-                    : resultsBusy === st.id
-                      ? "Yükleniyor…"
-                      : "Sonuç tablosu"}
+                  #{st.id}
+                  {st.status === "running" || st.status === "pending" ? " ●" : ""}
                 </button>
-                {openResults?.study_id === st.id && (
-                  <DoeResultsTable results={openResults} onOpenRun={onOpenRun} />
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {error && <p className="dataset-error">{error}</p>}
+              );
+            })}
+          </div>
+        )}
+        {studies.length === 0 && !error && (
+          <p className="doe-empty">Henüz DOE çalışması yok. Soldan aralıkları verip &quot;DOE başlat&quot; ile başla.</p>
+        )}
+        {selectedStudy && (
+          <DoeDistribution
+            study={selectedStudy}
+            quality={qualityById[selectedStudy.id] ?? null}
+            results={openResults?.study_id === selectedStudy.id ? openResults : null}
+            loading={resultsBusy === selectedStudy.id}
+            tableOpen={tableOpen}
+            onToggleTable={() => setTableOpen((v) => !v)}
+            onOpenRun={onOpenRun}
+          />
+        )}
+        {error && <p className="dataset-error">{error}</p>}
+      </div>
     </div>
   );
 }

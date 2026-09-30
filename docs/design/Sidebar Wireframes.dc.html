@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Architects+Daughter&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f0eee9;font-family:"Barlow",sans-serif}
+a{color:#00a0b2}a:hover{color:#2a2e33}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 "Barlow",sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 "Barlow",sans-serif;color:rgba(0,0,0,.55)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.18);overflow:hidden}
+.dv-opt:target .dv-oid{background:#00b4c8;color:#fff}
+.dv-next{margin:22px 0 0;font:12px/1.5 "Barlow",sans-serif;color:rgba(0,0,0,.5)}
+</style></helmet>
+
+<section class="dv-turn" id="t3">
+  <div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">2a devam · Durability ↔ Modal ayrımı nerede yapılır (3 seçenek)</span></div>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="3a">
+      <div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Case seviyesinde · üst barda analiz tipi seçici, tüm ekran ona göre değişir</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="color:#00b4c8">◆</span>
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step</span>
+            <span style="display:flex;border:1px solid #00b4c8">
+              <span style="padding:5px 12px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">DURABILITY</span>
+              <span style="padding:5px 12px;background:#fff;color:#00b4c8;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">MODAL</span>
+            </span>
+            <span style="font-family:'Architects Daughter',cursive;font-size:11px;color:#6e757c">← tek anahtar, case'in tipi</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">bitti · ccx · 42 s</span><span style="padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;background:#fff;border-bottom:1px solid #d8dcdf">
+          <sc-for list="{{ tabs3a }}" as="t" hint-placeholder-count="6">
+            <span style="padding:8px 18px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ t.fg }};background:{{ t.bg }};border-bottom:2px solid {{ t.bd }}">{{ t.label }}</span>
+          </sc-for>
+          <span style="margin-left:auto;padding:8px 14px;font-family:'Architects Daughter',cursive;font-size:11px;color:#8a9199">4. sekme tipe göre ad değiştirir</span>
+        </div>
+        <div style="display:flex;height:330px">
+          <div style="width:252px;border-right:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">MODEL AĞACI</div>
+            <div style="flex:1;min-height:0;overflow-y:auto">
+              <sc-for list="{{ tree3a }}" as="r" hint-placeholder-count="8">
+                <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 10px 4px {{ r.ind }};font-size:12px;font-weight:{{ r.w }};color:#2a2e33"><span>{{ r.name }}</span><span style="font-size:10px;color:#8a9199">{{ r.meta }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:14px;color:#8a9199">Durability seçili → VM / SF sonuçları</span>
+            <div style="position:absolute;top:12px;right:12px;padding:8px 10px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;font-size:11px;color:#2a2e33;line-height:1.6">
+              VM max 184.2 MPa<br>SF min 1.28<br><span style="color:#8a9199">Modal'da: f₁…f₆ listesi</span>
+            </div>
+          </div>
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid #d8dcdf;background:#fbfcfc;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">artı: en basit, mevcut koda en yakın · eksi: aynı modeli iki tipte çözmek için ikinci case gerekiyor</div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="3b">
+      <div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Ağaçta iki analiz dalı · ön işlem paylaşılır, her analiz kendi çözüm kartı</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step · 2 analiz</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">seçili: Modal 1</span><span style="padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;background:#fff;border-bottom:1px solid #d8dcdf">
+          <sc-for list="{{ tabs3b }}" as="t" hint-placeholder-count="5">
+            <span style="padding:8px 18px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ t.fg }};background:{{ t.bg }};border-bottom:2px solid {{ t.bd }}">{{ t.label }}</span>
+          </sc-for>
+          <span style="margin-left:auto;padding:8px 14px;font-family:'Architects Daughter',cursive;font-size:11px;color:#8a9199">tek sekme seti · tip ağaçtan gelir</span>
+        </div>
+        <div style="display:flex;height:430px">
+          <div style="width:252px;border-right:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">MODEL AĞACI</div>
+            <div style="flex:1;min-height:0;overflow-y:auto">
+              <sc-for list="{{ tree3b }}" as="r" hint-placeholder-count="11">
+                <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 10px 4px {{ r.ind }};font-size:12px;font-weight:{{ r.w }};color:#2a2e33;background:{{ r.bg }}"><span>{{ r.name }}</span><span style="font-size:10px;color:#8a9199">{{ r.meta }}</span></div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px solid #d8dcdf">
+              <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">DETAYLAR · MODAL 1</div>
+              <sc-for list="{{ props3b }}" as="p" hint-placeholder-count="4">
+                <div style="display:flex;border-bottom:1px solid #e7eaec;font-size:11px">
+                  <span style="width:96px;padding:4px 8px;border-right:1px solid #e7eaec;color:#6e757c">{{ p.k }}</span>
+                  <span style="flex:1;padding:4px 8px;color:#2a2e33">{{ p.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:14px;color:#8a9199">Modal 1 seçili → mod şekli 1 · 214 Hz</span>
+            <div style="position:absolute;bottom:12px;left:12px;display:flex;gap:5px">
+              <sc-for list="{{ modes3b }}" as="m" hint-placeholder-count="6">
+                <span style="padding:5px 9px;background:{{ m.bg }};border:1px solid {{ m.bd }};color:{{ m.fg }};font-size:11px">{{ m.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid #d8dcdf;background:#fbfcfc;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">artı: mesh/malzeme bir kez kurulur, iki analiz aynı modelde yaşar · eksi: ağaç mantığı kodda yeni yapı ister</div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="3c">
+      <div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Ortak ön işlem + tek "ANALİZ" sekmesi · tip o sekmenin içinde seçilir</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">solver hazır</span><span style="padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;background:#fff;border-bottom:1px solid #d8dcdf">
+          <sc-for list="{{ tabs3c }}" as="t" hint-placeholder-count="5">
+            <span style="padding:8px 18px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ t.fg }};background:{{ t.bg }};border-bottom:2px solid {{ t.bd }}">{{ t.label }}</span>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #d8dcdf;background:#e2f6f8">
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;color:#6e757c">ANALİZ TİPİ</span>
+          <span style="padding:5px 12px;background:#fff;border:1px solid #00b4c8;color:#00b4c8;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">DURABILITY</span>
+          <span style="padding:5px 12px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">MODAL</span>
+          <span style="margin-left:14px;font-family:'Architects Daughter',cursive;font-size:11px;color:#6e757c">seçim yalnız bu sekmenin içeriğini değiştirir — geometri/mesh/malzeme ortak</span>
+        </div>
+        <div style="display:flex;height:340px">
+          <div style="width:252px;border-right:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">MODAL AYARLARI</div>
+            <sc-for list="{{ props3c }}" as="p" hint-placeholder-count="5">
+              <div style="display:flex;border-bottom:1px solid #e7eaec;font-size:11px">
+                <span style="width:110px;padding:5px 8px;border-right:1px solid #e7eaec;color:#6e757c">{{ p.k }}</span>
+                <span style="flex:1;padding:5px 8px;color:#2a2e33">{{ p.v }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-top:auto;padding:10px;border-top:1px solid #d8dcdf;background:#fbfcfc;font-size:11px;color:#6e757c;line-height:1.5">BC listesi ortak · Durability'de Force/Pressure, Modal'da yalnız Fixed kullanılır</div>
+          </div>
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:14px;color:#8a9199">3B görünüm · seçilen tipe göre sonuç alanı</span>
+          </div>
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid #d8dcdf;background:#fbfcfc;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">artı: mevcut DURABILITY/MODAL butonlarının doğal yeri, ağaç değişmiyor · eksi: tip anahtarı ekranda derinde kalır</div>
+      </div>
+    </div>
+  </div>
+  <p class="dv-next">Önerim: <a class="dv-oid" href="#3b">3b</a> — aynı mesh üzerinde iki analizi yan yana tutar; hızlı yol istiyorsan <a class="dv-oid" href="#3c">3c</a> mevcut kodu neredeyse değiştirmeden çalışır.</p>
+</section>
+
+<section class="dv-turn" id="t2">
+  <div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Paylaştığın CAE ekranının yerleşim mantığı (üst şerit + model ağacı + özellik ızgarası + alt dock) senin paletine uyarlandı — 3 varyant</span></div>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="2a">
+      <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Solda model ağacı + altında özellik ızgarası · form yerine tablo</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step · statik analiz</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">bitti · ccx · 42 s</span><span style="padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;background:#fff;border-bottom:1px solid #d8dcdf">
+          <sc-for list="{{ tabs2 }}" as="t" hint-placeholder-count="6">
+            <span style="padding:8px 18px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ t.fg }};background:{{ t.bg }};border-bottom:2px solid {{ t.bd }}">{{ t.label }}</span>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:stretch;padding:0;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <sc-for list="{{ groups2 }}" as="g" hint-placeholder-count="5">
+            <div style="padding:8px 14px 5px;border-right:1px solid #e7eaec;display:flex;flex-direction:column;gap:6px;align-items:center">
+              <div style="display:flex;gap:5px">
+                <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                  <span style="padding:5px 9px;border:1px solid #d8dcdf;background:#fff;font-size:11px;color:#2a2e33">{{ it }}</span>
+                </sc-for>
+              </div>
+              <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.1em;color:#8a9199">{{ g.caption }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;height:548px">
+          <div style="width:252px;border-right:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">MODEL AĞACI</div>
+            <div style="flex:1;min-height:0;overflow-y:auto">
+              <sc-for list="{{ tree2 }}" as="r" hint-placeholder-count="12">
+                <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 10px 4px {{ r.ind }};font-size:12px;font-weight:{{ r.w }};color:#2a2e33"><span>{{ r.name }}</span><span style="font-size:10px;color:#8a9199">{{ r.meta }}</span></div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px solid #d8dcdf">
+              <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">DETAYLAR · VON MISES</div>
+              <sc-for list="{{ props2 }}" as="p" hint-placeholder-count="10">
+                <div style="display:flex;border-bottom:1px solid #e7eaec;font-size:11px">
+                  <span style="width:96px;padding:4px 8px;border-right:1px solid #e7eaec;color:#6e757c;font-weight:{{ p.head }}00">{{ p.k }}</span>
+                  <span style="flex:1;padding:4px 8px;color:#2a2e33">{{ p.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:15px;color:#8a9199">3B görünüm — tek panel, tek ızgara</span>
+            <div style="position:absolute;top:12px;left:12px;font-size:11px;color:#6e757c;line-height:1.5">Von Mises · MPa<br>t = 1 s</div>
+            <div style="position:absolute;top:44px;left:12px;display:flex;gap:6px"><div style="width:14px;height:120px;background:linear-gradient(to top,#2f7fd1,#4fbf6a,#f5c63c,#d93b2b);border:1px solid #d8dcdf"></div><div style="display:flex;flex-direction:column;justify-content:space-between;height:120px;font-size:10px;color:#2a2e33"><span>288.8</span><span>144.4</span><span>0.06</span></div></div>
+          </div>
+        </div>
+        <div style="border-top:1px solid #d8dcdf;background:#fff">
+          <div style="display:flex;border-bottom:1px solid #e7eaec;background:#fbfcfc">
+            <sc-for list="{{ dock2 }}" as="d" hint-placeholder-count="4">
+              <span style="padding:7px 16px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:{{ d.fg }};border-bottom:2px solid {{ d.bd }}">{{ d.label }}</span>
+            </sc-for>
+            <span style="margin-left:auto;padding:7px 12px;font-size:11px;color:#6e757c">▾ küçült</span>
+          </div>
+          <div style="height:78px;display:flex;align-items:flex-end;gap:3px;padding:10px 14px">
+            <sc-for list="{{ bars2 }}" as="b" hint-placeholder-count="26">
+              <span style="flex:1;height:{{ b }};background:#e2f6f8;border-top:2px solid #00b4c8"></span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="2b">
+      <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Aynı yerleşim sağa alınmış · solda hiç panel yok, sağda ikon rayı dock'u değiştirir</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step · statik analiz</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">solver hazır</span><span style="padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;background:#fff;border-bottom:1px solid #d8dcdf">
+          <sc-for list="{{ tabs2 }}" as="t" hint-placeholder-count="6">
+            <span style="padding:8px 18px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ t.fg }};background:{{ t.bg }};border-bottom:2px solid {{ t.bd }}">{{ t.label }}</span>
+          </sc-for>
+          <span style="margin-left:auto;padding:8px 14px;font-size:11px;color:#8a9199">⌘K komut ara</span>
+        </div>
+        <div style="display:flex;height:534px">
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:15px;color:#8a9199">3B görünüm — sol kenara kadar tam</span>
+            <div style="position:absolute;top:12px;left:12px;display:flex;gap:4px">
+              <sc-for list="{{ viewIcons }}" as="v" hint-placeholder-count="6">
+                <span style="width:28px;height:28px;border:1px solid #d8dcdf;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;font-size:12px;color:#6e757c">{{ v }}</span>
+              </sc-for>
+            </div>
+            <div style="position:absolute;bottom:12px;left:12px;padding:7px 10px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;font-size:11px;color:#2a2e33">seçim: yüzey #42 · 842 düğüm</div>
+          </div>
+          <div style="width:300px;border-left:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">MODEL AĞACI</div>
+            <div style="flex:1;min-height:0;overflow-y:auto">
+              <sc-for list="{{ tree2 }}" as="r" hint-placeholder-count="12">
+                <div style="display:flex;justify-content:space-between;gap:6px;padding:4px 10px 4px {{ r.ind }};font-size:12px;font-weight:{{ r.w }};color:#2a2e33"><span>{{ r.name }}</span><span style="font-size:10px;color:#8a9199">{{ r.meta }}</span></div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px solid #d8dcdf">
+              <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#fbfcfc;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">DETAYLAR · MESH</div>
+              <sc-for list="{{ propsMesh }}" as="p" hint-placeholder-count="7">
+                <div style="display:flex;border-bottom:1px solid #e7eaec;font-size:11px">
+                  <span style="width:112px;padding:4px 8px;border-right:1px solid #e7eaec;color:#6e757c">{{ p.k }}</span>
+                  <span style="flex:1;padding:4px 8px;color:#2a2e33">{{ p.v }}</span>
+                </div>
+              </sc-for>
+              <div style="padding:9px 10px"><span style="display:block;padding:8px;text-align:center;background:#00b4c8;color:#fff;font-size:12px;font-weight:600">Mesh üret</span></div>
+            </div>
+          </div>
+          <div style="width:52px;border-left:1px solid #d8dcdf;background:#fbfcfc;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0">
+            <sc-for list="{{ railA }}" as="i" hint-placeholder-count="6">
+              <span style="width:34px;height:34px;border:1px solid {{ i.bd }};background:{{ i.bg }};color:{{ i.fg }};display:flex;align-items:center;justify-content:center;font-size:14px">{{ i.icon }}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;border-top:1px solid #d8dcdf;background:#fbfcfc">
+          <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+            <div style="flex:1;padding:8px 14px;border-right:1px solid #e7eaec"><div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.08em;color:#6e757c">{{ m.label }}</div><div style="font-size:16px;font-weight:600;color:#00b4c8">{{ m.value }}</div></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="2c">
+      <div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Kalıcı panel yok · ağaç açılır listede, özellik ızgarası seçime göre yüzer</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <span style="color:#00b4c8">◆</span>
+          <span style="padding:5px 10px;border:1px solid #d8dcdf;background:#fff;font-size:11px;color:#2a2e33">braket_v3 › Statik analiz › Von Mises ▾</span>
+          <sc-for list="{{ tabs2 }}" as="t" hint-placeholder-count="6">
+            <span style="padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.07em;color:{{ t.fg }};background:{{ t.bg }}">{{ t.label }}</span>
+          </sc-for>
+          <span style="margin-left:auto;padding:6px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span>
+        </div>
+        <div style="position:relative;height:560px;background:#e9ecee">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-family:'Architects Daughter',cursive;font-size:16px;color:#8a9199">3B görünüm — kenardan kenara</span></div>
+          <div style="position:absolute;top:14px;left:14px;width:236px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">AĞAÇ (açılır) — sabitlenebilir 📌</div>
+            <sc-for list="{{ tree2 }}" as="r" hint-placeholder-count="12">
+              <div style="display:flex;justify-content:space-between;gap:6px;padding:3px 10px 3px {{ r.ind }};font-size:11px;font-weight:{{ r.w }};color:#2a2e33"><span>{{ r.name }}</span><span style="font-size:10px;color:#8a9199">{{ r.meta }}</span></div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;top:190px;right:200px;width:250px;background:rgba(255,255,255,.97);border:1px solid #00b4c8">
+            <div style="padding:7px 10px;border-bottom:1px solid #e7eaec;background:#e2f6f8;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#00b4c8">SEÇİM: YÜZEY #42</div>
+            <sc-for list="{{ propsSel }}" as="p" hint-placeholder-count="5">
+              <div style="display:flex;border-bottom:1px solid #e7eaec;font-size:11px">
+                <span style="width:96px;padding:4px 8px;border-right:1px solid #e7eaec;color:#6e757c">{{ p.k }}</span>
+                <span style="flex:1;padding:4px 8px;color:#2a2e33">{{ p.v }}</span>
+              </div>
+            </sc-for>
+            <div style="padding:9px 10px;display:flex;gap:5px;flex-wrap:wrap">
+              <sc-for list="{{ quickActs }}" as="q" hint-placeholder-count="5">
+                <span style="padding:5px 8px;border:1px solid #d8dcdf;background:#fbfcfc;font-size:11px;color:#2a2e33">{{ q }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="position:absolute;top:14px;right:14px;width:146px;padding:10px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf;font-size:10px;color:#6e757c">
+            <div style="letter-spacing:.04em;margin-bottom:6px">VON MISES · MPa</div>
+            <div style="display:flex;gap:6px"><div style="width:14px;height:118px;background:linear-gradient(to top,#2f7fd1,#4fbf6a,#f5c63c,#d93b2b);border:1px solid #d8dcdf"></div><div style="display:flex;flex-direction:column;justify-content:space-between;height:118px;color:#2a2e33"><span>288.8</span><span>192.6</span><span>96.3</span><span>0.06</span></div></div>
+          </div>
+          <div style="position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;gap:14px;padding:8px 14px;background:rgba(255,255,255,.96);border-top:1px solid #d8dcdf">
+            <sc-for list="{{ dock2 }}" as="d" hint-placeholder-count="4">
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:{{ d.fg }}">{{ d.label }} ▴</span>
+            </sc-for>
+            <span style="margin-left:auto;display:flex;gap:16px">
+              <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+                <span style="display:flex;align-items:baseline;gap:5px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.07em;color:#6e757c">{{ m.label }}</span><span style="font-size:13px;font-weight:600;color:#00b4c8">{{ m.value }}</span></span>
+              </sc-for>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="dv-next">Sonraki adım için: "<a class="dv-oid" href="#2a">2a</a>'yı gerçek verilerle detaylandır" · "<a class="dv-oid" href="#2b">2b</a>'nin şeridini <a class="dv-oid" href="#1b">1b</a>'nin adım rayıyla birleştir" · "<a class="dv-oid" href="#2c">2c</a>'de ağaç sabitlenmiş halini göster"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Sol sidebar yerine 3 yerleşim fikri — mevcut renk paleti korunuyor</span></div>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Üst iş akışı şeridi + sağda ikon rayı · panel sadece istenince açılır</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">CALCULIX · braket_v3.step</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">solver hazır</span><span style="padding:7px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;border-bottom:1px solid #d8dcdf;background:#fff">
+          <sc-for list="{{ stagesA }}" as="s" hint-placeholder-count="6">
+            <div style="flex:1;padding:10px 12px;border-right:1px solid #e7eaec;display:flex;align-items:center;gap:8px;background:{{ s.bg }}">
+              <span style="width:16px;height:16px;border:1px solid #b3b9be;border-radius:50%;font:600 9px/16px 'Barlow',sans-serif;text-align:center;color:#6e757c">{{ s.n }}</span>
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;color:#2a2e33">{{ s.label }}</span>
+              <span style="margin-left:auto;font-size:10px;color:#1c7a3d">{{ s.tick }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <span style="font-family:'Architects Daughter',cursive;font-size:11px;color:#6e757c">aktif adımın araçları →</span>
+          <sc-for list="{{ toolsA }}" as="t" hint-placeholder-count="7">
+            <span style="padding:5px 9px;border:1px solid #d8dcdf;background:#fff;font-size:11px;color:#2a2e33">{{ t }}</span>
+          </sc-for>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;color:#6e757c">seçim: yüzey #42, #43</span>
+        </div>
+        <div style="display:flex;height:430px">
+          <div style="flex:1;position:relative;background:#e9ecee;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'Architects Daughter',cursive;font-size:15px;color:#8a9199">3B görünüm — tam genişlik</span>
+            <div style="position:absolute;top:12px;right:12px;width:132px;padding:9px;background:rgba(255,255,255,.94);border:1px solid #d8dcdf;font-size:10px;color:#6e757c">
+              <div style="letter-spacing:.04em;margin-bottom:6px">VON MISES</div>
+              <div style="display:flex;gap:6px"><div style="width:14px;height:96px;background:linear-gradient(to top,#2f7fd1,#4fbf6a,#f5c63c,#d93b2b);border:1px solid #d8dcdf"></div><div style="display:flex;flex-direction:column;justify-content:space-between;height:96px"><span>184</span><span>92</span><span>0</span></div></div>
+            </div>
+          </div>
+          <div style="width:296px;border-left:1px solid #d8dcdf;background:#fff;padding:14px 14px 0;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.08em;color:#00b4c8">ÜRÜN AĞACI</span><span style="font-size:14px;color:#6e757c">✕</span></div>
+            <sc-for list="{{ treeA }}" as="r" hint-placeholder-count="6">
+              <div style="display:flex;justify-content:space-between;padding:7px 9px;border:1px solid #e7eaec;font-size:12px;color:#2a2e33"><span>{{ r.name }}</span><span style="color:#6e757c;font-size:11px">{{ r.meta }}</span></div>
+            </sc-for>
+            <p style="margin:2px 0 0;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">panel bir rayda: ağaç · malzeme · BC listesi · geçmiş · log</p>
+          </div>
+          <div style="width:52px;border-left:1px solid #d8dcdf;background:#fbfcfc;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0">
+            <sc-for list="{{ railA }}" as="i" hint-placeholder-count="6">
+              <span style="width:34px;height:34px;border:1px solid {{ i.bd }};background:{{ i.bg }};color:{{ i.fg }};display:flex;align-items:center;justify-content:center;font-size:14px">{{ i.icon }}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;border-top:1px solid #d8dcdf;background:#fbfcfc">
+          <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+            <div style="flex:1;padding:8px 14px;border-right:1px solid #e7eaec"><div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.08em;color:#6e757c">{{ m.label }}</div><div style="font-size:16px;font-weight:600;color:#00b4c8">{{ m.value }}</div></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>İnce ikon rayı + tek bağlam paneli · geçmiş ve sonuçlar alt dock'ta</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <div style="display:flex;align-items:center;gap:8px"><span style="color:#00b4c8">◆</span><span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">CALCULIX · braket_v3.step</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#6e757c">2/6 adım tamam</span><span style="padding:7px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span></div>
+        </div>
+        <div style="display:flex;height:510px">
+          <div style="width:56px;border-right:1px solid #d8dcdf;background:#fbfcfc;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px">
+            <sc-for list="{{ railB }}" as="s" hint-placeholder-count="6">
+              <span style="width:40px;height:44px;border:1px solid {{ s.bd }};background:{{ s.bg }};color:{{ s.fg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:15px">{{ s.icon }}<span style="font-family:'Barlow Condensed',sans-serif;font-size:8px;letter-spacing:.06em">{{ s.n }}</span></span>
+            </sc-for>
+            <span style="margin-top:auto;width:40px;height:40px;border:1px solid #d8dcdf;background:#fff;color:#6e757c;display:flex;align-items:center;justify-content:center;font-size:14px">⟳</span>
+          </div>
+          <div style="width:320px;border-right:1px solid #d8dcdf;background:#fff;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+            <div style="padding:12px 14px;border-bottom:1px solid #e7eaec;display:flex;align-items:center;justify-content:space-between">
+              <div><div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.08em;color:#00b4c8">ADIM 2 / 6</div><div style="font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:600">MESH</div></div>
+              <div style="display:flex;gap:4px"><span style="width:24px;height:24px;border:1px solid #d8dcdf;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6e757c">‹</span><span style="width:24px;height:24px;border:1px solid #d8dcdf;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6e757c">›</span></div>
+            </div>
+            <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ fieldsB }}" as="f" hint-placeholder-count="3">
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6e757c"><span>{{ f.label }}</span><span style="padding:7px 9px;border:1px solid #d8dcdf;background:#fbfcfc;font-size:12px;color:#2a2e33">{{ f.value }}</span></label>
+              </sc-for>
+              <div style="display:flex;gap:6px"><span style="flex:1;padding:8px;text-align:center;border:1px solid #d8dcdf;background:#fbfcfc;font-size:12px;color:#6e757c">2D shell</span><span style="flex:1;padding:8px;text-align:center;border:1px solid #00b4c8;background:#00b4c8;color:#fff;font-size:12px">3D solid</span></div>
+              <span style="padding:10px;text-align:center;background:#00b4c8;color:#fff;font-size:12px;font-weight:600">Mesh üret</span>
+              <div style="padding:9px 10px;border:1px solid #e7eaec;background:#fbfcfc;font-size:11px;color:#2a2e33;line-height:1.5">48 210 düğüm · 26 884 eleman<br><span style="color:#6e757c">minSJ 0.42 · aspect 3.1</span></div>
+              <p style="margin:0;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">gelişmiş araçlar (kalite, free edge, NSET…) tek "Araçlar ▾" altında toplanır</p>
+              <span style="padding:8px 10px;border:1px dashed #b3b9be;font-size:12px;color:#6e757c">Araçlar ▾</span>
+            </div>
+          </div>
+          <div style="flex:1;background:#e9ecee;display:flex;align-items:center;justify-content:center;position:relative">
+            <span style="font-family:'Architects Daughter',cursive;font-size:15px;color:#8a9199">3B görünüm</span>
+            <div style="position:absolute;top:12px;left:12px;display:flex;gap:4px">
+              <sc-for list="{{ viewIcons }}" as="v" hint-placeholder-count="6">
+                <span style="width:28px;height:28px;border:1px solid #d8dcdf;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;font-size:12px;color:#6e757c">{{ v }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid #d8dcdf;background:#fff">
+          <div style="display:flex;gap:0;border-bottom:1px solid #e7eaec;background:#fbfcfc">
+            <sc-for list="{{ dockTabs }}" as="d" hint-placeholder-count="3">
+              <span style="padding:8px 16px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:{{ d.fg }};border-bottom:2px solid {{ d.bd }}">{{ d.label }}</span>
+            </sc-for>
+            <span style="margin-left:auto;padding:8px 12px;font-size:12px;color:#6e757c">▾</span>
+          </div>
+          <div style="display:flex;gap:0;padding:0">
+            <sc-for list="{{ historyB }}" as="h" hint-placeholder-count="4">
+              <div style="flex:1;padding:10px 14px;border-right:1px solid #e7eaec;display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:12px;font-weight:600;color:#2a2e33">{{ h.name }}</span>
+                <span style="font-size:10px;color:#6e757c">{{ h.sub }}</span>
+                <span style="font-size:11px;color:#00b4c8">{{ h.vm }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1c">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Tam ekran viewport · altta adım pili, sağda seçime göre açılan denetçi</div>
+      <div class="dv-card" style="width:1180px">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid #d8dcdf;background:#fbfcfc">
+          <span style="color:#00b4c8">◆</span>
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.08em">braket_v3.step</span>
+          <span style="flex:1;max-width:320px;padding:6px 10px;border:1px solid #d8dcdf;background:#fff;font-size:11px;color:#8a9199">⌘K  komut / parametre ara…</span>
+          <span style="margin-left:auto;font-size:11px;color:#6e757c">bitti · ccx · 42 s</span>
+          <span style="padding:7px 14px;background:#00b4c8;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em">▶ RUN</span>
+        </div>
+        <div style="position:relative;height:540px;background:#e9ecee">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-family:'Architects Daughter',cursive;font-size:16px;color:#8a9199">3B görünüm — tam ekran, panel yok</span></div>
+          <div style="position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:4px">
+            <sc-for list="{{ viewIcons }}" as="v" hint-placeholder-count="6">
+              <span style="width:30px;height:30px;border:1px solid #d8dcdf;background:rgba(255,255,255,.94);display:flex;align-items:center;justify-content:center;font-size:12px;color:#6e757c">{{ v }}</span>
+            </sc-for>
+          </div>
+          <div style="position:absolute;top:14px;right:14px;width:270px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf">
+            <div style="padding:9px 12px;border-bottom:1px solid #e7eaec;display:flex;align-items:center;justify-content:space-between">
+              <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:#00b4c8">SEÇİM DENETÇİSİ</span><span style="font-size:12px;color:#6e757c">⋯</span>
+            </div>
+            <div style="padding:12px;display:flex;flex-direction:column;gap:9px">
+              <div style="font-size:12px;color:#2a2e33">Yüzey <strong style="color:#d97757">#42</strong> · parça 1 · 842 düğüm</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <sc-for list="{{ quickActs }}" as="q" hint-placeholder-count="5">
+                  <span style="padding:5px 8px;border:1px solid #d8dcdf;background:#fbfcfc;font-size:11px;color:#2a2e33">{{ q }}</span>
+                </sc-for>
+              </div>
+              <div style="padding:9px 10px;border:1px solid #e7eaec;background:#fbfcfc;display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:10px;letter-spacing:.06em;color:#6e757c">AKTİF BC · FORCE</span>
+                <div style="display:flex;gap:5px"><span style="flex:1;padding:5px 7px;border:1px solid #d8dcdf;background:#fff;font-size:11px">Fx 0</span><span style="flex:1;padding:5px 7px;border:1px solid #d8dcdf;background:#fff;font-size:11px">Fy 0</span><span style="flex:1;padding:5px 7px;border:1px solid #d8dcdf;background:#fff;font-size:11px">Fz −1500</span></div>
+                <span style="padding:7px;text-align:center;background:#00b4c8;color:#fff;font-size:11px;font-weight:600">Uygula</span>
+              </div>
+              <p style="margin:0;font-family:'Architects Daughter',cursive;font-size:12px;color:#6e757c">panel neye tıkladığına göre değişir — 6 adım listesi yok</p>
+            </div>
+          </div>
+          <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0;background:rgba(255,255,255,.96);border:1px solid #d8dcdf">
+            <sc-for list="{{ pillC }}" as="p" hint-placeholder-count="6">
+              <span style="padding:10px 16px;border-right:1px solid #e7eaec;display:flex;align-items:center;gap:7px;background:{{ p.bg }}">
+                <span style="width:15px;height:15px;border-radius:50%;border:1px solid {{ p.dot }};background:{{ p.dotbg }}"></span>
+                <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.07em;color:{{ p.fg }}">{{ p.label }}</span>
+              </span>
+            </sc-for>
+            <span style="padding:10px 14px;font-size:11px;color:#6e757c">parametreler ▴</span>
+          </div>
+          <div style="position:absolute;bottom:16px;left:16px;display:flex;gap:6px">
+            <span style="padding:8px 11px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf;font-size:11px;color:#2a2e33">▤ Ağaç (3)</span>
+            <span style="padding:8px 11px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf;font-size:11px;color:#2a2e33">⟳ Geçmiş (3)</span>
+          </div>
+          <div style="position:absolute;bottom:16px;right:16px;padding:9px 12px;background:rgba(255,255,255,.96);border:1px solid #d8dcdf;display:flex;gap:16px">
+            <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+              <span style="display:flex;flex-direction:column;gap:2px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.07em;color:#6e757c">{{ m.label }}</span><span style="font-size:14px;font-weight:600;color:#00b4c8">{{ m.value }}</span></span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="dv-next">Sonraki adım için: "<a class="dv-oid" href="#1b">1b</a>'yi mevcut renklerle detaylandır" · "<a class="dv-oid" href="#1a">1a</a> ile <a class="dv-oid" href="#1c">1c</a>'yi birleştir" · "<a class="dv-oid" href="#1c">1c</a>'nin adım pili açıkken halini göster"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const on = { bg: "#e2f6f8", bd: "#00b4c8", fg: "#00b4c8" };
+    const off = { bg: "#fff", bd: "#d8dcdf", fg: "#6e757c" };
+    const tab = (label, active) => ({ label, fg: active ? "#00b4c8" : "#6e757c", bg: active ? "#e2f6f8" : "#fff", bd: active ? "#00b4c8" : "transparent" });
+    return {
+      tabs3a: [tab("GEOMETRY"), tab("MESH"), tab("MATERIAL"), tab("LOADS / BC"), tab("SOLVER"), tab("RESULTS", true)],
+      tree3a: [
+        { name: "braket_v3", meta: "3 parça", ind: "10px", w: "600" },
+        { name: "Parça #1", meta: "S235JR", ind: "22px", w: "400" },
+        { name: "Parça #2", meta: "AlMg3", ind: "22px", w: "400" },
+        { name: "Parça #3", meta: "S235JR", ind: "22px", w: "400" },
+        { name: "Mesh", meta: "tet · 4 mm", ind: "10px", w: "600" },
+        { name: "BC", meta: "3 tanım", ind: "10px", w: "600" },
+        { name: "Sonuç · Von Mises", meta: "184.2", ind: "22px", w: "400" },
+        { name: "Sonuç · Safety factor", meta: "1.28", ind: "22px", w: "400" },
+      ],
+      tabs3b: [tab("GEOMETRY"), tab("MESH"), tab("MATERIAL"), tab("ANALİZLER", true), tab("RESULTS")],
+      tree3b: [
+        { name: "braket_v3", meta: "3 parça", ind: "10px", w: "600", bg: "transparent" },
+        { name: "Geometri", meta: "128 yüzey", ind: "22px", w: "400", bg: "transparent" },
+        { name: "Mesh", meta: "tet · 4 mm", ind: "22px", w: "400", bg: "transparent" },
+        { name: "Malzeme", meta: "2 atama", ind: "22px", w: "400", bg: "transparent" },
+        { name: "Analizler", meta: "2", ind: "10px", w: "600", bg: "transparent" },
+        { name: "Durability 1", meta: "solved", ind: "22px", w: "600", bg: "transparent" },
+        { name: "BC · 3", meta: "", ind: "34px", w: "400", bg: "transparent" },
+        { name: "Sonuç · VM 184.2", meta: "", ind: "34px", w: "400", bg: "transparent" },
+        { name: "Modal 1", meta: "solved", ind: "22px", w: "600", bg: "#e2f6f8" },
+        { name: "Fixed · yüzey 12", meta: "", ind: "34px", w: "400", bg: "#e2f6f8" },
+        { name: "Sonuç · 6 mod", meta: "", ind: "34px", w: "400", bg: "#e2f6f8" },
+      ],
+      props3b: [
+        { k: "tip", v: "modal (frekans)" },
+        { k: "mod sayısı", v: "6" },
+        { k: "frekans aralığı", v: "0 – 2000 Hz" },
+        { k: "f₁", v: "214.3 Hz" },
+      ],
+      modes3b: [
+        { label: "1 · 214 Hz", bg: "#00b4c8", bd: "#00b4c8", fg: "#fff" },
+        { label: "2 · 388 Hz", bg: "rgba(255,255,255,.94)", bd: "#d8dcdf", fg: "#2a2e33" },
+        { label: "3 · 502 Hz", bg: "rgba(255,255,255,.94)", bd: "#d8dcdf", fg: "#2a2e33" },
+        { label: "4 · 771 Hz", bg: "rgba(255,255,255,.94)", bd: "#d8dcdf", fg: "#2a2e33" },
+        { label: "5 · 940 Hz", bg: "rgba(255,255,255,.94)", bd: "#d8dcdf", fg: "#2a2e33" },
+        { label: "6 · 1.2 kHz", bg: "rgba(255,255,255,.94)", bd: "#d8dcdf", fg: "#2a2e33" },
+      ],
+      tabs3c: [tab("GEOMETRY"), tab("MESH"), tab("MATERIAL"), tab("ANALİZ", true), tab("RESULTS")],
+      props3c: [
+        { k: "mod sayısı", v: "6" },
+        { k: "frekans aralığı", v: "0 – 2000 Hz" },
+        { k: "normalizasyon", v: "kütle" },
+        { k: "ön yük", v: "yok" },
+        { k: "çıktı", v: "mod şekli + f" },
+      ],
+      stagesA: [
+        { n: "1", label: "GEOMETRY", bg: "#e2f6f8", tick: "✓" },
+        { n: "2", label: "MESH", bg: "#fff", tick: "✓" },
+        { n: "3", label: "MATERIAL", bg: "#fff", tick: "✓" },
+        { n: "4", label: "LOADS / BC", bg: "#fff", tick: "" },
+        { n: "5", label: "MODAL", bg: "#fff", tick: "" },
+        { n: "6", label: "RESULTS", bg: "#fff", tick: "" },
+      ],
+      toolsA: ["Heal", "Fillet kaldır", "Midsurface", "Yüzey kopyala", "Gizle ▾", "Grup oluştur", "Geri al"],
+      treeA: [
+        { name: "braket_v3", meta: "3 parça" },
+        { name: "└ Parça #1", meta: "S235JR · solid" },
+        { name: "└ Parça #2", meta: "AlMg3 · shell 3 mm" },
+        { name: "└ Parça #3", meta: "malzeme yok" },
+        { name: "Gruplar", meta: "fixed_face, load_face" },
+        { name: "BC", meta: "3 tanım" },
+      ],
+      railA: [
+        { icon: "▤", ...on },
+        { icon: "◈", ...off },
+        { icon: "⛭", ...off },
+        { icon: "◑", ...off },
+        { icon: "⟳", ...off },
+        { icon: "≣", ...off },
+      ],
+      railB: [
+        { icon: "◧", n: "GEO", ...off },
+        { icon: "▦", n: "MESH", ...on },
+        { icon: "◈", n: "MAT", ...off },
+        { icon: "⇓", n: "BC", ...off },
+        { icon: "∿", n: "MODAL", ...off },
+        { icon: "◑", n: "RES", ...off },
+      ],
+      fieldsB: [
+        { label: "Eleman boyutu (mm)", value: "4" },
+        { label: "Eleman tipi", value: "tet ▾" },
+        { label: "Yerel yoğunlaştırma", value: "seçili yüzeyler: 2" },
+      ],
+      viewIcons: ["↺", "+", "−", "⤢", "▦", "◆"],
+      dockTabs: [
+        { label: "GEÇMİŞ", fg: "#00b4c8", bd: "#00b4c8" },
+        { label: "SONUÇ ÖZETİ", fg: "#6e757c", bd: "transparent" },
+        { label: "SOLVER LOG", fg: "#6e757c", bd: "transparent" },
+      ],
+      historyB: [
+        { name: "Run #3", sub: "3D · 13:42 · solved", vm: "VM 184.2 MPa" },
+        { name: "braket kalın", sub: "3D · dün · solved", vm: "VM 121.0 MPa" },
+        { name: "Run #1", sub: "2D · 06.09 · inp_only", vm: "—" },
+        { name: "+ karşılaştır", sub: "2 run seç", vm: "" },
+      ],
+      quickActs: ["Fixed", "Force", "Pressure", "Grup yap", "Gizle"],
+      pillC: [
+        { label: "GEOMETRY", bg: "#fff", fg: "#6e757c", dot: "#1c7a3d", dotbg: "#1c7a3d" },
+        { label: "MESH", bg: "#fff", fg: "#6e757c", dot: "#1c7a3d", dotbg: "#1c7a3d" },
+        { label: "MATERIAL", bg: "#fff", fg: "#6e757c", dot: "#1c7a3d", dotbg: "#1c7a3d" },
+        { label: "LOADS / BC", bg: "#e2f6f8", fg: "#00b4c8", dot: "#00b4c8", dotbg: "#fff" },
+        { label: "MODAL", bg: "#fff", fg: "#b3b9be", dot: "#d8dcdf", dotbg: "#fff" },
+        { label: "RESULTS", bg: "#fff", fg: "#b3b9be", dot: "#d8dcdf", dotbg: "#fff" },
+      ],
+      bars2: ["12px","18px","26px","31px","40px","46px","52px","49px","44px","38px","33px","29px","35px","41px","47px","53px","50px","43px","36px","30px","24px","20px","16px","13px","10px","8px"],
+      propsMesh: [
+        { k: "Eleman boyutu", v: "4 mm" },
+        { k: "Eleman tipi", v: "tet ▾" },
+        { k: "Boyut", v: "3D solid ▾" },
+        { k: "Düğüm / eleman", v: "48 210 / 26 884" },
+        { k: "minSJ", v: "0.42" },
+        { k: "Aspect", v: "3.1" },
+        { k: "Yerel yoğunlaştırma", v: "2 yüzey" },
+      ],
+      propsSel: [
+        { k: "Tip", v: "Yüzey" },
+        { k: "Kimlik", v: "#42" },
+        { k: "Parça", v: "1 · S235JR" },
+        { k: "Düğüm", v: "842" },
+        { k: "Alan", v: "1 240 mm²" },
+      ],
+      tabs2: [
+        { label: "GEOMETRY", bg: "#e2f6f8", fg: "#00b4c8", bd: "#00b4c8" },
+        { label: "MESH", bg: "#fff", fg: "#6e757c", bd: "transparent" },
+        { label: "MATERIAL", bg: "#fff", fg: "#6e757c", bd: "transparent" },
+        { label: "LOADS / BC", bg: "#fff", fg: "#6e757c", bd: "transparent" },
+        { label: "MODAL", bg: "#fff", fg: "#6e757c", bd: "transparent" },
+        { label: "RESULTS", bg: "#fff", fg: "#6e757c", bd: "transparent" },
+      ],
+      groups2: [
+        { caption: "DOSYA", items: ["Yükle", "Yeni case"] },
+        { caption: "ONARIM", items: ["Heal", "Fillet kaldır", "Midsurface"] },
+        { caption: "SEÇİM", items: ["Parça", "Yüzey", "Kenar", "Nokta"] },
+        { caption: "GÖRÜNÜM", items: ["Gizle", "Tel kafes", "Kenarlar", "Sığdır"] },
+        { caption: "GRUP", items: ["Grup oluştur", "Kopyala"] },
+      ],
+      tree2: [
+        { name: "braket_v3", meta: "proje", ind: "0px", w: "600" },
+        { name: "Model", meta: "", ind: "12px", w: "600" },
+        { name: "Geometri", meta: "3 parça", ind: "24px", w: "400" },
+        { name: "Malzemeler", meta: "2 atama", ind: "24px", w: "400" },
+        { name: "Mesh", meta: "tet · 4 mm", ind: "24px", w: "400" },
+        { name: "Statik analiz", meta: "", ind: "12px", w: "600" },
+        { name: "Fixed · yüzey 12", meta: "", ind: "24px", w: "400" },
+        { name: "Force · Fz −1500 N", meta: "", ind: "24px", w: "400" },
+        { name: "Pressure · 2.5 MPa", meta: "", ind: "24px", w: "400" },
+        { name: "Çözüm", meta: "solved", ind: "12px", w: "600" },
+        { name: "Von Mises", meta: "aktif", ind: "24px", w: "600" },
+        { name: "Deplasman", meta: "", ind: "24px", w: "400" },
+      ],
+      props2: [
+        { k: "KAPSAM", v: "", head: "1" },
+        { k: "Yöntem", v: "Geometri seçimi", head: "" },
+        { k: "Geometri", v: "Tüm gövdeler", head: "" },
+        { k: "TANIM", v: "", head: "1" },
+        { k: "Tip", v: "Von Mises gerilme", head: "" },
+        { k: "Birim", v: "MPa", head: "" },
+        { k: "SONUÇ", v: "", head: "1" },
+        { k: "Min", v: "0.056", head: "" },
+        { k: "Max", v: "288.83", head: "" },
+        { k: "Ortalama", v: "97.75", head: "" },
+      ],
+      dock2: [
+        { label: "GRAFİK", fg: "#00b4c8", bd: "#00b4c8" },
+        { label: "TABLO", fg: "#6e757c", bd: "transparent" },
+        { label: "SOLVER LOG", fg: "#6e757c", bd: "transparent" },
+        { label: "GEÇMİŞ", fg: "#6e757c", bd: "transparent" },
+      ],
+      metrics: [
+        { label: "VM MAX", value: "184.2" },
+        { label: "U MAX", value: "0.310" },
+        { label: "SF MIN", value: "1.28" },
+        { label: "SÜRE", value: "42 s" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

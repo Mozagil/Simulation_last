@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ConvergencePanel from "./ConvergencePanel";
 
@@ -123,9 +123,13 @@ describe("ConvergencePanel", () => {
     render(<ConvergencePanel />);
     await screen.findByLabelText(/L · Uzunluk/);
 
-    fireEvent.change(screen.getByLabelText(/Basamaklar/), {
-      target: { value: "1.2, 0.8, 0.4" },
-    });
+    // 8 varsayılan karo → 3'e indir: 5 sil, ilk üçünü yaz
+    for (let i = 0; i < 5; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Basamak 4 sil" }));
+    }
+    fireEvent.change(screen.getByLabelText("Basamak 1"), { target: { value: "1.2" } });
+    fireEvent.change(screen.getByLabelText("Basamak 2"), { target: { value: "0.8" } });
+    fireEvent.change(screen.getByLabelText("Basamak 3"), { target: { value: "0.4" } });
     fireEvent.click(screen.getByRole("button", { name: /Taramayı başlat/ }));
 
     await waitFor(() => expect(runConvergence).toHaveBeenCalled());
@@ -142,8 +146,15 @@ describe("ConvergencePanel", () => {
     render(<ConvergencePanel />);
     await screen.findByLabelText(/L · Uzunluk/);
 
-    fireEvent.change(screen.getByLabelText(/Basamak tipi/), { target: { value: "mm" } });
-    fireEvent.change(screen.getByLabelText(/Basamaklar/), { target: { value: "12, 6" } });
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Basamak tipi" })).getByRole("button", { name: "Mutlak mm" }),
+    );
+    // Varsayılan mm karoları 8 tane: 6'sını sil, kalan ikisini yaz
+    for (let i = 0; i < 6; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Basamak 3 sil" }));
+    }
+    fireEvent.change(screen.getByLabelText("Basamak 1"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Basamak 2"), { target: { value: "6" } });
     fireEvent.click(screen.getByRole("button", { name: /Taramayı başlat/ }));
 
     await waitFor(() => expect(runConvergence).toHaveBeenCalled());
@@ -155,26 +166,36 @@ describe("ConvergencePanel", () => {
   it("tek basamakla tarama başlatılamaz", async () => {
     render(<ConvergencePanel />);
     await screen.findByLabelText(/L · Uzunluk/);
-    fireEvent.change(screen.getByLabelText(/Basamaklar/), { target: { value: "0.8" } });
+    // İkiye kadar silinebilir; ikinciyi geçersiz yapınca tek geçerli basamak kalır
+    for (let i = 0; i < 6; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Basamak 3 sil" }));
+    }
+    expect(screen.getByRole("button", { name: "Basamak 2 sil" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Basamak 2"), { target: { value: "abc" } });
     expect(screen.getByRole("button", { name: /Taramayı başlat/ })).toBeDisabled();
     expect(screen.getByText(/En az 2 basamak gerekir/)).toBeInTheDocument();
   });
 
   it("sonuç tablosunu ve sapma sütunlarını gösterir", async () => {
     vi.mocked(runConvergence).mockResolvedValue(REPORT as never);
-    const { container } = render(<ConvergencePanel />);
+    render(<ConvergencePanel />);
     await screen.findByLabelText(/L · Uzunluk/);
     fireEvent.click(screen.getByRole("button", { name: /Taramayı başlat/ }));
 
     await screen.findByText(/2\/2 basamak çözüldü/);
+    // karolar: von Mises değeri ve Δ
+    const tiles = screen.getByTestId("step-tiles");
+    expect(tiles).toHaveTextContent("350 MPa");
+    expect(tiles).toHaveTextContent("-10.5%");
+    // kart altı: en ince / son iki basamak / analitiğe göre
+    expect(screen.getByText("23.7 mm")).toBeInTheDocument();
+    expect(screen.getByText("-0.1%")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tabloyu aç" }));
     expect(screen.getByText("23.990")).toBeInTheDocument();
     expect(screen.getByText("350.430")).toBeInTheDocument();
     expect(screen.getByText("-10.48%")).toBeInTheDocument();
-    // Analitik referans özet satırında görünür (şablonun kapalı form çözümü).
-    // Satır birden çok metin düğümüne bölündüğü için textContent üzerinden bakılır.
-    const summary = container.querySelector(".convergence-summary li");
-    expect(summary?.textContent).toContain("analitik 23.8");
-    expect(summary?.textContent).toContain("son iki basamak arası -0.14%");
+    // Analitik referans kart başlığında (şablonun kapalı form çözümü).
+    expect(screen.getByText("analitik 23.8")).toBeInTheDocument();
     // İki hedef = iki grafik.
     expect(screen.getAllByRole("img", { name: /yakınsama eğrisi/ })).toHaveLength(2);
   });
