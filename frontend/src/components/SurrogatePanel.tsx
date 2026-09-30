@@ -1124,8 +1124,14 @@ export default function SurrogatePanel({
               hi += span * 0.08;
             }
             const pct = (v: number) => `${Math.max(0, Math.min(1, (v - lo) / (hi - lo || 1))) * 100}%`;
+            // Çarpan yalnız pozitif büyüklüklerde anlamlı (uzunluk, kalınlık…);
+            // işaretli yükte (Fy = -500) oran yanıltır, gösterilmez.
             const factor =
-              outside && box ? (val < box.min ? box.min / (val || 1e-12) : val / (box.max || 1e-12)) : null;
+              outside && box && val > 0 && box.min > 0
+                ? val < box.min
+                  ? box.min / val
+                  : val / box.max
+                : null;
             return (
               <div className="sg-pred-row" key={row.key}>
                 <span className="doe-line-title">
