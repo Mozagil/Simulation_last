@@ -65,6 +65,8 @@ import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
+import MlTemplateChips from "./components/MlTemplateChips";
+import { useMlStudioStatus } from "./components/mlStudioStatus";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
 import {
@@ -484,6 +486,9 @@ function App() {
   const [workspace, setWorkspace] = useState<"workbench" | "ml">("workbench");
   // ML Stüdyo'da açık aşama (DOE → Veri seti → Yakınsama → Model → Tahmin).
   const [mlStage, setMlStage] = useState<MlStage>("doe");
+  // Stüdyonun şablonu: tezgahtaki seçimden başlar, üst şerit çipleriyle
+  // değişir; tezgaha geri yazmaz (geometri seçimi ayrı iş).
+  const [mlTemplateOverride, setMlTemplateOverride] = useState<string | null>(null);
   const [caseNameInput, setCaseNameInput] = useState("");
 
   /** Geometri ya da mesh mutasyona uğradığında (heal, defeature, offset,
@@ -771,6 +776,16 @@ function App() {
   const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
   // Geometri panelinde seçili şablon; DOE paneli bunu izliyor.
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  useEffect(() => {
+    setMlTemplateOverride(null);
+  }, [activeTemplateId]);
+  const studioTemplateId = mlTemplateOverride ?? activeTemplateId;
+  const mlStatus = useMlStudioStatus({
+    templateId: studioTemplateId,
+    runCount: runsHistory.length,
+    lastPredictionOod: surrogateMeta ? surrogateMeta.ood : null,
+    refreshKey: runsHistory.length + corpusRefreshKey,
+  });
 
   // Şablon şemalarını bir kez yükle: geçmişte parametreleri harfle göstermek için.
   useEffect(() => {
@@ -2582,9 +2597,12 @@ function App() {
             </span>
             <span className="app-brand-divider" />
             <span className="ml-studio-label">Şablon</span>
-            <span className="ml-studio-chip ml-studio-chip-active" data-testid="ml-template-chip">
-              {activeTemplateId ?? "seçilmedi — tezgahta şablon üret"}
-            </span>
+            <MlTemplateChips
+              templates={mlStatus.templates}
+              withData={mlStatus.templatesWithData}
+              activeId={studioTemplateId}
+              onSelect={setMlTemplateOverride}
+            />
           </div>
           <div className="toolbar-actions">
             <span className="ml-studio-tagline">Her şablon ayrı model · korpus tek şablondan eğitilir</span>
@@ -2599,24 +2617,17 @@ function App() {
           </div>
         </div>
 
-        <MlStudioNav
-          stage={mlStage}
-          onSelect={setMlStage}
-          meta={{
-            doe: activeTemplateId ?? undefined,
-            data: `${runsHistory.length} run`,
-          }}
-        />
+        <MlStudioNav stage={mlStage} onSelect={setMlStage} meta={mlStatus.meta} />
 
         <div className="ml-studio-body">
         {mlStage === "data" && (
           <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
         )}
-        {mlStage === "conv" && <ConvergencePanel templateId={activeTemplateId} />}
+        {mlStage === "conv" && <ConvergencePanel templateId={studioTemplateId} />}
         {mlStage === "doe" && (
           <DoePanel
             refreshKey={runsHistory.length}
-            templateId={activeTemplateId}
+            templateId={studioTemplateId}
             onOpenRun={(runId) => {
               setWorkspace("workbench");
               void handleOpenRunForEdit(runId);
@@ -2628,7 +2639,7 @@ function App() {
           view={mlStage === "model" ? "model" : "predict"}
           refreshKey={runsHistory.length}
           geometryId={geometryId}
-          templateId={activeTemplateId}
+          templateId={studioTemplateId}
           runId={solveResult?.run_id ?? null}
           onCorpusChange={handleCorpusChange}
           onPrediction={(result: SurrogatePredictResult) => {

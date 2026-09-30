@@ -1207,11 +1207,10 @@ p {
   color: var(--muted);
 }
 
-.ml-studio-chip-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--font-mono);
+.ml-template-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .ml-studio-tagline {
