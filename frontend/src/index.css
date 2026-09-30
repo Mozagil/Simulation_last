@@ -4123,6 +4123,297 @@ p {
   color: var(--muted);
 }
 
+/* ---- Veri seti aşaması (ML Studio 1a) ---- */
+.ds-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 20px;
+}
+
+.ds-sb {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ds-big {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-big-warn {
+  color: var(--doe-warn);
+}
+
+.ds-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--border);
+}
+
+.ds-stats > span {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+}
+
+.ds-stats > span:last-child {
+  border-right: 0;
+}
+
+.ds-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ds-legend-row > .ds-legend:first-of-type {
+  margin-left: auto;
+}
+
+.ds-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ds-sw {
+  width: 8px;
+  height: 8px;
+}
+
+.ds-sw-solved {
+  background: var(--accent);
+}
+
+.ds-sw-unsolved {
+  background: var(--accent-soft);
+}
+
+[data-theme="dark"] .ds-sw-unsolved {
+  background: rgba(125, 165, 205, 0.35);
+}
+
+.ds-sw-excluded {
+  background: var(--doe-warn);
+}
+
+.ds-trow {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 70px;
+  gap: 12px;
+  align-items: center;
+}
+
+.ds-tname {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-tbar {
+  display: flex;
+  height: 14px;
+  background: var(--surface-3);
+}
+
+.ds-tbar > span {
+  display: block;
+  height: 100%;
+}
+
+.ds-tnum {
+  font-size: 12.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-note {
+  line-height: 1.5;
+}
+
+.ds-ghost {
+  margin-left: auto;
+  height: 26px;
+  font-size: 11.5px;
+  padding: 0 8px;
+}
+
+.ds-freeze {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-freeze-input {
+  width: 160px;
+  text-align: left;
+}
+
+.ds-corpus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ds-corpus:hover {
+  border-color: var(--accent);
+}
+
+.ds-corpus.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ds-corpus-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ds-corpus-main strong {
+  font-size: 13px;
+}
+
+.ds-corpus-runs {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ds-right {
+  gap: 18px;
+}
+
+.ds-backup-badge {
+  margin-left: auto;
+}
+
+.ds-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--doe-warn);
+  background: var(--doe-warn-bg);
+  color: var(--doe-warn);
+  font-size: 12.5px;
+}
+
+.ds-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ds-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  color: var(--accent-hover);
+}
+
+.ds-card-primary {
+  border-color: var(--accent);
+}
+
+.ds-card-title {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+}
+
+.ds-card-desc {
+  line-height: 1.45;
+}
+
+.ds-card-btn {
+  margin-top: auto;
+  height: 34px;
+  font-size: 12.5px;
+}
+
+.ds-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ds-drop {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  border: 1.5px dashed var(--accent);
+  background: var(--surface-2);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ds-drop-over {
+  background: var(--accent-soft);
+}
+
+.ds-drop-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-drop-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  font-size: 12.5px;
+  padding: 0 16px;
+}
+
+.ds-logrow {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12.5px;
+}
+
+@media (max-width: 1200px) {
+  .ds-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---- DOE sağ pano: sonuç dağılımı ---- */
 :root {
   --doe-ok: #3a6248;

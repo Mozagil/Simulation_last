@@ -336,11 +336,16 @@ export interface CorpusAddResult {
   verdicts: CorpusRunVerdict[];
 }
 
-export async function freezeCorpus(name: string): Promise<{ manifest: { run_ids: number[] } }> {
-  const res = await fetch(
-    `${API_BASE_URL}/surrogate/corpus/freeze?name=${encodeURIComponent(name)}`,
-    { method: "POST" },
-  );
+export async function freezeCorpus(
+  name: string,
+  opts: { templateId?: string | null; nlgeom?: boolean } = {},
+): Promise<{ manifest: { run_ids: number[] } }> {
+  const q = new URLSearchParams({ name });
+  if (opts.templateId) q.set("template_id", opts.templateId);
+  if (opts.nlgeom) q.set("nlgeom", "true");
+  const res = await fetch(`${API_BASE_URL}/surrogate/corpus/freeze?${q.toString()}`, {
+    method: "POST",
+  });
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Set dondurulamadı"));
   return (await res.json()) as { manifest: { run_ids: number[] } };
 }

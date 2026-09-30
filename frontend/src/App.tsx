@@ -2621,7 +2621,11 @@ function App() {
 
         <div className="ml-studio-body">
         {mlStage === "data" && (
-          <DatasetPanel refreshKey={runsHistory.length} selectedRunIds={compareSelection} />
+          <DatasetPanel
+            refreshKey={runsHistory.length + corpusRefreshKey}
+            selectedRunIds={compareSelection}
+            templateId={studioTemplateId}
+          />
         )}
         {mlStage === "conv" && <ConvergencePanel templateId={studioTemplateId} />}
         {mlStage === "doe" && (
