@@ -831,6 +831,21 @@ kapalı, kararı sen verirsin); (c) o koşularda eleman boyutu değişsin.
 şablon başına ortak — DOE tek seferlik sunucu işi, kullanıcı DOE koşmaz);
 oran sınırı (rate limit); anahtar süresi.
 
+## 10. Şablon bölge etiketleri STEP yeniden okununca kayıyordu — ✅ kapandı (2026-09-30)
+
+Plastisite doğrulaması (dogbone, deplasman kontrolü) sırasında bulundu:
+`build_template` bölge yüzeylerini KURULUM anındaki OCC etiketleriyle
+döndürüyordu; mesh ve BC katmanı ise yazılan STEP'i yeniden okuyor ve
+kutu dışı geometrilerde (ekstrüde profil, fillet) etiketler değişiyor.
+Dogbone'da `tutulan_uc`=13 kurulumda uç yüzeyken yeniden okunan dosyada yan
+yüzeydi, `yuk_cekme`=7 fillet'ti → sabitleme/çekme ortaya gidiyor, σ 39 GPa,
+uçta dayatılan 0.3 mm'nin 0.03'ü görünüyordu. Kirişte numaralar tesadüfen
+aynı olduğu için hiçbir test yakalamamıştı. Düzeltme: STEP yazıldıktan sonra
+yeniden açılıp bölgeler o modelde bulunuyor; 16 şablonluk regresyon testi
+(`test_region_tags_match_reimported_step`). **Etki:** dogbone'un ürün
+akışındaki eski çözümleri (varsa) geçersiz; kiriş/plaka DOE'leri etkilenmedi
+(kutu geometri, etiket aynı).
+
 ## Ara maddeler — ana maddeler (6, 4) bitince yapılacak (2026-09-24)
 
 - [x] **Panel eğitim isteğine şablon gönderiyor — YAPILDI (2026-09-25).**

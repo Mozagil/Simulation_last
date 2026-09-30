@@ -293,3 +293,28 @@ def test_create_geometry_from_template_invalid_params_leaves_no_row():
         assert db.query(Geometry).count() == before
     finally:
         db.close()
+
+
+# --- bölge etiketleri yeniden okunan STEP ile tutarlı olmalı (2026-09-30) ----------
+
+
+@pytest.mark.parametrize("tid", sorted(TEMPLATES))
+def test_region_tags_match_reimported_step(tmp_path, tid):
+    """Kurulum etiketi ile STEP'i yeniden okuyan mesh/BC katmanının gördüğü
+    etiket aynı yüzey olmalı. Dogbone'da değildi: sabitleme yan yüzeye,
+    çekme fillet'e gidiyordu (σ 39 GPa)."""
+    import gmsh
+
+    t = get_template(tid)
+    p = t.parse_params({})
+    r = build_template(t, p, tmp_path / f"{tid}.step")
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(r.step_path))
+        for region in t.regions:
+            for tag in r.regions[region.name]:
+                bb = tuple(gmsh.model.getBoundingBox(region.dim, tag))
+                assert region.select(bb, p), f"{tid}.{region.name}: etiket {tag} yeniden okunan STEP'te bölgeye uymuyor"
+    finally:
+        gmsh.finalize()
