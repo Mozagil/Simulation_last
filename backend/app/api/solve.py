@@ -172,6 +172,7 @@ def _complete_ccx_job(run_id: int) -> None:
         # sonucu üzerine yazıp siliyordu → korpus 150 NLGEOM run'ını
         # "wrong_kinematics" diye atıyordu (DOE 6, 2026-09-27).
         scalars["_nlgeom"] = bool((run.scalars or {}).get("_nlgeom", False))
+        scalars["_plastic"] = bool((run.scalars or {}).get("_plastic", False))
         scalars, _note, _runout = _attach_fatigue_and_sf(
             scalars,
             assignments,
@@ -317,6 +318,16 @@ class SolveRequest(BaseModel):
     nlgeom: bool = Field(default=False)
     #: NLGEOM yükleme artım sayısı. Yakınsamıyorsa artırın.
     n_increments: int = Field(default=20, ge=1, le=500)
+    #: Plastisite (0.6.4): malzemeye `*PLASTIC` izotropik pekleşme tablosu
+    #: (kütüphanedeki Re/Rm/A%'den iki noktalı, bkz. materials/plasticity.py).
+    #: Açıkken yükleme artımlı (`n_increments`). Varsayılan kapalı — lineer
+    #: elastik sonuç eskisiyle birebir. Akma sonrası `max_von_mises` eğriye
+    #: yapışır; surrogate hedefi olarak anlamsızlaşır (`_plastic` bayrağı).
+    plasticity: bool = False
+    #: İsteğe bağlı açık pekleşme tablosu [[σ_true_MPa, ε_p], …] — verilirse
+    #: kütüphaneden türetilen iki noktalı eğri yerine TÜM malzemelere bu
+    #: uygulanır (tek malzemeli şablon akışı için). İlk satır ε_p = 0.
+    plastic_curve: list[list[float]] | None = None
     n_modes: int | None = Field(default=None, ge=1, le=200)
     freq_min: float | None = Field(default=None)
     freq_max: float | None = Field(default=None)
@@ -368,6 +379,25 @@ def solve_geometry(
         }
         for a in assignments
     ]
+    if body.plasticity:
+        from app.materials.plasticity import plastic_table_for_material
+
+        for m, a in zip(materials, assignments):
+            m["yield_strength"] = a.material.yield_strength
+            m["ultimate_strength"] = a.material.ultimate_strength
+            m["elongation"] = a.material.elongation
+            try:
+                m["plastic"] = plastic_table_for_material(
+                    {
+                        "yield_strength": a.material.yield_strength,
+                        "ultimate_strength": a.material.ultimate_strength,
+                        "elongation": a.material.elongation,
+                        "youngs_modulus": a.material.youngs_modulus,
+                        "plastic_curve": body.plastic_curve,
+                    }
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
     bcs = _bind_regions(db, geometry_id, bcs)
@@ -479,6 +509,7 @@ def solve_geometry(
                 "freq_max": body.freq_max,
                 "nlgeom": body.nlgeom,
                 "n_increments": body.n_increments,
+                "plastic": body.plasticity,
             }
         )
     except SolverError as exc:
@@ -502,7 +533,11 @@ def solve_geometry(
     # NLGEOM bayrağını kaydet: korpus ve karşılaştırma tarafı bir run'ın
     # lineer mi nonlineer mi çözüldüğünü bilmek zorunda — ikisi aynı
     # modele girmemeli.
-    run.scalars = {"_analysis_type": analysis_type, "_nlgeom": bool(body.nlgeom)}
+    run.scalars = {
+        "_analysis_type": analysis_type,
+        "_nlgeom": bool(body.nlgeom),
+        "_plastic": bool(body.plasticity),
+    }
     db.commit()
 
     result: dict[str, Any] = {
@@ -552,6 +587,7 @@ def solve_geometry(
                 scalars = dict(parsed.scalars or {})
                 scalars["_analysis_type"] = analysis_type
                 scalars["_nlgeom"] = bool(body.nlgeom)  # bkz. _complete_ccx_job
+                scalars["_plastic"] = bool(body.plasticity)
                 scalars, fatigue_note, fatigue_runout = _attach_fatigue_and_sf(
                     scalars,
                     assignments,

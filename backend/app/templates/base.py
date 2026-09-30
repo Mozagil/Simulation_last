@@ -242,6 +242,20 @@ def build_template(template: GeometryTemplate, params: BaseModel, step_path: Pat
         if not volumes:
             raise TemplateError(f"Şablon '{template.id}' hiç hacim üretmedi.")
 
+        step_path.parent.mkdir(parents=True, exist_ok=True)
+        gmsh.write(str(step_path))
+
+        # Bölgeler YAZILAN STEP yeniden okunarak bulunur. Kurulum anındaki
+        # OCC etiketleri STEP'e yazılıp geri okununca kutu dışı geometrilerde
+        # (ekstrüde profil, fillet) DEĞİŞİYOR — ölçüldü (2026-09-30): dogbone
+        # kurulumda `tutulan_uc`=13 iken yeniden okunan dosyada 13 yan yüzey,
+        # 7 fillet yüzeyiydi; sabitleme ve yük ortaya gidiyor, σ 39 GPa
+        # çıkıyordu. Mesh ve BC katmanı hep yeniden okunan dosyayı gördüğü
+        # için etiketler de o modelden alınmalı. Kutu şablonlarda (kiriş)
+        # numaralar tesadüfen aynıydı, hata görünmüyordu.
+        gmsh.clear()
+        gmsh.open(str(step_path))
+
         # Bölgeleri geometrik olarak bul (yüzey dim=2, kenar dim=1).
         regions: dict[str, list[int]] = {}
         for region in template.regions:
@@ -263,9 +277,6 @@ def build_template(template: GeometryTemplate, params: BaseModel, step_path: Pat
         bbox = tuple(gmsh.model.getBoundingBox(-1, -1))
         if not _bbox_is_finite(bbox):
             raise TemplateError(f"Şablon '{template.id}': sınır kutusu hesaplanamadı.")
-
-        step_path.parent.mkdir(parents=True, exist_ok=True)
-        gmsh.write(str(step_path))
     finally:
         gmsh.finalize()
         _gmsh_lock.release()

@@ -397,6 +397,17 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
     stress_increments: list[dict[int, tuple[float, ...]]] = []
     disp_increments: list[dict[int, tuple[float, ...]]] = []
     current_disp: dict[int, tuple[float, ...]] = {}
+    # Tepki kuvveti (FORC, *NODE FILE RF) ve eşdeğer plastik şekil değiştirme
+    # (PE, *EL FILE PEEQ) — 0.6.4: deplasman kontrollü yüklemede limit yük ve
+    # akma ölçüsü. Artım başına tutulur; PE elemandan düğüme ortalanır.
+    force_increments: list[dict[int, tuple[float, ...]]] = []
+    current_force: dict[int, tuple[float, ...]] = {}
+    peeq_increments: list[dict[int, float]] = []
+    peeq_sum: dict[int, float] = {}
+    peeq_count: dict[int, int] = {}
+    #: `100CL` satırındaki adım zamanı; DISP bloğuyla hizalı (artım başına bir).
+    times: list[float] = []
+    current_time: float | None = None
 
     in_node_block = False
     current_result_type: str | None = None
@@ -418,8 +429,32 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
         if not current_disp:
             return
         disp_increments.append(current_disp)
+        times.append(current_time if current_time is not None else float(len(disp_increments)))
         displacement = current_disp
         current_disp = {}
+
+    def flush_force() -> None:
+        nonlocal current_force
+        if current_force:
+            force_increments.append(current_force)
+        current_force = {}
+
+    def flush_peeq() -> None:
+        nonlocal peeq_sum, peeq_count
+        if peeq_sum:
+            peeq_increments.append({nid: v / peeq_count[nid] for nid, v in peeq_sum.items()})
+        peeq_sum = {}
+        peeq_count = {}
+
+    def flush_current() -> None:
+        if current_result_type == "DISP":
+            flush_disp()
+        elif current_result_type == "STRESS":
+            flush_stress()
+        elif current_result_type == "FORC":
+            flush_force()
+        elif current_result_type == "PE":
+            flush_peeq()
 
     for line in lines:
         stripped_start = line[:6] if len(line) >= 6 else line
@@ -427,23 +462,27 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
             in_node_block = True
             current_result_type = None
             continue
+        if line.startswith("  100CL"):
+            # "  100CL  101 <adım zamanı> <düğüm sayısı> …" — artım zamanı.
+            parts = line.split()
+            try:
+                current_time = float(parts[2])
+            except (IndexError, ValueError):
+                pass
+            continue
         if line.startswith(" -4"):
             # örn: " -4  DISP        4    1" / " -4  STRESS      6    1"
-            if current_result_type == "DISP":
-                flush_disp()
-            elif current_result_type == "STRESS":
-                flush_stress()
+            flush_current()
             rest = line[4:].split()
             current_result_type = rest[0] if rest else None
             in_node_block = False
             if current_result_type == "DISP":
                 current_disp = {}
+            elif current_result_type == "FORC":
+                current_force = {}
             continue
         if line.startswith(" -3"):
-            if current_result_type == "DISP":
-                flush_disp()
-            elif current_result_type == "STRESS":
-                flush_stress()
+            flush_current()
             in_node_block = False
             current_result_type = None
             continue
@@ -470,11 +509,19 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
                 for i in range(6):
                     acc[i] += vals[i]
                 stress_count[nid] = stress_count.get(nid, 0) + 1
+        elif current_result_type == "FORC":
+            parsed = _frd_data_line(line)
+            if parsed and len(parsed[1]) >= 3:
+                nid, vals = parsed
+                current_force[nid] = (vals[0], vals[1], vals[2])
+        elif current_result_type == "PE":
+            parsed = _frd_data_line(line)
+            if parsed and len(parsed[1]) >= 1:
+                nid, vals = parsed
+                peeq_sum[nid] = peeq_sum.get(nid, 0.0) + vals[0]
+                peeq_count[nid] = peeq_count.get(nid, 0) + 1
 
-    if current_result_type == "DISP":
-        flush_disp()
-    elif current_result_type == "STRESS":
-        flush_stress()
+    flush_current()
 
     # Son artım = tam yük (statik). Tek artımlı lineer çözümde aynı sonuç.
     stress: dict[int, tuple[float, ...]] = stress_increments[-1] if stress_increments else {}
@@ -485,6 +532,9 @@ def _parse_frd(frd_path: Path) -> dict[str, dict[int, tuple[float, ...]]]:
         "disp_increments": disp_increments,
         "stress_increments": stress_increments,
         "stress": stress,
+        "force_increments": force_increments,
+        "peeq_increments": peeq_increments,
+        "times": times,
     }
 
 
@@ -708,6 +758,8 @@ class CalculiXAdapter(SolverAdapter):
                 dimension,
                 nlgeom=bool(params.get("nlgeom")),
                 n_increments=int(params.get("n_increments") or 20),
+                plastic=bool(params.get("plastic")),
+                reaction=params.get("reaction"),
             )
         else:
             raise SolverError(
@@ -929,10 +981,67 @@ class CalculiXAdapter(SolverAdapter):
         if von_mises:
             critical_node_id = max(von_mises, key=lambda nid: von_mises[nid])
 
+        # --- 0.6.4: tepki kuvveti geçmişi, limit yük, eşdeğer plastik şekil değ.
+        # Tepki = SABİT düğümlerin (|u| ≈ 0, RF ≠ 0) RF toplamı; denge gereği
+        # uygulanan yükün (kuvvet ya da dayatılan deplasmanın tepkisinin)
+        # tersidir. Deplasman kontrolünde artımlar boyunca en büyüğü limit
+        # yüktür (yük kontrolü orada ıraksar). `limit_load_factor` = limit /
+        # ilk akma anındaki tepki (PEEQ > 0 olan ilk artım); plastisite yoksa yok.
+        extra_scalars: dict[str, float] = {}
+        reaction_history: list[dict[str, float]] = []
+        all_disp_incs = parsed.get("disp_increments") or []
+        force_incs = parsed.get("force_increments") or []
+        peeq_incs = parsed.get("peeq_increments") or []
+        times = parsed.get("times") or []
+        if force_incs and not is_modal:
+            n_hist = min(len(force_incs), len(all_disp_incs))
+            for i in range(n_hist):
+                fi, di = force_incs[i], all_disp_incs[i]
+                fx = fy = fz = 0.0
+                for nid, (rx, ry, rz) in fi.items():
+                    u = di.get(nid)
+                    if u is None or max(abs(u[0]), abs(u[1]), abs(u[2])) > 1e-9:
+                        continue  # dayatılan/serbest düğüm — sabit değil
+                    fx += rx
+                    fy += ry
+                    fz += rz
+                mags = [math.sqrt(a * a + b * b + c * c) for a, b, c in di.values()]
+                peeq_i = (
+                    max(peeq_incs[i].values(), default=0.0)
+                    if i < len(peeq_incs) and peeq_incs[i]
+                    else 0.0
+                )
+                reaction_history.append(
+                    {
+                        "time": float(times[i]) if i < len(times) else float(i + 1),
+                        "reaction_n": math.sqrt(fx * fx + fy * fy + fz * fz),
+                        "reaction_fx": fx,
+                        "reaction_fy": fy,
+                        "reaction_fz": fz,
+                        "max_displacement": max(mags, default=0.0),
+                        "max_peeq": peeq_i,
+                    }
+                )
+            if reaction_history:
+                last = reaction_history[-1]
+                extra_scalars["reaction_force_n"] = last["reaction_n"]
+                extra_scalars["reaction_fx"] = last["reaction_fx"]
+                extra_scalars["reaction_fy"] = last["reaction_fy"]
+                extra_scalars["reaction_fz"] = last["reaction_fz"]
+                peak = max(reaction_history, key=lambda h: h["reaction_n"])
+                extra_scalars["limit_load_n"] = peak["reaction_n"]
+                extra_scalars["limit_load_time"] = peak["time"]
+                onset = next((h for h in reaction_history if h["max_peeq"] > 1e-8), None)
+                if onset is not None and onset["reaction_n"] > 0:
+                    extra_scalars["limit_load_factor"] = peak["reaction_n"] / onset["reaction_n"]
+        if peeq_incs:
+            extra_scalars["max_peeq"] = max(peeq_incs[-1].values(), default=0.0)
+
         results_preview_path = job.work_dir / f"{job.artifact.path.stem}.results.json"
         results_preview_path.write_text(
             json.dumps(
                 {
+                    "reaction_history": reaction_history,
                     "node_ids": node_order,
                     "nodes": nodes_array,
                     "displacement_magnitude": disp_mag_array,
@@ -1021,9 +1130,13 @@ class CalculiXAdapter(SolverAdapter):
                     else {}
                 ),
                 **freq_scalars,
+                **extra_scalars,
                 **(parse_ccx_sta(job.work_dir / f"{job.artifact.path.stem}.sta") or {}),
             },
-            curves={"frequencies": frequencies} if frequencies else {},
+            curves={
+                **({"frequencies": frequencies} if frequencies else {}),
+                **({"reaction_history": reaction_history} if reaction_history else {}),
+            },
             raw_result_path=frd,
             results_preview_path=results_preview_path,
         )
@@ -1330,6 +1443,14 @@ def _materials_inp_block(
             lines.append(f"*MATERIAL, NAME={mname}")
             lines.append("*ELASTIC")
             lines.append(f"{E:.6e}, {nu:.6g}")
+            # Plastisite (0.6.4): `plastic` = [(σ_true_MPa, ε_p), …] izotropik
+            # pekleşme. Yalnız istekte plasticity açıkken snapshot'a konur;
+            # yoksa malzeme lineer elastik kalır (eski davranış birebir).
+            plastic = m.get("plastic") or []
+            if plastic:
+                lines.append("*PLASTIC")
+                for sigma_mpa, eps_p in plastic:
+                    lines.append(f"{float(sigma_mpa):.6g}, {float(eps_p):.6g}")
             lines.append("*DENSITY")
             lines.append(f"{rho:.6e}")
             seen_mat.add(mname)
@@ -1724,6 +1845,8 @@ def _static_step_block(
     dimension: int = 3,
     nlgeom: bool = False,
     n_increments: int = 20,
+    plastic: bool = False,
+    reaction: bool | None = None,
 ) -> str:
     """Statik çözüm adımı. `nlgeom=True` ise büyük deformasyon.
 
@@ -1741,23 +1864,33 @@ def _static_step_block(
     tek artım yeterli olduğu için o satır sade bırakılıyor.
     """
     out = _output_qualifier(dimension)
-    if nlgeom:
+    if nlgeom or plastic:
+        # Plastisite de artımlı yükleme ister: akma yolu yük geçmişine
+        # bağlıdır, tek artımda Newton iterasyonu ıraksar. NLGEOM anahtarı
+        # yalnız istenirse — plastik ama küçük deformasyon geçerli bir kombinasyon.
         inc = max(1, int(n_increments))
         first = 1.0 / inc
+        kw = ", NLGEOM" if nlgeom else ""
         head = (
-            f"*STEP, NLGEOM, INC={max(100, inc * 5)}\n"
+            f"*STEP{kw}, INC={max(100, inc * 5)}\n"
             f"*STATIC\n"
             f"{first:g}, 1.0, {first / 100:g}, {first:g}\n"
         )
     else:
         head = "*STEP\n*STATIC\n"
+    # Tepki kuvveti (RF) artımlı çözümlerde her zaman: deplasman kontrollü
+    # yüklemede limit yük buradan okunur. Lineer tek artımda .frd değişmesin
+    # diye varsayılan kapalı (`reaction=True` ile açılır). PEEQ yalnız plastik.
+    want_rf = (nlgeom or plastic) if reaction is None else reaction
+    node_out = "U, RF" if want_rf else "U"
+    el_out = "S, PEEQ" if plastic else "S"
     return (
         f"{head}"
         f"{step_bc_lines}"
         f"*NODE FILE{out}\n"
-        "U\n"
+        f"{node_out}\n"
         f"*EL FILE{out}\n"
-        "S\n"
+        f"{el_out}\n"
         "*END STEP\n"
     )
 

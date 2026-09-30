@@ -479,16 +479,38 @@ doğrusal olmayan bir problem ve buradaki altyapıyı kullanacak.
       (deplasman / karakteristik uzunluk oranı eşiği)
 
 **0.6.4 — Plastisite**
-- [ ] Malzeme modeline pekleşme eğrisi (`*PLASTIC`, izotropik; gerilme–plastik
-      şekil değiştirme tablosu). Mevcut `yield_strength` yalnız güvenlik
-      katsayısı için kullanılıyor, yeterli değil
-- [ ] Deplasman kontrollü yükleme seçeneği (limit yük civarında yük kontrolü
-      yakınsamaz; CalculiX'te Riks yok)
-- [ ] Yeni hedef skalerler: maks. eşdeğer plastik şekil değiştirme, limit yük
-      katsayısı. Plastik koşuda `max_von_mises` akma değerinde sabitlenir ve
-      surrogate hedefi olarak anlamsızlaşır
-- [ ] Doğrulama: tek eksenli çekme numunesi (dogbone) — akma sonrası davranış
-      malzeme eğrisiyle birebir eşleşmeli
+- [x] Malzeme modeline pekleşme eğrisi — `*PLASTIC` izotropik (2026-09-28).
+      Kütüphanede eğri yok; Re/Rm/A%'den iki noktalı gerçek gerilme/şekil
+      değiştirme (`materials/plasticity.py`; KABUL: A% tekdüze uzama yerine,
+      belgeli). `SolveRequest.plasticity` (varsayılan kapalı, .inp eskisiyle
+      birebir); açıkken artımlı yükleme (NLGEOM'suz da). Korpus `_plastic`
+      bayrağıyla ayırır. Ölçüm (kiriş 500×10×50 S235, es=8): 450 N fark yok,
+      650 N sehim +31%, 800 N çökme (535 mm), 1500 N çözücü 0.888 yükte durdu
+      (limit yük — yük kontrolü bulamaz, sıradaki madde). Testler:
+      `test_plasticity.py` (7, biri gerçek ccx)
+- [x] Deplasman kontrollü yükleme — 2026-09-30. `displacement` BC zaten vardı;
+      eksik olan tepki kuvvetiydi: artımlı çözümlerde `*NODE FILE U, RF`,
+      `.frd` FORC bloğu okunur, sabit düğümlerin RF toplamı = uygulanan yük.
+      Doğrulama: lineer kirişe −20 mm → tepki 418 N (3EIu/L³ = 420).
+      Plastik kirişe −120 mm → tepki platoya oturur: **limit yük 704 N**
+      (rijit-plastik 587, pekleşmeyle üstü); yük kontrolünde 1500 N'da
+      ıraksayan vaka deplasman kontrolünde çözülüyor. Geçmiş
+      `curves.reaction_history` (artım zamanı, tepki, u_max, PEEQ).
+- [x] Yeni hedef skalerler — `max_peeq` (`*EL FILE PEEQ`, düğüme ortalanmış),
+      `reaction_force_n/fx/fy/fz`, `limit_load_n`, `limit_load_time`,
+      `limit_load_factor` (= limit / ilk akma anındaki tepki; kiriş 1.68).
+      Surrogate hedefi olarak eklenmedi — plastik korpus yok (kapsam kararı).
+- [x] Doğrulama: dogbone +0.3 mm çekme, plastik: ölçü kesiti nominal gerilmesi
+      238.5 MPa (akma 235 + hafif pekleşme; elastik çözüm 538 MPa derdi).
+      **Bu doğrulama gerçek bir hata buldu:** şablon kurulumundaki OCC yüzey
+      etiketleri STEP yeniden okununca kutu dışı geometrilerde değişiyordu —
+      dogbone'da sabitleme yan yüzeye, çekme fillet'e gidiyor, σ 39 GPa
+      çıkıyordu (kirişte numaralar tesadüfen aynıydı). `build_template` artık
+      bölgeleri yazılan STEP'i yeniden okuyarak bulur; 16 şablonluk regresyon
+      testi (`test_region_tags_match_reimported_step`). Testler:
+      `test_plasticity.py` (13, dördü gerçek ccx)
+- [x] İsteğe bağlı açık pekleşme tablosu: `SolveRequest.plastic_curve`
+      ([[σ_true, ε_p], …]) kütüphane türetmesini geçersiz kılar; panelde giriş
 
 **0.6.5 — Surrogate tarafının uyarlanması**
 - [ ] Eğitim verisine yakınsama ve analiz tipi bayrakları; doğrusal ve

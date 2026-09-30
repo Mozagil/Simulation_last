@@ -44,6 +44,7 @@ import {
   setMaterialSnCurve,
   solveGeometry,
   isValidIncrements,
+  parsePlasticCurve,
   screenSolve,
   type SolveScreenResult,
   type Material,
@@ -801,6 +802,10 @@ function App() {
   const [shellThickness, setShellThickness] = useState("3");
   const [runCcx, setRunCcx] = useState(false);
   const [nlgeom, setNlgeom] = useState(false);
+  // Plastisite (ROADMAP 0.6.4): malzemeye *PLASTIC pekleşme tablosu.
+  const [plasticity, setPlasticity] = useState(false);
+  // İsteğe bağlı açık pekleşme tablosu (satır: "σ_MPa, ε_p"); boşsa kütüphaneden türetilir.
+  const [plasticCurveText, setPlasticCurveText] = useState("");
   const [nIncrements, setNIncrements] = useState("20");
   // Çözmeden önce lineer teoriye göre beklenen u/L — kullanıcı sormadan görür.
   const [screenInfo, setScreenInfo] = useState<SolveScreenResult | null>(null);
@@ -2213,6 +2218,16 @@ function App() {
     const dim = (meshResult.dimension === 3 ? 3 : 2) as 2 | 3;
     const bcs = bcList.map((b) => b.payload);
 
+    let plasticCurve: number[][] | null = null;
+    if (plasticity) {
+      try {
+        plasticCurve = parsePlasticCurve(plasticCurveText);
+      } catch (e) {
+        setErrorMessage(e instanceof Error ? e.message : "Pekleşme tablosu okunamadı.");
+        return;
+      }
+    }
+
     // Kullanıcı NLGEOM seçmediyse ön kontrol: lineer analitik u/L eşiği
     // aşıyorsa sor. Karar kullanıcının; ön kontrol yapılamıyorsa sorulmaz.
     let useNlgeom = nlgeom;
@@ -2258,7 +2273,9 @@ function App() {
         element_size: meshResult.element_size,
         element_scheme: meshResult.element_scheme,
         nlgeom: useNlgeom,
-        n_increments: useNlgeom ? parseInt(nIncrements, 10) : undefined,
+        plasticity,
+        plastic_curve: plasticCurve ?? undefined,
+        n_increments: useNlgeom || plasticity ? parseInt(nIncrements, 10) : undefined,
       });
       let finalResult = result;
       if (result.status === "pending") {
@@ -3483,19 +3500,54 @@ function App() {
             </div>
             {solveResult?.scalars && solveResult.scalars.max_von_mises !== undefined && (
               <div className="metric-cards-row">
-                {solveResult.scalars._nlgeom ? (
+                {solveResult.scalars._nlgeom || solveResult.scalars._plastic ? (
                   <div className="metric-card" data-testid="nlgeom-card">
-                    <span className="metric-card-label">KİNEMATİK</span>
-                    <span className="metric-card-value">NLGEOM</span>
+                    <span className="metric-card-label">
+                      {solveResult.scalars._plastic ? "MALZEME · KİNEMATİK" : "KİNEMATİK"}
+                    </span>
+                    <span className="metric-card-value">
+                      {[
+                        solveResult.scalars._plastic ? "PLASTİK" : null,
+                        solveResult.scalars._nlgeom ? "NLGEOM" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" + ")}
+                    </span>
                     <span className="metric-card-sub">
                       {solveResult.scalars._n_increments !== undefined
                         ? `${solveResult.scalars._n_increments.toFixed(0)} artım`
-                        : "büyük deformasyon"}
+                        : solveResult.scalars._plastic
+                          ? "akma sonrası pekleşme"
+                          : "büyük deformasyon"}
+                      {solveResult.scalars.max_peeq !== undefined
+                        ? ` · PEEQ maks ${(solveResult.scalars.max_peeq * 100).toFixed(2)}%`
+                        : ""}
                       {solveResult.scalars._n_cutbacks
                         ? ` · ${solveResult.scalars._n_cutbacks.toFixed(0)} cutback`
                         : ""}
                       {solveResult.scalars._solver_converged !== undefined
                         ? solveResult.scalars._solver_converged >= 1 ? " · yakınsadı" : " · YAKINSAMADI"
+                        : ""}
+                    </span>
+                  </div>
+                ) : null}
+                {solveResult.scalars.reaction_force_n !== undefined ? (
+                  <div className="metric-card" data-testid="reaction-card">
+                    <span className="metric-card-label">TEPKİ KUVVETİ</span>
+                    <span className="metric-card-value">
+                      {solveResult.scalars.reaction_force_n.toFixed(0)}
+                    </span>
+                    <span className="metric-card-sub">
+                      N (sabit uç, son artım)
+                      {/* Artım tepesi son artımdan büyükse yük platoya oturmuş: deplasman
+                          kontrolünde bu limit yüktür; yük kontrolünde ikisi aynı çıkar. */}
+                      {solveResult.scalars.limit_load_n !== undefined &&
+                      solveResult.scalars.limit_load_n > solveResult.scalars.reaction_force_n * 1.001
+                        ? ` · tepe ${solveResult.scalars.limit_load_n.toFixed(0)} N`
+                        : ""}
+                      {solveResult.scalars.limit_load_factor !== undefined &&
+                      solveResult.scalars.limit_load_factor > 1.001
+                        ? ` · ilk akmanın ${solveResult.scalars.limit_load_factor.toFixed(2)}×`
                         : ""}
                     </span>
                   </div>
@@ -4420,6 +4472,26 @@ function App() {
           />
           NLGEOM (büyük deformasyon)
         </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={plasticity}
+            onChange={(e) => setPlasticity(e.target.checked)}
+          />
+          Plastisite (akma sonrası pekleşme — malzemenin Re/Rm/A% değerlerinden)
+        </label>
+        {plasticity && (
+          <label className="mesh-field">
+            <span>Pekleşme tablosu (isteğe bağlı) — satır başına σ_gerçek MPa, ε_plastik</span>
+            <textarea
+              rows={3}
+              placeholder={"boş: kütüphaneden Re/Rm/A% ile türetilir\nörn.\n235, 0\n454, 0.229"}
+              value={plasticCurveText}
+              onChange={(e) => setPlasticCurveText(e.target.value)}
+              data-testid="plastic-curve-input"
+            />
+          </label>
+        )}
         {screenInfo?.has_analytic && screenInfo.u_over_l != null && (
           <p className="material-assign-hint" data-testid="solve-screen-line">
             Lineer teori: beklenen sehim {screenInfo.u_mm?.toFixed(2)} mm (L&apos;nin %
@@ -4429,7 +4501,7 @@ function App() {
             {screenInfo.large_deformation ? " · büyük deformasyon bandında" : ""}
           </p>
         )}
-        {nlgeom && (
+        {(nlgeom || plasticity) && (
           <label className="mesh-field">
             <span>Artım sayısı (1–500)</span>
             <input
@@ -4448,7 +4520,7 @@ function App() {
             busyAction !== null ||
             geometryId === null ||
             meshResult === null ||
-            (nlgeom && !isValidIncrements(nIncrements)) ||
+            ((nlgeom || plasticity) && !isValidIncrements(nIncrements)) ||
             !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
           }
           onClick={() => void handleSolve()}
