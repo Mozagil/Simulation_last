@@ -95,6 +95,19 @@ def test_l_bracket_holes_are_two_faces_and_remove_volume(tmp_path):
     assert n == 1 and v == pytest.approx(solid - holes, rel=1e-6)
 
 
+def test_l_bracket_analytic_includes_vertical_leg_rotation():
+    """Salt konsol formülü FEA'nın 2.7 katı altındaydı (ölçüldü); dik bacak dönmesi eklendi."""
+    t = get_template("l_bracket_bolted")
+    p = t.parse_params({})
+    out = t.analytic(p, AnalyticInput(force_n=F, youngs_modulus_pa=E_PA))
+    inertia = p.width * p.thickness**3 / 12
+    lv = p.vertical_height - p.edge_distance - p.thickness
+    expect = F * p.horizontal_length**2 / (210e3 * inertia) * (p.horizontal_length / 3 + lv)
+    assert out["max_displacement"] == pytest.approx(expect)
+    assert out["max_displacement"] > F * p.horizontal_length**3 / (3 * 210e3 * inertia) * 2.5
+    assert out["max_von_mises"] == pytest.approx(F * p.horizontal_length * p.thickness / 2 / inertia)
+
+
 def test_l_bracket_hole_constraints():
     t = get_template("l_bracket_bolted")
     with pytest.raises(ValidationError, match="edge_distance"):

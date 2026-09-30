@@ -696,8 +696,10 @@ hacimle doğrulandı (`test_templates_grup3.py`, 11 test), şemaları var:
 - [x] `stepped_shaft` — omuz filleti GEOMETRİDE; Kt Peterson/Norton
       üstel tablosu (D/d ara değer, r/d 0.01–0.3), sehim Castigliano;
       `characteristic_length = r` (fillet çözülsün diye).
-Hiçbiri ccx ile koşulmadı — DOE/yakınsama ayrı iş. Şablon başına
-mesh yakınsaması ölçülmeden eğitime alınmamalı (kök filleti dersi).
+ccx doğrulaması 2026-09-28'de yapıldı (bkz. ROADMAP 0.4.7): hepsi
+yakınsadı; L-braket analitiği dik bacak dönmesiyle düzeltildi (2.7× hata
+vardı); kademeli milde Kt referansı −15% (fillet çözünmüyor) → DOE öncesi
+yerel inceltme + yakınsama ölçümü şart. DOE/eğitim YOK (kapsam kararı).
 
 ---
 
