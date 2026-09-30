@@ -197,92 +197,109 @@ export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanel
   }
 
   return (
-    <div className="panel dataset-panel">
-      <span className="eyebrow">Faz 0.5 · DOE</span>
-      <h1>Toplu tarama</h1>
-      <p className="lead">
-        Seçtiğin şablondan Latin Hypercube örnekler. Her parametreyi sabit
-        tutabilir ya da aralık verip taratabilirsin. BC&apos;ler şablonun
-        varsayılanlarından gelir ve isimli bölgelere bağlanır; bir örnek
-        patlarsa diğerleri durmaz.
-      </p>
-      <p className="lead">
-        Kalite seti: seçili şablondan 200 örnek, tohum 2026. Aralıklar şablona
-        özgü ve sabittir — yukarıdaki form aralıkları kullanılmaz, çünkü set bir
-        referanstır: aynı tohum her zaman aynı 200 örneği üretir. Yük, şablonun
-        varsayılanının 0.4–1.6 katı. Kapalı form sapması ve kaba aykırı değerler
-        sayılır; mesh/BC önerisi yok. Kendi aralıklarını taramak için örnek
-        sayısını 200 yapıp &quot;DOE başlat&quot; kullan.
-      </p>
+    <div className="doe-stage" data-testid="doe-stage">
+      {/* ── Sol pano: tasarım uzayı (ML Studio 1a) ─────────────────── */}
+      <div className="doe-pane-l">
+        <div className="doe-phead">
+          <span className="doe-phead-title">
+            <span className="ml-k">0.5 · DOE</span>
+            <span className="ml-h">Tasarım uzayı</span>
+          </span>
+          <span className="doe-phead-hint">
+            Açık bant = taranan aralık
+            <br />▼ = şablon varsayılanı
+          </span>
+        </div>
+        <div className="doe-pane-body">
+          {form && (
+            <DoeSpecForm templates={templates} state={form} busy={busy} onChange={setForm} />
+          )}
+          <div className="doe-material-row">
+            <span className="ml-k">Malzeme</span>
+            <span className="doe-chips">
+              {materials.map((m) => {
+                const on = materialIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={on ? "doe-chip active" : "doe-chip"}
+                    aria-pressed={on}
+                    disabled={busy}
+                    onClick={() =>
+                      setMaterialIds((prev) =>
+                        on ? prev.filter((x) => x !== m.id) : [...prev, m.id],
+                      )
+                    }
+                  >
+                    {m.name}
+                  </button>
+                );
+              })}
+            </span>
+            <span className="doe-material-hint">örnekler dengeli dağılır</span>
+          </div>
+        </div>
+        <div className="doe-pfoot">
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Örnek</span>
+            <input
+              className="doe-num"
+              aria-label="Örnek sayısı"
+              value={form?.nSamples ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
+            />
+          </label>
+          <label className="doe-pfoot-field">
+            <span className="ml-k">Tohum</span>
+            <input
+              className="doe-num"
+              aria-label="Tohum"
+              value={form?.seed ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
+            />
+          </label>
+          <label className="doe-pfoot-check">
+            <input
+              type="checkbox"
+              checked={runSolver}
+              onChange={(e) => setRunSolver(e.target.checked)}
+            />
+            ccx çalıştır
+          </label>
+          <button
+            type="button"
+            className="doe-btn doe-btn-secondary"
+            disabled={busy}
+            title="Şablona özgü sabit aralıklarla 200 örnek, tohum 2026 — referans set; formdaki aralıklar kullanılmaz."
+            onClick={() => void handleQualitySet()}
+          >
+            {templateName ? `200'lük kalite seti · ${templateName}` : "200'lük kalite seti"}
+          </button>
+          <button
+            type="button"
+            className="doe-btn doe-btn-primary"
+            disabled={busy}
+            onClick={() => void handleStart()}
+          >
+            {busy ? "Çalışıyor…" : "DOE başlat"}
+          </button>
+        </div>
+      </div>
 
-      {form && (
-        <DoeSpecForm templates={templates} state={form} busy={busy} onChange={setForm} />
+      {/* ── Sağ pano: çalışmalar (dağılım görünümü sonraki adım) ───── */}
+      <div className="doe-pane-r">
+        <div className="doe-phead-r">
+          <span className="doe-phead-title">
+            <span className="ml-k">Son çalışmalar</span>
+            <span className="ml-h">Sonuçlar</span>
+          </span>
+        </div>
+      {studies.length === 0 && !error && (
+        <p className="doe-empty">Henüz DOE çalışması yok. Soldan aralıkları verip &quot;DOE başlat&quot; ile başla.</p>
       )}
-
-      <div className="doe-fields">
-        <fieldset className="doe-material-picker">
-          <legend>Malzeme</legend>
-          {materials.map((m) => (
-            <label key={m.id}>
-              <input
-                type="checkbox"
-                checked={materialIds.includes(m.id)}
-                disabled={busy}
-                onChange={(e) =>
-                  setMaterialIds((prev) =>
-                    e.target.checked ? [...prev, m.id] : prev.filter((x) => x !== m.id),
-                  )
-                }
-              />
-              {m.name}
-            </label>
-          ))}
-        </fieldset>
-        <label className="mesh-field">
-          <span>Örnek</span>
-          <input
-            value={form?.nSamples ?? ""}
-            disabled={busy || !form}
-            onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
-          />
-        </label>
-        <label className="mesh-field">
-          <span>Tohum</span>
-          <input
-            value={form?.seed ?? ""}
-            disabled={busy || !form}
-            onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
-          />
-        </label>
-        <label className="dataset-filter">
-          <input
-            type="checkbox"
-            checked={runSolver}
-            onChange={(e) => setRunSolver(e.target.checked)}
-          />
-          ccx çalıştır
-        </label>
-      </div>
-
-      <div className="doe-actions">
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={busy}
-          onClick={() => void handleStart()}
-        >
-          {busy ? "Çalışıyor…" : "DOE başlat"}
-        </button>
-        <button
-          type="button"
-          className="material-assign-button"
-          disabled={busy}
-          onClick={() => void handleQualitySet()}
-        >
-          {templateName ? `200'lük kalite seti · ${templateName}` : "200'lük kalite seti"}
-        </button>
-      </div>
-
       {studies.length > 0 && (
         <ul className="doe-study-list">
           {studies.slice(0, 5).map((st) => {
@@ -319,6 +336,7 @@ export default function DoePanel({ refreshKey, templateId, onOpenRun }: DoePanel
         </ul>
       )}
       {error && <p className="dataset-error">{error}</p>}
+      </div>
     </div>
   );
 }
