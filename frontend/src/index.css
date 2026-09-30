@@ -4770,61 +4770,327 @@ p {
 
 /* --- Mesh yakınsama paneli (0.6.1) --------------------------------------- */
 
-.convergence-steps {
-  min-width: 260px;
-  flex: 1 1 260px;
-}
-
 .convergence-results {
-  margin-top: 10px;
+  margin-top: 4px;
 }
 
-.convergence-charts {
+/* ---- Yakınsama aşaması (ML Studio 1a) ---- */
+.cv-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 8px 0 10px;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 20px;
 }
 
-.convergence-chart {
-  flex: 1 1 280px;
-  min-width: 240px;
-  margin: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+.cv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.convergence-chart figcaption {
-  font-family: var(--font-head);
+.cv-row-tight {
+  gap: 6px;
+}
+
+.cv-k-70 {
+  width: 70px;
+}
+
+.cv-template {
+  margin-left: auto;
+  max-width: 300px;
+  font: inherit;
   font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--ink);
 }
 
-.convergence-chart-unit {
-  color: var(--muted);
-  text-transform: none;
-  letter-spacing: 0;
+.cv-params {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.convergence-chart svg {
+.cv-param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+
+.cv-param-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cv-sym {
+  font-size: 16px;
+}
+
+.cv-param-val {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.cv-param-val input {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.cv-seg {
+  margin-left: auto;
+  height: 26px;
+}
+
+.cv-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--border);
+}
+
+.cv-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 2px 8px;
+  border-right: 1px solid var(--border);
+}
+
+.cv-step:last-child {
+  border-right: 0;
+}
+
+.cv-step-bad {
+  background: var(--doe-warn-bg);
+}
+
+.cv-step-box {
+  border: 1px solid var(--accent-hover);
+  background: var(--accent-soft);
+}
+
+.cv-step-input {
+  width: 100%;
+  max-width: 52px;
+  padding: 1px 2px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.cv-step-input:hover,
+.cv-step-input:focus-visible {
+  border-color: var(--border);
+  outline: none;
+}
+
+.cv-step-sub {
+  font-size: 10.5px;
+}
+
+.cv-step-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.cv-step:hover .cv-step-x:not(:disabled) {
+  opacity: 1;
+}
+
+.cv-axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+.cv-ghost {
+  margin-left: 0;
+}
+
+.cv-note {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.cv-run {
+  margin-left: auto;
+}
+
+.cv-right {
+  gap: 18px;
+}
+
+.cv-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cv-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+}
+
+.cv-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13.5px;
+}
+
+.cv-ref-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cv-ref-swatch {
+  width: 14px;
+  border-top: 1.5px dashed var(--doe-warn);
+}
+
+.cv-svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 190px;
 }
 
-.convergence-summary {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  font-size: 12px;
+.cv-frame {
+  fill: none;
+  stroke: var(--border);
+}
+
+.cv-ref {
+  stroke: var(--doe-warn);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.cv-line {
+  fill: none;
+  stroke: var(--accent-hover);
+  stroke-width: 2;
+}
+
+.cv-dot {
+  fill: var(--surface);
+  stroke: var(--accent-hover);
+  stroke-width: 1.5;
+}
+
+.cv-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.cv-stats > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cv-stats strong {
+  font-size: 16px;
+}
+
+.cv-tiles {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--border);
+}
+
+.cv-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.cv-tile:last-child {
+  border-right: 0;
+}
+
+.cv-tile-failed {
+  background: var(--doe-warn-bg);
+}
+
+.cv-tile-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+
+.cv-tile-val {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-tile-bar {
+  display: block;
+  height: 4px;
+  background: var(--surface-3);
+}
+
+.cv-tile-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.cv-tile-delta {
+  font-size: 11px;
+  font-weight: 600;
   color: var(--muted);
 }
 
-.convergence-summary strong {
-  color: var(--ink);
+@media (max-width: 1200px) {
+  .cv-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* İki satırlı başlık: ikinci satır ilkinin altına yapışsın, üstüne değil. */
