@@ -42,3 +42,4 @@ openapi.json
 # LinkedIn demo videosu (Playwright kaydı) — depoya girmez
 docs/demo/*.webm
 docs/demo/*.mp4
+docs/demo/shots/
