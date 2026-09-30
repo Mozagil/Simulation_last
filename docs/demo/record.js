@@ -9,6 +9,8 @@ const fs = require("fs");
 
 const OUT = path.join(__dirname, "out");
 fs.mkdirSync(OUT, { recursive: true });
+// Eski kayıtları temizle: her çalıştırma tek dosya bıraksın.
+for (const f of fs.readdirSync(OUT)) if (f.endsWith(".webm")) fs.unlinkSync(path.join(OUT, f));
 const URL = "http://localhost:5173/";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
