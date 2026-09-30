@@ -211,6 +211,32 @@ export async function screenSolve(
   return (await response.json()) as SolveScreenResult;
 }
 
+/**
+ * Pekleşme tablosu metni → [[σ, ε_p], …]. Satır başına "σ_MPa, ε_p" (virgül,
+ * noktalı virgül ya da boşlukla ayrılmış). Boş metin → null (kütüphane türetmesi).
+ * Geçersiz satır → Error (kullanıcıya gösterilir, sessizce atlanmaz).
+ */
+export function parsePlasticCurve(text: string): number[][] | null {
+  const rows = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (rows.length === 0) return null;
+  const out: number[][] = [];
+  for (const [i, line] of rows.entries()) {
+    const parts = line.split(/[,;\s]+/).filter(Boolean).map(Number);
+    if (parts.length !== 2 || parts.some((v) => !Number.isFinite(v))) {
+      throw new Error(`Pekleşme tablosu ${i + 1}. satır okunamadı: "${line}" (beklenen: σ_MPa, ε_p)`);
+    }
+    out.push([parts[0], parts[1]]);
+  }
+  if (out[0][1] !== 0) throw new Error("Pekleşme tablosu ε_p = 0 ile (akma noktası) başlamalı.");
+  for (let i = 1; i < out.length; i++) {
+    if (out[i][1] <= out[i - 1][1]) throw new Error("Pekleşme tablosunda ε_p artan olmalı.");
+  }
+  return out;
+}
+
 /** NLGEOM artım sayısı: backend `n_increments` sınırı 1–500 (tam sayı). */
 export function isValidIncrements(raw: string): boolean {
   const n = Number(raw);
@@ -237,6 +263,8 @@ export async function solveGeometry(
     n_increments?: number;
     /** Plastisite (`*PLASTIC`, Re/Rm/A%'den pekleşme). Kapalıyken alan gönderilmez. */
     plasticity?: boolean;
+    /** İsteğe bağlı açık pekleşme tablosu [[σ_true MPa, ε_p], …]; kütüphane türetmesini geçersiz kılar. */
+    plastic_curve?: number[][];
     wait?: boolean;
   },
 ): Promise<SolveResponse> {
@@ -257,6 +285,9 @@ export async function solveGeometry(
       ...(opts.freq_max != null ? { freq_max: opts.freq_max } : {}),
       ...(opts.nlgeom ? { nlgeom: true } : {}),
       ...(opts.plasticity ? { plasticity: true } : {}),
+      ...(opts.plasticity && opts.plastic_curve && opts.plastic_curve.length > 0
+        ? { plastic_curve: opts.plastic_curve }
+        : {}),
       // Artım sayısı NLGEOM ya da plastisite açıkken anlamlı.
       ...((opts.nlgeom || opts.plasticity) && opts.n_increments != null
         ? { n_increments: opts.n_increments }

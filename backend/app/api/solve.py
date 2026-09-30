@@ -324,6 +324,10 @@ class SolveRequest(BaseModel):
     #: elastik sonuç eskisiyle birebir. Akma sonrası `max_von_mises` eğriye
     #: yapışır; surrogate hedefi olarak anlamsızlaşır (`_plastic` bayrağı).
     plasticity: bool = False
+    #: İsteğe bağlı açık pekleşme tablosu [[σ_true_MPa, ε_p], …] — verilirse
+    #: kütüphaneden türetilen iki noktalı eğri yerine TÜM malzemelere bu
+    #: uygulanır (tek malzemeli şablon akışı için). İlk satır ε_p = 0.
+    plastic_curve: list[list[float]] | None = None
     n_modes: int | None = Field(default=None, ge=1, le=200)
     freq_min: float | None = Field(default=None)
     freq_max: float | None = Field(default=None)
@@ -382,14 +386,18 @@ def solve_geometry(
             m["yield_strength"] = a.material.yield_strength
             m["ultimate_strength"] = a.material.ultimate_strength
             m["elongation"] = a.material.elongation
-            m["plastic"] = plastic_table_for_material(
-                {
-                    "yield_strength": a.material.yield_strength,
-                    "ultimate_strength": a.material.ultimate_strength,
-                    "elongation": a.material.elongation,
-                    "youngs_modulus": a.material.youngs_modulus,
-                }
-            )
+            try:
+                m["plastic"] = plastic_table_for_material(
+                    {
+                        "yield_strength": a.material.yield_strength,
+                        "ultimate_strength": a.material.ultimate_strength,
+                        "elongation": a.material.elongation,
+                        "youngs_modulus": a.material.youngs_modulus,
+                        "plastic_curve": body.plastic_curve,
+                    }
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     bcs = [bc.model_dump(exclude_none=True) for bc in body.bcs]
     bcs = _bind_regions(db, geometry_id, bcs)
