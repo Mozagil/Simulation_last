@@ -801,6 +801,8 @@ function App() {
   const [shellThickness, setShellThickness] = useState("3");
   const [runCcx, setRunCcx] = useState(false);
   const [nlgeom, setNlgeom] = useState(false);
+  // Plastisite (ROADMAP 0.6.4): malzemeye *PLASTIC pekleşme tablosu.
+  const [plasticity, setPlasticity] = useState(false);
   const [nIncrements, setNIncrements] = useState("20");
   // Çözmeden önce lineer teoriye göre beklenen u/L — kullanıcı sormadan görür.
   const [screenInfo, setScreenInfo] = useState<SolveScreenResult | null>(null);
@@ -2258,7 +2260,8 @@ function App() {
         element_size: meshResult.element_size,
         element_scheme: meshResult.element_scheme,
         nlgeom: useNlgeom,
-        n_increments: useNlgeom ? parseInt(nIncrements, 10) : undefined,
+        plasticity,
+        n_increments: useNlgeom || plasticity ? parseInt(nIncrements, 10) : undefined,
       });
       let finalResult = result;
       if (result.status === "pending") {
@@ -3483,14 +3486,25 @@ function App() {
             </div>
             {solveResult?.scalars && solveResult.scalars.max_von_mises !== undefined && (
               <div className="metric-cards-row">
-                {solveResult.scalars._nlgeom ? (
+                {solveResult.scalars._nlgeom || solveResult.scalars._plastic ? (
                   <div className="metric-card" data-testid="nlgeom-card">
-                    <span className="metric-card-label">KİNEMATİK</span>
-                    <span className="metric-card-value">NLGEOM</span>
+                    <span className="metric-card-label">
+                      {solveResult.scalars._plastic ? "MALZEME · KİNEMATİK" : "KİNEMATİK"}
+                    </span>
+                    <span className="metric-card-value">
+                      {[
+                        solveResult.scalars._plastic ? "PLASTİK" : null,
+                        solveResult.scalars._nlgeom ? "NLGEOM" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" + ")}
+                    </span>
                     <span className="metric-card-sub">
                       {solveResult.scalars._n_increments !== undefined
                         ? `${solveResult.scalars._n_increments.toFixed(0)} artım`
-                        : "büyük deformasyon"}
+                        : solveResult.scalars._plastic
+                          ? "akma sonrası pekleşme"
+                          : "büyük deformasyon"}
                       {solveResult.scalars._n_cutbacks
                         ? ` · ${solveResult.scalars._n_cutbacks.toFixed(0)} cutback`
                         : ""}
@@ -4420,6 +4434,14 @@ function App() {
           />
           NLGEOM (büyük deformasyon)
         </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={plasticity}
+            onChange={(e) => setPlasticity(e.target.checked)}
+          />
+          Plastisite (akma sonrası pekleşme — malzemenin Re/Rm/A% değerlerinden)
+        </label>
         {screenInfo?.has_analytic && screenInfo.u_over_l != null && (
           <p className="material-assign-hint" data-testid="solve-screen-line">
             Lineer teori: beklenen sehim {screenInfo.u_mm?.toFixed(2)} mm (L&apos;nin %
@@ -4429,7 +4451,7 @@ function App() {
             {screenInfo.large_deformation ? " · büyük deformasyon bandında" : ""}
           </p>
         )}
-        {nlgeom && (
+        {(nlgeom || plasticity) && (
           <label className="mesh-field">
             <span>Artım sayısı (1–500)</span>
             <input
@@ -4448,7 +4470,7 @@ function App() {
             busyAction !== null ||
             geometryId === null ||
             meshResult === null ||
-            (nlgeom && !isValidIncrements(nIncrements)) ||
+            ((nlgeom || plasticity) && !isValidIncrements(nIncrements)) ||
             !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
           }
           onClick={() => void handleSolve()}

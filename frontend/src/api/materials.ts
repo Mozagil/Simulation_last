@@ -235,6 +235,8 @@ export async function solveGeometry(
     /** Büyük deformasyon (`*STEP, NLGEOM`). Kapalıyken alan hiç gönderilmez. */
     nlgeom?: boolean;
     n_increments?: number;
+    /** Plastisite (`*PLASTIC`, Re/Rm/A%'den pekleşme). Kapalıyken alan gönderilmez. */
+    plasticity?: boolean;
     wait?: boolean;
   },
 ): Promise<SolveResponse> {
@@ -254,7 +256,11 @@ export async function solveGeometry(
       ...(opts.freq_min != null ? { freq_min: opts.freq_min } : {}),
       ...(opts.freq_max != null ? { freq_max: opts.freq_max } : {}),
       ...(opts.nlgeom ? { nlgeom: true } : {}),
-      ...(opts.nlgeom && opts.n_increments != null ? { n_increments: opts.n_increments } : {}),
+      ...(opts.plasticity ? { plasticity: true } : {}),
+      // Artım sayısı NLGEOM ya da plastisite açıkken anlamlı.
+      ...((opts.nlgeom || opts.plasticity) && opts.n_increments != null
+        ? { n_increments: opts.n_increments }
+        : {}),
       ...(opts.wait === false ? { wait: false } : {}),
     }),
   });

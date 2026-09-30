@@ -31,6 +31,26 @@ describe("solveGeometry — NLGEOM (TODO 4)", () => {
   });
 });
 
+describe("solveGeometry — plastisite (ROADMAP 0.6.4)", () => {
+  it("açıkken plasticity ve artım sayısı gider; NLGEOM olmadan da", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await solveGeometry(1, { dimension: 3, bcs: [], plasticity: true, n_increments: 25 });
+    const body = lastBody(fetchMock);
+    expect(body).toMatchObject({ plasticity: true, n_increments: 25 });
+    expect(body).not.toHaveProperty("nlgeom");
+  });
+
+  it("kapalıyken alan hiç gönderilmez", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await solveGeometry(1, { dimension: 3, bcs: [], plasticity: false, n_increments: 25 });
+    const body = lastBody(fetchMock);
+    expect(body).not.toHaveProperty("plasticity");
+    expect(body).not.toHaveProperty("n_increments");
+  });
+});
+
 describe("screenSolve", () => {
   it("geometry_id ve bcs ile ön kontrol ister, sonucu döner", async () => {
     const { screenSolve } = await import("./materials");
