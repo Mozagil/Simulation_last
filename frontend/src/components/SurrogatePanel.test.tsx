@@ -16,6 +16,7 @@ vi.mock("../api/surrogate", () => ({
   predictFromParams: vi.fn(),
   predictSweep: vi.fn(),
   fetchValidation: vi.fn(),
+  fetchCorpusMembership: vi.fn(),
 }));
 
 import {
@@ -28,6 +29,7 @@ import {
   predictSurrogate,
   predictSweep,
   fetchValidation,
+  fetchCorpusMembership,
   trainScalarRf,
 } from "../api/surrogate";
 import { fetchTemplates } from "../api/templates";
@@ -361,10 +363,17 @@ describe("SurrogatePanel", () => {
     });
     render(<SurrogatePanel geometryId={1} runId={4} />);
     await screen.findByRole("button", { name: "Tahmin et" });
+    // Model hazır olunca doğrulama kendiliğinden gelir (korpus yok → son N run).
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(
+        expect.objectContaining({ templateId: "cantilever_beam", model: "hybrid", nlgeom: false, limit: 10, runIds: null }),
+      ),
+    );
+    const before = vi.mocked(fetchValidation).mock.calls.length;
     fireEvent.change(screen.getByLabelText("Ad içerir (isteğe bağlı)"), { target: { value: "OOD deneme" } });
     fireEvent.click(screen.getByRole("button", { name: "Tabloyu oluştur" }));
-    await waitFor(() => expect(fetchValidation).toHaveBeenCalledTimes(1));
-    expect(fetchValidation).toHaveBeenCalledWith(
+    await waitFor(() => expect(fetchValidation).toHaveBeenCalledTimes(before + 1));
+    expect(fetchValidation).toHaveBeenLastCalledWith(
       expect.objectContaining({ templateId: "cantilever_beam", model: "hybrid", nlgeom: false, limit: 10, nameContains: "OOD deneme" }),
     );
     const table = await screen.findByTestId("validate-result");
@@ -372,6 +381,37 @@ describe("SurrogatePanel", () => {
     expect(table).toHaveTextContent("uzay dışı: L");
     expect(table).toHaveTextContent("uzay dışı: T, Fy · u/L 0.14");
     expect(table).toHaveTextContent("%0.20");
+  });
+
+  it("doğrulama seçili korpusun run'larıyla sınırlanır; anahtar kapanınca son N run", async () => {
+    vi.mocked(fetchSurrogateStatus).mockResolvedValue({
+      scalar_rf: null, scalar_loglinear: null,
+      scalar_hybrid: { n_samples: 184, has_holdout: true, metrics: {} },
+      templates: {}, field_gnn: null,
+    });
+    vi.mocked(fetchCorpusList).mockResolvedValue([
+      { name: "kiris_v3", frozen_at: null, n_runs: 3, template_id: "cantilever_beam", n_manual: 1 },
+    ]);
+    vi.mocked(fetchCorpusMembership).mockResolvedValue({
+      name: "kiris_v3", frozen_at: null, auto: [11, 12], manual_pass: [13], manual_override: [],
+    });
+    vi.mocked(fetchValidation).mockResolvedValue({
+      template_id: "cantilever_beam", model_kind: "hybrid", nlgeom: false, n: 3, skipped: {},
+      mean_abs_dev_u_pct: 0.1, mean_abs_dev_vm_pct: 0.2, max_abs_dev_u_pct: 0.3, rows: [],
+    });
+    render(<SurrogatePanel view="model" />);
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(expect.objectContaining({ runIds: [11, 12, 13], limit: 3 })),
+    );
+    expect(fetchCorpusMembership).toHaveBeenCalledWith("kiris_v3");
+    expect(await screen.findByText(/3 çözülmüş run · kiris_v3/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Son N run")).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText("yalnız kiris_v3"));
+    await waitFor(() =>
+      expect(fetchValidation).toHaveBeenLastCalledWith(expect.objectContaining({ runIds: null, limit: 10 })),
+    );
+    expect(screen.getByLabelText("Son N run")).toBeEnabled();
   });
 
   it("GNN prototip olarak işaretli ve holdout u_max hatasını gösterir (TODO 1.3b)", async () => {

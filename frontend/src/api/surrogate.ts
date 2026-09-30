@@ -296,6 +296,8 @@ export async function fetchValidation(opts: {
   nlgeom?: boolean;
   limit?: number;
   nameContains?: string | null;
+  /** Yalnız bu run'lar (örn. bir korpusun üyeleri); boşsa şablonun tüm çözülmüş run'ları. */
+  runIds?: number[] | null;
 }): Promise<ValidationResult> {
   const q = query({
     template_id: opts.templateId,
@@ -303,6 +305,7 @@ export async function fetchValidation(opts: {
     nlgeom: opts.nlgeom ?? false,
     limit: opts.limit != null ? String(opts.limit) : undefined,
     name_contains: opts.nameContains,
+    run_ids: opts.runIds && opts.runIds.length > 0 ? opts.runIds.join(",") : undefined,
   });
   const res = await fetch(`${API_BASE_URL}/surrogate/validate${q}`);
   if (!res.ok) throw new SurrogateApiError(await parseError(res, "Doğrulama tablosu alınamadı"));

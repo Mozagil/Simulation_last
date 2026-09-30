@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
 import { numberFieldsFromSchema, type JsonSchema } from "../templates/schemaForm";
@@ -6,6 +6,7 @@ import {
   addRunsToCorpus,
   evaluateForCorpus,
   fetchCorpusList,
+  fetchCorpusMembership,
   fetchSurrogateStatus,
   freezeCorpus,
   predictFromParams,
@@ -112,6 +113,15 @@ export default function SurrogatePanel({
   const [validateName, setValidateName] = useState("");
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validateTarget, setValidateTarget] = useState<"u" | "vm">("vm");
+  // Doğrulamayı seçili korpusun run'larıyla sınırla: son N run'a plastisite /
+  // deplasman kontrolü koşuları da girer, lineer model onları tahmin edemez.
+  const [validateCorpusOnly, setValidateCorpusOnly] = useState(true);
+  // Otomatik (sessiz) doğrulamanın hatası; mesaj/hata alanına yazılmaz ki
+  // eğitim/dondurma bildirimlerini silmesin.
+  const [validateError, setValidateError] = useState<string | null>(null);
+  // Sessiz doğrulama `busy`'yi kilitlemez: eğitim/dondurma düğmeleri o
+  // sırada tıklanabilir kalmalı.
+  const [validating, setValidating] = useState(false);
   // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
   const [sweepParam, setSweepParam] = useState<string>("");
   const [sweepMin, setSweepMin] = useState("");
@@ -176,7 +186,6 @@ export default function SurrogatePanel({
   }, []);
   const [fz, setFz] = useState("0");
   const [compareOpenRun, setCompareOpenRun] = useState(true);
-  const autoPickedCorpus = useRef(false);
 
   const reload = useCallback(() => {
     fetchSurrogateStatus(predictTemplate, nlgeom)
@@ -185,13 +194,13 @@ export default function SurrogatePanel({
     fetchCorpusList()
       .then((list) => {
         setCorpora(list);
+        // Bu şablonun en yeni seti seçilir; başka şablonun seti seçiliyse
+        // düşer (eğitim/doğrulama şablon + korpus uyumu ister). Kullanıcının
+        // bu şablon için seçtiği set korunur.
         setCorpus((prev) => {
-          if (prev) return prev;
-          if (!autoPickedCorpus.current && list.length > 0) {
-            autoPickedCorpus.current = true;
-            return list[list.length - 1].name;
-          }
-          return prev;
+          const mine = list.filter((c) => !c.template_id || c.template_id === predictTemplate);
+          if (prev && mine.some((c) => c.name === prev)) return prev;
+          return mine.length > 0 ? mine[mine.length - 1].name : "";
         });
       })
       .catch(() => setCorpora([]));
@@ -364,31 +373,51 @@ export default function SurrogatePanel({
     };
   }
 
-  async function handleValidate() {
-    setBusy("validate");
-    setError(null);
-    setMessage(null);
+  /** Tahmin vs FEA. `silent`: aşama açılınca/ayar değişince kendiliğinden;
+   * mesaj alanına dokunmaz, hatayı kendi satırına yazar. */
+  async function handleValidate(silent = false) {
+    setValidating(true);
+    if (!silent) {
+      setBusy("validate");
+      setError(null);
+      setMessage(null);
+    }
+    setValidateError(null);
     setValidation(null);
     try {
+      const corpusOnly = validateCorpusOnly && corpus !== "";
+      let runIds: number[] | null = null;
+      if (corpusOnly) {
+        const m = await fetchCorpusMembership(corpus);
+        runIds = [...m.auto, ...m.manual_pass, ...m.manual_override];
+      }
       const result = await fetchValidation({
         templateId: predictTemplate,
         model: scalarModel,
         nlgeom,
-        limit: Math.max(1, Math.min(200, Math.round(num(validateLimit)) || 10)),
+        limit: corpusOnly
+          ? Math.max(1, Math.min(200, runIds?.length ?? 1))
+          : Math.max(1, Math.min(200, Math.round(num(validateLimit)) || 10)),
         nameContains: validateName.trim() || null,
+        runIds,
       });
       setValidation(result);
       const sk = Object.values(result.skipped).reduce((a, b) => a + b, 0);
-      setMessage(
-        `Tahmin vs FEA: ${result.n} run` +
-          (result.mean_abs_dev_u_pct != null ? ` · ort |sapma| u ${result.mean_abs_dev_u_pct.toFixed(2)}%` : "") +
-          (result.mean_abs_dev_vm_pct != null ? ` · σ ${result.mean_abs_dev_vm_pct.toFixed(2)}%` : "") +
-          (sk > 0 ? ` · ${sk} run atlandı (kinematik/özellik)` : ""),
-      );
+      if (!silent) {
+        setMessage(
+          `Tahmin vs FEA: ${result.n} run` +
+            (result.mean_abs_dev_u_pct != null ? ` · ort |sapma| u ${result.mean_abs_dev_u_pct.toFixed(2)}%` : "") +
+            (result.mean_abs_dev_vm_pct != null ? ` · σ ${result.mean_abs_dev_vm_pct.toFixed(2)}%` : "") +
+            (sk > 0 ? ` · ${sk} run atlandı (kinematik/özellik)` : ""),
+        );
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.");
+      const m = e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.";
+      if (silent) setValidateError(m);
+      else setError(m);
     } finally {
-      setBusy(null);
+      setValidating(false);
+      if (!silent) setBusy(null);
     }
   }
 
@@ -482,6 +511,20 @@ export default function SurrogatePanel({
     // byKind status'tan türetiliyor; bağımlılık olarak status yeterli.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  // Model aşaması açıkken doğrulama kendiliğinden gelir: ccx çalışmaz,
+  // ucuz. Model / şablon / kinematik / korpus değişince yenilenir; "Tabloyu
+  // oluştur" N ve ad süzgeciyle elle yenilemek için kalır.
+  const activeReady = active != null;
+  useEffect(() => {
+    if (view === "predict" || !activeReady) return;
+    // Açılışta durum, korpus ve model türü arka arkaya oturur; kısa bekleme
+    // ile tek istek atılır.
+    const t = window.setTimeout(() => void handleValidate(true), 150);
+    return () => window.clearTimeout(t);
+    // handleValidate her render'da yeni; tetikleyiciler açıkça listeleniyor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, activeReady, predictTemplate, nlgeom, scalarModel, corpus, validateCorpusOnly]);
 
   const predictFields = numberFieldsFromSchema(
     (templates.find((t) => t.id === predictTemplate)?.params_schema ?? {}) as JsonSchema,
@@ -808,7 +851,8 @@ export default function SurrogatePanel({
           <span className="doe-phead-title">
             <span className="ml-k">
               Doğrulama · {MODEL_LABEL[scalarModel]} ·{" "}
-              {validation ? `${validation.n} çözülmüş run` : "çözülmüş run'lar"} · ccx çalışmaz
+              {validation ? `${validation.n} çözülmüş run` : "çözülmüş run'lar"}
+              {validateCorpusOnly && corpus ? ` · ${corpus}` : ""} · ccx çalışmaz
             </span>
             <span className="ml-h">Tahmin ↔ FEA</span>
           </span>
@@ -832,12 +876,22 @@ export default function SurrogatePanel({
           </span>
         </div>
         <span className="cv-row">
+          <label className="doe-pfoot-check" title="Kapalıyken şablonun son N çözülmüş run'ı — plastisite/deplasman kontrolü koşuları da girer.">
+            <input
+              type="checkbox"
+              checked={validateCorpusOnly && corpus !== ""}
+              disabled={corpus === "" || busy !== null}
+              onChange={(e) => setValidateCorpusOnly(e.target.checked)}
+            />
+            {corpus ? `yalnız ${corpus}` : "korpus seçilmedi"}
+          </label>
           <label className="doe-pfoot-field">
             <span className="ml-k">Son N run</span>
             <input
               className="doe-num"
               aria-label="Son N run"
               value={validateLimit}
+              disabled={validateCorpusOnly && corpus !== ""}
               onChange={(e) => setValidateLimit(e.target.value)}
             />
           </label>
@@ -855,15 +909,18 @@ export default function SurrogatePanel({
             type="button"
             className="doe-btn doe-btn-primary sg-right"
             disabled={!canParamsPredict}
-            onClick={() => void handleValidate()}
+            onClick={() => void handleValidate(false)}
           >
-            {busy === "validate" ? "Hesaplanıyor…" : "Tabloyu oluştur"}
+            {validating ? "Hesaplanıyor…" : "Tabloyu oluştur"}
           </button>
         </span>
 
-        {!validation && (
+        {validateError && <p className="dataset-error">{validateError}</p>}
+        {!validation && !validateError && (
           <p className="doe-empty">
-            Çözülmüş run'larda aktif modelin sapması. Run'lar zaten çözülmüş; ccx çalışmaz.
+            {validating
+              ? "Hesaplanıyor — çözülmüş run'lar modelden geçiriliyor, ccx çalışmıyor."
+              : "Çözülmüş run'larda aktif modelin sapması. Run'lar zaten çözülmüş; ccx çalışmaz."}
           </p>
         )}
 
