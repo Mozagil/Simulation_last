@@ -38,3 +38,6 @@ uploads/
 # Elle yapilan API denemelerinin ciktilari (curl -o ...) — is degil, artik
 conv.json
 openapi.json
+
+# LinkedIn demo videosu (Playwright kaydı) — depoya girmez
+docs/demo/*.webm
