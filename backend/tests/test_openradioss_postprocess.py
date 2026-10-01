@@ -73,6 +73,22 @@ def test_parse_csv_rwall_and_hic(tmp_path):
     assert rs.scalars["hic36"] == pytest.approx(rs.scalars["hic15"], rel=1e-9)
 
 
+def test_parse_csv_unnamed_rwall_vars_by_group_order(tmp_path):
+    """Gerçek th_to_csv başlığı (job d4980c0e): duvar kuvvetleri 'var 25..27'."""
+    hdr = (
+        '"time","INTERNAL ENERGY","KINETIC ENERGY","part                 IE ",'
+        '"part                 KE ","barrier_th   1 barrier   var 25",'
+        '"barrier_th   1 barrier   var 26","barrier_th   1 barrier   var 27"'
+    )
+    rows = [hdr, "0,0,59.3,0,59.3,0,0,0", "1,20,39,20,39,-3.0,0,0", "2,40,19,40,19,-5.0,1.0,0"]
+    (tmp_path / "imp" ).mkdir()
+    (tmp_path / "imp" / "impT01.csv").write_text("\n".join(rows), encoding="utf-8")
+    rs = parse_openradioss_dir(tmp_path / "imp")
+    assert rs.scalars["rwall_force_max"] == pytest.approx((5.0**2 + 1.0**2) ** 0.5)
+    assert rs.scalars["kinetic_energy_max"] == pytest.approx(59.3)
+    assert "hic15" not in rs.scalars  # ivme istenmedi
+
+
 def test_parse_results_empty_without_th_files(tmp_path):
     params = {
         "output_dir": tmp_path,
@@ -90,4 +106,4 @@ def test_parse_results_empty_without_th_files(tmp_path):
     rs = adapter.parse_results(JobHandle(job_id="j", work_dir=tmp_path, artifact=art))
     assert rs.scalars == {}
     assert "/TH/RWALL/1" in art.path.read_text(encoding="utf-8")
-    assert "/TH/TITLE" in (tmp_path / "imp_0001.rad").read_text(encoding="utf-8")
+    assert "/TFILE" in (tmp_path / "imp_0001.rad").read_text(encoding="utf-8")

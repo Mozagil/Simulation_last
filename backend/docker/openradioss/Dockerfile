@@ -1,39 +1,37 @@
 # OpenRadioss çalıştırma imajı — yalnız crash (Faz 1) için.
 #
-# Neden: OpenRadioss resmi dağıtımı Linux ikilisi; Windows geliştirme
-# makinesinde Docker Desktop (WSL2) zaten var. Backend Windows'ta kalır,
-# starter/engine'i `docker run` ile bu imajda koşturur (bkz.
-# app/solvers/openradioss.py, OPENRADIOSS_DOCKER_IMAGE). Codespace'te aynı
-# ikili /opt/openradioss altına doğrudan kurulur; iki yol da aynı betiği
-# kullanır.
+# DURUM (2026-10-02): OpenRadioss'un resmi GitHub deposu ve sürüm paketleri
+# 29 Eylül – 1 Ekim 2026 arasında yayından kalktı (Siemens, Radioss'u
+# "Simcenter Radioss R&D Program" adlı kapalı/shared-source programa taşıdı).
+# Resmi indirme (.devcontainer/install_openradioss.sh) artık 404 verir.
 #
-# Derleme:  docker build -t simsurrogate-openradioss:latest-20260728 \
+# Elimizdeki kaynak: topluluk imajı dheiny/openradioss-solver:1.0.37
+# (Ağustos 2026). İçinde AGPL v3 ile dağıtılmış son açık ikililer var
+# (COPYRIGHT.md: "Copyright (C) 1986-2026 Altair Engineering Inc., GNU AGPL").
+# AGPL geri alınamaz; bu kopya sonsuza dek bu lisansla kullanılabilir. Yama
+# ve yeni sürüm GELMEYECEK — bkz. docs/LICENSING.md "OpenRadioss donmuş sürüm".
+#
+# Backend bu imajı `docker run` ile çağırır (OPENRADIOSS_DOCKER_IMAGE,
+# OPENRADIOSS_DOCKER_HOME; bkz. app/solvers/openradioss.py). Kurulum kökü bu
+# imajda /opt/OpenRadioss/OpenRadioss.
+#
+# Derleme:  docker build -t simsurrogate-openradioss:1.0.37 \
 #             -f backend/docker/openradioss/Dockerfile .
-# (bağlam = depo kökü; betik .devcontainer/ altından kopyalanır)
-FROM debian:bookworm-slim
+# Yedek:    docker save simsurrogate-openradioss:1.0.37 | gzip > vendor/openradioss-1.0.37.tar.gz
+#           (üçüncü kişi imajı Docker Hub'dan kalkarsa diye; vendor/ git'e girmez)
+FROM dheiny/openradioss-solver:1.0.37
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgfortran5 libgomp1 unzip ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-ARG OPENRADIOSS_RELEASE=latest-20260728
-ENV OPENRADIOSS_HOME=/opt/openradioss \
-    OPENRADIOSS_RELEASE=${OPENRADIOSS_RELEASE}
-COPY .devcontainer/install_openradioss.sh /tmp/install_openradioss.sh
-# Windows checkout'ta betik CRLF olabilir; bash satır sonundaki CR yüzünden
-# "command not found" (127) verir. CR'ler çalıştırmadan önce silinir.
-RUN tr -d '\r' < /tmp/install_openradioss.sh > /tmp/install_or.sh \
-    && chmod +x /tmp/install_or.sh && /tmp/install_or.sh \
-    && rm /tmp/install_openradioss.sh /tmp/install_or.sh \
-    && test -x /opt/openradioss/exec/starter_linux64_gf \
-    && test -x /opt/openradioss/exec/engine_linux64_gf
-
-# Resmi INSTALL.md: cfg dosyaları ve hm_reader/h3d kütüphaneleri.
-ENV RAD_CFG_PATH=/opt/openradioss/hm_cfg_files \
-    RAD_H3D_PATH=/opt/openradioss/extlib/h3d/lib/linux64 \
-    LD_LIBRARY_PATH=/opt/openradioss/extlib/hm_reader/linux64:/opt/openradioss/extlib/h3d/lib/linux64 \
+ENV OPENRADIOSS_HOME=/opt/OpenRadioss/OpenRadioss \
+    RAD_CFG_PATH=/opt/OpenRadioss/OpenRadioss/hm_cfg_files \
+    RAD_H3D_PATH=/opt/OpenRadioss/OpenRadioss/extlib/h3d/lib/linux64 \
+    LD_LIBRARY_PATH=/opt/OpenRadioss/OpenRadioss/extlib/hm_reader/linux64:/opt/OpenRadioss/OpenRadioss/extlib/h3d/lib/linux64 \
     OMP_STACKSIZE=400m \
-    OMP_NUM_THREADS=4 \
-    PATH=/opt/openradioss/exec:${PATH}
+    OMP_NUM_THREADS=4
 
+# Kurulum ve lisans bildirimi imajda mı? Eksikse build patlasın.
+RUN test -x /opt/OpenRadioss/OpenRadioss/exec/starter_linux64_gf \
+    && test -x /opt/OpenRadioss/OpenRadioss/exec/engine_linux64_gf \
+    && grep -q "Affero" /opt/OpenRadioss/OpenRadioss/COPYRIGHT.md
+
+ENTRYPOINT []
 WORKDIR /work

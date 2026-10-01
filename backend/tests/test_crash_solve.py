@@ -137,7 +137,7 @@ def test_crash_solve_plastic_writes_law2():
     assert body["cards"]["has_law1"] is False
     text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
     assert "/MAT/LAW2" in text
-    assert "        14         2         0         0         4" in text
+    assert "        14         2         0         0         0         4" in text
 
 
 @requires_db

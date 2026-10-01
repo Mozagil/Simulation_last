@@ -48,8 +48,9 @@ def test_build_input_writes_starter_and_engine(tmp_path):
     assert "/TH/RWALL/1" in starter
     assert "/MAT/LAW1/1" in starter
     assert "/RUN/imp/1" in engine
-    assert "/TH/TITLE" in engine
-    assert "/STOP" in engine
+    # /RUN veri satırı Tstop; /STOP (enerji hatası ölçütü) ve /TH/TITLE yazılmaz
+    assert "/STOP" not in engine and "/TH/TITLE" not in engine
+    assert "/TFILE" in engine
     assert "/ANIM/VECT/VEL" in engine
 
 
@@ -105,10 +106,15 @@ def test_build_input_plastic_writes_law2_and_type14_nip(tmp_path):
     assert "/MAT/LAW2/1" in starter
     assert "/MAT/LAW1/" not in starter
     assert "/PROP/TYPE14/1" in starter
-    assert "        14         2         0         0         4" in starter
+    # TYPE14 2022: Isolid Ismstr Iale Icpre Itetra10 Inpts …
+    assert "        14         2         0         0         0         4" in starter
     law2 = starter.split("/MAT/LAW2/1", 1)[1]
-    assert "150" in law2
+    # kg–mm–ms: b = 150 MPa → 0.15 GPa; n birimsiz
+    assert "0.15" in law2
     assert "0.22" in law2
+    # beş veri satırı (rho · E nu · a b n · c … · m …) — starter "card is
+    # missing" demesin
+    assert len([ln for ln in law2.split("/PROP", 1)[0].splitlines() if ln.strip()]) == 6
 
 
 def test_build_input_plastic_without_yield_is_solver_error(tmp_path):

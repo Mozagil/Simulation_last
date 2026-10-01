@@ -8,6 +8,8 @@ dokunulmaz. `submit` ikili yoksa SolverError.
 
 from __future__ import annotations
 
+import math
+
 import os
 import shutil
 import subprocess
@@ -65,13 +67,60 @@ DOCKER_HOME = Path("/opt/openradioss")
 DOCKER_WORK = "/work"
 
 
+def _docker_home() -> Path:
+    """İmaj içindeki OpenRadioss kökü. Resmi betik /opt/openradioss'a kurar;
+    topluluk imajları (örn. dheiny/openradioss-solver) /opt/OpenRadioss/OpenRadioss
+    kullanır — OPENRADIOSS_DOCKER_HOME ile verilir."""
+    raw = (os.environ.get("OPENRADIOSS_DOCKER_HOME") or "").strip()
+    return Path(raw) if raw else DOCKER_HOME
+
+
 def _docker_bins(image: str) -> OpenRadiossBins:
+    home = _docker_home()
     return OpenRadiossBins(
-        engine=DOCKER_HOME / "exec" / "engine_linux64_gf",
-        starter=DOCKER_HOME / "exec" / "starter_linux64_gf",
-        home=DOCKER_HOME,
+        engine=home / "exec" / "engine_linux64_gf",
+        starter=home / "exec" / "starter_linux64_gf",
+        home=home,
         docker_image=image,
     )
+
+
+def docker_env_args(home: Path) -> list[str]:
+    """Resmi INSTALL.md ortamı, imajın ENV'inden bağımsız olarak verilir:
+    hm_reader/h3d kütüphaneleri yoksa starter 'libhm_reader_linux64.so'
+    diye düşer (topluluk imajında görüldü)."""
+    h = home.as_posix()
+    return [
+        "-e", f"RAD_CFG_PATH={h}/hm_cfg_files",
+        "-e", f"RAD_H3D_PATH={h}/extlib/h3d/lib/linux64",
+        "-e", f"LD_LIBRARY_PATH={h}/extlib/hm_reader/linux64:{h}/extlib/h3d/lib/linux64",
+        "-e", "OMP_STACKSIZE=400m",
+        "-e", f"OMP_NUM_THREADS={os.environ.get('OPENRADIOSS_THREADS', '4')}",
+    ]
+
+
+def _docker_cli() -> str:
+    """docker CLI: DOCKER_CLI env → PATH → Docker Desktop'ın bilinen yolları.
+
+    Backend, geliştirme ortamında PATH'inde docker olmayan bir süreçten
+    başlatılabiliyor (WinError 2 görüldü); tam yol bulunursa o kullanılır.
+    """
+    explicit = (os.environ.get("DOCKER_CLI") or "").strip()
+    if explicit:
+        return explicit
+    found = shutil.which("docker")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA") or ""
+    for cand in (
+        Path(local) / "Programs" / "DockerDesktop" / "resources" / "bin" / "docker.exe",
+        Path(r"C:/Program Files/Docker/Docker/resources/bin/docker.exe"),
+        Path("/usr/local/bin/docker"),
+        Path("/usr/bin/docker"),
+    ):
+        if cand.is_file():
+            return str(cand)
+    return "docker"
 
 
 def launch_command(bins: OpenRadiossBins, exe: Path, args: list[str], work_dir: Path) -> list[str]:
@@ -84,9 +133,10 @@ def launch_command(bins: OpenRadiossBins, exe: Path, args: list[str], work_dir: 
     if bins.docker_image is None:
         return [str(exe), *args]
     return [
-        "docker", "run", "--rm",
+        _docker_cli(), "run", "--rm",
         "-v", f"{work_dir.resolve()}:{DOCKER_WORK}",
         "-w", DOCKER_WORK,
+        *docker_env_args(bins.home or DOCKER_HOME),
         bins.docker_image,
         exe.as_posix(), *args,
     ]
@@ -229,10 +279,17 @@ def _crash_model(params: dict[str, Any]) -> CrashModelParams:
         raise SolverError(f"OpenRadioss model geçersiz: {exc}") from exc
 
 
+# Birim sistemi kg–mm–ms (/BEGIN'de bildirilir): yoğunluk kg/mm³, gerilme ve
+# E GPa (= kg/(mm·ms²)), hız mm/ms (sayısal olarak m/s), kuvvet kN, enerji J,
+# ivme mm/ms². Post-process (openradioss_th) zamanı ms, ivmeyi mm/ms² sayar.
+PA_TO_GPA = 1e-9
+KGM3_TO_KGMM3 = 1e-9
+MPA_TO_GPA = 1e-3
+
+
 def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
-    # mm–ms–ton: rho [kg/m³] → ton/mm³ = kg/m³ * 1e-12
-    rho = float(mat.get("density") or 7850.0) * 1e-12
-    e_mpa = float(mat.get("youngs_modulus") or 210e9) / 1e6
+    rho = float(mat.get("density") or 7850.0) * KGM3_TO_KGMM3
+    e_gpa = float(mat.get("youngs_modulus") or 210e9) * PA_TO_GPA
     nu = float(mat.get("poisson_ratio") or 0.3)
     title = str(mat.get("name") or "STEEL")[:80]
     if model.law == "plastic":
@@ -244,25 +301,36 @@ def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
             raise SolverError(
                 "LAW2 için σy gerekli: malzeme yield_strength veya model.sigma_y_pa."
             )
-        a_mpa = float(sy) / 1e6
+        a_gpa = float(sy) * PA_TO_GPA
+        b_gpa = float(model.harden_b_mpa) * MPA_TO_GPA
+        # Radioss 2022 /MAT/LAW2 (Johnson–Cook), Iflag=0: beş veri satırı.
+        # Sıfır bırakılan alanlar Radioss varsayılanına düşer (EPS_p_max,
+        # SIG_max0, T_melt → 1e30; c, m → hız/sıcaklık etkisi kapalı).
         mat_lines = [
             "/MAT/LAW2/1",
             title,
             _f(rho),
-            f"{_f(e_mpa)}{_f(nu)}",
-            f"{_f(a_mpa)}{_f(model.harden_b_mpa)}{_f(model.harden_n)}",
+            f"{_f(e_gpa)}{_f(nu)}{_i(0)}{_i(0)}",
+            f"{_f(a_gpa)}{_f(b_gpa)}{_f(model.harden_n)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
         ]
     else:
         mat_lines = [
             "/MAT/LAW1/1",
             title,
             _f(rho),
-            f"{_f(e_mpa)}{_f(nu)}",
+            f"{_f(e_gpa)}{_f(nu)}",
         ]
+    # /PROP/TYPE14 (solid), Radioss 2022: Isolid Ismstr Iale Icpre Itetra10
+    # Inpts Itetra4 Iframe Dn · qa qb h Lambda Mu · dT_min Istrain Ihkt.
+    # Sıfırlar varsayılan (qa=1.1, qb=0.05, h=0 …).
     prop_lines = [
         "/PROP/TYPE14/1",
         "solid",
-        f"{_i(model.isolid)}{_i(model.ismstr)}{_i(0)}{_i(0)}{_i(model.nip)}",
+        f"{_i(model.isolid)}{_i(model.ismstr)}{_i(0)}{_i(0)}{_i(0)}{_i(model.nip)}{_i(0)}{_i(0)}{_f(0.0)}",
+        f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+        f"{_f(0.0)}{_i(0)}{_i(0)}",
     ]
     return mat_lines + prop_lines
 
@@ -288,18 +356,16 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     mat = mats[0]
     model = _crash_model(params)
 
+    # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
+    # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
+    units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
     lines: list[str] = [
         "#RADIOSS STARTER",
         "/BEGIN",
         title,
         f"{_i(2022)}{_i(0)}",
-        f"{_i(0)}{_i(0)}",
-        "/UNIT/LENGTH",
-        "mm",
-        "/UNIT/MASS",
-        "kg",
-        "/UNIT/TIME",
-        "ms",
+        units,
+        units,
         "/NODE",
     ]
     for n in nodes:
@@ -343,36 +409,43 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
     vz = float(vel.get("vz") or 0.0)
+    # /INIVEL/TRA: Vx Vy Vz grnd_ID skew_ID tek satırda (mm/ms).
     lines.extend(
         [
             "/INIVEL/TRA/1",
             "impact_vel",
-            f"{_f(vx)}{_f(vy)}{_f(vz)}",
-            f"{_i(1)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}",
+            f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(1)}{_i(0)}",
         ]
     )
+    # /RWALL/PLANE: node_ID=0 sabit duvar; Slide=0 kayan; grnd_ID1 = tüm
+    # düğümler. Düzlem M noktası ve M1 = M + n (normal, ikincil düğümlerin
+    # bulunduğu tarafa bakar). d = 0, sürtünme yok (Slide=0).
     px, py, pz = (float(v) for v in wall["point"])
     nx, ny, nz = (float(v) for v in wall["normal"])
+    norm = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    nx, ny, nz = nx / norm, ny / norm, nz / norm
+    th_vars = lambda names: "".join(f"{n:>10}" for n in names)  # noqa: E731
     lines.extend(
         [
             "/RWALL/PLANE/1",
             "barrier",
-            f"{_i(1)}{_i(0)}{_i(0)}{_i(0)}",
+            f"{_i(0)}{_i(0)}{_i(1)}{_i(0)}",
+            f"{_f(0.0)}{'':>20}{_f(0.0)}",
             f"{_f(px)}{_f(py)}{_f(pz)}",
-            f"{_f(nx)}{_f(ny)}{_f(nz)}",
+            f"{_f(px + nx)}{_f(py + ny)}{_f(pz + nz)}",
             "/TH/RWALL/1",
             "barrier_th",
-            "FNX FNY FNZ",
+            th_vars(["FNX", "FNY", "FNZ"]),
             _i(1),
             "/TH/PART/1",
             "part_energy",
-            "IE KE",
+            th_vars(["IE", "KE"]),
             _i(1),
         ]
     )
     th_nodes = params.get("th_nodes") or []
     if th_nodes:
-        lines.extend(["/TH/NODE/1", "hic_nodes", "ACCX ACCY ACCZ"])
+        lines.extend(["/TH/NODE/1", "hic_nodes", th_vars(["ACCX", "ACCY", "ACCZ"])])
         ids_th = [int(n) for n in th_nodes]
         for i in range(0, len(ids_th), 10):
             chunk = ids_th[i : i + 10]
@@ -387,24 +460,53 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
 def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
     t_end = float(params.get("t_end_ms") or 10.0)
     dt_anim = float(params.get("dt_anim_ms") or max(t_end / 20.0, 0.1))
+    # /RUN veri satırı = Tstop (ms). /TFILE: zaman geçmişi yazma aralığı.
+    dt_th = max(t_end / 200.0, 1e-3)
     lines = [
         "#RADIOSS ENGINE",
         f"/RUN/{run_name}/1",
-        _i(10000),
+        _f(t_end),
         "/TFILE",
-        _f(dt_anim),
+        _f(dt_th),
         "/ANIM/DT",
         f"{_f(0.0)}{_f(dt_anim)}",
         "/ANIM/VECT/DISP",
         "/ANIM/VECT/VEL",
         "/ANIM/ELEM/ENER",
-        "/TH/TITLE",
-        "/STOP",
-        f"{_f(t_end)}{_f(0.0)}{_f(0.0)}",
         "/END",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _convert_time_history(bins: OpenRadiossBins, work_dir: Path, starter_name: str) -> str:
+    """`<job>T01` ikilisini th_to_csv ile CSV'ye çevirir (en iyi çaba).
+
+    Post-process (`openradioss_th.parse_openradioss_dir`) duvar kuvvetini,
+    parça enerjilerini ve HIC için düğüm ivmelerini `*T01*.csv`'den okur; .out
+    yalnız toplam enerjileri verir. Converter yoksa ya da patlarsa çözüm
+    yine "bitti" sayılır, log'a not düşülür.
+    """
+    job = starter_name.replace("_0000.rad", "")
+    t01 = work_dir / f"{job}T01"
+    if not t01.is_file():
+        return "=== th_to_csv === T01 yok, atlandı"
+    conv = bins.engine.with_name("th_to_csv_linux64_gf")
+    if bins.docker_image is None and not conv.is_file():
+        return f"=== th_to_csv === converter yok ({conv}), atlandı"
+    try:
+        proc = subprocess.run(
+            launch_command(bins, conv, [t01.name], work_dir),
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+            env=runtime_env(bins),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:  # pragma: no cover — ortam
+        return f"=== th_to_csv === çalıştırılamadı: {exc}"
+    return "=== th_to_csv ===\n" + (proc.stdout or "") + (proc.stderr or "")
 
 
 class OpenRadiossAdapter(SolverAdapter):
@@ -530,6 +632,8 @@ class OpenRadiossAdapter(SolverAdapter):
                 chunks.append("=== engine ===\n" + "".join(engine_out))
         except subprocess.TimeoutExpired as exc:
             raise SolverError("OpenRadioss zaman aşımı (600s).") from exc
+        if exit_code == 0:
+            chunks.append(_convert_time_history(bins, work_dir, artifact.path.name))
         log_path.write_text("\n".join(chunks), encoding="utf-8")
         handle = JobHandle(job_id=job_id, work_dir=work_dir, artifact=artifact)
         handle._exit_code = exit_code  # type: ignore[attr-defined]
@@ -538,7 +642,7 @@ class OpenRadiossAdapter(SolverAdapter):
             raise SolverError(f"OpenRadioss hata (exit={exit_code}). Log: {log_path}")
         return handle
 
-    def poll_status(self, job: JobHandle) -> JobStatus:
+    def poll_status(self, job: JobHandle) -> JobStatus:  # noqa: D102 — arayüz
         exit_code = getattr(job, "_exit_code", None)
         if exit_code is None:
             return JobStatus(state="pending")

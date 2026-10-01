@@ -164,6 +164,16 @@ def parse_energy_listing(path: Path) -> dict[str, list[float]]:
     return out
 
 
+def _th_group_columns(headers: list[str], titles: tuple[str, ...]) -> list[str]:
+    """Başlığında TH grubu adı geçen ve 'var N' ile biten sütunlar, dosya sırasıyla."""
+    out: list[str] = []
+    for h in headers:
+        hl = h.lower()
+        if any(t in hl for t in titles) and re.search(r"\bvar\s*\d+\s*$", hl):
+            out.append(h)
+    return out
+
+
 def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     headers = list(cols.keys())
     t_key = None
@@ -192,6 +202,17 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     packed["ax"] = col("ACCX", "AX")
     packed["ay"] = col("ACCY", "AY")
     packed["az"] = col("ACCZ", "AZ")
+    # th_to_csv (OpenRadioss 2026 ikilisi) TH/RWALL ve TH/NODE değişkenlerini
+    # adsız yazıyor: "<grup başlığı> <id> <nesne başlığı> var 25". Deck'teki
+    # sıra (FNX FNY FNZ · ACCX ACCY ACCZ) korunur; grup başlığından sırayla al.
+    if not (packed["fnx"] and packed["fny"] and packed["fnz"]):
+        g = _th_group_columns(headers, ("barrier_th", "rwall"))
+        if len(g) >= 3:
+            packed["fnx"], packed["fny"], packed["fnz"] = (cols[g[0]], cols[g[1]], cols[g[2]])
+    if not (packed["ax"] and packed["ay"] and packed["az"]):
+        g = _th_group_columns(headers, ("hic_nodes",))
+        if len(g) >= 3:
+            packed["ax"], packed["ay"], packed["az"] = (cols[g[0]], cols[g[1]], cols[g[2]])
     packed["acc_g"] = None
     for h in headers:
         nh = _norm_header(h)
