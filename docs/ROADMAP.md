@@ -568,18 +568,57 @@ bölüm/sekmedir, mevcut Results/surrogate görünümünün üzerine yazılmaz.
 Regresyon: mevcut `test_reference_validation`, `test_templates*`,
 `test_doe`, `test_surrogate` yeşil kalmak zorundadır.
 
-- [ ] `OpenRadiossAdapter` implementasyonu (Radioss block format `.rad`/`.inc` üretimi)
-- [ ] Gmsh mesh export'unun OpenRadioss formatına uyarlanması (Faz 0'da kullanılan aynı
-      mesh modülü, farklı export fonksiyonu)
-- [ ] Barrier geometrisinin/parametrelerinin (hız, açı, rigid wall pozisyonu) girdi
-      dosyasına yazılması
-- [ ] OpenRadioss'un sunucuya kurulumu (derleme ya da hazır binary — lisans sunucusu
-      GEREKMEZ, bkz. `LICENSING.md`)
-- [ ] Post-process: OpenRadioss çıktı dosyalarından (time-history, animasyon) enerji,
-      reaksiyon kuvveti, ivme, HIC gibi metriklerin çıkarılması
-- [ ] Job süresi uzun olduğu için websocket tabanlı ilerleme takibi
-- [ ] Aynı frontend/backend/db şeması Faz 0'dan yeniden kullanılır — sadece solver
-      adaptörü, mesh export fonksiyonu ve post-process modülü eklenir
+**Solver kaynağı (2026-10-02):** OpenRadioss'un resmi GitHub deposu ve sürüm
+paketleri 29 Eyl – 1 Eki 2026 arasında yayından kalktı; Siemens projeyi
+başvuruyla girilen "Simcenter Radioss R&D Program" (shared source) altına aldı.
+Elimizdeki çözücü, Docker Hub'daki `dheiny/openradioss-solver:1.0.37` imajındaki
+son AGPL ikilileri (Copyright 1986-2026 Altair, AGPL v3; `latest-20260728`
+derlemesi). AGPL geri alınamaz → kullanım meşru; yama/yeni sürüm GELMEYECEK.
+Yerel geliştirme: Docker Desktop (WSL2) imajı `simsurrogate-openradioss:1.0.37`,
+`OPENRADIOSS_DOCKER_IMAGE` ile çağrılır (bkz. `backend/docker/openradioss/`).
+Codespace kurulum betiği artık çalışmaz; imaj Docker Hub'dan kalkarsa diye
+`docker save` yedeği alınmalı (vendor/, git dışı). Ayrıntı: `LICENSING.md`.
+
+**1.1–1.9 (2026-09-14, tek PR):** adaptör, mesh export, bariyer, post-process
+(enerji, duvar kuvveti, HIC), websocket ilerleme, Crash sekmesi — hepsi
+solver'sız (mock) yazıldı.
+- [x] `OpenRadiossAdapter` (Radioss block format `.rad` starter + engine)
+- [x] Gmsh mesh export → `/NODE`, `/TETRA4`
+- [x] Bariyer parametreleri (hız, açı, rijit duvar) → `/INIVEL`, `/RWALL/PLANE`
+- [x] OpenRadioss kurulumu — Docker imajı (yukarıdaki not)
+- [x] Post-process: time-history → enerji, duvar kuvveti, ivme/HIC
+- [x] Websocket ilerleme takibi
+- [x] Frontend/backend ortak; crash ayrı sekme, ayrı iş klasörü (`uploads/crash/<uuid>`)
+
+**1.10 — İlk gerçek çözüm: kutu profil + rijit duvar** — ✅ 2026-10-02
+Kutu profil 300×50×40, t = 3 mm, S235 (LAW2, Isolid 1), 3 mm tet (80 686
+düğüm), 10 m/s, 4 ms. Starter 0 hata / 0 uyarı; engine normal bitiş,
+79 825 çevrim, 333 s (4 iş parçacığı). Enerji dengesi hatası %0.4;
+KE_max 59.3 J = ½·1.187 kg·(10 m/s)²; IE_son 55.4 J; duvar tepe kuvveti
+14.5 kN. İş: `uploads/crash/d4980c0e…`. İlk starter listing'i 10 hata
+veriyordu — deck 2022 kart düzenine çekildi (birimler /BEGIN'de, LAW2 beş
+satır, TYPE14 üç satır, INIVEL tek satır, RWALL M/M1, TH alanları 10 kar.);
+birim sistemi kg–mm–ms (GPa, kN, J, mm/ms). `th_to_csv` engine sonrası
+çağrılıyor; TH/RWALL sütunları adsız ("var 25…") geldiği için grup
+başlığından sırayla eşleniyor.
+- [ ] Crash sekmesinden aynı koşu (UI doğrulaması), çıktı dosyası temizliği
+      (A001…A021 + .rst ≈ 95 MB/iş; anim sayısı/rst saklama ayarı)
+- [ ] Zaman adımı / kütle ölçekleme kartı (`/DT/NODA/CST`) — 80k düğüm
+      tet'te 5e-5 ms adım, 4 ms için 5.5 dk; kabukla (1.13) düşer
+
+**Sonraki mikro-adımlar (her biri ayrı onay):**
+- 1.11 Çok parçalı deck: parça başına `/PART` + `/PROP` + `/MAT`; mesh
+  export'un parça kimliğini taşıması
+- 1.12 Temas: `/SURF` + `/INTER/TYPE7` (master yüzey – slave düğüm) ve
+  TYPE24; UI'da kontakt kartı (parçalar, sürtünme, gap, rijitlik)
+- 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i
+  solid yerine kabukla
+- 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,
+  `/FAIL`; parça başına kart editörü
+- 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
+- 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
+- 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
+  kodundan bağımsız)
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 

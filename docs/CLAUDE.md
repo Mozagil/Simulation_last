@@ -27,9 +27,12 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.9 tamam.** Durability (CalculiX
-`/solve`, modal, DOE, surrogate) paralel ve dokunulmaz. Faz 1 devam eder
-(1.10: deforme plaka + `/INTER` onayla). `/solve` refaktör edilmez.
+**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.10 tamam (2026-10-02): ilk gerçek
+çözüm, kutu profil + rijit duvar.** Durability (CalculiX `/solve`, modal, DOE,
+surrogate) paralel ve dokunulmaz. Sırada 1.11 çok parçalı deck → 1.12 temas
+(`/INTER/TYPE7`, master/slave) → 1.13 kabuk; crash vekil modeli 1.17'de
+(`docs/ROADMAP.md`). `/solve` refaktör edilmez. Solver: OpenRadioss artık
+kapalı kaynak; donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 
 **Operasyonel borç:** 200'lük kalite seti Codespace'te ccx ile koşulacak.
 
