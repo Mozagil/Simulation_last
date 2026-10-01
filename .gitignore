@@ -43,3 +43,4 @@ openapi.json
 docs/demo/*.webm
 docs/demo/*.mp4
 docs/demo/shots/
+docs/demo/thumb-*.png
