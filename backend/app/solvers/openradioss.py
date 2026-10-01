@@ -56,6 +56,40 @@ class OpenRadiossBins:
     engine: Path
     starter: Path | None
     home: Path | None
+    # Doluysa ikililer bu Docker imajının İÇİNDE çalışır (Windows geliştirme
+    # makinesi: Docker Desktop/WSL2). Yollar imaj içi yollardır.
+    docker_image: str | None = None
+
+
+DOCKER_HOME = Path("/opt/openradioss")
+DOCKER_WORK = "/work"
+
+
+def _docker_bins(image: str) -> OpenRadiossBins:
+    return OpenRadiossBins(
+        engine=DOCKER_HOME / "exec" / "engine_linux64_gf",
+        starter=DOCKER_HOME / "exec" / "starter_linux64_gf",
+        home=DOCKER_HOME,
+        docker_image=image,
+    )
+
+
+def launch_command(bins: OpenRadiossBins, exe: Path, args: list[str], work_dir: Path) -> list[str]:
+    """Çalıştırılacak komut: doğrudan ikili ya da `docker run` sarmalı.
+
+    Docker'da iş klasörü /work olarak bağlanır; ikili zaten cwd=/work ile
+    koşar, dosya adları göreli verildiği için iki yolda da aynı deck çalışır.
+    Ortam (RAD_CFG_PATH, LD_LIBRARY_PATH) imajın ENV'inde.
+    """
+    if bins.docker_image is None:
+        return [str(exe), *args]
+    return [
+        "docker", "run", "--rm",
+        "-v", f"{work_dir.resolve()}:{DOCKER_WORK}",
+        "-w", DOCKER_WORK,
+        bins.docker_image,
+        exe.as_posix(), *args,
+    ]
 
 
 def _install_roots() -> list[Path]:
@@ -97,7 +131,14 @@ def _home_from_engine(engine: Path) -> Path | None:
 
 
 def resolve_openradioss() -> OpenRadiossBins | None:
-    """OPENRADIOSS_PATH dosya veya kök dizin olabilir (resmi değişken = kök)."""
+    """OPENRADIOSS_PATH dosya veya kök dizin olabilir (resmi değişken = kök).
+
+    OPENRADIOSS_DOCKER_IMAGE doluysa yerel ikili aranmaz: starter/engine o
+    imajda koşar (Windows geliştirme makinesi; bkz. backend/docker/openradioss).
+    """
+    image = (os.environ.get("OPENRADIOSS_DOCKER_IMAGE") or "").strip()
+    if image:
+        return _docker_bins(image)
     explicit = os.environ.get("OPENRADIOSS_PATH")
     engine: Path | None = None
     if explicit:
@@ -433,7 +474,7 @@ class OpenRadiossAdapter(SolverAdapter):
         chunks: list[str] = []
         try:
             starter_proc = subprocess.run(
-                [str(bins.starter), "-i", artifact.path.name, "-np", "1"],
+                launch_command(bins, bins.starter, ["-i", artifact.path.name, "-np", "1"], work_dir),
                 cwd=str(work_dir),
                 capture_output=True,
                 text=True,
@@ -451,7 +492,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 )
             if progress_cb is None:
                 proc = subprocess.run(
-                    [str(bins.engine), "-i", engine_input.name],
+                    launch_command(bins, bins.engine, ["-i", engine_input.name], work_dir),
                     cwd=str(work_dir),
                     capture_output=True,
                     text=True,
@@ -467,7 +508,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 from app.solvers.openradioss_progress import parse_progress_line
 
                 proc = subprocess.Popen(
-                    [str(bins.engine), "-i", engine_input.name],
+                    launch_command(bins, bins.engine, ["-i", engine_input.name], work_dir),
                     cwd=str(work_dir),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
