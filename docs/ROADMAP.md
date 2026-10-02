@@ -735,9 +735,22 @@ Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
 - [ ] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor
 - [ ] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de)
 - [ ] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri)
-- [ ] Hacimli (midsurface) dosyada 2D parça numarası: CAD'de yüzey parçaları
-      hacimlerden sonra numaralanıyor, mesh 2D parçaları 0'dan — crash
-      malzeme eşlemesi (part_id) bu durumda doğrulanmadı
+- [x] Hacimli (midsurface) dosyada 2D parça numarası → aşağıda "1.13 düzeltme
+      — Crash paneli 2D parça listesi"
+
+**1.13 düzeltme — Crash paneli 2D parça listesi mesh numarasıyla** — ✅ 2026-10-02
+Uygulama 2D'de mesh sonrası her şeyi MESH parça numarasıyla (0'dan, kenar
+paylaşan kabuk) kaydeder: malzeme "ATA" (mesh seçimi), ürün ağacı bileşeni
+(kalınlık + malzeme), CalculiX 2D `PART_n`, crash 2D export. 1.13c'de Crash
+paneli 2D parça listesini CAD yüzey numarasıyla (`surfacePartIds`) alıyordu;
+solid + orta yüzey dosyasında panel #1 gösterirken malzeme/bileşen #0'daydı.
+Düzeltme: 2D'de liste `uniquePartIdsFromPreview(meshPreview)`. Arada denenen
+"crash'i CAD numarasına çevir" düzeltmesi (f9321b2) yanlış varsayıma
+dayanıyordu (ölçümde malzeme elle CAD numarasıyla atanmıştı) ve revert
+edildi (7c7e3ca).
+- [ ] Midsurface dosyasında CAD ağacındaki "Parça #0" (solid) ile ürün ağacı
+      COMP_PART_0 (orta yüzey) aynı numarayı farklı şey için kullanıyor —
+      durability genel parça kimliği konusu
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)

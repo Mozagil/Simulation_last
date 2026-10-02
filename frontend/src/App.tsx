@@ -4779,7 +4779,12 @@ function App() {
         <CrashPanel
           geometryId={geometryId}
           meshDimension={meshResult?.dimension ?? null}
-          partIds={meshResult?.dimension === 2 ? surfacePartIds : volumePartIds}
+          // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
+          // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
+          // numarası (surfacePartIds) solid + orta yüzey dosyasında farklıdır.
+          partIds={
+            meshResult?.dimension === 2 ? uniquePartIdsFromPreview(meshPreview) : volumePartIds
+          }
           materialAssignments={materialAssignments}
         />
       )}
