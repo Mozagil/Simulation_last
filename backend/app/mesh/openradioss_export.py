@@ -29,6 +29,9 @@ class RadiossMesh:
     nodes: list[dict[str, float | int]]
     tets: list[tuple[int, int, int, int, int]] = field(default_factory=list)
     bricks: list[tuple[int, ...]] = field(default_factory=list)
+    # eleman id → parça (0 tabanlı; mesh katmanının part_id'si = hacim sırası,
+    # bkz. gmsh_adapter._compute_face_to_part). Deck parça başına /PART yazar.
+    element_parts: dict[int, int] = field(default_factory=dict)
 
 
 def _tet_signed_volume(
@@ -73,13 +76,14 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
 
         tets: list[tuple[int, int, int, int, int]] = []
         bricks: list[tuple[int, ...]] = []
+        element_parts: dict[int, int] = {}
         eid = 1
 
         entities = gmsh.model.getEntities(dim=3)
         if not entities:
             entities = [(-1, -1)]
 
-        for edim, etag in entities:
+        for part_index, (edim, etag) in enumerate(entities):
             kwargs: dict = {"dim": 3}
             if etag != -1:
                 kwargs["tag"] = etag
@@ -97,9 +101,11 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                         if vol < 0:
                             n3, n4 = n4, n3
                         tets.append((eid, n1, n2, n3, n4))
+                        element_parts[eid] = part_index
                         eid += 1
                     elif gtype in (_HEX8, _HEX20) and len(conn) >= 8:
                         bricks.append((eid, *conn[:8]))
+                        element_parts[eid] = part_index
                         eid += 1
     finally:
         gmsh.finalize()
@@ -122,4 +128,4 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         for nid in sorted(used)
         if nid in xyz
     ]
-    return RadiossMesh(nodes=nodes, tets=tets, bricks=bricks)
+    return RadiossMesh(nodes=nodes, tets=tets, bricks=bricks, element_parts=element_parts)

@@ -32,9 +32,28 @@ router = APIRouter(prefix="/crash", tags=["crash"])
 CRASH_DIR = Path("uploads") / "crash"
 
 
+class CrashPartSpec(BaseModel):
+    """Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Mühendis seçer."""
+
+    part_id: int = Field(..., ge=0, description="Mesh part_id (hacim sırası)")
+    role: str = Field(default="moving", description="moving | fixed")
+
+    @field_validator("role")
+    @classmethod
+    def _role_ok(cls, value: str) -> str:
+        v = value.strip().lower()
+        if v not in ("moving", "fixed"):
+            raise ValueError("role moving veya fixed olmalı.")
+        return v
+
+
 class CrashSolveRequest(BaseModel):
     geometry_id: int
     barrier: CrashBarrierParams
+    parts: list[CrashPartSpec] = Field(
+        default_factory=list,
+        description="Parça rolleri; verilmeyen parça hareketli sayılır.",
+    )
     dimension: int = Field(default=3, description="Crash solid mesh — yalnız 3")
     run_solver: bool = False
     wait: bool = Field(
@@ -194,6 +213,7 @@ def crash_solve(
                 "title": (body.name or "crash")[:80],
                 "model": body.model.model_dump(),
                 "scenario": body.scenario,
+                "parts": [p.model_dump() for p in body.parts],
             }
         )
     except SolverError as exc:
@@ -209,6 +229,8 @@ def crash_solve(
         "has_tfile": "/TFILE" in engine_text,
         "has_law2": "/MAT/LAW2" in starter_text,
         "has_law1": "/MAT/LAW1" in starter_text,
+        "has_bcs": "/BCS/" in starter_text,
+        "n_parts": starter_text.count("/PART/"),
     }
     or_ok = resolve_openradioss() is not None
     meta: dict[str, Any] = {
@@ -223,6 +245,7 @@ def crash_solve(
         "barrier": body.barrier.model_dump(),
         "model": body.model.model_dump(),
         "scenario": body.scenario,
+        "parts": [p.model_dump() for p in body.parts],
         "solver_ran": False,
         "openradioss_available": or_ok,
         "scalars": {},

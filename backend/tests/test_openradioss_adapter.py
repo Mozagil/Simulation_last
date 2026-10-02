@@ -41,7 +41,8 @@ def test_build_input_writes_starter_and_engine(tmp_path):
     engine = (tmp_path / "imp_0001.rad").read_text(encoding="utf-8")
     assert "/BEGIN" in starter
     assert "/NODE" in starter
-    assert "/TETRA4/1/1" in starter
+    assert "/TETRA4/1
+" in starter
     assert "/INIVEL/TRA/1" in starter
     assert "-8000" in starter
     assert "/RWALL/PLANE/1" in starter

@@ -24,9 +24,16 @@ export interface CrashModelPayload {
   harden_n: number;
 }
 
+/** Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Verilmeyen parça hareketli. */
+export interface CrashPartSpec {
+  part_id: number;
+  role: "moving" | "fixed";
+}
+
 export interface CrashSolveRequest {
   geometry_id: number;
   barrier: CrashBarrierPayload;
+  parts?: CrashPartSpec[];
   dimension?: number;
   run_solver?: boolean;
   wait?: boolean;

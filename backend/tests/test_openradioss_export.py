@@ -144,6 +144,7 @@ def test_build_input_accepts_mesh_path(tmp_path):
         }
     )
     text = art.path.read_text(encoding="utf-8")
-    assert "/TETRA4/1/1" in text
+    assert "/TETRA4/1
+" in text
     assert "/NODE" in text
     assert "-1000" in text

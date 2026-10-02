@@ -4779,6 +4779,8 @@ function App() {
         <CrashPanel
           geometryId={geometryId}
           meshDimension={meshResult?.dimension ?? null}
+          partIds={volumePartIds}
+          materialAssignments={materialAssignments}
         />
       )}
       </>

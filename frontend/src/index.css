@@ -4123,6 +4123,15 @@ p {
   color: var(--muted);
 }
 
+.crash-parts {
+  margin: 6px 0 4px;
+}
+
+.crash-part-missing {
+  color: var(--doe-warn);
+  font-style: italic;
+}
+
 /* ---- Model + Tahmin aşamaları (ML Studio 1a) ---- */
 .sg-all {
   display: flex;

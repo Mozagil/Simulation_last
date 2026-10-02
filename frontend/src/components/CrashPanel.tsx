@@ -4,6 +4,7 @@ import {
   fetchCrashJob,
   postCrashSolve,
   type CrashJobSnapshot,
+  type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
@@ -33,11 +34,20 @@ function fmt(v: number | undefined): string {
 export default function CrashPanel({
   geometryId,
   meshDimension,
+  partIds = [],
+  materialAssignments = [],
 }: {
   geometryId: number | null;
   meshDimension: number | null;
+  /** 3B mesh'teki parça kimlikleri (hacim sırası). Boşsa tek parça varsayılır. */
+  partIds?: number[];
+  /** Parça → malzeme adı (3 · Material adımında atananlar). */
+  materialAssignments?: { part_id: number; material_name: string | null }[];
 }) {
   const [scenario, setScenario] = useState<CrashScenarioId>("rigid_wall");
+  // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
+  // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
+  const [partRoles, setPartRoles] = useState<Record<number, "moving" | "fixed">>({});
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
   const [wx, setWx] = useState("0");
@@ -135,6 +145,10 @@ export default function CrashPanel({
         run_solver: runSolver,
         wait: false,
         t_end_ms: num(tEnd),
+        parts:
+          partIds.length > 0
+            ? partIds.map((pid): CrashPartSpec => ({ part_id: pid, role: partRoles[pid] ?? "moving" }))
+            : undefined,
         model: {
           law,
           isolid: num(isolid),
@@ -249,6 +263,59 @@ export default function CrashPanel({
           <input value={nz} onChange={(e) => setNz(e.target.value)} />
         </label>
       </div>
+
+      {partIds.length > 0 && (
+        <>
+          <p className="material-assignments-title">Parçalar</p>
+          <table className="doe-table crash-parts" data-testid="crash-parts">
+            <thead>
+              <tr>
+                <th>parça</th>
+                <th>malzeme</th>
+                <th>rol</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partIds.map((pid) => {
+                const mat = materialAssignments.find((a) => a.part_id === pid)?.material_name;
+                const role = partRoles[pid] ?? "moving";
+                return (
+                  <tr key={pid}>
+                    <td>#{pid}</td>
+                    <td className={mat ? undefined : "crash-part-missing"}>{mat ?? "atama yok"}</td>
+                    <td>
+                      <span className="doe-seg" role="group" aria-label={`Parça ${pid} rolü`}>
+                        <button
+                          type="button"
+                          className={role === "moving" ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={role === "moving"}
+                          disabled={busy}
+                          onClick={() => setPartRoles((r) => ({ ...r, [pid]: "moving" }))}
+                        >
+                          Hareketli
+                        </button>
+                        <button
+                          type="button"
+                          className={role === "fixed" ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={role === "fixed"}
+                          disabled={busy}
+                          onClick={() => setPartRoles((r) => ({ ...r, [pid]: "fixed" }))}
+                        >
+                          Sabit
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="material-assign-hint">
+            Hareketli parça ilk hızı alır; sabit parça /BCS ile tutulur. Her parçaya malzeme
+            atanmalı (3 · Material).
+          </p>
+        </>
+      )}
 
       <p className="material-assignments-title">Malzeme kanunu</p>
       <ButtonGroup

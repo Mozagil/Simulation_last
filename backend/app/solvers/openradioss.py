@@ -287,7 +287,9 @@ KGM3_TO_KGMM3 = 1e-9
 MPA_TO_GPA = 1e-3
 
 
-def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
+def _mat_prop_cards(
+    mat: dict[str, Any], model: CrashModelParams, card_id: int = 1
+) -> list[str]:
     rho = float(mat.get("density") or 7850.0) * KGM3_TO_KGMM3
     e_gpa = float(mat.get("youngs_modulus") or 210e9) * PA_TO_GPA
     nu = float(mat.get("poisson_ratio") or 0.3)
@@ -307,7 +309,7 @@ def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
         # Sıfır bırakılan alanlar Radioss varsayılanına düşer (EPS_p_max,
         # SIG_max0, T_melt → 1e30; c, m → hız/sıcaklık etkisi kapalı).
         mat_lines = [
-            "/MAT/LAW2/1",
+            f"/MAT/LAW2/{card_id}",
             title,
             _f(rho),
             f"{_f(e_gpa)}{_f(nu)}{_i(0)}{_i(0)}",
@@ -317,7 +319,7 @@ def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
         ]
     else:
         mat_lines = [
-            "/MAT/LAW1/1",
+            f"/MAT/LAW1/{card_id}",
             title,
             _f(rho),
             f"{_f(e_gpa)}{_f(nu)}",
@@ -326,7 +328,7 @@ def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
     # Inpts Itetra4 Iframe Dn · qa qb h Lambda Mu · dT_min Istrain Ihkt.
     # Sıfırlar varsayılan (qa=1.1, qb=0.05, h=0 …).
     prop_lines = [
-        "/PROP/TYPE14/1",
+        f"/PROP/TYPE14/{card_id}",
         "solid",
         f"{_i(model.isolid)}{_i(model.ismstr)}{_i(0)}{_i(0)}{_i(0)}{_i(model.nip)}{_i(0)}{_i(0)}{_f(0.0)}",
         f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
@@ -353,8 +355,39 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         "point": [0.0, 0.0, 0.0],
         "normal": [0.0, 0.0, 1.0],
     }
-    mat = mats[0]
     model = _crash_model(params)
+    # Parçalar: eleman → parça haritası (export) yoksa her şey parça 0.
+    element_parts: dict[int, int] = {
+        int(k): int(v) for k, v in (params.get("element_parts") or {}).items()
+    }
+    part_ids = sorted(set(element_parts.values())) or [0]
+    # Rol: hareketli (ilk hız alır) / sabit (/BCS ile tutulur). Verilmeyen
+    # parça hareketli — tek parçalı eski davranışla aynı.
+    roles: dict[int, str] = {0: "moving"} if part_ids == [0] else {}
+    for spec in params.get("parts") or []:
+        roles[int(spec["part_id"])] = str(spec.get("role") or "moving")
+    for pid in part_ids:
+        roles.setdefault(pid, "moving")
+    moving = [p for p in part_ids if roles[p] != "fixed"]
+    fixed = [p for p in part_ids if roles[p] == "fixed"]
+    if not moving:
+        raise SolverError("Crash: en az bir hareketli parça gerekli (hepsi sabit).")
+    # Parça başına malzeme: atama part_id ile; yoksa ilk malzemeye düşülmez,
+    # açık hata (yanlış malzemeyle sessizce çözmek daha kötü).
+    mat_by_part: dict[int, dict[str, Any]] = {}
+    for m in mats:
+        pid = m.get("part_id")
+        mat_by_part[int(pid) if pid is not None else 0] = m
+    missing = [p for p in part_ids if p not in mat_by_part]
+    if missing and len(mats) == 1 and part_ids == [0]:
+        mat_by_part[0] = mats[0]
+        missing = []
+    if missing:
+        raise SolverError(
+            "Crash: malzeme atanmamış parça(lar): "
+            + ", ".join(f"#{p}" for p in missing)
+            + " — 3 · Material adımından her parçaya malzeme atayın."
+        )
 
     # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
     # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
@@ -377,34 +410,47 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         )
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
 
-    if tets:
-        lines.append("/TETRA4/1/1")
-        for el in tets:
-            eid, n1, n2, n3, n4 = (int(v) for v in el)
-            lines.append(f"{_i(eid)}{_i(n1)}{_i(n2)}{_i(n3)}{_i(n4)}")
-    if bricks:
-        lines.append("/BRICK/1/1")
-        for el in bricks:
-            vals = [int(v) for v in el]
-            lines.append("".join(_i(v) for v in vals))
+    # Radioss parça/kart kimlikleri 1 tabanlı: part_ID = mesh part_id + 1.
+    def _rid(pid: int) -> int:
+        return pid + 1
 
-    lines.extend(_mat_prop_cards(mat, model))
-    lines.extend(
-        [
-            "/PART/1",
-            "part",
-            f"{_i(1)}{_i(1)}",
-            "/GRNOD/NODE/1",
-            "all_nodes",
-        ]
-    )
-    ids = [int(n["id"] if isinstance(n, dict) else n[0]) for n in nodes]
-    for i in range(0, max(len(ids), 1), 10):
-        chunk = ids[i : i + 10]
-        row = "".join(_i(v) for v in chunk)
-        if len(chunk) < 10:
-            row += _i(0)  # liste sonu
-        lines.append(row)
+    for pid in part_ids:
+        part_tets = [el for el in tets if element_parts.get(int(el[0]), 0) == pid]
+        part_bricks = [el for el in bricks if element_parts.get(int(el[0]), 0) == pid]
+        if part_tets:
+            lines.append(f"/TETRA4/{_rid(pid)}")
+            for el in part_tets:
+                eid, n1, n2, n3, n4 = (int(v) for v in el)
+                lines.append(f"{_i(eid)}{_i(n1)}{_i(n2)}{_i(n3)}{_i(n4)}")
+        if part_bricks:
+            lines.append(f"/BRICK/{_rid(pid)}")
+            for el in part_bricks:
+                vals = [int(v) for v in el]
+                lines.append("".join(_i(v) for v in vals))
+
+    for pid in part_ids:
+        lines.extend(_mat_prop_cards(mat_by_part[pid], model, card_id=_rid(pid)))
+        lines.extend(
+            [
+                f"/PART/{_rid(pid)}",
+                f"part_{pid}_{roles[pid]}"[:100],
+                f"{_i(_rid(pid))}{_i(_rid(pid))}",
+            ]
+        )
+
+    def _grnod_part(gid: int, title: str, pids: list[int]) -> list[str]:
+        out = [f"/GRNOD/PART/{gid}", title]
+        rids = [_rid(p) for p in pids]
+        for i in range(0, len(rids), 10):
+            out.append("".join(_i(v) for v in rids[i : i + 10]))
+        return out
+
+    # Grup 1: hareketli parçaların düğümleri (ilk hız, duvar); grup 2: sabit.
+    lines.extend(_grnod_part(1, "moving_parts", moving))
+    if fixed:
+        lines.extend(_grnod_part(2, "fixed_parts", fixed))
+        # /BCS: üç öteleme + üç dönme serbestliği kilitli.
+        lines.extend(["/BCS/1", "fixed_parts", f"   111 111{_i(0)}{_i(2)}"])
 
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
@@ -440,7 +486,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             "/TH/PART/1",
             "part_energy",
             th_vars(["IE", "KE"]),
-            _i(1),
+            "".join(_i(_rid(p)) for p in part_ids),
         ]
     )
     th_nodes = params.get("th_nodes") or []
@@ -539,6 +585,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 params["tets"] = exported.tets
                 if exported.bricks:
                     params["bricks"] = exported.bricks
+                params["element_parts"] = exported.element_parts
             else:
                 raise SolverError("OpenRadioss: nodes listesi boş.")
         _write_starter(starter, params)

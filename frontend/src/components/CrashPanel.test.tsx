@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CrashPanel from "./CrashPanel";
 
@@ -15,6 +15,39 @@ describe("CrashPanel", () => {
   beforeEach(() => {
     vi.mocked(postCrashSolve).mockReset();
     vi.mocked(fetchCrashJob).mockReset();
+  });
+
+  it("parça rollerini gönderir; malzemesiz parçayı işaretler", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j9", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(
+      <CrashPanel
+        geometryId={1}
+        meshDimension={3}
+        partIds={[0, 1]}
+        materialAssignments={[{ part_id: 0, material_name: "S235" }]}
+      />,
+    );
+    const table = screen.getByTestId("crash-parts");
+    expect(table).toHaveTextContent("#0");
+    expect(table).toHaveTextContent("S235");
+    expect(table).toHaveTextContent("atama yok");
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Parça 1 rolü" })).getByRole("button", { name: "Sabit" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(postCrashSolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parts: [
+          { part_id: 0, role: "moving" },
+          { part_id: 1, role: "fixed" },
+        ],
+      }),
+    );
   });
 
   it("3D mesh yokken gönderimi kapatır", () => {
