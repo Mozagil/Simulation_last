@@ -754,7 +754,7 @@ class OpenRadiossAdapter(SolverAdapter):
             if mesh_path:
                 from app.mesh.openradioss_export import gmsh_msh_to_radioss
 
-                exported = gmsh_msh_to_radioss(Path(mesh_path))
+                exported = gmsh_msh_to_radioss(Path(mesh_path), params.get("face_part_map"))
                 params["nodes"] = exported.nodes
                 params["tets"] = exported.tets
                 if exported.bricks:

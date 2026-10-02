@@ -145,3 +145,16 @@ def test_coincident_node_counter(tmp_path):
     p = _shell_params(tmp_path, coincident_nodes=rm.coincident_nodes)
     s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
     assert s.splitlines()[1] == "# coincident_nodes: 2"
+
+
+def test_export_uses_cad_face_part_map(tmp_path):
+    """Numara düzeltmesi: harita verilirse kabuk parçası CAD numarasını alır."""
+    from app.mesh.base import MeshError
+    from tests.test_openradioss_export import _write_msh
+
+    # tek üçgen, Gmsh yüz etiketi 7 (CAD'de orta yüzey, parça #1)
+    _write_msh(tmp_path / "m.msh", [(1, 0, 0, 0), (2, 1, 0, 0), (3, 0, 1, 0)], ["1 2 2 0 7 1 2 3"])
+    assert gmsh_msh_to_radioss(tmp_path / "m.msh").element_parts == {1: 0}  # haritasız: 0'dan
+    assert gmsh_msh_to_radioss(tmp_path / "m.msh", {7: 1}).element_parts == {1: 1}
+    with pytest.raises(MeshError, match="haritasında yok: 7"):
+        gmsh_msh_to_radioss(tmp_path / "m.msh", {3: 0})

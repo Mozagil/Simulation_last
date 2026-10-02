@@ -735,9 +735,24 @@ Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
 - [ ] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor
 - [ ] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de)
 - [ ] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri)
-- [ ] Hacimli (midsurface) dosyada 2D parça numarası: CAD'de yüzey parçaları
-      hacimlerden sonra numaralanıyor, mesh 2D parçaları 0'dan — crash
-      malzeme eşlemesi (part_id) bu durumda doğrulanmadı
+- [x] Hacimli (midsurface) dosyada 2D parça numarası → aşağıda "1.13 fix —
+      kabuk parça numarası"
+
+**1.13 fix — kabuk parça numarası CAD/UI ile aynı** — ✅ 2026-10-02
+Ölçüm (thin_plate: solid CAD #0 + orta yüzey CAD #1, 2D quad): crash 2D
+export kabukları 0'dan numaralıyordu → orta yüzey #0 sayılıp solid'in
+malzemesini (S235) SESSİZCE alıyordu (atanan S355 değil); UI'dan #1'e verilen
+t 422 "#0 kalınlığı yok", rol sessizce yok sayılıyor, #1 temas hata. `.msh`
+yalnız mesh'li yüzeyleri tutar (CAD yüz etiketi korunur, hacimler yok) →
+CAD numarası mesh'ten kurulamaz. Düzeltme: /crash/solve dim 2'de tessellation
+`faces.json` + `parts.json`'dan yüz → parça haritası (`_cad_face_part_map`,
+UI'ın gördüğü numara) export'a verilir; haritada olmayan mesh'li yüz
+MeshError (tahmin yok); harita dosyası yoksa 409. Haritasız doğrudan adaptör
+kullanımı eski gruplamayla. Şablon yolu (hacimsiz) aynı kaldı (yüz 1–4 → #0).
+Regresyon testi: #0 S235 / #1 S355 → deck `/SHELL/2`, `/MAT` S355, `/PART/1`
+yok. Tüm backend 933/933 (1 atlandı).
+- [ ] CalculiX 2D yolu da 0'dan PART_n kullanıyor — durability kabukta aynı
+      malzeme kayması olabilir (durability dokunulmaz; ayrı inceleme)
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)

@@ -5,8 +5,11 @@ crash /TETRA4 ister — tet10'un ilk 4 köşesi alınır, kenar-ortası düğüm
 yazılmaz. Hex8/hex20 köşeleri /BRICK olur.
 
 1.13: hacim elemanı olmayan (2D) mesh kabuk olarak okunur — tri3/tri6 → /SH3N,
-quad4/quad8/quad9 → /SHELL (köşe düğümleri). Parça = kenar paylaşan kabuk
-bileşeni (CalculiX 2D yolu ve önizleme ile aynı eşleme).
+quad4/quad8/quad9 → /SHELL (köşe düğümleri). Parça: `face_part_map` (CAD yüz
+etiketi → CAD/UI parça kimliği) verilirse o; yoksa kenar paylaşan kabuk
+bileşeni (0'dan). Haritasız numara, dosyada solid + orta yüzey olduğunda
+CAD'inkinden farklıdır (orta yüzey CAD'de solid'den sonra gelir) — malzeme
+ve rol yanlış parçaya düşer; API bu yüzden haritayı verir (1.13 düzeltmesi).
 """
 
 from __future__ import annotations
@@ -67,10 +70,13 @@ def _tet_signed_volume(
     ) / 6.0
 
 
-def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
-    """Kayıtlı Gmsh .msh dosyasını OpenRadioss solid listesine çevirir.
+def gmsh_msh_to_radioss(
+    mesh_path: Path, face_part_map: dict[int, int] | None = None
+) -> RadiossMesh:
+    """Kayıtlı Gmsh .msh dosyasını OpenRadioss solid / kabuk listesine çevirir.
 
-    `.msh` üzerine yazmaz. Volume elemanı yoksa MeshError.
+    `.msh` üzerine yazmaz. Eleman yoksa MeshError. `face_part_map` yalnız
+    kabukta kullanılır; mesh'li bir yüz haritada yoksa MeshError (tahmin yok).
     """
     mesh_path = Path(mesh_path)
     if not mesh_path.exists():
@@ -130,9 +136,18 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         if not tets and not bricks:
             from app.mesh.gmsh_adapter import _surface_parts_by_coincident_nodes
 
-            face_to_part = _surface_parts_by_coincident_nodes()
+            face_to_part = (
+                {int(k): int(v) for k, v in face_part_map.items()}
+                if face_part_map is not None
+                else _surface_parts_by_coincident_nodes()
+            )
+            unmapped: list[int] = []
             for _edim, ftag in gmsh.model.getEntities(dim=2):
-                pid = face_to_part.get(int(ftag), 0)
+                if int(ftag) not in face_to_part:
+                    if len(gmsh.model.mesh.getElements(dim=2, tag=ftag)[1]):
+                        unmapped.append(int(ftag))
+                    continue
+                pid = face_to_part[int(ftag)]
                 etypes, tag_lists, node_lists = gmsh.model.mesh.getElements(dim=2, tag=ftag)
                 for etype, tags, enodes in zip(etypes, tag_lists, node_lists):
                     if len(tags) == 0:
@@ -149,6 +164,12 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                             continue
                         element_parts[eid] = pid
                         eid += 1
+            if unmapped:
+                raise MeshError(
+                    "Kabuk yüz(ler)i CAD parça haritasında yok: "
+                    + ", ".join(str(t) for t in unmapped)
+                    + " — mesh ile geometri önizlemesi uyuşmuyor; mesh'i yeniden üretin."
+                )
     finally:
         gmsh.finalize()
         _gmsh_lock.release()

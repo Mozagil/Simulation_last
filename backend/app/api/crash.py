@@ -16,7 +16,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocke
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.geometry import MESH_DIR, _get_geometry_or_404
+from app.api.geometry import MESH_DIR, TESSELLATION_DIR, _get_geometry_or_404
+from app.mesh.base import MeshError
 from app.db.session import get_db
 from app.jobs.progress import get_hub
 from app.models.material import MaterialAssignment
@@ -84,6 +85,30 @@ class CrashSolveRequest(BaseModel):
         if v not in ("rigid_wall", "plate_ball"):
             raise ValueError("scenario rigid_wall veya plate_ball olmalı.")
         return v
+
+
+def _cad_face_part_map(geometry_id: int) -> dict[int, int]:
+    """CAD yüz etiketi → CAD/UI parça kimliği (önizlemenin gösterdiği numara).
+
+    Kaynak: tessellation `faces.json` + `parts.json` (üçgen başına yüz/parça).
+    2D kabuk export'u bu numarayı kullanır ki malzeme ataması, rol ve temas
+    UI'daki parçaya düşsün (solid + orta yüzey dosyasında 0'dan numaralama
+    orta yüzeye solid'in malzemesini veriyordu).
+    """
+    faces_path = TESSELLATION_DIR / f"{geometry_id}.faces.json"
+    parts_path = TESSELLATION_DIR / f"{geometry_id}.parts.json"
+    if not faces_path.is_file() or not parts_path.is_file():
+        raise HTTPException(
+            status_code=409,
+            detail="Geometri önizleme haritası (faces/parts) yok — kabuk parça numarası "
+            "çözülemiyor. Geometriyi yeniden yükleyin/üretin.",
+        )
+    t2f = json.loads(faces_path.read_text(encoding="utf-8"))
+    t2p = json.loads(parts_path.read_text(encoding="utf-8"))
+    out: dict[int, int] = {}
+    for face, part in zip(t2f, t2p):
+        out.setdefault(int(face), int(part))
+    return out
 
 
 def _job_dir(job_id: str) -> Path:
@@ -229,9 +254,14 @@ def crash_solve(
                 "parts": [p.model_dump() for p in body.parts],
                 "contacts": [c.model_dump() for c in body.contacts],
                 "use_rigid_wall": body.use_rigid_wall,
+                **(
+                    {"face_part_map": _cad_face_part_map(body.geometry_id)}
+                    if body.dimension == 2
+                    else {}
+                ),
             }
         )
-    except SolverError as exc:
+    except (SolverError, MeshError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     engine_path = artifact.path.with_name("crash_0001.rad")
