@@ -150,4 +150,74 @@ describe("CrashPanel", () => {
     );
     expect(screen.getByRole("img", { name: /Plaka-küre/i })).toBeInTheDocument();
   });
+  it("temas satırlarını ve duvar bayrağını gönderir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j5", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    expect(screen.queryByTestId("crash-contacts")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Temas ekle" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Temas ekle" }));
+    // 1: TYPE7, kutu (0) düğümleri → plaka (1); sürtünme + gap
+    fireEvent.change(screen.getByLabelText("Temas 1 Fric"), { target: { value: "0.2" } });
+    fireEvent.change(screen.getByLabelText("Temas 1 GAPmin"), { target: { value: "0.5" } });
+    // 2: TYPE24 self-contact parça 0, kenar–kenar açık
+    fireEvent.click(within(screen.getByRole("group", { name: "Temas 2 tipi" })).getByRole("button", { name: "TYPE24" }));
+    fireEvent.change(screen.getByLabelText("Temas 2 master"), { target: { value: "0" } });
+    expect(screen.queryByLabelText("Temas 2 GAPmin")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Temas 1 Iedge")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Temas 2 Iedge"), { target: { value: "1" } });
+    expect(screen.getByTestId("crash-contacts")).toHaveTextContent("2 · self");
+    fireEvent.click(screen.getByLabelText("Rijit duvar (/RWALL)"));
+    expect(screen.getByText(/duvar kapalı, yalnız ilk hız yönü/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(postCrashSolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        use_rigid_wall: false,
+        contacts: [
+          { type: 7, master_part: 1, slave_part: 0, fric: 0.2, stfac: 1, gapmin: 0.5, istf: 0, inacti: 0, iedge: 0 },
+          { type: 24, master_part: 0, slave_part: 0, fric: 0, stfac: 1, gapmin: 0, istf: 0, inacti: 0, iedge: 1 },
+        ],
+      }),
+    );
+  });
+
+  it("temas satırı silinir; tanım yoksa boş liste ve duvar açık gider", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j6", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Temas ekle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Temas 1 sil" }));
+    expect(screen.queryByTestId("crash-contacts")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(postCrashSolve).toHaveBeenCalledWith(expect.objectContaining({ contacts: [], use_rigid_wall: true }));
+  });
+
+  it("çözülen işte temas kuvveti grafiğini ve tepe değerini gösterir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j7", geometry_id: 1, status: "pending", message: "kuyrukta",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: true, solver_ran: false, scalars: {},
+    });
+    vi.mocked(fetchCrashJob).mockResolvedValue({
+      job_id: "j7", status: "solved", message: "OpenRadioss bitti",
+      scalars: { contact_1_force_max: 6.742 },
+      curves: { time: [0, 0.1, 0.2, 0.3], contact_1_force: [0, 2, 6.742, 1] },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} />);
+    fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    expect(await screen.findByRole("img", { name: "Kuvvet–zaman grafiği" })).toBeInTheDocument();
+    expect(screen.getByText(/Temas 1 Fmax 6.742/)).toBeInTheDocument();
+    expect(screen.getByText("Temas 1 tepe")).toBeInTheDocument();
+    expect(screen.getByText("t = 0.200 ms")).toBeInTheDocument();
+  });
 });
+

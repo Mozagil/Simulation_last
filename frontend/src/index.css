@@ -4132,6 +4132,101 @@ p {
   font-style: italic;
 }
 
+/* 1.12b — temas kartları: dar panelde (≈340 px) alt alta, yatay kaydırma yok */
+.crash-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.crash-contact-card {
+  padding: 8px 10px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-contact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.crash-contact-head .doe-seg {
+  margin-left: auto;
+}
+
+.crash-contact-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.crash-contact-arrow {
+  padding-bottom: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.mesh-field input:disabled {
+  color: var(--muted);
+}
+
+.crash-contact-remove {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.crash-contact-remove:hover:not(:disabled) {
+  color: var(--doe-warn);
+}
+
+.crash-contact-add {
+  margin: 2px 0 6px;
+}
+
+/* 1.12b — kuvvet–zaman grafiği: seri renkleri tema token'larından */
+.crash-force-card {
+  margin-top: 10px;
+}
+
+.crash-force-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.crash-force-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.crash-force-swatch {
+  width: 14px;
+  border-top: 2px solid currentColor;
+}
+
+.crash-force-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.crash-series-0 { color: var(--accent-hover); }
+.crash-series-1 { color: var(--doe-warn); }
+.crash-series-2 { color: var(--doe-ok); }
+.crash-series-3 { color: var(--muted); }
+
 /* ---- Model + Tahmin aşamaları (ML Studio 1a) ---- */
 .sg-all {
   display: flex;

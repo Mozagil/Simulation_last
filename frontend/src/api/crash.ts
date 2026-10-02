@@ -30,10 +30,30 @@ export interface CrashPartSpec {
   role: "moving" | "fixed";
 }
 
+/** Temas (1.12): /INTER/TYPE7 (slave düğüm → master yüzey) | TYPE24 (yüzey ↔ yüzey).
+ * Parça kimlikleri mesh part_id'si; master = slave → self-contact. Bayraklar Radioss
+ * değerleri (0 = Radioss varsayılanı); öneri yok, mühendis doldurur. */
+export interface CrashContactSpec {
+  type: 7 | 24;
+  master_part: number;
+  slave_part: number;
+  fric: number;
+  stfac: number;
+  /** mm — yalnız TYPE7 */
+  gapmin: number;
+  istf: number;
+  inacti: number;
+  /** yalnız TYPE24 */
+  iedge: number;
+}
+
 export interface CrashSolveRequest {
   geometry_id: number;
   barrier: CrashBarrierPayload;
   parts?: CrashPartSpec[];
+  contacts?: CrashContactSpec[];
+  /** false → /RWALL yazılmaz; ilk hız yine bariyerden. */
+  use_rigid_wall?: boolean;
   dimension?: number;
   run_solver?: boolean;
   wait?: boolean;
@@ -68,6 +88,8 @@ export interface CrashJobSnapshot {
   time_ms?: number | null;
   hub_state?: string;
   scalars?: Record<string, number>;
+  /** time (ms), rwall_force / contact_k_force (kN) … */
+  curves?: Record<string, number[]>;
   starter_url?: string;
   solver_ran?: boolean;
 }

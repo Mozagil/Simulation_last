@@ -3,14 +3,32 @@ import {
   crashJobWsUrl,
   fetchCrashJob,
   postCrashSolve,
+  type CrashContactSpec,
   type CrashJobSnapshot,
   type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
+import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
+
+/** Temas satırı: sayısal alanlar ham metin (input), gönderimde sayıya çevrilir. */
+interface ContactRow {
+  id: number;
+  type: 7 | 24;
+  master: number;
+  slave: number;
+  fric: string;
+  stfac: string;
+  gapmin: string;
+  istf: string;
+  inacti: string;
+  iedge: string;
+}
+
+let contactRowSeq = 0;
 
 function num(raw: string): number {
   const v = Number(raw);
@@ -48,6 +66,9 @@ export default function CrashPanel({
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
   const [partRoles, setPartRoles] = useState<Record<number, "moving" | "fixed">>({});
+  // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [useRigidWall, setUseRigidWall] = useState(true);
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
   const [wx, setWx] = useState("0");
@@ -124,6 +145,46 @@ export default function CrashPanel({
     setNz("1");
   }
 
+  // Tek parçalı mesh'te partIds boş gelir: parça 0 (self-contact mümkün).
+  const partOptions = partIds.length > 0 ? partIds : [0];
+
+  function addContact() {
+    contactRowSeq += 1;
+    setContacts((rows) => [
+      ...rows,
+      {
+        id: contactRowSeq,
+        type: 7,
+        master: partOptions[partOptions.length - 1],
+        slave: partOptions[0],
+        fric: "0",
+        stfac: "1",
+        gapmin: "0",
+        istf: "0",
+        inacti: "0",
+        iedge: "0",
+      },
+    ]);
+  }
+
+  function updateContact(id: number, patch: Partial<ContactRow>) {
+    setContacts((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function contactPayload(r: ContactRow): CrashContactSpec {
+    return {
+      type: r.type,
+      master_part: r.master,
+      slave_part: r.slave,
+      fric: num(r.fric),
+      stfac: num(r.stfac),
+      gapmin: r.type === 7 ? num(r.gapmin) : 0,
+      istf: num(r.istf),
+      inacti: num(r.inacti),
+      iedge: r.type === 24 ? num(r.iedge) : 0,
+    };
+  }
+
   async function handleSubmit() {
     if (geometryId == null) return;
     setBusy(true);
@@ -149,6 +210,8 @@ export default function CrashPanel({
           partIds.length > 0
             ? partIds.map((pid): CrashPartSpec => ({ part_id: pid, role: partRoles[pid] ?? "moving" }))
             : undefined,
+        contacts: contacts.map(contactPayload),
+        use_rigid_wall: useRigidWall,
         model: {
           law,
           isolid: num(isolid),
@@ -178,10 +241,24 @@ export default function CrashPanel({
   const scalars = snapshot?.scalars ?? result?.scalars ?? {};
   const percent = snapshot?.percent ?? 0;
   const canRun = geometryId != null && meshDimension === 3 && !busy;
-  const wallTitle =
-    scenario === "plate_ball" ? "Rijit plaka nokta (mm) — /RWALL" : "Rigid wall nokta (mm)";
-  const normalTitle =
-    scenario === "plate_ball" ? "Rijit plaka normal" : "Rigid wall normal";
+  // Duvar kapalıyken nokta/normal yine gönderilir: bariyer ilk hız yönünü
+  // normalden türetir (açı 0° → −normal yönünde).
+  const wallTitle = !useRigidWall
+    ? "Bariyer nokta (mm) — duvar kapalı"
+    : scenario === "plate_ball"
+      ? "Rijit plaka nokta (mm) — /RWALL"
+      : "Rigid wall nokta (mm)";
+  const normalTitle = !useRigidWall
+    ? "Bariyer normal — duvar kapalı, yalnız ilk hız yönü"
+    : scenario === "plate_ball"
+      ? "Rijit plaka normal"
+      : "Rigid wall normal";
+  const curves = snapshot?.curves;
+  const forceSeries = forceSeriesFromCurves(curves);
+  const contactPeaks = Object.keys(scalars)
+    .map((k) => /^contact_(\d+)_force_max$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
 
   return (
     <div className="panel material-panel">
@@ -233,6 +310,15 @@ export default function CrashPanel({
           <input value={tEnd} onChange={(e) => setTEnd(e.target.value)} />
         </label>
       </div>
+      <label className="material-check">
+        <input
+          type="checkbox"
+          checked={useRigidWall}
+          disabled={busy}
+          onChange={(e) => setUseRigidWall(e.target.checked)}
+        />
+        Rijit duvar (/RWALL)
+      </label>
       <p className="material-assignments-title">{wallTitle}</p>
       <div className="mesh-grid">
         <label className="mesh-field">
@@ -316,6 +402,107 @@ export default function CrashPanel({
           </p>
         </>
       )}
+
+      <p className="material-assignments-title">Temas — /INTER</p>
+      {contacts.length > 0 && (
+        <div className="crash-contacts" data-testid="crash-contacts">
+          {contacts.map((c, i) => {
+            const k = i + 1;
+            const field = (
+              key: "fric" | "stfac" | "gapmin" | "istf" | "inacti" | "iedge",
+              label: string,
+              off = false,
+            ) => (
+              <label className="mesh-field">
+                <span>{label}</span>
+                <input
+                  aria-label={`Temas ${k} ${label.split(" ")[0]}`}
+                  value={off ? "—" : c[key]}
+                  disabled={busy || off}
+                  onChange={(e) => updateContact(c.id, { [key]: e.target.value })}
+                />
+              </label>
+            );
+            const partSelect = (key: "master" | "slave", label: string) => (
+              <label className="mesh-field">
+                <span>{label}</span>
+                <select
+                  aria-label={`Temas ${k} ${key}`}
+                  value={c[key]}
+                  disabled={busy}
+                  onChange={(e) => updateContact(c.id, { [key]: Number(e.target.value) })}
+                >
+                  {partOptions.map((pid) => (
+                    <option key={pid} value={pid}>
+                      parça #{pid}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+            return (
+              <div key={c.id} className="crash-contact-card">
+                <div className="crash-contact-head">
+                  <strong>
+                    Temas {k}
+                    {c.master === c.slave ? " · self" : ""}
+                  </strong>
+                  <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
+                    {([7, 24] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={c.type === t ? "doe-seg-opt active" : "doe-seg-opt"}
+                        aria-pressed={c.type === t}
+                        disabled={busy}
+                        onClick={() => updateContact(c.id, { type: t })}
+                      >
+                        TYPE{t}
+                      </button>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="crash-contact-remove"
+                    aria-label={`Temas ${k} sil`}
+                    disabled={busy}
+                    onClick={() => setContacts((rows) => rows.filter((r) => r.id !== c.id))}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="crash-contact-parts">
+                  {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
+                  <span className="crash-contact-arrow" aria-hidden="true">
+                    {c.type === 7 ? "→" : "↔"}
+                  </span>
+                  {partSelect("master", "master (yüzey)")}
+                </div>
+                <div className="mesh-grid">
+                  {field("fric", "Fric")}
+                  {field("stfac", "Stfac")}
+                  {c.type === 7 ? field("gapmin", "GAPmin (mm)") : field("iedge", "Iedge")}
+                  {field("istf", "Istf")}
+                  {field("inacti", "Inacti")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button
+        type="button"
+        className="doe-btn doe-btn-ghost crash-contact-add"
+        disabled={busy}
+        onClick={addContact}
+      >
+        + Temas ekle
+      </button>
+      <p className="material-assign-hint">
+        TYPE7: slave parçanın düğümleri → master parçanın dış yüzeyi. TYPE24: iki dış yüzey
+        birbirine karşı (simetrik). master = slave → self-contact. Bayraklarda 0 = Radioss
+        varsayılanı.
+      </p>
 
       <p className="material-assignments-title">Malzeme kanunu</p>
       <ButtonGroup
@@ -416,7 +603,15 @@ export default function CrashPanel({
               <li>IE_final {fmt(scalars.internal_energy_final)}</li>
               <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
+              {contactPeaks.map((m) => (
+                <li key={m[0]}>
+                  Temas {m[1]} Fmax {fmt(scalars[m[0]])}
+                </li>
+              ))}
             </ul>
+          )}
+          {curves?.time && forceSeries.length > 0 && (
+            <CrashForceChart time={curves.time} series={forceSeries} />
           )}
         </div>
       )}

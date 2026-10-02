@@ -640,9 +640,20 @@ plaka derisi, bayraklar varsayılan): starter 0 hata / 0 uyarı, 28 225
 - [ ] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
       koşuyla doğrulanacak — tek arayüzde 6 sütun beklenen sırada
 
+**1.12b — Crash sekmesi: temas kartları + kuvvet grafiği** — ✅ 2026-10-02
+"Temas — /INTER" bölümü: "+ Temas ekle" ile temas başına kart (TYPE7 |
+TYPE24, slave → / ↔ master parça seçimi, Fric, Stfac, GAPmin yalnız TYPE7,
+Iedge yalnız TYPE24, Istf, Inacti, sil). Varsayılan temas yok; master =
+slave → "self" etiketi. "Rijit duvar (/RWALL)" kutusu; kapalıyken nokta/normal
+"yalnız ilk hız yönü" başlığıyla görünür kalır. Job sonucunda
+`CrashForceChart` (SVG, yeni bağımlılık yok): contact_k_force + rwall_force,
+kN–ms, seri başına tepe ve zamanı; skaler listesinde "Temas k Fmax". İlk
+tablo denemesi 340 px panelde 712 px'e taşıyordu → kart düzeni (taşma yok,
+kart 208 px). 6 yeni vitest (panel 3, grafik 3); frontend 130/130, tsc temiz.
+- [ ] Gerçek geometriyle UI'dan uçtan uca koşu ve ekran görüntüsü (Chrome
+      penceresi arka planda olduğu için bu oturumda yalnız DOM ölçümü yapıldı)
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.12b Crash sekmesinde kontakt kartı (tip, master/slave, sürtünme, gap,
-  rijitlik, duvar aç/kapa) + temas kuvveti grafiği
 - 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i
   solid yerine kabukla
 - 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,
