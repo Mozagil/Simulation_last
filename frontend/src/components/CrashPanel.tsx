@@ -54,6 +54,7 @@ export default function CrashPanel({
   meshDimension,
   partIds = [],
   materialAssignments = [],
+  componentThickness = {},
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -61,6 +62,9 @@ export default function CrashPanel({
   partIds?: number[];
   /** Parça → malzeme adı (3 · Material adımında atananlar). */
   materialAssignments?: { part_id: number; material_name: string | null }[];
+  /** 2D: parça → ürün ağacı bileşen kalınlığı (mm). Kabuk kalınlığının tek
+   * kaynağı Malzeme adımıdır; panel yalnız gösterir, backend oradan okur. */
+  componentThickness?: Record<number, number | null>;
 }) {
   const [scenario, setScenario] = useState<CrashScenarioId>("rigid_wall");
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
@@ -83,8 +87,6 @@ export default function CrashPanel({
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
   // Kabuk (2D mesh) — /PROP/TYPE1. 0 = Radioss /DEF_SHELL varsayılanı; öneri yok.
-  const [shellT, setShellT] = useState("");
-  const [partT, setPartT] = useState<Record<number, string>>({});
   const [ishell, setIshell] = useState("0");
   const [ish3n, setIsh3n] = useState("0");
   const [shellIsmstr, setShellIsmstr] = useState("0");
@@ -221,7 +223,6 @@ export default function CrashPanel({
                 (pid): CrashPartSpec => ({
                   part_id: pid,
                   role: partRoles[pid] ?? "moving",
-                  ...(isShell ? { thickness_mm: optionalNum(partT[pid] ?? "") ?? null } : {}),
                 }),
               )
             : undefined,
@@ -238,7 +239,6 @@ export default function CrashPanel({
           ...(isShell
             ? {
                 shell: {
-                  thickness_mm: optionalNum(shellT) ?? null,
                   ishell: num(ishell),
                   ish3n: num(ish3n),
                   ismstr: num(shellIsmstr),
@@ -419,15 +419,11 @@ export default function CrashPanel({
                       </span>
                     </td>
                     {isShell && (
-                      <td>
-                        <input
-                          className="crash-part-t"
-                          aria-label={`Parça ${pid} t`}
-                          placeholder="ortak"
-                          value={partT[pid] ?? ""}
-                          disabled={busy}
-                          onChange={(e) => setPartT((t) => ({ ...t, [pid]: e.target.value }))}
-                        />
+                      <td
+                        data-testid={`crash-part-t-${pid}`}
+                        className={componentThickness[pid] ? undefined : "crash-part-missing"}
+                      >
+                        {componentThickness[pid] ? `${componentThickness[pid]}` : "yok"}
                       </td>
                     )}
                   </tr>
@@ -583,10 +579,6 @@ export default function CrashPanel({
           <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
           <div className="mesh-grid">
             <label className="mesh-field">
-              <span>t (mm) — ortak</span>
-              <input value={shellT} placeholder="—" onChange={(e) => setShellT(e.target.value)} />
-            </label>
-            <label className="mesh-field">
               <span>Ishell</span>
               <input value={ishell} onChange={(e) => setIshell(e.target.value)} />
             </label>
@@ -604,8 +596,8 @@ export default function CrashPanel({
             </label>
           </div>
           <p className="material-assign-hint">
-            Kalınlık: parça satırındaki t, yoksa ortak t; ikisi de boşsa çözüm hata verir.
-            Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
+            Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı); burada yalnız
+            gösterilir. Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
           </p>
         </>
       ) : (

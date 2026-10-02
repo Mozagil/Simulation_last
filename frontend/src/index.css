@@ -4132,18 +4132,6 @@ p {
   font-style: italic;
 }
 
-/* 1.13c — parça tablosunda kabuk kalınlığı hücresi */
-.crash-part-t {
-  width: 58px;
-  padding: 3px 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12.5px;
-}
-
 /* 1.12b — temas kartları: dar panelde (≈340 px) alt alta, yatay kaydırma yok */
 .crash-contacts {
   display: flex;

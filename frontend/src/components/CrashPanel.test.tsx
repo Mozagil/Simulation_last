@@ -56,33 +56,32 @@ describe("CrashPanel", () => {
     expect(screen.getByText(/Mesh yok/)).toBeInTheDocument();
   });
 
-  it("2D mesh: kabuk kartı, parça kalınlığı ve dimension=2 gönderir", async () => {
+  it("2D mesh: kabuk kartı, ürün ağacı kalınlığını gösterir, dimension=2 gönderir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j8", geometry_id: 1, status: "rad_only", message: "rad üretildi",
       starter_url: "", engine_url: "", progress_url: "", ws_url: "",
       cards: { has_shell: true }, openradioss_available: false, solver_ran: false, scalars: {},
     });
-    render(<CrashPanel geometryId={1} meshDimension={2} partIds={[0, 1]} />);
+    render(
+      <CrashPanel geometryId={1} meshDimension={2} partIds={[0, 1]} componentThickness={{ 0: 3, 1: null }} />,
+    );
     expect(screen.getByText("Kabuk — /PROP/TYPE1")).toBeInTheDocument();
     expect(screen.queryByText("Eleman — /PROP/TYPE14")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("t (mm) — ortak"), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText("Parça 1 t"), { target: { value: "1.5" } });
+    // kalınlık yalnız gösterilir (tek kaynak: ürün ağacı); girdi yok
+    expect(screen.getByTestId("crash-part-t-0")).toHaveTextContent("3");
+    expect(screen.getByTestId("crash-part-t-1")).toHaveTextContent("yok");
+    expect(screen.queryByLabelText(/t (mm) — ortak/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Ishell"), { target: { value: "24" } });
     fireEvent.change(screen.getByLabelText("N"), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
-    expect(postCrashSolve).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dimension: 2,
-        parts: [
-          { part_id: 0, role: "moving", thickness_mm: null },
-          { part_id: 1, role: "moving", thickness_mm: 1.5 },
-        ],
-        model: expect.objectContaining({
-          shell: { thickness_mm: 3, ishell: 24, ish3n: 0, ismstr: 0, nip: 5 },
-        }),
-      }),
-    );
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.dimension).toBe(2);
+    expect(body.parts).toEqual([
+      { part_id: 0, role: "moving" },
+      { part_id: 1, role: "moving" },
+    ]);
+    expect(body.model?.shell).toEqual({ ishell: 24, ish3n: 0, ismstr: 0, nip: 5 });
   });
 
   it("3D mesh: solid kartı gösterir, kabuk alanı göndermez", async () => {

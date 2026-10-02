@@ -4786,6 +4786,11 @@ function App() {
             meshResult?.dimension === 2 ? uniquePartIdsFromPreview(meshPreview) : volumePartIds
           }
           materialAssignments={materialAssignments}
+          componentThickness={Object.fromEntries(
+            (productTree?.items ?? [])
+              .filter((it) => it.property_kind === "shell")
+              .map((it) => [it.part_id, it.thickness]),
+          )}
         />
       )}
       </>
