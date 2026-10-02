@@ -208,14 +208,14 @@ describe("CrashPanel", () => {
     });
     vi.mocked(fetchCrashJob).mockResolvedValue({
       job_id: "j7", status: "solved", message: "OpenRadioss bitti",
-      scalars: { contact_1_force_max: 6.742 },
-      curves: { time: [0, 0.1, 0.2, 0.3], contact_1_force: [0, 2, 6.742, 1] },
+      scalars: { contact_1_force_max: 86.35, contact_1_impulse_final: 6.743 },
+      curves: { time: [0, 0.1, 0.2, 0.3], contact_1_force: [0, 40, 86.35, 0] },
     });
     render(<CrashPanel geometryId={1} meshDimension={3} />);
     fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     expect(await screen.findByRole("img", { name: "Kuvvet–zaman grafiği" })).toBeInTheDocument();
-    expect(screen.getByText(/Temas 1 Fmax 6.742/)).toBeInTheDocument();
+    expect(screen.getByText(/Temas 1 Fmax 86.350 kN · impuls 6.743 N·s/)).toBeInTheDocument();
     expect(screen.getByText("Temas 1 tepe")).toBeInTheDocument();
     expect(screen.getByText("t = 0.200 ms")).toBeInTheDocument();
   });

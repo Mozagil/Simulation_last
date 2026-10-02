@@ -60,13 +60,15 @@ def test_parse_csv_rwall_and_hic(tmp_path):
     lines = ["Time,FNX,FNY,FNZ,ACCX,ACCY,ACCZ"]
     for i in range(11):
         t = float(i)
-        lines.append(f"{t},0,0,12.0,0,0,{az}")
+        # FNZ impuls (N·s): sabit 12 kN → I = 12·t
+        lines.append(f"{t},0,0,{12.0 * t},0,0,{az}")
     csv_path = tmp_path / "impT01.csv"
     csv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     cols = parse_th_csv(csv_path)
     assert "FNZ" in cols
     rs = parse_openradioss_dir(tmp_path)
     assert rs.scalars["rwall_force_max"] == pytest.approx(12.0)
+    assert rs.scalars["rwall_impulse_final"] == pytest.approx(120.0)
     assert rs.scalars["acc_peak_g"] == pytest.approx(100.0, rel=1e-3)
     # tam sinyal 10 ms < 15 ms → HIC15 = 100^2.5 * 0.01
     assert rs.scalars["hic15"] == pytest.approx(100.0**2.5 * 0.01, rel=1e-3)
@@ -84,7 +86,11 @@ def test_parse_csv_unnamed_rwall_vars_by_group_order(tmp_path):
     (tmp_path / "imp" ).mkdir()
     (tmp_path / "imp" / "impT01.csv").write_text("\n".join(rows), encoding="utf-8")
     rs = parse_openradioss_dir(tmp_path / "imp")
-    assert rs.scalars["rwall_force_max"] == pytest.approx((5.0**2 + 1.0**2) ** 0.5)
+    # impuls (0,0) → (−3,0) → (−5,1): kuvvet bileşen türevi 3 → √(2²+1²);
+    # bileşke impulsun türevi (√26−3) DEĞİL.
+    assert rs.scalars["rwall_force_max"] == pytest.approx(3.0)
+    assert rs.curves["rwall_force"][-1] == pytest.approx(5.0**0.5)
+    assert rs.scalars["rwall_impulse_final"] == pytest.approx(26.0**0.5)
     assert rs.scalars["kinetic_energy_max"] == pytest.approx(59.3)
     assert "hic15" not in rs.scalars  # ivme istenmedi
 
@@ -107,3 +113,15 @@ def test_parse_results_empty_without_th_files(tmp_path):
     assert rs.scalars == {}
     assert "/TH/RWALL/1" in art.path.read_text(encoding="utf-8")
     assert "/TFILE" in (tmp_path / "imp_0001.rad").read_text(encoding="utf-8")
+
+
+def test_flat_impulse_plateau_is_zero_force(tmp_path):
+    """1.12 regresyonu: temas bitince impuls düz kalır → kuvvet 0 (plato kuvvet değil)."""
+    lines = ["Time,FNX,FNY,FNZ"]
+    for t, imp in ((0.0, 0.0), (0.1, 2.0), (0.2, 6.0), (0.3, 6.0), (0.4, 6.0)):
+        lines.append(f"{t},{imp},0,0")
+    (tmp_path / "pT01.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    rs = parse_openradioss_dir(tmp_path)
+    assert rs.curves["rwall_force"] == pytest.approx([20.0, 20.0, 40.0, 0.0, 0.0])
+    assert rs.scalars["rwall_force_max"] == pytest.approx(40.0)
+    assert rs.scalars["rwall_impulse_final"] == pytest.approx(6.0)

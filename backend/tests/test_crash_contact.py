@@ -108,9 +108,11 @@ def test_postprocess_contact_force_separate_from_wall(tmp_path):
     hdr += [f"barrier_th 1 barrier var {i}" for i in (1, 2, 3)]
     hdr += [f"contact_th 1 contact_1 var {i}" for i in range(1, 7)]
     hdr += ["part_energy 1 part_0 IE", "part_energy 1 part_0 KE"]
+    # FN* impuls: temas 1 (0,0,0) → (3,4,0) → (3,4,0) (plato); duvar 0 → 1 → 1
     rows = [
         [0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 10.0],
         [1.0, 1, 0, 0, 3, 4, 0, 9, 9, 9, 5.0, 5.0],
+        [2.0, 1, 0, 0, 3, 4, 0, 9, 9, 9, 6.0, 4.0],
     ]
     csv = tmp_path / "crashT01.csv"
     csv.write_text(
@@ -118,6 +120,9 @@ def test_postprocess_contact_force_separate_from_wall(tmp_path):
         encoding="utf-8",
     )
     rs = parse_openradioss_dir(tmp_path)
-    assert rs.curves["contact_1_force"] == [0.0, 5.0]  # |FN| = √(3²+4²), FT hariç
-    assert rs.scalars["contact_1_force_max"] == 5.0
-    assert rs.curves["rwall_force"] == [0.0, 1.0]
+    # kuvvet = d(impuls)/dt bileşen bileşen; FT hariç; platoda 0
+    assert rs.curves["contact_1_force"] == pytest.approx([5.0, 5.0, 0.0])
+    assert rs.curves["contact_1_impulse"] == pytest.approx([0.0, 5.0, 5.0])
+    assert rs.scalars["contact_1_force_max"] == pytest.approx(5.0)
+    assert rs.scalars["contact_1_impulse_final"] == pytest.approx(5.0)
+    assert rs.curves["rwall_force"] == pytest.approx([1.0, 1.0, 0.0])

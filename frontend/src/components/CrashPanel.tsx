@@ -603,9 +603,13 @@ export default function CrashPanel({
               <li>IE_final {fmt(scalars.internal_energy_final)}</li>
               <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
+              {scalars.rwall_impulse_final != null && (
+                <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
+              )}
               {contactPeaks.map((m) => (
                 <li key={m[0]}>
-                  Temas {m[1]} Fmax {fmt(scalars[m[0]])}
+                  Temas {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`contact_${m[1]}_impulse_final`])} N·s
                 </li>
               ))}
             </ul>

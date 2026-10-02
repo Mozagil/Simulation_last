@@ -594,8 +594,10 @@ solver'sız (mock) yazıldı.
 Kutu profil 300×50×40, t = 3 mm, S235 (LAW2, Isolid 1), 3 mm tet (80 686
 düğüm), 10 m/s, 4 ms. Starter 0 hata / 0 uyarı; engine normal bitiş,
 79 825 çevrim, 333 s (4 iş parçacığı). Enerji dengesi hatası %0.4;
-KE_max 59.3 J = ½·1.187 kg·(10 m/s)²; IE_son 55.4 J; duvar tepe kuvveti
-14.5 kN. İş: `uploads/crash/d4980c0e…`. İlk starter listing'i 10 hata
+KE_max 59.3 J = ½·1.187 kg·(10 m/s)²; IE_son 55.4 J; duvar impulsu
+14.5 N·s, tepe kuvvet 125.6 kN (ilk TH aralığı, kutu duvara değerek
+başlıyor; 2026-10-02 düzeltmesi — önce impuls "14.5 kN" diye raporlanmıştı,
+bkz. 1.12 fix). İş: `uploads/crash/d4980c0e…`. İlk starter listing'i 10 hata
 veriyordu — deck 2022 kart düzenine çekildi (birimler /BEGIN'de, LAW2 beş
 satır, TYPE14 üç satır, INIVEL tek satır, RWALL M/M1, TH alanları 10 kar.);
 birim sistemi kg–mm–ms (GPa, kN, J, mm/ms). `th_to_csv` engine sonrası
@@ -619,7 +621,7 @@ Export eleman → parça (hacim sırası); deck parça başına `/TETRA4`, `/MAT
 Gerçek koşu: kutu (hareketli, S235 LAW2) + plaka (sabit), duvar x = −1,
 10 m/s, 3 ms, 4 mm tet: starter 0 hata / 0 uyarı, 28 226 çevrim, 71 s;
 KE_max 27.0 J (= ½·0.54 kg·10²), IE_son 24.8 J, denge %0.9, duvar tepe
-6.7 kN. İş `uploads/crash/81921bfe…`. Temas henüz yok: kutu plakayı değil
+kuvvet 82.9 kN @ 0.135 ms, impuls 6.70 N·s (düzeltilmiş; önce "6.7 kN"). İş `uploads/crash/81921bfe…`. Temas henüz yok: kutu plakayı değil
 duvarı görüyor; plaka /BCS ile duruyor (1.12'de duvar yerine temas).
 
 **1.12a — Temas: deck + API + post-process** — ✅ 2026-10-02
@@ -629,12 +631,13 @@ istf, inacti, iedge}] + `use_rigid_wall` (varsayılan true). Yüzey
 kimliği 1000 + part_ID. TYPE7: slave `/GRNOD/PART` → master yüzey (hm_cfg
 radioss2020 düzeni); TYPE24: iki yüzey, self-contact'ta surf_ID2 = 0
 (radioss2021 düzeni). İzinli Istf/Inacti/Iedge değerleri hm_cfg'den.
-`/TH/INTER` FNX…FTZ → `contact_k_force` (|FN|) eğrisi + `_max` skaleri; duvar
+`/TH/INTER` FNX…FTZ → `contact_k_force` + `_max` skaleri; duvar
 FN okuyucusu `contact_th` sütunlarını dışlar. 9 deck/post-process + 2 API
 testi. Gerçek koşu (1.11b geometrisi, duvar kapalı, TYPE7 kutu düğümleri →
 plaka derisi, bayraklar varsayılan): starter 0 hata / 0 uyarı, 28 225
-çevrim, 100 s; KE_max 27.0 J, IE_son 25.0 J, denge %0.13, temas tepe 6.74 kN
-(1.11b duvar 6.70 kN). Radioss GAPmin 0.263 mm → ilk temas 0.075 ms
+çevrim, 100 s; KE_max 27.0 J, IE_son 25.0 J, denge %0.13, temas tepe kuvvet
+86.4 kN @ 0.090 ms, impuls 6.74 N·s (1.11b duvar 82.9 kN / 6.70 N·s;
+düzeltilmiş — önce impuls "6.74 kN" diye raporlanmıştı). Radioss GAPmin 0.263 mm → ilk temas 0.075 ms
 (= (1 − 0.263) mm / 10 mm/ms), temas enerjisi tepe 0.235 J. İş
 `uploads/crash/a7bbb6c3…`.
 - [ ] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
@@ -650,8 +653,23 @@ slave → "self" etiketi. "Rijit duvar (/RWALL)" kutusu; kapalıyken nokta/norma
 kN–ms, seri başına tepe ve zamanı; skaler listesinde "Temas k Fmax". İlk
 tablo denemesi 340 px panelde 712 px'e taşıyordu → kart düzeni (taşma yok,
 kart 208 px). 6 yeni vitest (panel 3, grafik 3); frontend 130/130, tsc temiz.
-- [ ] Gerçek geometriyle UI'dan uçtan uca koşu ve ekran görüntüsü (Chrome
-      penceresi arka planda olduğu için bu oturumda yalnız DOM ölçümü yapıldı)
+- [x] UI'dan uçtan uca koşu ve ekran görüntüsü (headless Chrome, geçici
+      sayfada gerçek CrashPanel + backend, 340 px): form düzgün; grafik
+      aşağıdaki impuls hatasını ortaya çıkardı
+
+**1.12 fix — TH kuvvetleri impulstu** — ✅ 2026-10-02
+Radioss `/TH/RWALL` ve `/TH/INTER` FN* sütunları birikimli impuls
+(kN·ms = N·s); post-process 1.10'dan beri bunları kuvvet diye raporluyordu
+(UI grafiğinde temas bitince düz plato). Kanıt: son impuls = m·(v₀+v_son)
+(%1.6–2.2 içinde), düz değeri kuvvet saymak toplam momentumdan büyük impuls
+gerektirir. Düzeltme: kuvvet = bileşen bileşen dI/dt, sonra bileşke
+(`impulse_components_to_force`); `rwall_impulse` / `contact_k_impulse`
+eğrileri + `_impulse_final` skalerleri eklendi. Düzeltilmiş tepe kuvvetler:
+1.10 125.6 kN, 1.11b 82.9 kN, 1.12a 86.4 kN. Filtre yok (ham türev; CFC
+mühendis kararı).
+- [ ] Tepe kuvvet TH örnekleme aralığına duyarlı: `/TFILE` = t_end/200
+      (3 ms → 0.015 ms) ~0.1 ms'lik darbeyi kaba çözüyor — aralık 1.15'te
+      parametre olacak
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i

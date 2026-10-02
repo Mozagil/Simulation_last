@@ -1,4 +1,6 @@
-"""OpenRadioss zaman geçmişi → ResultSet (enerji, RWALL, ivme, HIC).
+"""OpenRadioss zaman geçmişi → ResultSet (enerji, RWALL, temas, ivme, HIC).
+
+RWALL / INTER FN* sütunları birikimli impulstur (N·s); kuvvet türevle gelir.
 
 Binary T01 parse edilmez (th_to_csv resmi dönüştürücü). Bu modül:
 - engine listing (`*_0001.out`)
@@ -39,6 +41,21 @@ def impulse_to_force(time: list[float], impulse: list[float]) -> list[float]:
             force[i] = (impulse[i] - impulse[i - 1]) / dt
     force[0] = force[1] if n > 1 else 0.0
     return force
+
+
+def impulse_components_to_force(
+    time: list[float], components: list[list[float]]
+) -> tuple[list[float], list[float]]:
+    """/TH/RWALL ve /TH/INTER FN* bileşenleri birikimli impuls (kN·ms = N·s).
+
+    Kuvvet bileşen bileşen türevlenir, sonra bileşke alınır (bileşke impulsun
+    türevi değil). Dönüş: (|F| kN, |I| N·s). Son |I| = momentum değişimi.
+    """
+    n = min([len(time)] + [len(c) for c in components])
+    derivs = [impulse_to_force(time[:n], c[:n]) for c in components]
+    force = [math.sqrt(sum(d[i] ** 2 for d in derivs)) for i in range(n)]
+    impulse = [math.sqrt(sum(c[i] ** 2 for c in components)) for i in range(n)]
+    return force, impulse
 
 
 def _norm_header(name: str) -> str:
@@ -249,8 +266,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     ie: list[float] = []
     ke: list[float] = []
     force: list[float] = []
+    impulse: list[float] = []
     acc_g: list[float] = []
-    contact_fn: list[list[float]] = []
+    contact_fn: list[tuple[list[float], list[float]]] = []
     time_header = "TIME"
 
     if cols:
@@ -260,19 +278,16 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         ie = packed["ie"] or ie
         ke = packed["ke"] or ke
         fnx, fny, fnz = packed["fnx"], packed["fny"], packed["fnz"]
+        # FN* impuls (Radioss TH): kuvvet = dI/dt. 1.10–1.12a arası impuls
+        # yanlışlıkla kuvvet diye raporlanıyordu (düz plato = momentum değişimi).
         if fnx and fny and fnz:
-            force = [
-                math.sqrt(fnx[i] ** 2 + fny[i] ** 2 + fnz[i] ** 2)
-                for i in range(min(len(fnx), len(fny), len(fnz)))
-            ]
+            force, impulse = impulse_components_to_force(time, [fnx, fny, fnz])
         elif packed["imp"]:
             force = [abs(v) for v in impulse_to_force(time, packed["imp"])]
         elif fnz:
-            force = [abs(v) for v in fnz]
+            force, impulse = impulse_components_to_force(time, [fnz])
         for fx, fy, fz, *_ft in packed["contacts"]:
-            contact_fn.append(
-                [math.sqrt(fx[i] ** 2 + fy[i] ** 2 + fz[i] ** 2) for i in range(min(len(fx), len(fy), len(fz)))]
-            )
+            contact_fn.append(impulse_components_to_force(time, [fx, fy, fz]))
         if packed["acc_g"] is not None:
             acc_g = list(packed["acc_g"])
         elif packed["ax"] and packed["ay"] and packed["az"]:
@@ -304,9 +319,12 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             scalars["energy_balance_rel"] = abs(e1 - e0) / denom
     if force:
         scalars["rwall_force_max"] = float(max(abs(f) for f in force))
-    for k, fn in enumerate(contact_fn, start=1):
+    if impulse:
+        scalars["rwall_impulse_final"] = float(impulse[-1])
+    for k, (fn, imp) in enumerate(contact_fn, start=1):
         if fn:
             scalars[f"contact_{k}_force_max"] = float(max(fn))
+            scalars[f"contact_{k}_impulse_final"] = float(imp[-1])
     if acc_g and time_s:
         scalars["acc_peak_g"] = float(max(abs(v) for v in acc_g))
         scalars["hic15"] = hic15(time_s, acc_g)
@@ -319,11 +337,14 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         curves["kinetic_energy"] = ke
     if force:
         curves["rwall_force"] = force
+    if impulse:
+        curves["rwall_impulse"] = impulse
     if acc_g:
         curves["acc_g"] = acc_g
-    for k, fn in enumerate(contact_fn, start=1):
+    for k, (fn, imp) in enumerate(contact_fn, start=1):
         if fn:
             curves[f"contact_{k}_force"] = fn
+            curves[f"contact_{k}_impulse"] = imp
 
     raw = csv_path or out_path or work_dir
     return ResultSet(scalars=scalars, curves=curves, raw_result_path=raw)
