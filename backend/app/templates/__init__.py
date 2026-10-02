@@ -32,6 +32,7 @@ from app.templates.t_bracket import T_BRACKET
 from app.templates.l_bracket_bolted import L_BRACKET_BOLTED
 from app.templates.flange import FLANGE
 from app.templates.stepped_shaft import STEPPED_SHAFT
+from app.templates.crash_box_plate import CRASH_BOX_PLATE
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -50,6 +51,7 @@ _ALL: tuple[GeometryTemplate, ...] = (
     L_BRACKET_BOLTED,
     FLANGE,
     STEPPED_SHAFT,
+    CRASH_BOX_PLATE,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}
