@@ -50,10 +50,56 @@ describe("CrashPanel", () => {
     );
   });
 
-  it("3D mesh yokken gönderimi kapatır", () => {
-    render(<CrashPanel geometryId={1} meshDimension={2} />);
+  it("mesh yokken gönderimi kapatır", () => {
+    render(<CrashPanel geometryId={1} meshDimension={null} />);
     expect(screen.getByRole("button", { name: ".rad üret / çöz" })).toBeDisabled();
-    expect(screen.getByText(/3D tet mesh yok/)).toBeInTheDocument();
+    expect(screen.getByText(/Mesh yok/)).toBeInTheDocument();
+  });
+
+  it("2D mesh: kabuk kartı, parça kalınlığı ve dimension=2 gönderir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j8", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: { has_shell: true }, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} partIds={[0, 1]} />);
+    expect(screen.getByText("Kabuk — /PROP/TYPE1")).toBeInTheDocument();
+    expect(screen.queryByText("Eleman — /PROP/TYPE14")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("t (mm) — ortak"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Parça 1 t"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Ishell"), { target: { value: "24" } });
+    fireEvent.change(screen.getByLabelText("N"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(postCrashSolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dimension: 2,
+        parts: [
+          { part_id: 0, role: "moving", thickness_mm: null },
+          { part_id: 1, role: "moving", thickness_mm: 1.5 },
+        ],
+        model: expect.objectContaining({
+          shell: { thickness_mm: 3, ishell: 24, ish3n: 0, ismstr: 0, nip: 5 },
+        }),
+      }),
+    );
+  });
+
+  it("3D mesh: solid kartı gösterir, kabuk alanı göndermez", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j9", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} />);
+    expect(screen.getByText("Eleman — /PROP/TYPE14")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Parça 0 t")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.dimension).toBe(3);
+    expect(body.model).not.toHaveProperty("shell");
+    expect(body.parts?.[0]).not.toHaveProperty("thickness_mm");
   });
 
   it("bariyer gönderir ve rad_only durumunu gösterir", async () => {

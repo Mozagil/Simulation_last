@@ -82,6 +82,13 @@ export default function CrashPanel({
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
+  // Kabuk (2D mesh) — /PROP/TYPE1. 0 = Radioss /DEF_SHELL varsayılanı; öneri yok.
+  const [shellT, setShellT] = useState("");
+  const [partT, setPartT] = useState<Record<number, string>>({});
+  const [ishell, setIshell] = useState("0");
+  const [ish3n, setIsh3n] = useState("0");
+  const [shellIsmstr, setShellIsmstr] = useState("0");
+  const [shellNip, setShellNip] = useState("0");
   const [sigmaY, setSigmaY] = useState("");
   const [hardenB, setHardenB] = useState("0");
   const [hardenN, setHardenN] = useState("1");
@@ -91,6 +98,8 @@ export default function CrashPanel({
   const [result, setResult] = useState<CrashSolveResponse | null>(null);
   const [snapshot, setSnapshot] = useState<CrashJobSnapshot | null>(null);
 
+  // 2D mesh → kabuk parçalar (/SHELL, /SH3N, /PROP/TYPE1); 3D → solid (TYPE14).
+  const isShell = meshDimension === 2;
   const jobId = result?.job_id ?? snapshot?.job_id ?? null;
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
@@ -202,13 +211,19 @@ export default function CrashPanel({
             normal: [num(nx), num(ny), num(nz)],
           },
         },
-        dimension: 3,
+        dimension: isShell ? 2 : 3,
         run_solver: runSolver,
         wait: false,
         t_end_ms: num(tEnd),
         parts:
           partIds.length > 0
-            ? partIds.map((pid): CrashPartSpec => ({ part_id: pid, role: partRoles[pid] ?? "moving" }))
+            ? partIds.map(
+                (pid): CrashPartSpec => ({
+                  part_id: pid,
+                  role: partRoles[pid] ?? "moving",
+                  ...(isShell ? { thickness_mm: optionalNum(partT[pid] ?? "") ?? null } : {}),
+                }),
+              )
             : undefined,
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
@@ -220,6 +235,17 @@ export default function CrashPanel({
           sigma_y_pa: sy,
           harden_b_mpa: num(hardenB),
           harden_n: num(hardenN),
+          ...(isShell
+            ? {
+                shell: {
+                  thickness_mm: optionalNum(shellT) ?? null,
+                  ishell: num(ishell),
+                  ish3n: num(ish3n),
+                  ismstr: num(shellIsmstr),
+                  nip: num(shellNip),
+                },
+              }
+            : {}),
         },
       });
       setResult(body);
@@ -240,7 +266,7 @@ export default function CrashPanel({
 
   const scalars = snapshot?.scalars ?? result?.scalars ?? {};
   const percent = snapshot?.percent ?? 0;
-  const canRun = geometryId != null && meshDimension === 3 && !busy;
+  const canRun = geometryId != null && (meshDimension === 2 || meshDimension === 3) && !busy;
   // Duvar kapalıyken nokta/normal yine gönderilir: bariyer ilk hız yönünü
   // normalden türetir (açı 0° → −normal yönünde).
   const wallTitle = !useRigidWall
@@ -265,12 +291,12 @@ export default function CrashPanel({
       <span className="eyebrow">Faz 1 · OpenRadioss</span>
       <h1>Crash</h1>
       <p className="lead material-lead">
-        Durability sonuçları bu sekmede değişmez. 3D tet mesh + malzeme ataması
+        Durability sonuçları bu sekmede değişmez. 3D (solid) ya da 2D (kabuk) mesh + malzeme ataması
         gerekir. Hız m/s (mm–ms: 1 m/s = 1 mm/ms). Kartlar: LAW1/LAW2, TYPE14
         Isolid / Ismstr / NIP.
       </p>
-      {meshDimension !== 3 && (
-        <p className="material-assign-hint">3D tet mesh yok — crash dimension=3 ister.</p>
+      {meshDimension !== 2 && meshDimension !== 3 && (
+        <p className="material-assign-hint">Mesh yok — crash 3D (solid) ya da 2D (kabuk) mesh ister.</p>
       )}
       {geometryId == null && (
         <p className="material-assign-hint">Önce geometri yükleyin.</p>
@@ -359,6 +385,7 @@ export default function CrashPanel({
                 <th>parça</th>
                 <th>malzeme</th>
                 <th>rol</th>
+                {isShell && <th>t (mm)</th>}
               </tr>
             </thead>
             <tbody>
@@ -391,6 +418,18 @@ export default function CrashPanel({
                         </button>
                       </span>
                     </td>
+                    {isShell && (
+                      <td>
+                        <input
+                          className="crash-part-t"
+                          aria-label={`Parça ${pid} t`}
+                          placeholder="ortak"
+                          value={partT[pid] ?? ""}
+                          disabled={busy}
+                          onChange={(e) => setPartT((t) => ({ ...t, [pid]: e.target.value }))}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -539,21 +578,55 @@ export default function CrashPanel({
         </div>
       )}
 
-      <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>Isolid</span>
-          <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Ismstr</span>
-          <input value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>NIP</span>
-          <input value={nip} onChange={(e) => setNip(e.target.value)} />
-        </label>
-      </div>
+      {isShell ? (
+        <>
+          <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
+          <div className="mesh-grid">
+            <label className="mesh-field">
+              <span>t (mm) — ortak</span>
+              <input value={shellT} placeholder="—" onChange={(e) => setShellT(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ishell</span>
+              <input value={ishell} onChange={(e) => setIshell(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ish3n</span>
+              <input value={ish3n} onChange={(e) => setIsh3n(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ismstr (kabuk)</span>
+              <input value={shellIsmstr} onChange={(e) => setShellIsmstr(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>N</span>
+              <input value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
+            </label>
+          </div>
+          <p className="material-assign-hint">
+            Kalınlık: parça satırındaki t, yoksa ortak t; ikisi de boşsa çözüm hata verir.
+            Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
+          </p>
+        </>
+      ) : (
+        <>
+        <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
+        <div className="mesh-grid">
+          <label className="mesh-field">
+            <span>Isolid</span>
+            <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Ismstr</span>
+            <input value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>NIP</span>
+            <input value={nip} onChange={(e) => setNip(e.target.value)} />
+          </label>
+        </div>
+        </>
+      )}
 
       <label className="material-check">
         <input

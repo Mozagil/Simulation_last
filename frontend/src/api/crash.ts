@@ -22,12 +22,26 @@ export interface CrashModelPayload {
   sigma_y_pa?: number | null;
   harden_b_mpa: number;
   harden_n: number;
+  /** Kabuk parçalar (2D mesh) için /PROP/TYPE1; 0 = Radioss /DEF_SHELL varsayılanı. */
+  shell?: CrashShellPayload;
+}
+
+export interface CrashShellPayload {
+  /** Ortak kalınlık (mm); parça satırındaki t bunu ezer. */
+  thickness_mm?: number | null;
+  ishell: number;
+  ish3n: number;
+  ismstr: number;
+  /** N: kalınlık boyunca integrasyon noktası (0, 1, 3…10) */
+  nip: number;
 }
 
 /** Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Verilmeyen parça hareketli. */
 export interface CrashPartSpec {
   part_id: number;
   role: "moving" | "fixed";
+  /** Kabuk parça kalınlığı (mm); boşsa model.shell.thickness_mm. */
+  thickness_mm?: number | null;
 }
 
 /** Temas (1.12): /INTER/TYPE7 (slave düğüm → master yüzey) | TYPE24 (yüzey ↔ yüzey).

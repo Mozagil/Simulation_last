@@ -4779,7 +4779,7 @@ function App() {
         <CrashPanel
           geometryId={geometryId}
           meshDimension={meshResult?.dimension ?? null}
-          partIds={volumePartIds}
+          partIds={meshResult?.dimension === 2 ? surfacePartIds : volumePartIds}
           materialAssignments={materialAssignments}
         />
       )}

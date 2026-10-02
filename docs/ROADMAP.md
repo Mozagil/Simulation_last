@@ -717,8 +717,29 @@ aynı. İş `uploads/crash/9f96356c…`, geometri 3931.
 - [ ] Midsurface akışındaki (hacimli dosya) kenar ikizlenmesi hâlâ elle
       birleştiriliyor; otomatik dikiş için etiket kayması analizi gerekir
 
+**1.13c — Crash sekmesi: kabuk kartı** — ✅ 2026-10-02
+2D mesh'te panel kabuk moduna geçer: "Kabuk — /PROP/TYPE1" (ortak t, Ishell,
+Ish3n, Ismstr, N; 0 = /DEF_SHELL) solid TYPE14 kartının yerine; Parçalar
+tablosuna parça başına t sütunu (boş → ortak t); `dimension` mesh'ten (2|3).
+App 2D mesh'te panele yüzey parça kimliklerini verir (`surfacePartIds`).
+3 yeni vitest; frontend 132/132, tsc temiz. Uçtan uca GERÇEK uygulamada
+(headless Chrome, CDP): Crash → şablondan kabuk kutu (12 kenar — dikişli
+import) → 2D quad 5 mm (1 997 düğüm / 1 961 quad) → S235 → kabuk kartı
+(t 3, Ishell 24, N 5, LAW2, duvar x = 0, 4 ms) → çözüm: IE_son 55.81 J,
+KE_son 2.97 J, duvar tepe 123.1 kN, impuls 14.409 N·s (API koşusuyla aynı);
+kuvvet–zaman grafiği çizildi. Geometri 3932, iş `uploads/crash/c9cfdef3…`.
+Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
+- [ ] Kalınlık iki yerde: 2D mesh'te ürün ağacı bileşeni kalınlığı otomatik
+      3 (koda gömülü) ve o an seçili kütüphane malzemesiyle oluşuyor; Crash
+      kartının t'si ayrı giriş — tek kaynağa bağlanmalı mı (karar bekliyor)
+- [ ] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor
+- [ ] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de)
+- [ ] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri)
+- [ ] Hacimli (midsurface) dosyada 2D parça numarası: CAD'de yüzey parçaları
+      hacimlerden sonra numaralanıyor, mesh 2D parçaları 0'dan — crash
+      malzeme eşlemesi (part_id) bu durumda doğrulanmadı
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.13c Crash sekmesi: parça başına kabuk kartı (t, Ishell, Ish3n, Ismstr, N)
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,
   `/FAIL`; parça başına kart editörü
