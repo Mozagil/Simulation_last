@@ -606,9 +606,23 @@ başlığından sırayla eşleniyor.
 - [ ] Zaman adımı / kütle ölçekleme kartı (`/DT/NODA/CST`) — 80k düğüm
       tet'te 5e-5 ms adım, 4 ms için 5.5 dk; kabukla (1.13) düşer
 
+**1.11a — Crash box + çarpma plakası şablonu** — ✅ 2026-10-02
+`crash_box_plate`: iki ayrı katı (part 0 kutu, part 1 plaka), dört isimli
+bölge (`plaka_arka`, `plaka_on`, `kutu_on`, `kutu_arka`), aralık g > 0.
+Analitik yok. 4 test + yeniden-okuma regresyonu.
+
+**1.11b — Çok parçalı deck** — ✅ 2026-10-02
+Export eleman → parça (hacim sırası); deck parça başına `/TETRA4`, `/MAT`,
+`/PROP/TYPE14`, `/PART`; `/GRNOD/PART/1` hareketli (ilk hız, duvar),
+`/GRNOD/PART/2` + `/BCS` sabit; `/TH/PART` tüm parçalar. API `parts`
+[{part_id, role}], Crash sekmesinde Parçalar tablosu (malzeme + rol).
+Gerçek koşu: kutu (hareketli, S235 LAW2) + plaka (sabit), duvar x = −1,
+10 m/s, 3 ms, 4 mm tet: starter 0 hata / 0 uyarı, 28 226 çevrim, 71 s;
+KE_max 27.0 J (= ½·0.54 kg·10²), IE_son 24.8 J, denge %0.9, duvar tepe
+6.7 kN. İş `uploads/crash/81921bfe…`. Temas henüz yok: kutu plakayı değil
+duvarı görüyor; plaka /BCS ile duruyor (1.12'de duvar yerine temas).
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.11 Çok parçalı deck: parça başına `/PART` + `/PROP` + `/MAT`; mesh
-  export'un parça kimliğini taşıması
 - 1.12 Temas: `/SURF` + `/INTER/TYPE7` (master yüzey – slave düğüm) ve
   TYPE24; UI'da kontakt kartı (parçalar, sürtünme, gap, rijitlik)
 - 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i

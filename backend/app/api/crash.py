@@ -230,7 +230,7 @@ def crash_solve(
         "has_law2": "/MAT/LAW2" in starter_text,
         "has_law1": "/MAT/LAW1" in starter_text,
         "has_bcs": "/BCS/" in starter_text,
-        "n_parts": starter_text.count("/PART/"),
+        "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
     }
     or_ok = resolve_openradioss() is not None
     meta: dict[str, Any] = {
