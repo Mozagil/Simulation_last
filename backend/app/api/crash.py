@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.geometry import MESH_DIR, _get_geometry_or_404
 from app.db.session import get_db
 from app.jobs.progress import get_hub
+from app.models.component import Component
 from app.models.material import MaterialAssignment
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.crash_params import CrashBarrierParams, CrashContactParams, CrashModelParams
@@ -209,6 +210,14 @@ def crash_solve(
         for a in assignments
     ]
 
+    # Kabuk kalınlığının tek kaynağı ürün ağacı bileşeni (Malzeme adımı); aynı
+    # mesh parça numarası (2D'de ATA, bileşen ve export hepsi mesh numarası).
+    component_thickness: dict[int, float] = {}
+    if body.dimension == 2:
+        for comp in db.query(Component).filter(Component.geometry_id == body.geometry_id):
+            if comp.property_kind == "shell" and comp.thickness and comp.thickness > 0:
+                component_thickness[int(comp.part_id)] = float(comp.thickness)
+
     job_id = str(uuid.uuid4())
     work_dir = _job_dir(job_id)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -229,6 +238,7 @@ def crash_solve(
                 "parts": [p.model_dump() for p in body.parts],
                 "contacts": [c.model_dump() for c in body.contacts],
                 "use_rigid_wall": body.use_rigid_wall,
+                "component_thickness": component_thickness,
             }
         )
     except SolverError as exc:

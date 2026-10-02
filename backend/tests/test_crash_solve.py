@@ -248,6 +248,39 @@ def test_crash_solve_shell_mesh_writes_shell_cards():
 
 
 @requires_db
+def test_crash_shell_thickness_from_product_tree_component():
+    """2a: kabuk kalınlığı Malzeme adımındaki ürün ağacı bileşeninden okunur."""
+    with (FIXTURES_DIR / "thin_plate.step").open("rb") as f:
+        up = client.post(
+            "/geometry/upload",
+            files={"file": ("thin_plate.step", f, "application/octet-stream")},
+        )
+    geometry_id = up.json()["geometry_id"]
+    assert client.post(f"/geometry/{geometry_id}/parts/0/midsurface").status_code == 200
+    assert client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2, "element_scheme": "quad"},
+    ).status_code == 200
+    mats = {m["name"]: m["id"] for m in client.get("/materials").json()["materials"]}
+    # Uygulamanın yaptığı gibi: bileşen (mesh parça 0) kalınlık + malzeme
+    comp = client.post(
+        f"/geometry/{geometry_id}/components",
+        json={"part_id": 0, "property_kind": "shell", "thickness": 1.8, "material_id": mats["S355"]},
+    )
+    assert comp.status_code == 200, comp.text
+    r = client.post(
+        "/crash/solve",
+        json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2},
+    )
+    assert r.status_code == 200, r.text
+    text = (CRASH_DIR / r.json()["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
+    assert float(prop[3][20:40]) == 1.8
+    # bileşen malzemesi MaterialAssignment'a yansır → deck S355
+    assert text.split("/MAT/LAW1/1\n", 1)[1].splitlines()[0] == "S355"
+
+
+@requires_db
 def test_crash_solve_rejects_bad_barrier():
     geometry_id = _upload_and_mesh_box()
     response = client.post(

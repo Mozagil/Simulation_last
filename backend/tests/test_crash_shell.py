@@ -145,3 +145,26 @@ def test_coincident_node_counter(tmp_path):
     p = _shell_params(tmp_path, coincident_nodes=rm.coincident_nodes)
     s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
     assert s.splitlines()[1] == "# coincident_nodes: 2"
+
+
+def test_thickness_precedence_component_then_explicit(tmp_path):
+    """2a: ürün ağacı bileşeni kalınlığı ortak t'yi ezer; açık parts[].t hepsini ezer."""
+    thick = lambda s: float(_card(s, "/PROP/TYPE1/1")[3][20:40])  # noqa: E731
+    # ortak 3.0 + bileşen 2.2 → 2.2
+    s = _deck(tmp_path / "a", component_thickness={0: 2.2})
+    assert thick(s) == 2.2
+    # açık parts[].thickness_mm 1.1 → 1.1
+    s = _deck(
+        tmp_path / "b",
+        component_thickness={0: 2.2},
+        parts=[{"part_id": 0, "thickness_mm": 1.1}, {"part_id": 1, "role": "fixed"}],
+    )
+    assert thick(s) == 1.1
+    # yalnız bileşen (ortak t yok) yeter
+    s = _deck(tmp_path / "c", component_thickness={0: 4.0}, model={"law": "elastic"})
+    assert thick(s) == 4.0
+
+
+def test_missing_thickness_points_to_product_tree(tmp_path):
+    with pytest.raises(SolverError, match="ürün ağacından"):
+        _deck(tmp_path, model={"law": "elastic"})

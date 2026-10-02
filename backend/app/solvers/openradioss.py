@@ -511,8 +511,11 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         raise SolverError(
             "Crash: aynı parçada solid ve kabuk eleman: " + ", ".join(f"#{p}" for p in both)
         )
-    # Kalınlık: parts[].thickness_mm > model.shell.thickness_mm; yoksa açık hata.
-    thickness: dict[int, float] = {}
+    # Kalınlık önceliği: parts[].thickness_mm (açık) > ürün ağacı bileşeni
+    # (`component_thickness`, API doldurur) > model.shell.thickness_mm; yoksa hata.
+    thickness: dict[int, float] = {
+        int(k): float(v) for k, v in (params.get("component_thickness") or {}).items()
+    }
     for spec in params.get("parts") or []:
         t = spec.get("thickness_mm")
         if t is not None:
@@ -525,7 +528,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         raise SolverError(
             "Crash: kalınlığı verilmemiş kabuk parça(lar): "
             + ", ".join(f"#{p}" for p in no_t)
-            + " — parts[].thickness_mm ya da model.shell.thickness_mm girin."
+            + " — Malzeme adımında ürün ağacından (bileşen kalınlığı) girin."
         )
 
     # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
