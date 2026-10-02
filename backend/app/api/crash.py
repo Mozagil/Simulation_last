@@ -21,7 +21,7 @@ from app.db.session import get_db
 from app.jobs.progress import get_hub
 from app.models.material import MaterialAssignment
 from app.solvers.base import InputArtifact, SolverError
-from app.solvers.crash_params import CrashBarrierParams, CrashModelParams
+from app.solvers.crash_params import CrashBarrierParams, CrashContactParams, CrashModelParams
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
 from app.solvers.openradioss_progress import ParsedCrashProgress
 
@@ -64,6 +64,14 @@ class CrashSolveRequest(BaseModel):
     name: str | None = None
     th_nodes: list[int] = Field(default_factory=list)
     model: CrashModelParams = Field(default_factory=CrashModelParams)
+    contacts: list[CrashContactParams] = Field(
+        default_factory=list,
+        description="Temas tanımları (/INTER/TYPE7 | TYPE24); boşsa temas yok.",
+    )
+    use_rigid_wall: bool = Field(
+        default=True,
+        description="False ise /RWALL yazılmaz (parça–parça çarpışma temasla).",
+    )
     scenario: str = Field(default="rigid_wall", description="rigid_wall | plate_ball")
 
     @field_validator("scenario")
@@ -214,6 +222,8 @@ def crash_solve(
                 "model": body.model.model_dump(),
                 "scenario": body.scenario,
                 "parts": [p.model_dump() for p in body.parts],
+                "contacts": [c.model_dump() for c in body.contacts],
+                "use_rigid_wall": body.use_rigid_wall,
             }
         )
     except SolverError as exc:
@@ -231,6 +241,7 @@ def crash_solve(
         "has_law1": "/MAT/LAW1" in starter_text,
         "has_bcs": "/BCS/" in starter_text,
         "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
+        "n_inter": sum(1 for ln in starter_text.splitlines() if ln.startswith("/INTER/")),
     }
     or_ok = resolve_openradioss() is not None
     meta: dict[str, Any] = {
@@ -246,6 +257,8 @@ def crash_solve(
         "model": body.model.model_dump(),
         "scenario": body.scenario,
         "parts": [p.model_dump() for p in body.parts],
+        "contacts": [c.model_dump() for c in body.contacts],
+        "use_rigid_wall": body.use_rigid_wall,
         "solver_ran": False,
         "openradioss_available": or_ok,
         "scalars": {},

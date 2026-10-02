@@ -175,6 +175,58 @@ class CrashModelParams(BaseModel):
         return _finite(value, "sigma_y_pa")
 
 
+class CrashContactParams(BaseModel):
+    """Bir temas tanımı (1.12): /INTER/TYPE7 veya /INTER/TYPE24.
+
+    Parça kimlikleri mesh part_id'si (0 tabanlı). Yüzeyler parçanın solid dış
+    derisi (/SURF/PART/EXT). master = slave → self-contact. Öneri yok:
+    Istf/Inacti/Iedge Radioss bayrakları, mühendis doldurur.
+    TYPE7: slave düğümleri (/GRNOD/PART) → master yüzey; gapmin (mm) kullanılır.
+    TYPE24: slave yüzey ↔ master yüzey (simetrik); gapmin yok sayılır.
+    """
+
+    type: int = Field(default=7, description="7 | 24")
+    master_part: int = Field(ge=0)
+    slave_part: int = Field(ge=0)
+    fric: float = Field(default=0.0, ge=0, description="Coulomb sürtünme")
+    gapmin: float = Field(
+        default=0.0, ge=0, description="TYPE7 GAPmin (mm)", json_schema_extra={"unit": "mm"}
+    )
+    stfac: float = Field(
+        default=1.0, gt=0, description="Stfac: ölçek (Istf=1'de rijitlik, kN/mm)"
+    )
+    istf: int = Field(default=0, description="Istf (rijitlik tanımı)")
+    inacti: int = Field(default=0, description="Inacti (ilk penetrasyon)")
+    iedge: int = Field(default=0, description="TYPE24 Iedge (kenar–kenar)")
+
+    @field_validator("type")
+    @classmethod
+    def _type_ok(cls, value: int) -> int:
+        if value not in (7, 24):
+            raise ValueError("temas tipi 7 veya 24 olmalı.")
+        return value
+
+    @model_validator(mode="after")
+    def _flags_ok(self) -> "CrashContactParams":
+        # İzinli değerler: OpenRadioss hm_cfg radioss2020 TYPE7 / radioss2021 TYPE24.
+        if self.type == 7:
+            istf_ok, inacti_ok = {0, 1, 2, 3, 4, 5, 1000}, {0, 1, 2, 3, 5, 6, 1000}
+        else:
+            istf_ok, inacti_ok = {0, 2, 3, 4, 5, 6, 1000}, {-1, 0, 5, 1000}
+        if self.istf not in istf_ok:
+            raise ValueError(f"TYPE{self.type} Istf {sorted(istf_ok)} olmalı.")
+        if self.inacti not in inacti_ok:
+            raise ValueError(f"TYPE{self.type} Inacti {sorted(inacti_ok)} olmalı.")
+        if self.iedge not in (0, 1, 1000):
+            raise ValueError("Iedge 0, 1 veya 1000 olmalı.")
+        return self
+
+    @field_validator("fric", "stfac", "gapmin")
+    @classmethod
+    def _finite_vals(cls, value: float, info) -> float:
+        return _finite(value, info.field_name)
+
+
 def apply_barrier(params: dict[str, Any], barrier: CrashBarrierParams) -> dict[str, Any]:
     """`initial_velocity` ve `rigid_wall` alanlarını bariyerden doldurur (yerinde)."""
     vel, wall = barrier.to_inivel_rwall()

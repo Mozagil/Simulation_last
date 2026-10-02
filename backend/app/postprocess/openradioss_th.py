@@ -195,9 +195,16 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     packed["ie"] = col("IE", "IENERGY", "internal")
     packed["ke"] = col("KE", "KENERGY", "kinetic")
     packed["hg"] = col("HOURGLASS", "HG")
-    packed["fnx"] = col("FNX", "RWALLFNX")
-    packed["fny"] = col("FNY", "RWALLFNY")
-    packed["fnz"] = col("FNZ", "RWALLFNZ")
+    # Duvar FN* adla aranırken temas grubunun (contact_th) FN* sütunları hariç.
+    wall_headers = [h for h in headers if "contact_th" not in h.lower()]
+
+    def wall_col(*needles: str) -> list[float] | None:
+        idx = _pick_column(wall_headers, *needles)
+        return None if idx is None else cols[wall_headers[idx]]
+
+    packed["fnx"] = wall_col("FNX", "RWALLFNX")
+    packed["fny"] = wall_col("FNY", "RWALLFNY")
+    packed["fnz"] = wall_col("FNZ", "RWALLFNZ")
     packed["imp"] = col("IMP", "IMPULSE")
     packed["ax"] = col("ACCX", "AX")
     packed["ay"] = col("ACCY", "AY")
@@ -213,6 +220,12 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
         g = _th_group_columns(headers, ("hic_nodes",))
         if len(g) >= 3:
             packed["ax"], packed["ay"], packed["az"] = (cols[g[0]], cols[g[1]], cols[g[2]])
+    # /TH/INTER "contact_th": arayüz başına FNX FNY FNZ FTX FTY FTZ (deck sırası).
+    contact_cols = [h for h in headers if "contact_th" in h.lower()]
+    packed["contacts"] = [
+        [cols[h] for h in contact_cols[i : i + 6]]
+        for i in range(0, len(contact_cols) - len(contact_cols) % 6, 6)
+    ]
     packed["acc_g"] = None
     for h in headers:
         nh = _norm_header(h)
@@ -237,6 +250,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     ke: list[float] = []
     force: list[float] = []
     acc_g: list[float] = []
+    contact_fn: list[list[float]] = []
     time_header = "TIME"
 
     if cols:
@@ -255,6 +269,10 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             force = [abs(v) for v in impulse_to_force(time, packed["imp"])]
         elif fnz:
             force = [abs(v) for v in fnz]
+        for fx, fy, fz, *_ft in packed["contacts"]:
+            contact_fn.append(
+                [math.sqrt(fx[i] ** 2 + fy[i] ** 2 + fz[i] ** 2) for i in range(min(len(fx), len(fy), len(fz)))]
+            )
         if packed["acc_g"] is not None:
             acc_g = list(packed["acc_g"])
         elif packed["ax"] and packed["ay"] and packed["az"]:
@@ -286,6 +304,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             scalars["energy_balance_rel"] = abs(e1 - e0) / denom
     if force:
         scalars["rwall_force_max"] = float(max(abs(f) for f in force))
+    for k, fn in enumerate(contact_fn, start=1):
+        if fn:
+            scalars[f"contact_{k}_force_max"] = float(max(fn))
     if acc_g and time_s:
         scalars["acc_peak_g"] = float(max(abs(v) for v in acc_g))
         scalars["hic15"] = hic15(time_s, acc_g)
@@ -300,6 +321,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         curves["rwall_force"] = force
     if acc_g:
         curves["acc_g"] = acc_g
+    for k, fn in enumerate(contact_fn, start=1):
+        if fn:
+            curves[f"contact_{k}_force"] = fn
 
     raw = csv_path or out_path or work_dir
     return ResultSet(scalars=scalars, curves=curves, raw_result_path=raw)

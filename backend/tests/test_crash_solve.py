@@ -141,6 +141,55 @@ def test_crash_solve_plastic_writes_law2():
 
 
 @requires_db
+def test_crash_solve_contact_without_wall():
+    """1.12a: tek parçalı kutuda TYPE24 self-contact, duvar kapalı."""
+    geometry_id = _upload_and_mesh_box()
+    response = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "run_solver": False,
+            "use_rigid_wall": False,
+            "contacts": [{"type": 24, "master_part": 0, "slave_part": 0, "fric": 0.1}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cards"]["has_rwall"] is False
+    assert body["cards"]["n_inter"] == 1
+    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    assert "/SURF/PART/EXT/1001" in text and "/INTER/TYPE24/1" in text
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["use_rigid_wall"] is False
+    assert snap["contacts"][0]["type"] == 24
+
+
+@requires_db
+def test_crash_solve_rejects_bad_contact():
+    geometry_id = _upload_and_mesh_box()
+    bad_type = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "contacts": [{"type": 5, "master_part": 0, "slave_part": 0}],
+        },
+    )
+    assert bad_type.status_code == 422
+    missing_part = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "contacts": [{"type": 7, "master_part": 3, "slave_part": 0}],
+        },
+    )
+    assert missing_part.status_code == 422
+    assert "#3" in missing_part.json()["detail"]
+
+
+@requires_db
 def test_crash_solve_rejects_dimension_2():
     geometry_id = _upload_and_mesh_box()
     response = client.post(

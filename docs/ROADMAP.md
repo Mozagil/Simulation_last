@@ -622,9 +622,27 @@ KE_max 27.0 J (= ½·0.54 kg·10²), IE_son 24.8 J, denge %0.9, duvar tepe
 6.7 kN. İş `uploads/crash/81921bfe…`. Temas henüz yok: kutu plakayı değil
 duvarı görüyor; plaka /BCS ile duruyor (1.12'de duvar yerine temas).
 
+**1.12a — Temas: deck + API + post-process** — ✅ 2026-10-02
+API `contacts` [{type 7|24, master_part, slave_part, fric, stfac, gapmin,
+istf, inacti, iedge}] + `use_rigid_wall` (varsayılan true). Yüzey
+`/SURF/PART/EXT` (solid dış deri; düz `/SURF/PART` yalnız kabuk alır), set
+kimliği 1000 + part_ID. TYPE7: slave `/GRNOD/PART` → master yüzey (hm_cfg
+radioss2020 düzeni); TYPE24: iki yüzey, self-contact'ta surf_ID2 = 0
+(radioss2021 düzeni). İzinli Istf/Inacti/Iedge değerleri hm_cfg'den.
+`/TH/INTER` FNX…FTZ → `contact_k_force` (|FN|) eğrisi + `_max` skaleri; duvar
+FN okuyucusu `contact_th` sütunlarını dışlar. 9 deck/post-process + 2 API
+testi. Gerçek koşu (1.11b geometrisi, duvar kapalı, TYPE7 kutu düğümleri →
+plaka derisi, bayraklar varsayılan): starter 0 hata / 0 uyarı, 28 225
+çevrim, 100 s; KE_max 27.0 J, IE_son 25.0 J, denge %0.13, temas tepe 6.74 kN
+(1.11b duvar 6.70 kN). Radioss GAPmin 0.263 mm → ilk temas 0.075 ms
+(= (1 − 0.263) mm / 10 mm/ms), temas enerjisi tepe 0.235 J. İş
+`uploads/crash/a7bbb6c3…`.
+- [ ] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
+      koşuyla doğrulanacak — tek arayüzde 6 sütun beklenen sırada
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.12 Temas: `/SURF` + `/INTER/TYPE7` (master yüzey – slave düğüm) ve
-  TYPE24; UI'da kontakt kartı (parçalar, sürtünme, gap, rijitlik)
+- 1.12b Crash sekmesinde kontakt kartı (tip, master/slave, sürtünme, gap,
+  rijitlik, duvar aç/kapa) + temas kuvveti grafiği
 - 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i
   solid yerine kabukla
 - 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,

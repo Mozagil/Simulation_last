@@ -16,7 +16,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -28,7 +28,7 @@ from app.solvers.base import (
     SolverAdapter,
     SolverError,
 )
-from app.solvers.crash_params import CrashModelParams
+from app.solvers.crash_params import CrashContactParams, CrashModelParams
 
 # Codespace Dockerfile bu etiketi indirir (reproducible). Kaynak derlenmez.
 OPENRADIOSS_RELEASE = "latest-20260728"
@@ -337,6 +337,93 @@ def _mat_prop_cards(
     return mat_lines + prop_lines
 
 
+def _contacts(params: dict[str, Any]) -> list[CrashContactParams]:
+    out: list[CrashContactParams] = []
+    for raw in params.get("contacts") or []:
+        if isinstance(raw, CrashContactParams):
+            out.append(raw)
+            continue
+        try:
+            out.append(CrashContactParams.model_validate(raw))
+        except ValidationError as exc:
+            raise SolverError(f"OpenRadioss temas geçersiz: {exc}") from exc
+    return out
+
+
+# Temas için yüzey/düğüm grubu kimlikleri parça başına: 1000 + Radioss part_ID
+# (GRNOD 1/2 hareketli/sabit gruplarıyla çakışmaz). Aynı parça birden çok
+# temasta geçerse kart bir kez yazılır.
+_CONTACT_SET_BASE = 1000
+
+
+def _contact_cards(
+    contacts: list[CrashContactParams], rid: Callable[[int], int]
+) -> list[str]:
+    if not contacts:
+        return []
+    set_id = lambda pid: _CONTACT_SET_BASE + rid(pid)  # noqa: E731
+    surf_parts: list[int] = []
+    grnod_parts: list[int] = []
+    for c in contacts:
+        for pid in (c.master_part, c.slave_part) if c.type == 24 else (c.master_part,):
+            if pid not in surf_parts:
+                surf_parts.append(pid)
+        if c.type == 7 and c.slave_part not in grnod_parts:
+            grnod_parts.append(c.slave_part)
+
+    lines: list[str] = []
+    # /SURF/PART/EXT: solid parçanın dış yüzleri (düz /SURF/PART yalnız kabuk alır).
+    for pid in surf_parts:
+        lines.extend([f"/SURF/PART/EXT/{set_id(pid)}", f"skin_part_{pid}", _i(rid(pid))])
+    for pid in grnod_parts:
+        lines.extend([f"/GRNOD/PART/{set_id(pid)}", f"nodes_part_{pid}", _i(rid(pid))])
+
+    blank = lambda n: " " * n  # noqa: E731
+    # IBC alanı: %7s + üç %1d bayrağı (sınır koşulu devre dışı bırakma kapalı).
+    ibc = f"{blank(7)}000"
+    for k, c in enumerate(contacts, start=1):
+        title = f"contact_{k}_p{c.slave_part}_on_p{c.master_part}"
+        if c.type == 7:
+            # Radioss 2020+ /INTER/TYPE7 (hm_cfg radioss2020): grnod_id surf_id
+            # Istf Ithe Igap · Ibag Idel Icurv Iadm; Fscalegap Gap_max Fpenmax
+            # Itied; Stmin Stmax %mesh dtmin Irem_gap Irem_i2; Stfac Fric GAPmin
+            # Tstart Tstop; IBC Inacti VIS_S VIS_F Bumult; Ifric … fric_ID.
+            lines.extend(
+                [
+                    f"/INTER/TYPE7/{k}",
+                    title,
+                    f"{_i(set_id(c.slave_part))}{_i(set_id(c.master_part))}{_i(c.istf)}"
+                    f"{_i(0)}{_i(0)}{blank(10)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{blank(20)}{_i(0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}",
+                    f"{_f(c.stfac)}{_f(c.fric)}{_f(c.gapmin)}{_f(0.0)}{_f(0.0)}",
+                    f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+                    f"{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}",
+                ]
+            )
+        else:
+            # Radioss 2021+ /INTER/TYPE24 (hm_cfg radioss2021): surf_ID1 (slave)
+            # surf_ID2 (master; self-contact'ta 0) Istf · Irem_i2 · Idel;
+            # grnd_IDs · Iedge Edge_angle Gap_max_s Gap_max_m; Stmin Stmax Igap0
+            # Ipen0 Ipen_max; Stfac Fric · Tstart Tstop; IBC Inacti VISs ·
+            # Tpressfit; Ifric Ifiltr Xfreq · sens_ID · fric_ID.
+            surf2 = 0 if c.master_part == c.slave_part else set_id(c.master_part)
+            lines.extend(
+                [
+                    f"/INTER/TYPE24/{k}",
+                    title,
+                    f"{_i(set_id(c.slave_part))}{_i(surf2)}{_i(c.istf)}"
+                    f"{blank(20)}{_i(0)}{blank(10)}{_i(0)}",
+                    f"{_i(0)}{blank(20)}{_i(c.iedge)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}",
+                    f"{_f(c.stfac)}{_f(c.fric)}{blank(20)}{_f(0.0)}{_f(0.0)}",
+                    f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{blank(20)}{_f(0.0)}",
+                    f"{_i(0)}{_i(0)}{_f(0.0)}{blank(10)}{_i(0)}{blank(30)}{_i(0)}",
+                ]
+            )
+    return lines
+
+
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
     title = str(params.get("title") or "crash")[:80]
     nodes = params.get("nodes") or []
@@ -452,6 +539,14 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         # /BCS: üç öteleme + üç dönme serbestliği kilitli.
         lines.extend(["/BCS/1", "fixed_parts", f"   111 111{_i(0)}{_i(2)}"])
 
+    contacts = _contacts(params)
+    for c in contacts:
+        for pid in (c.master_part, c.slave_part):
+            if pid not in part_ids:
+                raise SolverError(f"Crash: temas parçası #{pid} mesh'te yok.")
+    inter_ids = list(range(1, len(contacts) + 1))
+    lines.extend(_contact_cards(contacts, _rid))
+
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
     vz = float(vel.get("vz") or 0.0)
@@ -471,18 +566,30 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     norm = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
     nx, ny, nz = nx / norm, ny / norm, nz / norm
     th_vars = lambda names: "".join(f"{n:>10}" for n in names)  # noqa: E731
+    # Duvar kapatılabilir (1.12: temasla parça–parça çarpışma). Varsayılan açık.
+    if params.get("use_rigid_wall", True):
+        lines.extend(
+            [
+                "/RWALL/PLANE/1",
+                "barrier",
+                f"{_i(0)}{_i(0)}{_i(1)}{_i(0)}",
+                f"{_f(0.0)}{'':>20}{_f(0.0)}",
+                f"{_f(px)}{_f(py)}{_f(pz)}",
+                f"{_f(px + nx)}{_f(py + ny)}{_f(pz + nz)}",
+                "/TH/RWALL/1",
+                "barrier_th",
+                th_vars(["FNX", "FNY", "FNZ"]),
+                _i(1),
+            ]
+        )
+    if inter_ids:
+        # Normal (FN*) + teğetsel (FT*) temas kuvveti; post-process grup
+        # başlığı "contact_th" ile arayüz başına altışar sütun okur.
+        lines.extend(["/TH/INTER/1", "contact_th", th_vars(["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"])])
+        for i in range(0, len(inter_ids), 10):
+            lines.append("".join(_i(v) for v in inter_ids[i : i + 10]))
     lines.extend(
         [
-            "/RWALL/PLANE/1",
-            "barrier",
-            f"{_i(0)}{_i(0)}{_i(1)}{_i(0)}",
-            f"{_f(0.0)}{'':>20}{_f(0.0)}",
-            f"{_f(px)}{_f(py)}{_f(pz)}",
-            f"{_f(px + nx)}{_f(py + ny)}{_f(pz + nz)}",
-            "/TH/RWALL/1",
-            "barrier_th",
-            th_vars(["FNX", "FNY", "FNZ"]),
-            _i(1),
             "/TH/PART/1",
             "part_energy",
             th_vars(["IE", "KE"]),
