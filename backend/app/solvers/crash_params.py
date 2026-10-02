@@ -186,6 +186,21 @@ class CrashModelParams(BaseModel):
     )
     harden_b_mpa: float = Field(default=0.0, ge=0, description="LAW2 b (MPa)")
     harden_n: float = Field(default=1.0, ge=0, description="LAW2 n")
+    # 1.14a — Johnson-Cook hız / sıcaklık terimleri ve sınırlar (LAW2). Hepsi 0 =
+    # terim kapalı / Radioss varsayılanı. Birimler mühendis birimi; deck kg–mm–ms'ye
+    # çevirir. Kart düzeni hm_cfg radioss140 matl2_plas_johns (2022 bunu kullanır).
+    eps_p_max: float = Field(default=0.0, ge=0, description="EPS_p_max: kopma plastik şekil değiştirmesi")
+    sig_max0_mpa: float = Field(default=0.0, ge=0, description="SIG_max0 (MPa): plastik gerilme üst sınırı", json_schema_extra={"unit": "MPa"})
+    jc_c: float = Field(default=0.0, ge=0, description="c: şekil değiştirme hızı katsayısı")
+    jc_eps_dot0_per_s: float = Field(default=0.0, ge=0, description="ε̇₀ (1/s): referans hız", json_schema_extra={"unit": "1/s"})
+    jc_icc: int = Field(default=0, description="ICC: hızın SIG_max'a etkisi (0, 1, 2)")
+    jc_fsmooth: int = Field(default=0, description="Fsmooth: hız yumuşatma (0, 1)")
+    jc_fcut_hz: float = Field(default=0.0, ge=0, description="F_cut (Hz): hız filtresi kesme frekansı", json_schema_extra={"unit": "Hz"})
+    jc_chard: float = Field(default=0.0, ge=0, le=1, description="Chard: boşaltmada sertleşme katsayısı")
+    jc_m: float = Field(default=0.0, ge=0, description="m: sıcaklık üssü")
+    jc_t_melt_k: float = Field(default=0.0, ge=0, description="T_melt (K)", json_schema_extra={"unit": "K"})
+    jc_rho_cp: float = Field(default=0.0, ge=0, description="ρCp (J/(m³·K)): hacimsel özgül ısı", json_schema_extra={"unit": "J/(m³·K)"})
+    jc_t_r_k: float = Field(default=0.0, ge=0, description="T_r (K): oda sıcaklığı", json_schema_extra={"unit": "K"})
     shell: CrashShellParams = Field(
         default_factory=CrashShellParams, description="Kabuk parçalar için /PROP/TYPE1"
     )
@@ -209,6 +224,24 @@ class CrashModelParams(BaseModel):
         if value is None:
             return None
         return _finite(value, "sigma_y_pa")
+
+    @model_validator(mode="after")
+    def _jc_ok(self) -> "CrashModelParams":
+        for name in (
+            "eps_p_max", "sig_max0_mpa", "jc_c", "jc_eps_dot0_per_s", "jc_fcut_hz",
+            "jc_chard", "jc_m", "jc_t_melt_k", "jc_rho_cp", "jc_t_r_k",
+        ):
+            _finite(getattr(self, name), name)
+        if self.jc_icc not in (0, 1, 2):
+            raise ValueError("jc_icc 0, 1 veya 2 olmalı.")
+        if self.jc_fsmooth not in (0, 1):
+            raise ValueError("jc_fsmooth 0 veya 1 olmalı.")
+        # Tutarlılık (öneri değil): terim açıksa ihtiyaç duyduğu girdi eksik olamaz.
+        if self.jc_c > 0 and self.jc_eps_dot0_per_s <= 0:
+            raise ValueError("jc_c > 0 iken referans hız jc_eps_dot0_per_s > 0 olmalı.")
+        if self.jc_m > 0 and self.jc_t_melt_k <= self.jc_t_r_k:
+            raise ValueError("jc_m > 0 iken jc_t_melt_k, jc_t_r_k'den büyük olmalı.")
+        return self
 
 
 class CrashContactParams(BaseModel):

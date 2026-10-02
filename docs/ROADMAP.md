@@ -766,10 +766,30 @@ Crash: #0 S355 t 2 → deck `/SHELL/1`, `/MAT/LAW2/1` S355, `/PROP/TYPE1/1`
 Thick 2, Ishell 24, N 5, çakışık düğüm 0 (yalnız deck; çözüm koşulmadı).
 İş `uploads/crash/c3f70c6f…`.
 
+**1.14a — LAW2 Johnson-Cook: hız / sıcaklık terimleri ve sınırlar** — ✅ 2026-10-02
+`model`: `eps_p_max`, `sig_max0_mpa`, `jc_c`, `jc_eps_dot0_per_s`, `jc_icc`,
+`jc_fsmooth`, `jc_fcut_hz`, `jc_chard`, `jc_m`, `jc_t_melt_k`, `jc_rho_cp`
+(J/(m³K)), `jc_t_r_k`; 0 = terim kapalı / Radioss varsayılanı. Kart düzeni hm_cfg
+radioss140 `matl2_plas_johns` (ρ · E ν Iflag · a b n EPS_p_max SIG_max0 · c ε̇₀
+ICC Fsmooth F_cut Chard · m T_melt ρCp T_r); `E ν Iflag` satırındaki fazladan
+alan ve son satırın 5. alanı kaldırıldı. Birim: ε̇₀, F_cut ×1e-3 (1/ms),
+SIG_max0 MPa→GPa, ρCp ×1e-9. Tutarlılık kontrolü: c > 0 ⇒ ε̇₀ > 0; m > 0 ⇒
+T_melt > T_r; ICC ∈ {0,1,2}, Fsmooth ∈ {0,1}. 10 test. DB/UI yok (UI 1.14e).
+Gerçek koşu (kabuk crash box 3931, t 3, LAW2 a = 235 MPa, 10 m/s, duvar, 4 ms;
+yalnız c farklı): c = 0 → tepe 123.1 kN, IE_son 55.81 J, KE_son 2.97 J, impuls
+14.41 N·s; c = 0.014, ε̇₀ = 1/s (test için seçildi) → tepe 131.2 kN (+%6.6),
+IE_son 54.01 J, KE_son 4.76 J (daha çok geri sekme), impuls 15.15 N·s
+(m·(v₀+v_son) = 15.23); denge %0.96 / %0.97. Starter CC ve ε̇₀'ı doğru yankıladı.
+Radioss starter uyarısı 1220: hız etkisi açık ama filtre (Fsmooth) kapalı —
+çözücünün kendi notu; seçim mühendisin. İşler `0f78a91d…`, `083db7cd…`.
+- [ ] Starter uyarı/hata ID'leri iş sonucunda veri olarak gösterilmiyor
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
-- 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,
-  `/FAIL`; parça başına kart editörü
+- 1.14b Parça başına malzeme kartı (kanun + parametreler parça parça)
+- 1.14c LAW36 tablo plastisite (/FUNCT eğrileri; veri kaynağı kararı bekliyor)
+- 1.14d `/FAIL` + eleman silme (kriter kararı bekliyor: JOHNSON, TENSSTRAIN…)
+- 1.14e Crash sekmesinde parça başına malzeme kartı editörü
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability

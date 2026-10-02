@@ -285,6 +285,8 @@ def _crash_model(params: dict[str, Any]) -> CrashModelParams:
 PA_TO_GPA = 1e-9
 KGM3_TO_KGMM3 = 1e-9
 MPA_TO_GPA = 1e-3
+# Frekans / hız: 1/s → 1/ms. ρCp J/(m³·K) → J/(mm³·K) aynı 1e-9 (KGM3_TO_KGMM3).
+PER_S_TO_PER_MS = 1e-3
 
 
 def _mat_prop_cards(
@@ -309,17 +311,23 @@ def _mat_prop_cards(
             )
         a_gpa = float(sy) * PA_TO_GPA
         b_gpa = float(model.harden_b_mpa) * MPA_TO_GPA
-        # Radioss 2022 /MAT/LAW2 (Johnson–Cook), Iflag=0: beş veri satırı.
-        # Sıfır bırakılan alanlar Radioss varsayılanına düşer (EPS_p_max,
-        # SIG_max0, T_melt → 1e30; c, m → hız/sıcaklık etkisi kapalı).
+        # Radioss 2022 /MAT/LAW2 (Johnson–Cook), Iflag=0 — hm_cfg radioss140
+        # matl2_plas_johns: ρ; E ν Iflag; a b n EPS_p_max SIG_max0; c ε̇₀ ICC
+        # Fsmooth F_cut Chard; m T_melt ρCp T_r. Sıfır = Radioss varsayılanı
+        # (EPS_p_max, SIG_max0, T_melt → 1e30; c, m → terim kapalı).
+        # Birim: ε̇₀, F_cut 1/s → 1/ms; SIG_max0 MPa → GPa; ρCp J/(m³K) → J/(mm³K).
         mat_lines = [
             f"/MAT/LAW2/{card_id}",
             title,
             _f(rho),
-            f"{_f(e_gpa)}{_f(nu)}{_i(0)}{_i(0)}",
-            f"{_f(a_gpa)}{_f(b_gpa)}{_f(model.harden_n)}{_f(0.0)}{_f(0.0)}",
-            f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}{_f(0.0)}",
-            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(e_gpa)}{_f(nu)}{_i(0)}",
+            f"{_f(a_gpa)}{_f(b_gpa)}{_f(model.harden_n)}{_f(model.eps_p_max)}"
+            f"{_f(model.sig_max0_mpa * MPA_TO_GPA)}",
+            f"{_f(model.jc_c)}{_f(model.jc_eps_dot0_per_s * PER_S_TO_PER_MS)}"
+            f"{_i(model.jc_icc)}{_i(model.jc_fsmooth)}"
+            f"{_f(model.jc_fcut_hz * PER_S_TO_PER_MS)}{_f(model.jc_chard)}",
+            f"{_f(model.jc_m)}{_f(model.jc_t_melt_k)}{_f(model.jc_rho_cp * KGM3_TO_KGMM3)}"
+            f"{_f(model.jc_t_r_k)}",
         ]
     else:
         mat_lines = [
