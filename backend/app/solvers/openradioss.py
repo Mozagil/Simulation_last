@@ -329,6 +329,34 @@ def _mat_prop_cards(
             f"{_f(model.jc_m)}{_f(model.jc_t_melt_k)}{_f(model.jc_rho_cp * KGM3_TO_KGMM3)}"
             f"{_f(model.jc_t_r_k)}",
         ]
+    elif model.law == "tabulated":
+        # Radioss 2022 /MAT/LAW36 — hm_cfg radioss2017 matl36_plas_tab: ρ; E ν
+        # Eps_p_max Eps_t Eps_m; N_funct F_smooth C_hard F_cut Eps_f · VP;
+        # fct_IDp Fscale Fct_IDE EInf CE; sonra eğri kimlikleri / ölçekleri /
+        # hızları beşer beşer. Eğriler /FUNCT (ε_p, σ): σ MPa → GPa, ε̇ 1/s → 1/ms.
+        # fct_IDp, Fct_IDE 0 (basınç / E değişimi yok); eğri ölçeği 1.
+        curves = model.tab_curves
+        fids = [card_id * 100 + k for k in range(1, len(curves) + 1)]
+        mat_lines = [
+            f"/MAT/LAW36/{card_id}",
+            title,
+            _f(rho),
+            f"{_f(e_gpa)}{_f(nu)}{_f(model.eps_p_max)}{_f(model.tab_eps_t)}{_f(model.tab_eps_m)}",
+            f"{_i(len(curves))}{_i(model.jc_fsmooth)}{_f(model.jc_chard)}"
+            f"{_f(model.jc_fcut_hz * PER_S_TO_PER_MS)}{_f(model.tab_eps_f)}{' ' * 10}{_i(model.tab_vp)}",
+            f"{_i(0)}{_f(0.0)}{_i(0)}{_f(0.0)}{_f(0.0)}",
+        ]
+        for i in range(0, len(curves), 5):
+            mat_lines.append("".join(_i(f) for f in fids[i : i + 5]))
+        for i in range(0, len(curves), 5):
+            mat_lines.append("".join(_f(1.0) for _ in curves[i : i + 5]))
+        for i in range(0, len(curves), 5):
+            mat_lines.append(
+                "".join(_f(c.eps_dot_per_s * PER_S_TO_PER_MS) for c in curves[i : i + 5])
+            )
+        for fid, c in zip(fids, curves):
+            mat_lines += [f"/FUNCT/{fid}", f"yield_{card_id}_{c.eps_dot_per_s:g}_per_s"]
+            mat_lines += [f"{_f(x)}{_f(y * MPA_TO_GPA)}" for x, y in c.points]
     else:
         mat_lines = [
             f"/MAT/LAW1/{card_id}",

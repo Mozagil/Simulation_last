@@ -167,6 +167,29 @@ class CrashShellParams(BaseModel):
         return self
 
 
+class CrashTabCurve(BaseModel):
+    """LAW36 akma eğrisi (1.14c): plastik şekil değiştirme → gerçek gerilme (MPa),
+    bir şekil değiştirme hızında. Deck /FUNCT olarak yazar (MPa → GPa)."""
+
+    eps_dot_per_s: float = Field(default=0.0, ge=0, description="Bu eğrinin hızı ε̇ (1/s)", json_schema_extra={"unit": "1/s"})
+    points: list[tuple[float, float]] = Field(
+        ..., min_length=2, description="[(ε_p, σ MPa), …] — ε_p kesin artan"
+    )
+
+    @model_validator(mode="after")
+    def _points_ok(self) -> "CrashTabCurve":
+        _finite(self.eps_dot_per_s, "eps_dot_per_s")
+        xs = [float(x) for x, _ in self.points]
+        for x, y in self.points:
+            _finite(x, "ε_p")
+            _finite(y, "σ")
+            if x < 0 or y < 0:
+                raise ValueError("eğri noktaları negatif olamaz.")
+        if any(b <= a for a, b in zip(xs, xs[1:])):
+            raise ValueError("eğride ε_p kesin artan olmalı.")
+        return self
+
+
 class CrashModelParams(BaseModel):
     """Solid kart + malzeme kanunu (OpenRadioss TYPE14 / LAW1|LAW2).
 
@@ -174,7 +197,7 @@ class CrashModelParams(BaseModel):
     LAW2: a = σy (MPa), b ve n sertleşme; σy verilmezse atanan malzeme yield.
     """
 
-    law: str = Field(default="elastic", description="elastic=LAW1 | plastic=LAW2")
+    law: str = Field(default="elastic", description="elastic=LAW1 | plastic=LAW2 | tabulated=LAW36")
     isolid: int = Field(default=1, ge=0, le=24, description="TYPE14 Isolid")
     ismstr: int = Field(default=0, ge=0, le=12, description="TYPE14 Ismstr")
     nip: int = Field(default=1, ge=1, le=9, description="TYPE14 Inpts (NIP)")
@@ -201,6 +224,16 @@ class CrashModelParams(BaseModel):
     jc_t_melt_k: float = Field(default=0.0, ge=0, description="T_melt (K)", json_schema_extra={"unit": "K"})
     jc_rho_cp: float = Field(default=0.0, ge=0, description="ρCp (J/(m³·K)): hacimsel özgül ısı", json_schema_extra={"unit": "J/(m³·K)"})
     jc_t_r_k: float = Field(default=0.0, ge=0, description="T_r (K): oda sıcaklığı", json_schema_extra={"unit": "K"})
+    # 1.14c — LAW36 (tabulated): eğriler istekte gelir, job.json'a kaydedilir
+    # (DB şeması değişmez). eps_p_max, jc_fsmooth, jc_fcut_hz, jc_chard LAW36'da
+    # da aynı anlamla kullanılır (EPS_p_max, F_smooth, F_cut, C_hard).
+    tab_curves: list[CrashTabCurve] = Field(
+        default_factory=list, description="LAW36 akma eğrileri (hız artan sırada)"
+    )
+    tab_eps_t: float = Field(default=0.0, ge=0, description="LAW36 Eps_t: hasar başlangıç çekme şekil değiştirmesi")
+    tab_eps_m: float = Field(default=0.0, ge=0, description="LAW36 Eps_m: maksimum çekme şekil değiştirmesi")
+    tab_eps_f: float = Field(default=0.0, ge=0, description="LAW36 Eps_f: eleman silme çekme şekil değiştirmesi")
+    tab_vp: int = Field(default=0, description="LAW36 VP: 0 toplam, 1 plastik hız")
     shell: CrashShellParams = Field(
         default_factory=CrashShellParams, description="Kabuk parçalar için /PROP/TYPE1"
     )
@@ -209,8 +242,8 @@ class CrashModelParams(BaseModel):
     @classmethod
     def _law_ok(cls, value: str) -> str:
         v = value.strip().lower()
-        if v not in ("elastic", "plastic"):
-            raise ValueError("law elastic veya plastic olmalı.")
+        if v not in ("elastic", "plastic", "tabulated"):
+            raise ValueError("law elastic, plastic veya tabulated olmalı.")
         return v
 
     @field_validator("harden_b_mpa", "harden_n")
@@ -232,6 +265,16 @@ class CrashModelParams(BaseModel):
             "jc_chard", "jc_m", "jc_t_melt_k", "jc_rho_cp", "jc_t_r_k",
         ):
             _finite(getattr(self, name), name)
+        for name in ("tab_eps_t", "tab_eps_m", "tab_eps_f"):
+            _finite(getattr(self, name), name)
+        if self.tab_vp not in (0, 1):
+            raise ValueError("tab_vp 0 veya 1 olmalı.")
+        if self.law == "tabulated":
+            if not self.tab_curves:
+                raise ValueError("LAW36 (tabulated) için en az bir akma eğrisi gerekli.")
+            rates = [c.eps_dot_per_s for c in self.tab_curves]
+            if any(b <= a for a, b in zip(rates, rates[1:])):
+                raise ValueError("LAW36 eğrilerinin hızları kesin artan sırada olmalı.")
         if self.jc_icc not in (0, 1, 2):
             raise ValueError("jc_icc 0, 1 veya 2 olmalı.")
         if self.jc_fsmooth not in (0, 1):

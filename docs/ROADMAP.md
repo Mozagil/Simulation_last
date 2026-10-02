@@ -798,9 +798,26 @@ rijitliği aynı. (2) yalnız kutuya JC c = 0.014, ε̇₀ = 1/s → temas tepe
 7.05 N·s (m·(v₀+v_son) = 7.14); deck'te c yalnız `/MAT/LAW2/1`'de; Radioss
 uyarısı 1220 yalnız malzeme 1 için. İşler `43eade78…`, `baa65293…`.
 
+**1.14c — LAW36 tablo plastisite + /FUNCT** — ✅ 2026-10-03
+`model.law = "tabulated"`, `tab_curves` [{`eps_dot_per_s`, `points` [(ε_p, σ
+MPa)…]}] (hız artan; ε_p kesin artan; σ ≥ 0), `tab_eps_t` / `tab_eps_m` /
+`tab_eps_f`, `tab_vp` (0/1); `eps_p_max`, `jc_fsmooth`, `jc_fcut_hz`,
+`jc_chard` LAW36'da aynı anlamla. Eğriler istekte gelir, job.json'da kalır —
+DB şeması değişmedi. Kart düzeni hm_cfg radioss2017 `matl36_plas_tab` (ρ · E ν
+Eps_p_max Eps_t Eps_m · N_funct F_smooth C_hard F_cut Eps_f · VP · fct_IDp
+Fscale Fct_IDE EInf CE · eğri id / ölçek / hız beşer); `/FUNCT` radioss90 (X Y).
+Eğri kimliği = card_id·100 + k (parça başına ayrık). σ MPa → GPa, ε̇ 1/s → 1/ms.
+Parça başına LAW36 / LAW2 karışık çalışır (1.14b). 9 test; crash 131/131.
+Gerçek koşu — eşdeğerlik: kabuk crash box, LAW36 tek düz eğri σ = 235 MPa ≡
+1.14a LAW2 (a = 235, b = 0, c = 0): IE_son 55.818 / 55.806 J (%0.02), tepe
+123.05 / 123.14 kN (%0.07), impuls 14.409 / 14.409 N·s; starter 0 hata / 0
+uyarı, "TABULATED ELASTIC PLASTIC LAW 36", fonksiyon 101. İş `d21ab83f…`.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
-- 1.14c LAW36 tablo plastisite (/FUNCT eğrileri; veri kaynağı kararı bekliyor)
+- 1.14c2 LAW36 eğrilerini malzeme kütüphanesinde kalıcı tutma (materials
+  tablosuna kolon + Alembic migration; aynı eğri birden çok senaryoda) —
+  DB şeması değişikliği, ayrı onay
 - 1.14d `/FAIL` + eleman silme (kriter kararı bekliyor: JOHNSON, TENSSTRAIN…)
 - 1.14e Crash sekmesinde parça başına malzeme kartı editörü
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü

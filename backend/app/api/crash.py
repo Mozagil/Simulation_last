@@ -258,6 +258,7 @@ def crash_solve(
         "has_tfile": "/TFILE" in engine_text,
         "has_law2": "/MAT/LAW2" in starter_text,
         "has_law1": "/MAT/LAW1" in starter_text,
+        "has_law36": "/MAT/LAW36" in starter_text,
         "has_bcs": "/BCS/" in starter_text,
         "has_shell": "/SHELL/" in starter_text or "/SH3N/" in starter_text,
         "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
