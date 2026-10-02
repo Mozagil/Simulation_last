@@ -729,9 +729,9 @@ import) → 2D quad 5 mm (1 997 düğüm / 1 961 quad) → S235 → kabuk kartı
 KE_son 2.97 J, duvar tepe 123.1 kN, impuls 14.409 N·s (API koşusuyla aynı);
 kuvvet–zaman grafiği çizildi. Geometri 3932, iş `uploads/crash/c9cfdef3…`.
 Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
-- [ ] Kalınlık iki yerde: 2D mesh'te ürün ağacı bileşeni kalınlığı otomatik
-      3 (koda gömülü) ve o an seçili kütüphane malzemesiyle oluşuyor; Crash
-      kartının t'si ayrı giriş — tek kaynağa bağlanmalı mı (karar bekliyor)
+- [x] Kalınlık iki yerde → aşağıda "1.13 — kabuk kalınlığı tek kaynak"
+      (bileşen otomatik t = 3 ve seçili malzemeyle oluşmaya devam ediyor —
+      durability davranışı, dokunulmadı)
 - [ ] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor
 - [ ] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de)
 - [ ] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri)
@@ -751,6 +751,20 @@ edildi (7c7e3ca).
 - [ ] Midsurface dosyasında CAD ağacındaki "Parça #0" (solid) ile ürün ağacı
       COMP_PART_0 (orta yüzey) aynı numarayı farklı şey için kullanıyor —
       durability genel parça kimliği konusu
+
+**1.13 — kabuk kalınlığı tek kaynak: ürün ağacı bileşeni** — ✅ 2026-10-02
+/crash/solve dim 2 kalınlığı `components` tablosundan okur (aynı mesh parça
+numarası); öncelik: istekte açık `parts[].thickness_mm` > bileşen >
+`model.shell.thickness_mm`; eksikse hata mesajı Malzeme adımını gösterir.
+DB şeması değişmedi. Crash kartındaki t girişleri kaldırıldı; Parçalar
+tablosu bileşen kalınlığını salt-okunur gösterir ("yok" ise uyarı rengi).
+Testler: deck öncelik + API (bileşen 1.8 mm, S355 → deck Thick 1.8, S355);
+frontend 132/132. Gerçek uygulamada uçtan uca (hatanın çıktığı akış):
+thin_plate yükle → 3B'de parça seç → MİD (solid + orta yüzey, 7 yüz) → 2D
+quad 5 mm (231 düğüm / 200 quad) → ürün ağacında COMP_PART_0 t 2, S355 →
+Crash: #0 S355 t 2 → deck `/SHELL/1`, `/MAT/LAW2/1` S355, `/PROP/TYPE1/1`
+Thick 2, Ishell 24, N 5, çakışık düğüm 0 (yalnız deck; çözüm koşulmadı).
+İş `uploads/crash/c3f70c6f…`.
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
