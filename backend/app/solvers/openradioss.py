@@ -483,8 +483,13 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     # Rol: hareketli (ilk hız alır) / sabit (/BCS ile tutulur). Verilmeyen
     # parça hareketli — tek parçalı eski davranışla aynı.
     roles: dict[int, str] = {0: "moving"} if part_ids == [0] else {}
+    # 1.14b — parça başına malzeme kartı: parts[].model verilen parça kendi
+    # kanun/JC/eleman kartını alır; verilmeyen global `model`'e düşer.
+    part_models: dict[int, CrashModelParams] = {}
     for spec in params.get("parts") or []:
         roles[int(spec["part_id"])] = str(spec.get("role") or "moving")
+        if spec.get("model") is not None:
+            part_models[int(spec["part_id"])] = _crash_model({"model": spec["model"]})
     for pid in part_ids:
         roles.setdefault(pid, "moving")
     moving = [p for p in part_ids if roles[p] != "fixed"]
@@ -529,8 +534,9 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         if t is not None:
             thickness[int(spec["part_id"])] = float(t)
     for pid in sorted(shell_parts):
-        if pid not in thickness and model.shell.thickness_mm is not None:
-            thickness[pid] = float(model.shell.thickness_mm)
+        shell_t = part_models.get(pid, model).shell.thickness_mm
+        if pid not in thickness and shell_t is not None:
+            thickness[pid] = float(shell_t)
     no_t = [p for p in sorted(shell_parts) if p not in thickness]
     if no_t:
         raise SolverError(
@@ -593,7 +599,12 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
 
     for pid in part_ids:
         lines.extend(
-            _mat_prop_cards(mat_by_part[pid], model, card_id=_rid(pid), shell_thickness=thickness.get(pid))
+            _mat_prop_cards(
+                mat_by_part[pid],
+                part_models.get(pid, model),
+                card_id=_rid(pid),
+                shell_thickness=thickness.get(pid),
+            )
         )
         lines.extend(
             [

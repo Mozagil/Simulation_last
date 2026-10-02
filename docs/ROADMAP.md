@@ -784,9 +784,22 @@ Radioss starter uyarısı 1220: hız etkisi açık ama filtre (Fsmooth) kapalı 
 çözücünün kendi notu; seçim mühendisin. İşler `0f78a91d…`, `083db7cd…`.
 - [ ] Starter uyarı/hata ID'leri iş sonucunda veri olarak gösterilmiyor
 
+**1.14b — Parça başına malzeme kartı** — ✅ 2026-10-02
+API `parts[].model` (CrashModelParams: kanun, LAW2/JC, Isolid/NIP, kabuk
+bayrakları + kabuk kalınlık yedeği); verilmeyen parça global `model`'e düşer
+(eski davranış). Deck `/MAT` + `/PROP` parça parça; geçersiz parça modeli 422.
+4 deck + 1 API testi; crash testleri 122/122. Gerçek koşular (crash box +
+plaka, TYPE7, duvar kapalı, 10 m/s, 3 ms; taban 1.12a: ikisi de LAW2):
+(1) plaka LAW1 elastik → sonuç 1.12a ile basamak basamak aynı (IE_son
+25.016 J, temas tepe 86.35 kN, impuls 6.743 N·s) — beklenen: plakanın tüm
+düğümleri /BCS'te, deforme olamıyor; E iki kanunda da 210 GPa → temas
+rijitliği aynı. (2) yalnız kutuya JC c = 0.014, ε̇₀ = 1/s → temas tepe
+92.11 kN (+%6.7, 1.14a kabukta +%6.6), IE_son 24.17 J, KE_son 2.80 J, impuls
+7.05 N·s (m·(v₀+v_son) = 7.14); deck'te c yalnız `/MAT/LAW2/1`'de; Radioss
+uyarısı 1220 yalnız malzeme 1 için. İşler `43eade78…`, `baa65293…`.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
-- 1.14b Parça başına malzeme kartı (kanun + parametreler parça parça)
 - 1.14c LAW36 tablo plastisite (/FUNCT eğrileri; veri kaynağı kararı bekliyor)
 - 1.14d `/FAIL` + eleman silme (kriter kararı bekliyor: JOHNSON, TENSSTRAIN…)
 - 1.14e Crash sekmesinde parça başına malzeme kartı editörü

@@ -281,6 +281,35 @@ def test_crash_shell_thickness_from_product_tree_component():
 
 
 @requires_db
+def test_crash_solve_part_model_override():
+    """1.14b: parts[].model global modeli o parça için ezer (API üzerinden)."""
+    geometry_id = _upload_and_mesh_box()
+    response = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "model": {"law": "elastic"},
+            "parts": [{"part_id": 0, "role": "moving", "model": {"law": "plastic", "isolid": 24}}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cards"]["has_law2"] is True and body["cards"]["has_law1"] is False
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["parts"][0]["model"]["law"] == "plastic"
+    bad = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "parts": [{"part_id": 0, "model": {"law": "plastic", "jc_c": 0.1}}],
+        },
+    )
+    assert bad.status_code == 422
+
+
+@requires_db
 def test_crash_solve_rejects_bad_barrier():
     geometry_id = _upload_and_mesh_box()
     response = client.post(

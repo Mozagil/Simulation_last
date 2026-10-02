@@ -41,6 +41,10 @@ class CrashPartSpec(BaseModel):
     thickness_mm: float | None = Field(
         default=None, gt=0, description="Kabuk parça kalınlığı (mm); solid parçada yok sayılır"
     )
+    model: CrashModelParams | None = Field(
+        default=None,
+        description="Parça başına malzeme/eleman kartı (1.14b); boşsa istekteki global model",
+    )
 
     @field_validator("role")
     @classmethod
