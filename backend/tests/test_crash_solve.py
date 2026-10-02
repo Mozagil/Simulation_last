@@ -190,13 +190,61 @@ def test_crash_solve_rejects_bad_contact():
 
 
 @requires_db
-def test_crash_solve_rejects_dimension_2():
+def test_crash_solve_dimension_checks():
+    """1.13a: dimension=2 kabuk kabul edilir ama 2D mesh ister; 1 geçersiz."""
     geometry_id = _upload_and_mesh_box()
-    response = client.post(
+    no_2d = client.post(
         "/crash/solve",
         json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2},
     )
-    assert response.status_code == 400
+    assert no_2d.status_code == 404
+    assert "dimension=2" in no_2d.json()["detail"]
+    bad = client.post(
+        "/crash/solve",
+        json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 1},
+    )
+    assert bad.status_code == 400
+
+
+@requires_db
+def test_crash_solve_shell_mesh_writes_shell_cards():
+    """1.13a: midsurface → 2D quad mesh → /SHELL + /PROP/TYPE1 (kalınlık zorunlu)."""
+    with (FIXTURES_DIR / "thin_plate.step").open("rb") as f:
+        up = client.post(
+            "/geometry/upload",
+            files={"file": ("thin_plate.step", f, "application/octet-stream")},
+        )
+    geometry_id = up.json()["geometry_id"]
+    assert client.post(f"/geometry/{geometry_id}/parts/0/midsurface").status_code == 200
+    mesh = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2, "element_scheme": "quad"},
+    )
+    assert mesh.status_code == 200
+    mats = client.get("/materials").json()["materials"]
+    client.post(
+        "/materials/assignments",
+        json={"geometry_id": geometry_id, "part_id": 0, "material_id": mats[0]["id"]},
+    )
+    base = {"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2}
+    no_t = client.post("/crash/solve", json=base)
+    assert no_t.status_code == 422
+    assert "kalınlığı" in no_t.json()["detail"]
+    ok = client.post(
+        "/crash/solve",
+        json={
+            **base,
+            "parts": [{"part_id": 0, "role": "moving", "thickness_mm": 2.5}],
+            "model": {"law": "elastic", "shell": {"ishell": 24, "nip": 5}},
+        },
+    )
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["cards"]["has_shell"] is True and body["cards"]["has_tetra4"] is False
+    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
+    assert prop[1].startswith(f"{24:10d}")
+    assert prop[3].startswith(f"{5:10d}{0:10d}") and float(prop[3][20:40]) == 2.5
 
 
 @requires_db

@@ -90,14 +90,23 @@ def test_tet10_drops_midside_nodes(tmp_path):
     assert out.tets[0][1:] == (1, 2, 3, 4)
 
 
-def test_triangle_only_msh_rejected(tmp_path):
+def test_triangle_only_msh_becomes_sh3n(tmp_path):
+    """1.13: hacimsiz mesh kabuk olarak okunur (önce reddediliyordu)."""
     msh = tmp_path / "shell.msh"
     _write_msh(
         msh,
         [(1, 0, 0, 0), (2, 1, 0, 0), (3, 0, 1, 0)],
         ["1 2 2 0 1 1 2 3"],
     )
-    with pytest.raises(MeshError, match="3D tet/hex"):
+    out = gmsh_msh_to_radioss(msh)
+    assert out.sh3n == [(1, 1, 2, 3)] and not out.tets and not out.shells
+    assert out.element_parts == {1: 0}
+
+
+def test_line_only_msh_rejected(tmp_path):
+    msh = tmp_path / "wire.msh"
+    _write_msh(msh, [(1, 0, 0, 0), (2, 1, 0, 0)], ["1 1 2 0 1 1 2"])
+    with pytest.raises(MeshError, match="kabuk"):
         gmsh_msh_to_radioss(msh)
 
 

@@ -37,6 +37,9 @@ class CrashPartSpec(BaseModel):
 
     part_id: int = Field(..., ge=0, description="Mesh part_id (hacim sırası)")
     role: str = Field(default="moving", description="moving | fixed")
+    thickness_mm: float | None = Field(
+        default=None, gt=0, description="Kabuk parça kalınlığı (mm); solid parçada yok sayılır"
+    )
 
     @field_validator("role")
     @classmethod
@@ -54,7 +57,7 @@ class CrashSolveRequest(BaseModel):
         default_factory=list,
         description="Parça rolleri; verilmeyen parça hareketli sayılır.",
     )
-    dimension: int = Field(default=3, description="Crash solid mesh — yalnız 3")
+    dimension: int = Field(default=3, description="3 = solid (tet/hex), 2 = kabuk (tri/quad)")
     run_solver: bool = False
     wait: bool = Field(
         default=False,
@@ -167,17 +170,19 @@ def crash_solve(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """3D mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
-    if body.dimension != 3:
-        raise HTTPException(status_code=400, detail="crash yalnız dimension=3 (solid tet).")
+    """3D (solid) ya da 2D (kabuk) mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
+    if body.dimension not in (2, 3):
+        raise HTTPException(
+            status_code=400, detail="crash dimension=3 (solid) ya da dimension=2 (kabuk) ister."
+        )
 
     geo = _get_geometry_or_404(db, body.geometry_id)
     stem = Path(geo.current_filename).stem
-    mesh_path = MESH_DIR / f"{stem}_d3.msh"
+    mesh_path = MESH_DIR / f"{stem}_d{body.dimension}.msh"
     if not mesh_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Önce dimension=3 mesh üretin ({mesh_path.name}).",
+            detail=f"Önce dimension={body.dimension} mesh üretin ({mesh_path.name}).",
         )
 
     assignments = (
@@ -240,6 +245,7 @@ def crash_solve(
         "has_law2": "/MAT/LAW2" in starter_text,
         "has_law1": "/MAT/LAW1" in starter_text,
         "has_bcs": "/BCS/" in starter_text,
+        "has_shell": "/SHELL/" in starter_text or "/SH3N/" in starter_text,
         "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
         "n_inter": sum(1 for ln in starter_text.splitlines() if ln.startswith("/INTER/")),
     }
@@ -259,6 +265,7 @@ def crash_solve(
         "parts": [p.model_dump() for p in body.parts],
         "contacts": [c.model_dump() for c in body.contacts],
         "use_rigid_wall": body.use_rigid_wall,
+        "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,
         "scalars": {},

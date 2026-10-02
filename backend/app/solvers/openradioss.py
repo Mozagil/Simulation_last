@@ -288,8 +288,12 @@ MPA_TO_GPA = 1e-3
 
 
 def _mat_prop_cards(
-    mat: dict[str, Any], model: CrashModelParams, card_id: int = 1
+    mat: dict[str, Any],
+    model: CrashModelParams,
+    card_id: int = 1,
+    shell_thickness: float | None = None,
 ) -> list[str]:
+    """/MAT + /PROP. `shell_thickness` verilirse parça kabuk: /PROP/TYPE1."""
     rho = float(mat.get("density") or 7850.0) * KGM3_TO_KGMM3
     e_gpa = float(mat.get("youngs_modulus") or 210e9) * PA_TO_GPA
     nu = float(mat.get("poisson_ratio") or 0.3)
@@ -324,6 +328,19 @@ def _mat_prop_cards(
             _f(rho),
             f"{_f(e_gpa)}{_f(nu)}",
         ]
+    if shell_thickness is not None:
+        sh = model.shell
+        # /PROP/TYPE1 (SHELL), hm_cfg radioss2020 düzeni: Ishell Ismstr Ish3n
+        # Idrill Ipinch · P_Thick_Fail; Hm Hf Hr Dm Dn; N Istrain Thick Ashear ·
+        # Ithick Iplas. Sıfırlar /DEF_SHELL varsayılanı.
+        prop_lines = [
+            f"/PROP/TYPE1/{card_id}",
+            "shell",
+            f"{_i(sh.ishell)}{_i(sh.ismstr)}{_i(sh.ish3n)}{_i(0)}{_i(0)}{' ' * 10}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(sh.nip)}{_i(0)}{_f(shell_thickness)}{_f(0.0)}{' ' * 10}{_i(0)}{_i(0)}",
+        ]
+        return mat_lines + prop_lines
     # /PROP/TYPE14 (solid), Radioss 2022: Isolid Ismstr Iale Icpre Itetra10
     # Inpts Itetra4 Iframe Dn · qa qb h Lambda Mu · dT_min Istrain Ihkt.
     # Sıfırlar varsayılan (qa=1.1, qb=0.05, h=0 …).
@@ -357,7 +374,9 @@ _CONTACT_SET_BASE = 1000
 
 
 def _contact_cards(
-    contacts: list[CrashContactParams], rid: Callable[[int], int]
+    contacts: list[CrashContactParams],
+    rid: Callable[[int], int],
+    shell_parts: set[int] | None = None,
 ) -> list[str]:
     if not contacts:
         return []
@@ -372,9 +391,12 @@ def _contact_cards(
             grnod_parts.append(c.slave_part)
 
     lines: list[str] = []
-    # /SURF/PART/EXT: solid parçanın dış yüzleri (düz /SURF/PART yalnız kabuk alır).
+    # Solid: /SURF/PART/EXT (dış yüzler). Kabuk: /SURF/PART (kabuk elemanları;
+    # EXT solid içindir).
+    shell_parts = shell_parts or set()
     for pid in surf_parts:
-        lines.extend([f"/SURF/PART/EXT/{set_id(pid)}", f"skin_part_{pid}", _i(rid(pid))])
+        card = "/SURF/PART" if pid in shell_parts else "/SURF/PART/EXT"
+        lines.extend([f"{card}/{set_id(pid)}", f"skin_part_{pid}", _i(rid(pid))])
     for pid in grnod_parts:
         lines.extend([f"/GRNOD/PART/{set_id(pid)}", f"nodes_part_{pid}", _i(rid(pid))])
 
@@ -429,6 +451,8 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     nodes = params.get("nodes") or []
     tets = params.get("tets") or []
     bricks = params.get("bricks") or []
+    shells = params.get("shells") or []
+    sh3n = params.get("sh3n") or []
     mats = params.get("materials") or [
         {
             "name": "STEEL",
@@ -476,6 +500,34 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             + " — 3 · Material adımından her parçaya malzeme atayın."
         )
 
+    # Parça tipi: kabuk elemanı olan parça kabuk (/PROP/TYPE1); aynı parçada
+    # solid + kabuk desteklenmez (karma model ayrı adım).
+    solid_eids = {int(el[0]) for el in [*tets, *bricks]}
+    shell_eids = {int(el[0]) for el in [*shells, *sh3n]}
+    solid_parts = {element_parts.get(e, 0) for e in solid_eids}
+    shell_parts = {element_parts.get(e, 0) for e in shell_eids}
+    both = sorted(solid_parts & shell_parts)
+    if both:
+        raise SolverError(
+            "Crash: aynı parçada solid ve kabuk eleman: " + ", ".join(f"#{p}" for p in both)
+        )
+    # Kalınlık: parts[].thickness_mm > model.shell.thickness_mm; yoksa açık hata.
+    thickness: dict[int, float] = {}
+    for spec in params.get("parts") or []:
+        t = spec.get("thickness_mm")
+        if t is not None:
+            thickness[int(spec["part_id"])] = float(t)
+    for pid in sorted(shell_parts):
+        if pid not in thickness and model.shell.thickness_mm is not None:
+            thickness[pid] = float(model.shell.thickness_mm)
+    no_t = [p for p in sorted(shell_parts) if p not in thickness]
+    if no_t:
+        raise SolverError(
+            "Crash: kalınlığı verilmemiş kabuk parça(lar): "
+            + ", ".join(f"#{p}" for p in no_t)
+            + " — parts[].thickness_mm ya da model.shell.thickness_mm girin."
+        )
+
     # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
     # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
     units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
@@ -514,9 +566,21 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             for el in part_bricks:
                 vals = [int(v) for v in el]
                 lines.append("".join(_i(v) for v in vals))
+        # /SHELL: shell_ID n1..n4; /SH3N: tria_ID n1..n3. PHI ve Thick boş —
+        # kalınlık /PROP/TYPE1'den.
+        part_shells = [el for el in shells if element_parts.get(int(el[0]), 0) == pid]
+        part_sh3n = [el for el in sh3n if element_parts.get(int(el[0]), 0) == pid]
+        if part_shells:
+            lines.append(f"/SHELL/{_rid(pid)}")
+            lines.extend("".join(_i(int(v)) for v in el) for el in part_shells)
+        if part_sh3n:
+            lines.append(f"/SH3N/{_rid(pid)}")
+            lines.extend("".join(_i(int(v)) for v in el) for el in part_sh3n)
 
     for pid in part_ids:
-        lines.extend(_mat_prop_cards(mat_by_part[pid], model, card_id=_rid(pid)))
+        lines.extend(
+            _mat_prop_cards(mat_by_part[pid], model, card_id=_rid(pid), shell_thickness=thickness.get(pid))
+        )
         lines.extend(
             [
                 f"/PART/{_rid(pid)}",
@@ -545,7 +609,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             if pid not in part_ids:
                 raise SolverError(f"Crash: temas parçası #{pid} mesh'te yok.")
     inter_ids = list(range(1, len(contacts) + 1))
-    lines.extend(_contact_cards(contacts, _rid))
+    lines.extend(_contact_cards(contacts, _rid, shell_parts))
 
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
@@ -692,6 +756,10 @@ class OpenRadiossAdapter(SolverAdapter):
                 params["tets"] = exported.tets
                 if exported.bricks:
                     params["bricks"] = exported.bricks
+                if exported.shells:
+                    params["shells"] = exported.shells
+                if exported.sh3n:
+                    params["sh3n"] = exported.sh3n
                 params["element_parts"] = exported.element_parts
             else:
                 raise SolverError("OpenRadioss: nodes listesi boş.")

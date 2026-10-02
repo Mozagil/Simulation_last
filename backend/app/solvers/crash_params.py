@@ -134,6 +134,39 @@ class CrashBarrierParams(BaseModel):
         )
 
 
+class CrashShellParams(BaseModel):
+    """Kabuk kartı (1.13): /PROP/TYPE1 (SHELL), Radioss 2020+ düzeni.
+
+    Öneri yok: bayraklar Radioss değerleri, 0 = /DEF_SHELL varsayılanı.
+    Kalınlık parça başına (`parts[].thickness_mm`) ya da burada ortak; kalınlığı
+    olmayan kabuk parçası açık hata (sessiz varsayılan yok).
+    İzinli değerler: OpenRadioss hm_cfg radioss2020 prop_p1_shell.
+    """
+
+    thickness_mm: float | None = Field(
+        default=None, gt=0, description="Ortak kabuk kalınlığı t (mm)", json_schema_extra={"unit": "mm"}
+    )
+    ishell: int = Field(default=0, description="Ishell (formülasyon)")
+    ismstr: int = Field(default=0, description="Ismstr (küçük/büyük şekil değiştirme)")
+    ish3n: int = Field(default=0, description="Ish3n (üçgen formülasyonu)")
+    nip: int = Field(default=0, description="N: kalınlık boyunca integrasyon noktası")
+
+    @model_validator(mode="after")
+    def _flags_ok(self) -> "CrashShellParams":
+        allowed = {
+            "ishell": {0, 1, 2, 3, 4, 12, 24},
+            "ismstr": {0, 1, 2, 3, 4, 10},
+            "ish3n": {0, 1, 2, 30, 31},
+            "nip": {0, 1, 3, 4, 5, 6, 7, 8, 9, 10},
+        }
+        for name, ok in allowed.items():
+            if getattr(self, name) not in ok:
+                raise ValueError(f"kabuk {name} {sorted(ok)} olmalı.")
+        if self.thickness_mm is not None:
+            _finite(self.thickness_mm, "thickness_mm")
+        return self
+
+
 class CrashModelParams(BaseModel):
     """Solid kart + malzeme kanunu (OpenRadioss TYPE14 / LAW1|LAW2).
 
@@ -153,6 +186,9 @@ class CrashModelParams(BaseModel):
     )
     harden_b_mpa: float = Field(default=0.0, ge=0, description="LAW2 b (MPa)")
     harden_n: float = Field(default=1.0, ge=0, description="LAW2 n")
+    shell: CrashShellParams = Field(
+        default_factory=CrashShellParams, description="Kabuk parçalar için /PROP/TYPE1"
+    )
 
     @field_validator("law")
     @classmethod

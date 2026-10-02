@@ -671,9 +671,30 @@ mühendis kararı).
       (3 ms → 0.015 ms) ~0.1 ms'lik darbeyi kaba çözüyor — aralık 1.15'te
       parametre olacak
 
+**1.13a — Kabuk: export + /SHELL·/SH3N + /PROP/TYPE1** — ✅ 2026-10-02
+Hacimsiz (2D) mesh kabuk okunur: tri3/tri6 → `/SH3N`, quad4/8/9 → `/SHELL`
+(köşe düğümleri); parça = kenar paylaşan kabuk bileşeni (CalculiX 2D ile
+aynı). Kabuk parçaya `/PROP/TYPE1` (hm_cfg radioss2020: Ishell Ismstr Ish3n
+Idrill Ipinch · Hm…Dn · N Istrain Thick Ashear Ithick Iplas); izinli
+değerler kart tanımından (N ∈ {0,1,3…10}). `model.shell` bayrakları (0 =
+/DEF_SHELL); kalınlık `parts[].thickness_mm` > `model.shell.thickness_mm`,
+yoksa açık hata. Aynı parçada solid + kabuk hata. Temas yüzeyi kabukta
+`/SURF/PART`, solidde `/SURF/PART/EXT`. API `dimension` 2 | 3 (`_d2.msh`).
+12 deck/export + 2 API testi; crash testleri 95/95. Gerçek koşu (1.10'un
+kabuk eşleniği): orta yüzey tüp 300 × (47×37), t = 3, ~5 mm quad (1 996
+düğüm, 1 960 /SHELL), S235 LAW2, Ishell 24, N 5 (bu koşu için seçildi,
+varsayılan değil), 10 m/s, duvar x = 0, 4 ms. Starter 0 hata / 0 uyarı;
+7 577 çevrim, Δt 5.3e-4 ms (solid 5.1e-5), 7.7 s (1.10 solid 333 s). Kütle
+1.187 kg (aynı); IE_son 55.9 J (solid 55.4), KE_son 2.93 J, denge %0.93;
+duvar impulsu 14.41 N·s (solid 14.50; m·(v₀+v_son) = 14.51), tepe 123.1 kN
+(solid 125.6). İş `uploads/crash/20b1e7b5…` (betikle, API dışı).
+- [ ] Katlanma modu görsel olarak karşılaştırılmadı (animasyon görüntüleyici
+      yok); 4 ms / 10 m/s'de ezilme kısa
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.13 Kabuk prop (`/PROP/TYPE1`) + kalınlık; ince plaka/kutu crash'i
-  solid yerine kabukla
+- 1.13b Şablon: crash box orta yüzey varyantı (kalınlık ayrı parametre)
+- 1.13c Crash sekmesi: parça başına kabuk kartı (t, Ishell, Ish3n, Ismstr, N)
+- Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,
   `/FAIL`; parça başına kart editörü
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
