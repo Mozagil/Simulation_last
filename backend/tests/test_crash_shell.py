@@ -131,3 +131,17 @@ def test_export_quad_and_tri_shells_from_gmsh(tmp_path):
     # iki ayrık yüzey → iki parça; dörtgenler bir parçada, üçgenler diğerinde
     assert {rm.element_parts[e[0]] for e in rm.shells} != {rm.element_parts[e[0]] for e in rm.sh3n}
     assert set(rm.element_parts.values()) == {0, 1}
+
+
+def test_coincident_node_counter(tmp_path):
+    """1.13b: aynı konumda ayrı düğüm sayısı veri olarak raporlanır (düzeltilmez)."""
+    from tests.test_openradioss_export import _write_msh
+
+    # iki üçgen ortak kenarı paylaşmıyor: düğüm 2/5 ve 3/6 aynı koordinatta
+    nodes = [(1, 0, 0, 0), (2, 1, 0, 0), (3, 0, 1, 0), (4, 1, 1, 0), (5, 1, 0, 0), (6, 0, 1, 0)]
+    _write_msh(tmp_path / "split.msh", nodes, ["1 2 2 0 1 1 2 3", "2 2 2 0 2 5 4 6"])
+    rm = gmsh_msh_to_radioss(tmp_path / "split.msh")
+    assert rm.coincident_nodes == 2
+    p = _shell_params(tmp_path, coincident_nodes=rm.coincident_nodes)
+    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    assert s.splitlines()[1] == "# coincident_nodes: 2"

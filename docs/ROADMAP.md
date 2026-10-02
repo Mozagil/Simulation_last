@@ -691,8 +691,33 @@ duvar impulsu 14.41 N·s (solid 14.50; m·(v₀+v_son) = 14.51), tepe 123.1 kN
 - [ ] Katlanma modu görsel olarak karşılaştırılmadı (animasyon görüntüleyici
       yok); 4 ms / 10 m/s'de ezilme kısa
 
+**1.13b — Kabuk crash box şablonu + yüzey-only dikiş** — ✅ 2026-10-02
+`crash_box_shell` (`surface_only=True`): `crash_box_plate` kutusuyla aynı L,
+h, b, t; geometri orta yüzey — kesit (h−t)×(b−t) çevresi x boyunca ekstrüde,
+4 yüz, açık uçlar (ilk sürümde OCC sınır kutusu toleransı yüzünden uç
+kapakları silinmiyordu → kapalı kutu; test yakaladı). Kütle solid kutuyla
+birebir: L·t·2(h+b−2t). Bölgeler kenar halkası `kutu_on` / `kutu_arka`
+(4'er kenar). `GeometryTemplate.surface_only` bayrağı (varsayılan False).
+**Bulgu:** Gmsh STEP yazıcısı serbest yüzeylerin ortak kenarlarını ikizliyor
+(12 → 16); geri okununca kabuk duvarları bağlantısızdı (2D mesh'te köşe
+boyunca 124 çakışık ayrı düğüm) ama parça gruplaması (çakışan düğüm) yine
+tek parça sayıyordu — solver sessizce serbest levhalar ezerdi. Düzeltme:
+`import_geometry` hacimsiz dosyayı `Geometry.OCCSewFaces=1` ile açar
+(önizleme/BC/mesh hep oradan → etiketler tutarlı); `build_template` yüzey-only
+şablonu aynı şekilde yeniden okur. Hacimli dosyaya dokunulmaz (kayıtlı BC
+etiketleri kaymasın): midsurface akışı (solid dosyada kalıyor) değişmedi,
+orada birleştirme hâlâ elle. Veri sayacı: export aynı koordinatta ayrı
+düğüm sayısını ölçer → deck başlığı `# coincident_nodes: N`, /crash/solve
+`cards.n_coincident_nodes`. 8 şablon + 1 sayaç testi; tüm backend 931/931
+(1 atlandı). Gerçek koşu tam API yolu (şablon → 2D quad 5 mm → S235 →
+/crash/solve dim 2, t 3, Ishell 24, N 5, 10 m/s, 4 ms): 1 961 quad,
+çakışık düğüm 0, starter 0 hata / 0 uyarı, 7 397 çevrim, 9.2 s; IE_son
+55.8 J, denge %0.96, impuls 14.41 N·s, tepe 123.1 kN — 1.13a betik koşusuyla
+aynı. İş `uploads/crash/9f96356c…`, geometri 3931.
+- [ ] Midsurface akışındaki (hacimli dosya) kenar ikizlenmesi hâlâ elle
+      birleştiriliyor; otomatik dikiş için etiket kayması analizi gerekir
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
-- 1.13b Şablon: crash box orta yüzey varyantı (kalınlık ayrı parametre)
 - 1.13c Crash sekmesi: parça başına kabuk kartı (t, Ishell, Ish3n, Ismstr, N)
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - 1.14 Malzeme kartları: LAW36 tablo, Johnson-Cook hız/sıcaklık terimleri,

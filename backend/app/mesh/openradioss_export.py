@@ -45,6 +45,10 @@ class RadiossMesh:
     # eleman id → parça (0 tabanlı; mesh katmanının part_id'si = hacim sırası,
     # bkz. gmsh_adapter._compute_face_to_part). Deck parça başına /PART yazar.
     element_parts: dict[int, int] = field(default_factory=dict)
+    # Aynı koordinatta (1e-6 mm) duran ama AYRI düğüm sayısı (fazlalık).
+    # > 0: o konumda elemanlar birbirine bağlı değil (ör. ikizlenmiş kenar).
+    # Yalnız veri; deck bunu düzeltmez.
+    coincident_nodes: int = 0
 
 
 def _tet_signed_volume(
@@ -168,7 +172,9 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         for nid in sorted(used)
         if nid in xyz
     ]
+    coords = {(round(n["x"], 6), round(n["y"], 6), round(n["z"], 6)) for n in nodes}
     return RadiossMesh(
+        coincident_nodes=len(nodes) - len(coords),
         nodes=nodes,
         tets=tets,
         bricks=bricks,

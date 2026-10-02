@@ -116,6 +116,9 @@ class GeometryTemplate:
     #: bölgeyi değiştirirse geçersiz.
     default_bcs: tuple[dict[str, Any], ...] = ()
     tags: tuple[str, ...] = field(default_factory=tuple)
+    #: True: şablon yalnız yüzey (orta yüzey / kabuk) üretir, hacim üretmez —
+    #: 2D (kabuk) mesh içindir (1.13b). False (varsayılan): en az bir hacim.
+    surface_only: bool = False
 
     def __post_init__(self) -> None:
         names = {r.name for r in self.regions}
@@ -239,7 +242,12 @@ def build_template(template: GeometryTemplate, params: BaseModel, step_path: Pat
         gmsh.model.occ.synchronize()
 
         volumes = gmsh.model.getEntities(dim=3)
-        if not volumes:
+        if template.surface_only:
+            if volumes:
+                raise TemplateError(f"Şablon '{template.id}' yalnız yüzey olmalı, hacim üretti.")
+            if not gmsh.model.getEntities(dim=2):
+                raise TemplateError(f"Şablon '{template.id}' hiç yüzey üretmedi.")
+        elif not volumes:
             raise TemplateError(f"Şablon '{template.id}' hiç hacim üretmedi.")
 
         step_path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,7 +262,12 @@ def build_template(template: GeometryTemplate, params: BaseModel, step_path: Pat
         # için etiketler de o modelden alınmalı. Kutu şablonlarda (kiriş)
         # numaralar tesadüfen aynıydı, hata görünmüyordu.
         gmsh.clear()
+        # Yüzey-only şablon, mesh katmanının `import_geometry`'si gibi dikişli
+        # açılır — aksi halde ortak kenarlar ikizlenir ve bölge kenar
+        # etiketleri mesh katmanının gördüğünden farklı olur.
+        gmsh.option.setNumber("Geometry.OCCSewFaces", 1 if template.surface_only else 0)
         gmsh.open(str(step_path))
+        gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
 
         # Bölgeleri geometrik olarak bul (yüzey dim=2, kenar dim=1).
         regions: dict[str, list[int]] = {}

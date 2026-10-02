@@ -311,6 +311,8 @@ def test_region_tags_match_reimported_step(tmp_path, tid):
     gmsh.initialize()
     try:
         gmsh.option.setNumber("General.Terminal", 0)
+        # Mesh katmanı (`import_geometry`) yüzey-only dosyayı dikişli açar (1.13b).
+        gmsh.option.setNumber("Geometry.OCCSewFaces", 1 if t.surface_only else 0)
         gmsh.open(str(r.step_path))
         for region in t.regions:
             for tag in r.regions[region.name]:

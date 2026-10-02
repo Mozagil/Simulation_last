@@ -531,8 +531,11 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
     # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
     units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
-    lines: list[str] = [
-        "#RADIOSS STARTER",
+    lines: list[str] = ["#RADIOSS STARTER"]
+    if params.get("coincident_nodes") is not None:
+        # Export ölçümü: aynı koordinatta ayrı düğüm sayısı (bağlantısızlık verisi).
+        lines.append(f"# coincident_nodes: {int(params['coincident_nodes'])}")
+    lines += [
         "/BEGIN",
         title,
         f"{_i(2022)}{_i(0)}",
@@ -761,6 +764,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 if exported.sh3n:
                     params["sh3n"] = exported.sh3n
                 params["element_parts"] = exported.element_parts
+                params["coincident_nodes"] = exported.coincident_nodes
             else:
                 raise SolverError("OpenRadioss: nodes listesi boş.")
         _write_starter(starter, params)

@@ -248,6 +248,15 @@ def crash_solve(
         "has_shell": "/SHELL/" in starter_text or "/SH3N/" in starter_text,
         "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
         "n_inter": sum(1 for ln in starter_text.splitlines() if ln.startswith("/INTER/")),
+        # Aynı konumda ayrı düğüm (bağlantısız eleman) sayısı — yalnız veri.
+        "n_coincident_nodes": next(
+            (
+                int(ln.split(":", 1)[1])
+                for ln in starter_text.splitlines()[:5]
+                if ln.startswith("# coincident_nodes:")
+            ),
+            0,
+        ),
     }
     or_ok = resolve_openradioss() is not None
     meta: dict[str, Any] = {
