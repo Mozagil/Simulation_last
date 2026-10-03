@@ -605,8 +605,8 @@ birim sistemi kg–mm–ms (GPa, kN, J, mm/ms). `th_to_csv` engine sonrası
 başlığından sırayla eşleniyor.
 - [ ] Crash sekmesinden aynı koşu (UI doğrulaması), çıktı dosyası temizliği
       (A001…A021 + .rst ≈ 95 MB/iş; anim sayısı/rst saklama ayarı)
-- [ ] Zaman adımı / kütle ölçekleme kartı (`/DT/NODA/CST`) — 80k düğüm
-      tet'te 5e-5 ms adım, 4 ms için 5.5 dk; kabukla (1.13) düşer
+- [x] Zaman adımı / kütle ölçekleme kartı (`/DT/NODA/CST`) — 80k düğüm
+      tet'te 5e-5 ms adım, 4 ms için 5.5 dk; kabukla (1.13) düşer → 1.15a
 
 **1.11a — Crash box + çarpma plakası şablonu** — ✅ 2026-10-02
 `crash_box_plate`: iki ayrı katı (part 0 kutu, part 1 plaka), dört isimli
@@ -1029,22 +1029,50 @@ mesh'i 0.00054 — o mesh'te x = 4.828 / 4.829 gibi kısa kenarlar var).
 Bariyer modelleri (Ansys/LSTC IIHS MDB) araştırıldı: ftp.lstc.com 401 (kimlik
 ister), lisans belirtilmemiş, proje kuralı (Ansys/LS-DYNA yok) → kullanılmadı.
 
-**Sonraki mikro-adımlar (her biri ayrı onay):**
+**Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
+kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
+öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
+parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
+geçilmez.
+
+*1.17 — Standart explicit ortam*
+- 1.17b Ek kütle + rijit gövde: `/ADMAS` (bölgeye kütle, ör. kutu arkasında
+  kızak) + `/RBODY` (rijit parça). Gerekçe: bugünkü kutu yalnız kendi
+  kütlesiyle (1.19 kg, 10 m/s → 59 J) çarpıyor; tepe ~120 kN'da ezilme ~0.5 mm,
+  katlanma yok. Kütle değeri mühendisin.
+- 1.17c Bölgeye sınır koşulu + zorlanmış hareket: şablon bölgelerine `/BCS`
+  (kenar / köşe sabit), `/IMPVEL` (sabit hız). Bugün yalnız "tüm parça sabit".
+- 1.17d Deforme şekil görüntüleme: animasyon (A0xx) → web 3B, zaman
+  kaydırıcılı (katlanma modu bugün görülemiyor — 1.13a açık maddesi).
+- 1.17e CFC filtre (SAE J211): kuvvet / ivme eğrilerine sınıf seçimi; ham veri
+  korunur, sınıf mühendisin (HIC'teki 120 bin g filtresiz düğüm ivmesi).
+- 1.17f Validasyon seti: enerji / momentum dengesi; kare tüp ortalama ezilme
+  kuvveti (analitik formüllerle karşılaştırma; 1.17b kızak kütlesi şart);
+  mesh yakınsaması (5 / 4 / 3 mm). Kabul kriterleri mühendisin.
+- 1.17g Temizlik: çıktı dosyası saklama (iş başına ~95 MB; anim / rst ayarı),
+  eski işleri ham çıktıdan yeniden işleme, çok arayüzde th_to_csv sütun sırası
+  doğrulaması, UI küçükleri (ilerleme "cycle 1", 2D'de "3D mesh" altyazısı,
+  ağaçta kenar bölgeleri "yüzey"), Material adımında LAW36 eğri editörü +
+  Crash kartında "eğri: malzemeden".
+
+*1.18 — Plaka–küre delinme örneği* (kullanıcı isteği 2026-10-03; 1.17b/c
+üzerine): iki parçalı plaka + küre şablonu, rijit küre, plaka köşe / kenar
+sabit, küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk mühendisin
+(explicit süre maliyeti).
+
+*1.19 — ML tezgahı entegrasyonu* (1.17 + 1.18 bittikten sonra): crash
+senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params →
+girdi × hedef), vekil model (`ml/crash/`, durability kodundan bağımsız), CV
+metrikleri, tahmin; DOE şeması ayrı onay; hedef tanımları (ezilme mesafesi,
+ortalama kuvvet …) mühendisten.
+
+*Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
-- Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
-  kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
-  (şu an UI her zaman istekte eğri gönderir)
-- 1.17b Crash DOE (LHS, sıralı arka plan koşusu, devam) — DB şeması, ayrı onay;
-  değişken parametreler + aralıklar mühendisin
-- 1.17c Korpus: crash_runs (+ geometri template_params) → girdi × hedef; hedef
-  tanımları (ezilme mesafesi, ortalama kuvvet …) mühendisten
-- 1.17d Vekil model (`ml/crash/`, durability kodundan bağımsız), CV metrikleri,
-  predict
-- 1.17e UI: DOE başlatma / ilerleme + tahmin paneli
-- 1.18 Plaka–küre delinme örneği (kullanıcı isteği 2026-10-03, 1.17 sonrası):
-  iki parçalı plaka + küre şablonu, rijit küre (/RBODY), bölgeye sınır koşulu
-  (köşe / kenar sabit), küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk
-  mühendisin (explicit süre maliyeti).
+- Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
+- Midsurface kenar ikizlenmesi, parça numarası tutarlılığı (durability ile ortak)
+- Araç (NHTSA) ve IIHS bariyer modelleri — lisans (LSTC ftp kimlik istiyor),
+  proje kuralı (Ansys / LS-DYNA yok) ve hesap gücü (MPI yok; Camry 8 MPI ile
+  ~15 sa)
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 
