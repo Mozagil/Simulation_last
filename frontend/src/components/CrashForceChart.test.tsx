@@ -38,4 +38,8 @@ describe("CrashForceChart", () => {
     expect(screen.getByText("3.00 kN")).toBeInTheDocument();
     expect(screen.getByText("t = 2.00 ms")).toBeInTheDocument();
   });
+  it("1.17e: CFC süzülmüş kopyalar ham serilerden sonra, sınıfla etiketlenir", () => {
+    const s = forceSeriesFromCurves({ time: [0, 1, 2], rwall_force: [0, 5, 0], rwall_force_cfc600: [0, 4, 0], section_1_force_cfc600: [0, 3, 0], section_1_force: [0, 6, 0] });
+    expect(s.map((x) => x.label)).toEqual(["Rijit duvar", "Kesit 1", "Rijit duvar CFC600", "Kesit 1 CFC600"]);
+  });
 });

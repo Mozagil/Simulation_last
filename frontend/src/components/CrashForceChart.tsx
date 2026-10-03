@@ -33,7 +33,17 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
     .filter((m): m is RegExpExecArray => m != null)
     .sort((a, b) => Number(a[1]) - Number(b[1]))
     .map((m) => ({ key: m[0], label: `Kesit ${m[1]}`, values: curves[m[0]] }));
-  return [...contacts, ...wall, ...sections].filter((s) => s.values.length > 1);
+  // 1.17e — CFC süzülmüş kopyalar (ham eğrinin hemen yanında)
+  const filtered = Object.keys(curves)
+    .map((k) => /^(rwall|contact_(\d+)|section_(\d+))_force_cfc(\d+)$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map((m) => ({
+      key: m[0],
+      label: `${m[2] ? `Temas ${m[2]}` : m[3] ? `Kesit ${m[3]}` : "Rijit duvar"} CFC${m[4]}`,
+      values: curves[m[0]],
+    }));
+  return [...contacts, ...wall, ...sections, ...filtered].filter((s) => s.values.length > 1);
 }
 
 export default function CrashForceChart({

@@ -33,6 +33,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashBcParams,
     CrashEngineParams,
+    CrashFilterParams,
     CrashImpVelParams,
     CrashMassParams,
     CrashModelParams,
@@ -972,6 +973,14 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
     # değişkeni adsız "var N" yazar).
     (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
+    # 1.17e — post-process seçimleri (CFC sınıfları) deck yanında, th_spec gibi.
+    try:
+        filters = CrashFilterParams.model_validate(params.get("filters") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz filtre: {exc}") from exc
+    (path.parent / "postprocess.json").write_text(
+        json.dumps({"filters": filters.model_dump()}, indent=1), encoding="utf-8"
+    )
 
 
 def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:

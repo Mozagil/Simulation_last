@@ -359,4 +359,18 @@ describe("CrashPanel", () => {
     expect(await screen.findByText(/Kesit 1 Fmax 123\.9 kN · impuls 13\.420 N·s/)).toBeInTheDocument();
     expect(screen.getByTestId("crash-timestep")).toHaveTextContent("Δt_min 1.000e-3 ms · eklenen kütle %56.5");
   });
+  it("1.17e: CFC sınıfı gönderilir, süzülmüş tepeler gösterilir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j13", geometry_id: 1, status: "solved", message: "", starter_url: "", engine_url: "",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: true,
+      scalars: { rwall_force_max: 130.9, rwall_force_max_cfc600: 101.2, sample_ratio_cfc600: 833 },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.change(screen.getByLabelText("Kuvvet CFC"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].filters).toEqual({ force_cfc: 600, acc_cfc: null });
+    const peaks = await screen.findAllByTestId("crash-cfc-peak");
+    expect(peaks.map((p) => p.textContent)).toEqual(["rwall_force_max CFC600 101.2"]);
+  });
 });

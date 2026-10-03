@@ -411,6 +411,49 @@ def named_th_curves(
     return out, unmapped
 
 
+def _apply_cfc(
+    work_dir: Path,
+    time: list[float],
+    time_header: str,
+    curves: dict[str, Any],
+    scalars: dict[str, float],
+    acc_comp: tuple[list[float], list[float], list[float]] | None,
+) -> None:
+    """1.17e — postprocess.json'daki CFC sınıflarıyla süzülmüş eğri / skaler
+    ekler; ham olanlar değişmez. Zaman ms (deck birimi)."""
+    import json
+
+    from app.postprocess.cfc import cfc_filter, sample_ratio
+
+    p = work_dir / "postprocess.json"
+    if not p.is_file() or not time:
+        return
+    try:
+        flt = json.loads(p.read_text(encoding="utf-8")).get("filters") or {}
+    except ValueError:
+        return
+    fc, ac = flt.get("force_cfc"), flt.get("acc_cfc")
+    if fc:
+        for key in [k for k in curves if re.fullmatch(r"(rwall|contact_\d+|section_\d+)_force", k)]:
+            f = cfc_filter(time, curves[key], int(fc))
+            curves[f"{key}_cfc{fc}"] = f
+            scalars[f"{key}_max_cfc{fc}"] = float(max(abs(v) for v in f))
+        scalars[f"sample_ratio_cfc{fc}"] = sample_ratio(time, int(fc))
+    if ac:
+        for key in [k for k in list(curves) if re.fullmatch(r"th_node_\d+_A[XYZ]", k)]:
+            curves[f"{key}_cfc{ac}"] = cfc_filter(time, curves[key], int(ac))
+        if acc_comp is not None:
+            # J211: kanallar (bileşenler) süzülür, bileşke sonra
+            comps = [_acc_to_g(cfc_filter(time, c, int(ac)), "ACCX") for c in acc_comp]
+            acc_f = resultant_g(*comps)
+            ts = _time_to_seconds(time, time_header)
+            curves[f"acc_g_cfc{ac}"] = acc_f
+            scalars[f"acc_peak_g_cfc{ac}"] = float(max(abs(v) for v in acc_f))
+            scalars[f"hic15_cfc{ac}"] = hic15(ts, acc_f)
+            scalars[f"hic36_cfc{ac}"] = hic36(ts, acc_f)
+        scalars[f"sample_ratio_cfc{ac}"] = sample_ratio(time, int(ac))
+
+
 def _read_th_spec(work_dir: Path) -> dict[str, Any] | None:
     p = work_dir / "th_spec.json"
     if not p.is_file():
@@ -433,6 +476,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     listing = parse_energy_listing(out_path) if out_path is not None else {}
 
     time: list[float] = []
+    acc_comp: tuple[list[float], list[float], list[float]] | None = None
     hg_e: list[float] | None = None
     rot_e: list[float] | None = None
     ext_w: list[float] | None = None
@@ -487,6 +531,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         if packed["acc_g"] is not None:
             acc_g = list(packed["acc_g"])
         elif packed["ax"] and packed["ay"] and packed["az"]:
+            acc_comp = (packed["ax"], packed["ay"], packed["az"])
             ax_g = _acc_to_g(packed["ax"], "ACCX")
             ay_g = _acc_to_g(packed["ay"], "ACCY")
             az_g = _acc_to_g(packed["az"], "ACCZ")
@@ -574,6 +619,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
 
     curves.update(named)
     curves.update(curves_extra)
+    _apply_cfc(work_dir, time, time_header, curves, scalars, acc_comp)
     if unmapped:
         diag["th_unmapped_groups"] = unmapped
     raw = csv_path or out_path or work_dir

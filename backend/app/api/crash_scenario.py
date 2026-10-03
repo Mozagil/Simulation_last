@@ -25,6 +25,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashBcParams,
     CrashEngineParams,
+    CrashFilterParams,
     CrashImpVelParams,
     CrashMassParams,
     CrashModelParams,
@@ -80,6 +81,7 @@ class CrashScenarioRequest(BaseModel):
     )
     boundary_conditions: list[CrashBcParams] = Field(default_factory=list)
     imposed_velocities: list[CrashImpVelParams] = Field(default_factory=list)
+    filters: CrashFilterParams = Field(default_factory=CrashFilterParams)
     name: str | None = None
     run_solver: bool = True
     wait: bool = False
@@ -163,6 +165,7 @@ def crash_scenario(
         rigid_bodies=req.rigid_bodies,
         boundary_conditions=req.boundary_conditions,
         imposed_velocities=req.imposed_velocities,
+        filters=req.filters,
     )
     result = crash_solve(solve, background_tasks, db)
     logger.info(

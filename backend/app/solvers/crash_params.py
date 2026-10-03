@@ -641,3 +641,19 @@ class CrashImpVelParams(BaseModel):
         if self.t_stop_ms and self.t_stop_ms <= self.t_start_ms:
             raise ValueError("t_stop_ms, t_start_ms'den büyük olmalı (0 = sonsuz).")
         return self
+
+
+class CrashFilterParams(BaseModel):
+    """1.17e — SAE J211 CFC kanal filtresi sınıfları (Hz); None = süzme yok.
+    Ham eğriler korunur; süzülmüş olanlar `_cfc<sınıf>` ekiyle eklenir."""
+
+    force_cfc: int | None = Field(default=None, description="Kuvvet kanalları (duvar, temas, kesit)")
+    acc_cfc: int | None = Field(default=None, description="İvme kanalları (TH düğüm AX AY AZ, HIC)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashFilterParams":
+        for name in ("force_cfc", "acc_cfc"):
+            v = getattr(self, name)
+            if v is not None and v not in (60, 180, 600, 1000):
+                raise ValueError(f"{name} 60, 180, 600 ya da 1000 olmalı.")
+        return self

@@ -1,4 +1,4 @@
-import type { CrashEnginePayload, CrashSectionPayload, CrashThPayload } from "../api/crash";
+import type { CrashEnginePayload, CrashFilterPayload, CrashSectionPayload, CrashThPayload } from "../api/crash";
 
 /** Çıktı ve kontrol kartı (1.15d): engine aralıkları + zaman adımı (1.15a),
  * /TH grupları (1.15b), /SECT/PARAL kesitleri (1.15c). Alanlar ham metin;
@@ -48,6 +48,9 @@ export interface OutputState {
   dtKind: string;
   dtScale: string;
   dtMin: string;
+  /** 1.17e — CFC sınıfı ("" = süzme yok) */
+  forceCfc: string;
+  accCfc: string;
   groups: Record<GroupKey, { enabled: boolean; vars: string[] }>;
   nodeIds: string;
   nodeVars: string[];
@@ -63,6 +66,8 @@ export function defaultOutput(): OutputState {
     dtKind: "",
     dtScale: "0",
     dtMin: "0",
+    forceCfc: "",
+    accCfc: "",
     groups: {
       rwall: { enabled: true, vars: ["FNX", "FNY", "FNZ"] },
       inter: { enabled: true, vars: ["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"] },
@@ -100,6 +105,7 @@ export function outputPayload(s: OutputState): {
   engine: CrashEnginePayload;
   th: CrashThPayload;
   sections: CrashSectionPayload[];
+  filters: CrashFilterPayload;
 } {
   const vec = (v: [string, string, string], what: string) =>
     v.map((c, i) => num(c, `${what} ${"xyz"[i]}`)) as [number, number, number];
@@ -118,6 +124,10 @@ export function outputPayload(s: OutputState): {
       sect: s.groups.sect,
       node_ids: parseNodeIds(s.nodeIds),
       node_vars: s.nodeVars,
+    },
+    filters: {
+      force_cfc: s.forceCfc ? Number(s.forceCfc) : null,
+      acc_cfc: s.accCfc ? Number(s.accCfc) : null,
     },
     sections: s.sections.map((r, i) => ({
       name: r.name.trim() || `section_${i + 1}`,
@@ -223,6 +233,35 @@ export default function CrashOutputCard({
           {text("Δt_sca", value.dtScale, (v) => set({ dtScale: v }), undefined, !value.dtKind)}
           {text("Δt_min (ms)", value.dtMin, (v) => set({ dtMin: v }), undefined, !value.dtKind)}
         </div>
+        <div className="mesh-grid">
+          {(
+            [
+              ["forceCfc", "Kuvvet CFC"],
+              ["accCfc", "İvme CFC"],
+            ] as const
+          ).map(([key, lab]) => (
+            <label key={key} className="mesh-field">
+              <span>{lab}</span>
+              <select
+                aria-label={lab}
+                value={value[key]}
+                disabled={disabled}
+                onChange={(e) => set({ [key]: e.target.value })}
+              >
+                <option value="">Yok (ham)</option>
+                {[60, 180, 600, 1000].map((c) => (
+                  <option key={c} value={String(c)}>
+                    CFC {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+        <p className="material-assign-hint">
+          CFC (SAE J211): ham eğri korunur, süzülmüş ayrıca eklenir; ivme bileşen bazında
+          süzülür, HIC süzülmüşten de hesaplanır.
+        </p>
         <p className="material-assign-hint">
           Boş aralık = varsayılan. Δt_sca 0 = Radioss 0.9. NODA/CST/0 Δt_min'i tutmak için kütle
           ekler; eklenen kütle sonuçta.

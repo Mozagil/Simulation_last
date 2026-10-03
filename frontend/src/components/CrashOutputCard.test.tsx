@@ -21,6 +21,7 @@ describe("CrashOutputCard", () => {
   it("varsayılan = backend varsayılanı (eski deck)", () => {
     expect(outputPayload(defaultOutput())).toEqual({
       engine: { th_dt_ms: null, anim_dt_ms: null, dt_kind: "", dt_scale: 0, dt_min_ms: 0 },
+      filters: { force_cfc: null, acc_cfc: null },
       th: {
         rwall: { enabled: true, vars: ["FNX", "FNY", "FNZ"] },
         inter: { enabled: true, vars: ["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"] },

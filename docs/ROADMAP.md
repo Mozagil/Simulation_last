@@ -1102,6 +1102,32 @@ silinen yok. İş `b6374029…` (koşu #47).
 - [ ] Görüntüleyicide hazır görünüm (yan / üst / ön) ve impact bölgesine
   yakınlaştırma yok — fare ile yapılıyor
 
+**1.17e — SAE J211 CFC kanal filtresi** — ✅ 2026-10-03
+`app/postprocess/cfc.py`: 4 kutuplu fazsız Butterworth (2 kutuplu ileri +
+geri, J211-1 Ek C), sınıflar 60 / 180 / 600 / 1000; TH tam eşit aralıklı
+olmadığından eşit ızgarada süzülür, özgün zamanlara aradeğerle döner;
+başlangıç koşulu y₀ = x₀. Frekans yanıtı (test): CFC'de −0.45 dB (geçiş
+bandı +0.5 / −1 dB), 1.65·CFC'de −2.9 dB, 10·CFC'de < −50 dB. API `filters`
+{force_cfc, acc_cfc} → deck yanına `postprocess.json`; ham eğriler korunur,
+süzülmüşler `*_force_cfcN`, `th_node_*_A*_cfcN`, `acc_g_cfcN` eğrileri ve
+`*_max_cfcN`, `acc_peak_g_cfcN`, `hic15/36_cfcN`, `sample_ratio_cfcN` (fs/CFC,
+veri; eşik mühendisin) skalerleri. İvme bileşen bazında süzülür, bileşke
+sonra. Kuvvet: yalnız bileşke kaydedildiği için bileşke süzülüyor (not).
+UI: Çıktı kartında "Kuvvet CFC" / "İvme CFC" seçimi, sonuçta süzülmüş tepe
+değerler, grafikte "… CFCn" serileri. Hata (gerçek koşuda bulundu): HIC
+O(n³) idi (her pencere çiftinde integral yeniden) — 2000 TH örneğinde
+dakikalar, sunucu kilitlendi (iş #48 dışlandı); önek toplamı + numpy ile
+O(n²), eski tanımla birebir (test), 2000 örnek 0.05 s. Testler: backend 7,
+frontend 2; backend 1052/1052 (+1 skip), frontend 153/153. Gerçek koşular:
+(1) kızaksız kutu 4 ms, TH 0.002: ön düğüm ivmesi ham 120 464 g → CFC1000
+8 037 g, HIC15 1.43e9 → 2.57e6; duvar tepe 130.9 → CFC600 101.2 kN — AMA bu
+olay ~0.12 ms (≈ dikdörtgen darbe), CFC600 bunu tümüyle yayıyor; süzülmüş
+"tepe" filtre yanıtı, anlamlı değil (sınıf olay süresine uygun seçilmeli;
+öneri değil, veri). (2) kızak 50 kg (test) 20 ms, TH 0.01: duvar tepe 126.7
+→ 125.5 kN, 1–10 ms ortalama ham 52.0 / CFC 51.9 kN — klasik ezilme eğrisi
+(ilk tepe, katlanma salınımları 25–90 kN, ~50 kN plato, kızak ~9.5 ms'de
+duruyor). İşler `262d471a…` (#49), `3530b829…` (#50).
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1109,8 +1135,6 @@ parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
 *1.17 — Standart explicit ortam*
-- 1.17e CFC filtre (SAE J211): kuvvet / ivme eğrilerine sınıf seçimi; ham veri
-  korunur, sınıf mühendisin (HIC'teki 120 bin g filtresiz düğüm ivmesi).
 - 1.17f Validasyon seti: enerji / momentum dengesi; kare tüp ortalama ezilme
   kuvveti (analitik formüllerle karşılaştırma; 1.17b kızak kütlesi şart);
   mesh yakınsaması (5 / 4 / 3 mm). Kabul kriterleri mühendisin.

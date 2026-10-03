@@ -128,6 +128,12 @@ export interface CrashSectionPayload {
   iframe: number;
 }
 
+/** 1.17e — SAE J211 CFC sınıfları; null = süzme yok (ham korunur). */
+export interface CrashFilterPayload {
+  force_cfc: number | null;
+  acc_cfc: number | null;
+}
+
 export interface CrashSolveRequest {
   geometry_id: number;
   barrier: CrashBarrierPayload;
@@ -145,6 +151,7 @@ export interface CrashSolveRequest {
   engine?: CrashEnginePayload;
   th?: CrashThPayload;
   sections?: CrashSectionPayload[];
+  filters?: CrashFilterPayload;
 }
 
 export interface CrashSolveResponse {

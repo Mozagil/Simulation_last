@@ -289,6 +289,10 @@ export default function CrashPanel({
     errors: msgList(diagnostics?.starter_errors),
     warnings: msgList(diagnostics?.starter_warnings),
   };
+  // 1.17e — CFC süzülmüş tepe değerleri (…_max_cfcN, acc_peak_g_cfcN, hic15_cfcN)
+  const cfcPeaks = Object.keys(scalars)
+    .filter((k) => /_cfc\d+$/.test(k) && !k.startsWith("sample_ratio"))
+    .sort();
   const sectionPeaks = Object.keys(scalars)
     .map((k) => /^section_(\d+)_force_max$/.exec(k))
     .filter((m): m is RegExpExecArray => m != null)
@@ -705,6 +709,11 @@ export default function CrashPanel({
                 <li key={m[0]}>
                   Kesit {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
                   {fmt(scalars[`section_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
+              {cfcPeaks.map((k) => (
+                <li key={k} data-testid="crash-cfc-peak">
+                  {k.replace(/_cfc(\d+)$/, "")} CFC{/_cfc(\d+)$/.exec(k)?.[1]} {fmt(scalars[k])}
                 </li>
               ))}
               {scalars.timestep_min != null && (

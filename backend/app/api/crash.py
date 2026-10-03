@@ -29,6 +29,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashBcParams,
     CrashEngineParams,
+    CrashFilterParams,
     CrashImpVelParams,
     CrashMassParams,
     CrashModelParams,
@@ -116,6 +117,9 @@ class CrashSolveRequest(BaseModel):
     )
     imposed_velocities: list[CrashImpVelParams] = Field(
         default_factory=list, description="/IMPVEL — bölge, parça ya da rijit gövdeye sabit hız (1.17c)"
+    )
+    filters: CrashFilterParams = Field(
+        default_factory=CrashFilterParams, description="SAE J211 CFC sınıfları (1.17e); ham korunur"
     )
 
     @field_validator("scenario")
@@ -338,6 +342,7 @@ def crash_solve(
                 "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
                 "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
                 "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+                "filters": body.filters.model_dump(),
                 "region_nodes": region_nodes,
             }
         )
@@ -393,6 +398,7 @@ def crash_solve(
         "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
         "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
         "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+        "filters": body.filters.model_dump(),
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,
