@@ -5,10 +5,12 @@ import {
   postCrashSolve,
   type CrashContactSpec,
   type CrashJobSnapshot,
+  type CrashModelPayload,
   type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
+import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
 
@@ -34,12 +36,6 @@ function num(raw: string): number {
   const v = Number(raw);
   if (!Number.isFinite(v)) throw new Error(`Sayı geçersiz: ${raw}`);
   return v;
-}
-
-function optionalNum(raw: string): number | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  return num(t);
 }
 
 function fmt(v: number | undefined): string {
@@ -82,7 +78,10 @@ export default function CrashPanel({
   const [ny, setNy] = useState("0");
   const [nz, setNz] = useState("1");
   const [tEnd, setTEnd] = useState("10");
-  const [law, setLaw] = useState<"elastic" | "plastic">("elastic");
+  // Malzeme kartı (1.14e): global kart + isteğe bağlı parça başına kart (1.14b).
+  // partCards'ta olmayan parça global karta düşer.
+  const [matCard, setMatCard] = useState<MatCardState>(defaultMatCard);
+  const [partCards, setPartCards] = useState<Record<number, MatCardState>>({});
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
@@ -91,9 +90,6 @@ export default function CrashPanel({
   const [ish3n, setIsh3n] = useState("0");
   const [shellIsmstr, setShellIsmstr] = useState("0");
   const [shellNip, setShellNip] = useState("0");
-  const [sigmaY, setSigmaY] = useState("");
-  const [hardenB, setHardenB] = useState("0");
-  const [hardenN, setHardenN] = useState("1");
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +197,24 @@ export default function CrashPanel({
     setBusy(true);
     setError(null);
     try {
-      const sy = optionalNum(sigmaY);
+      // Eleman bayrakları (TYPE14 / kabuk TYPE1) global; parça kartı yalnız malzemeyi değiştirir.
+      const elementFlags = {
+        isolid: num(isolid),
+        ismstr: num(ismstr),
+        nip: num(nip),
+        ...(isShell
+          ? {
+              shell: {
+                ishell: num(ishell),
+                ish3n: num(ish3n),
+                ismstr: num(shellIsmstr),
+                nip: num(shellNip),
+              },
+            }
+          : {}),
+      };
+      const modelFor = (card: MatCardState, label: string) =>
+        ({ ...elementFlags, ...matCardPayload(card, label) }) as CrashModelPayload;
       const body = await postCrashSolve({
         geometry_id: geometryId,
         scenario,
@@ -223,30 +236,13 @@ export default function CrashPanel({
                 (pid): CrashPartSpec => ({
                   part_id: pid,
                   role: partRoles[pid] ?? "moving",
+                  ...(partCards[pid] ? { model: modelFor(partCards[pid], `Parça #${pid}`) } : {}),
                 }),
               )
             : undefined,
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
-        model: {
-          law,
-          isolid: num(isolid),
-          ismstr: num(ismstr),
-          nip: num(nip),
-          sigma_y_pa: sy,
-          harden_b_mpa: num(hardenB),
-          harden_n: num(hardenN),
-          ...(isShell
-            ? {
-                shell: {
-                  ishell: num(ishell),
-                  ish3n: num(ish3n),
-                  ismstr: num(shellIsmstr),
-                  nip: num(shellNip),
-                },
-              }
-            : {}),
-        },
+        model: modelFor(matCard, "Global"),
       });
       setResult(body);
       setSnapshot({
@@ -281,6 +277,13 @@ export default function CrashPanel({
       : "Rigid wall normal";
   const curves = snapshot?.curves;
   const forceSeries = forceSeriesFromCurves(curves);
+  const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
+  const msgList = (m: Record<string, number> | undefined) =>
+    Object.entries(m ?? {}).map(([id, n]) => (n > 1 ? `${id} ×${n}` : id));
+  const starterMsgs = {
+    errors: msgList(diagnostics?.starter_errors),
+    warnings: msgList(diagnostics?.starter_warnings),
+  };
   const contactPeaks = Object.keys(scalars)
     .map((k) => /^contact_(\d+)_force_max$/.exec(k))
     .filter((m): m is RegExpExecArray => m != null)
@@ -292,8 +295,8 @@ export default function CrashPanel({
       <h1>Crash</h1>
       <p className="lead material-lead">
         Durability sonuçları bu sekmede değişmez. 3D (solid) ya da 2D (kabuk) mesh + malzeme ataması
-        gerekir. Hız m/s (mm–ms: 1 m/s = 1 mm/ms). Kartlar: LAW1/LAW2, TYPE14
-        Isolid / Ismstr / NIP.
+        gerekir. Hız m/s (mm–ms: 1 m/s = 1 mm/ms). Kartlar: LAW1 / LAW2 / LAW36, /FAIL,
+        TYPE14 Isolid / Ismstr / NIP.
       </p>
       {meshDimension !== 2 && meshDimension !== 3 && (
         <p className="material-assign-hint">Mesh yok — crash 3D (solid) ya da 2D (kabuk) mesh ister.</p>
@@ -385,6 +388,7 @@ export default function CrashPanel({
                 <th>parça</th>
                 <th>malzeme</th>
                 <th>rol</th>
+                <th>kart</th>
                 {isShell && <th>t (mm)</th>}
               </tr>
             </thead>
@@ -418,6 +422,34 @@ export default function CrashPanel({
                         </button>
                       </span>
                     </td>
+                    <td>
+                      <span className="doe-seg" role="group" aria-label={`Parça ${pid} kartı`}>
+                        <button
+                          type="button"
+                          className={partCards[pid] ? "doe-seg-opt" : "doe-seg-opt active"}
+                          aria-pressed={!partCards[pid]}
+                          disabled={busy}
+                          onClick={() =>
+                            setPartCards((c) => {
+                              const next = { ...c };
+                              delete next[pid];
+                              return next;
+                            })
+                          }
+                        >
+                          Global
+                        </button>
+                        <button
+                          type="button"
+                          className={partCards[pid] ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={Boolean(partCards[pid])}
+                          disabled={busy}
+                          onClick={() => setPartCards((c) => (c[pid] ? c : { ...c, [pid]: { ...matCard } }))}
+                        >
+                          Ayrı
+                        </button>
+                      </span>
+                    </td>
                     {isShell && (
                       <td
                         data-testid={`crash-part-t-${pid}`}
@@ -433,7 +465,8 @@ export default function CrashPanel({
           </table>
           <p className="material-assign-hint">
             Hareketli parça ilk hızı alır; sabit parça /BCS ile tutulur. Her parçaya malzeme
-            atanmalı (3 · Material).
+            atanmalı (3 · Material). Kart: Global = aşağıdaki ortak kart; Ayrı = parçanın kendi
+            kartı (global kartın o anki kopyasıyla açılır).
           </p>
         </>
       )}
@@ -539,40 +572,25 @@ export default function CrashPanel({
         varsayılanı.
       </p>
 
-      <p className="material-assignments-title">Malzeme kanunu</p>
-      <ButtonGroup
-        title="LAW"
-        items={[
-          {
-            key: "elastic",
-            label: "LAW1 elastik",
-            active: law === "elastic",
-            onClick: () => setLaw("elastic"),
-          },
-          {
-            key: "plastic",
-            label: "LAW2 plastik",
-            active: law === "plastic",
-            onClick: () => setLaw("plastic"),
-          },
-        ]}
-      />
-      {law === "plastic" && (
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>σy (Pa) — boşsa atanan malzeme</span>
-            <input value={sigmaY} onChange={(e) => setSigmaY(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>LAW2 b (MPa)</span>
-            <input value={hardenB} onChange={(e) => setHardenB(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>LAW2 n</span>
-            <input value={hardenN} onChange={(e) => setHardenN(e.target.value)} />
-          </label>
-        </div>
-      )}
+      <p className="material-assignments-title">
+        {Object.keys(partCards).length > 0 ? "Malzeme kartı — global" : "Malzeme kartı"}
+      </p>
+      <CrashMaterialCard value={matCard} onChange={setMatCard} disabled={busy} testId="crash-mat-global" />
+      {partIds
+        .filter((pid) => partCards[pid])
+        .map((pid) => (
+          <div key={pid} className="crash-contact-card crash-mat-part">
+            <div className="crash-contact-head">
+              <strong>Parça #{pid} — malzeme kartı</strong>
+            </div>
+            <CrashMaterialCard
+              value={partCards[pid]}
+              onChange={(next) => setPartCards((c) => ({ ...c, [pid]: next }))}
+              disabled={busy}
+              testId={`crash-mat-part-${pid}`}
+            />
+          </div>
+        ))}
 
       {isShell ? (
         <>
@@ -671,6 +689,14 @@ export default function CrashPanel({
               {scalars.rwall_impulse_final != null && (
                 <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
               )}
+              {scalars.elements_deleted != null && (
+                <li data-testid="crash-deleted">
+                  Silinen eleman {scalars.elements_deleted}
+                  {scalars.deletion_time_first != null
+                    ? ` · ilk ≤ ${fmt(scalars.deletion_time_first)} ms · son ≤ ${fmt(scalars.deletion_time_last)} ms`
+                    : ""}
+                </li>
+              )}
               {contactPeaks.map((m) => (
                 <li key={m[0]}>
                   Temas {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
@@ -678,6 +704,13 @@ export default function CrashPanel({
                 </li>
               ))}
             </ul>
+          )}
+          {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
+            <p className="material-assign-hint" data-testid="crash-starter-msgs">
+              Starter
+              {starterMsgs.errors.length > 0 ? ` · hata ID ${starterMsgs.errors.join(", ")}` : " · 0 hata"}
+              {starterMsgs.warnings.length > 0 ? ` · uyarı ID ${starterMsgs.warnings.join(", ")}` : ""}
+            </p>
           )}
           {curves?.time && forceSeries.length > 0 && (
             <CrashForceChart time={curves.time} series={forceSeries} />

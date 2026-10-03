@@ -4193,6 +4193,75 @@ p {
   margin: 2px 0 6px;
 }
 
+/* 1.14e — malzeme kartı: LAW1/2/36 + /FAIL; dar panelde alt alta */
+.crash-mat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.crash-mat-part {
+  margin: 6px 0;
+  padding-bottom: 8px;
+}
+
+.crash-mat-section {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.crash-mat-section > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 2px 0 4px;
+}
+
+.crash-mat-curves {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-mat-curve {
+  padding: 6px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-mat-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-mat-rate input {
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.crash-mat-points {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--ink);
+  background: var(--surface-2);
+  resize: vertical;
+}
+
 /* 1.12b — kuvvet–zaman grafiği: seri renkleri tema token'larından */
 .crash-force-card {
   margin-top: 10px;

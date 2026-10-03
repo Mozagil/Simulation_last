@@ -848,12 +848,28 @@ silme, ilk 0.054 / son 3.78 ms; `c3d79087…` 259, 0.054 / 3.996 ms; `7fd1cb11�
 0 silme, uyarı {1912: 1}; eski hatalı iş `f3d5116a…` 10 hata (573, 574, 668,
 53, 260, 1109) / 5 uyarı.
 
+**1.14e — Crash sekmesinde malzeme kartı editörü (parça başına)** — ✅ 2026-10-03
+`CrashMaterialCard` (frontend): LAW1 / LAW2 / LAW36 seçimi; LAW2'de σy, b, n,
+EPS_p_max, SIG_max0 + açılır "Johnson-Cook hız / sıcaklık" (c, ε̇₀, ICC,
+Fsmooth, F_cut, Chard, m, T_melt, ρCp, T_r); LAW36'da eğri kartları (ε̇ +
+"ε_p σ" satırları — Excel'den iki sütun yapıştırılır; sekmeyle gelen ondalık
+virgül nokta olur), Eps_t/m/f, VP, EPS_p_max, Fsmooth, F_cut, Chard; açılır
+"Kopma — /FAIL" (JOHNSON ve/veya TENSSTRAIN onay kutusuyla). Parçalar
+tablosunda "kart" sütunu: Global | Ayrı — Ayrı, global kartın o anki
+kopyasıyla parçaya kendi kartını açar (`parts[].model`); eleman bayrakları
+(TYPE14 / kabuk TYPE1) globalden gelir. Geçersiz sayı / eğri satırı gönderimi
+durdurur, hata alan adıyla gösterilir ("Parça #1 c: …"). Öneri yok, 0 =
+Radioss varsayılanı. 1.14f sonuçları panelde: "Silinen eleman N · ilk ≤ … ms
+· son ≤ … ms" ve "Starter · hata ID … · uyarı ID …". Testler: kart 5, panel
++3; frontend 140/140, tsc temiz. 340 px panelde DOM ölçümü: taşma yok, alanlar
+108 px (3 sütun), eğri alanı tam genişlik. Tarayıcı ekran görüntüsü alınamadı
+(eklenti zaman aşımı) — görsel kontrol kullanıcıda.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - 1.14c2 LAW36 eğrilerini malzeme kütüphanesinde kalıcı tutma (materials
   tablosuna kolon + Alembic migration; aynı eğri birden çok senaryoda) —
   DB şeması değişikliği, ayrı onay
-- 1.14e Crash sekmesinde parça başına malzeme kartı editörü
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability

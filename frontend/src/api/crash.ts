@@ -15,15 +15,51 @@ export interface CrashBarrierPayload {
 }
 
 export interface CrashModelPayload {
-  law: "elastic" | "plastic";
+  law: "elastic" | "plastic" | "tabulated";
   isolid: number;
   ismstr: number;
   nip: number;
   sigma_y_pa?: number | null;
   harden_b_mpa: number;
   harden_n: number;
+  // 1.14a — LAW2 Johnson-Cook; 0 = terim kapalı / Radioss varsayılanı
+  eps_p_max?: number;
+  sig_max0_mpa?: number;
+  jc_c?: number;
+  jc_eps_dot0_per_s?: number;
+  jc_icc?: number;
+  jc_fsmooth?: number;
+  jc_fcut_hz?: number;
+  jc_chard?: number;
+  jc_m?: number;
+  jc_t_melt_k?: number;
+  jc_rho_cp?: number;
+  jc_t_r_k?: number;
+  // 1.14c — LAW36 tablo
+  tab_curves?: { eps_dot_per_s: number; points: [number, number][] }[];
+  tab_eps_t?: number;
+  tab_eps_m?: number;
+  tab_eps_f?: number;
+  tab_vp?: number;
+  /** 1.14d — kopma kriterleri; yoksa kopma yok */
+  fail?: CrashFailPayload;
   /** Kabuk parçalar (2D mesh) için /PROP/TYPE1; 0 = Radioss /DEF_SHELL varsayılanı. */
   shell?: CrashShellPayload;
+}
+
+export interface CrashFailPayload {
+  johnson?: {
+    d1: number;
+    d2: number;
+    d3: number;
+    d4: number;
+    d5: number;
+    eps_dot0_per_s: number;
+    ifail_sh: number;
+    ifail_so: number;
+    dadv: number;
+  };
+  tensstrain?: { eps_t1: number; eps_t2: number; eps_f1: number; eps_f2: number; s_flag: number };
 }
 
 export interface CrashShellPayload {
@@ -42,6 +78,8 @@ export interface CrashPartSpec {
   role: "moving" | "fixed";
   /** Kabuk parça kalınlığı (mm); boşsa model.shell.thickness_mm. */
   thickness_mm?: number | null;
+  /** 1.14b — parça başına kart; yoksa istekteki global model */
+  model?: CrashModelPayload;
 }
 
 /** Temas (1.12): /INTER/TYPE7 (slave düğüm → master yüzey) | TYPE24 (yüzey ↔ yüzey).
@@ -90,6 +128,14 @@ export interface CrashSolveResponse {
   openradioss_available: boolean;
   solver_ran: boolean;
   scalars: Record<string, number>;
+  diagnostics?: CrashDiagnostics;
+}
+
+/** 1.14f — solver listing'inden okunan veri (yorum yok). */
+export interface CrashDiagnostics {
+  starter_errors?: Record<string, number>;
+  starter_warnings?: Record<string, number>;
+  deleted_elements?: { criterion: string; kind: string; element: number; time: number | null }[];
 }
 
 export interface CrashJobSnapshot {
@@ -106,6 +152,7 @@ export interface CrashJobSnapshot {
   curves?: Record<string, number[]>;
   starter_url?: string;
   solver_ran?: boolean;
+  diagnostics?: CrashDiagnostics;
 }
 
 function detailMessage(body: unknown, status: number): string {

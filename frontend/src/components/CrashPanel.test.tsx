@@ -264,5 +264,71 @@ describe("CrashPanel", () => {
     expect(screen.getByText("Temas 1 tepe")).toBeInTheDocument();
     expect(screen.getByText("t = 0.200 ms")).toBeInTheDocument();
   });
-});
+  it("1.14e: parça başına ayrı kart yalnız o parçaya model gönderir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j10", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    // global LAW2, parça 1 ayrı kart (global kopyası) → LAW36 + TENSSTRAIN
+    fireEvent.click(
+      within(screen.getByTestId("crash-mat-global")).getByRole("button", { name: "LAW2 plastik" }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Parça 1 kartı" })).getByRole("button", { name: "Ayrı" }),
+    );
+    const card = screen.getByTestId("crash-mat-part-1");
+    expect(within(card).getByRole("button", { name: "LAW2 plastik" })).toHaveClass("active");
+    fireEvent.click(within(card).getByRole("button", { name: "LAW36 tablo" }));
+    fireEvent.change(within(card).getByLabelText("Eğri 1 noktaları"), { target: { value: "0 235\n1 235" } });
+    fireEvent.click(within(card).getByLabelText("/FAIL/TENSSTRAIN"));
+    fireEvent.change(within(card).getByLabelText("ε_t1"), { target: { value: "0.1" } });
+    fireEvent.change(within(card).getByLabelText("ε_t2"), { target: { value: "0.2" } });
+    fireEvent.change(screen.getByLabelText("Isolid"), { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.model).toMatchObject({ law: "plastic", isolid: 14 });
+    expect(body.model?.fail).toBeUndefined();
+    expect(body.parts?.[0]).toEqual({ part_id: 0, role: "moving" });
+    expect(body.parts?.[1].model).toMatchObject({
+      law: "tabulated",
+      isolid: 14, // eleman bayrakları globalden
+      tab_curves: [{ eps_dot_per_s: 0, points: [[0, 235], [1, 235]] }],
+      fail: { tensstrain: { eps_t1: 0.1, eps_t2: 0.2 } },
+    });
+    // Global'e dönünce parça kartı kalkar
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Parça 1 kartı" })).getByRole("button", { name: "Global" }),
+    );
+    expect(screen.queryByTestId("crash-mat-part-1")).not.toBeInTheDocument();
+  });
 
+  it("1.14e: geçersiz eğri gönderilmez, hata alan adıyla gösterilir", async () => {
+    render(<CrashPanel geometryId={1} meshDimension={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "LAW36 tablo" }));
+    fireEvent.change(screen.getByLabelText("Eğri 1 noktaları"), { target: { value: "0 235 9" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    expect(await screen.findByText(/Global eğri 1: "0 235 9" iki sütun/)).toBeInTheDocument();
+    expect(postCrashSolve).not.toHaveBeenCalled();
+  });
+
+  it("1.14f: silinen eleman ve starter mesaj ID'lerini gösterir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j11", geometry_id: 1, status: "solved", message: "OpenRadioss bitti",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: true, solver_ran: true,
+      scalars: { elements_deleted: 133, deletion_time_first: 0.054, deletion_time_last: 3.78 },
+      diagnostics: { starter_errors: {}, starter_warnings: { "1912": 1, "1220": 2 } },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    expect(await screen.findByTestId("crash-deleted")).toHaveTextContent(
+      "Silinen eleman 133 · ilk ≤ 5.400e-2 ms · son ≤ 3.780 ms",
+    );
+    expect(screen.getByTestId("crash-starter-msgs")).toHaveTextContent(
+      "Starter · 0 hata · uyarı ID 1220 ×2, 1912",
+    );
+  });
+});
