@@ -951,12 +951,26 @@ N·s (kesit arkasındaki kütle 280/300 · duvar impulsu 14.39 = 13.43), x = 150
 `905f7376…`.
 - [ ] Kesit normali / yerel eksen (N1–N3 düğümleri) — FN/FT ayrımı gerekiyorsa
 
+**1.15d — Crash sekmesinde çıktı ve kontrol UI'ı** — ✅ 2026-10-03
+`CrashOutputCard` (frontend), "Çıktı ve kontrol" başlığı altında üç açılır
+bölüm: (1) Çıktı ve zaman adımı — TH / animasyon aralığı (boş = varsayılan,
+placeholder t_end/200, t_end/20), zaman adımı kartı (Yok | /DT | NODA/0 |
+NODA/STOP | NODA/CST/0), Δt_sca / Δt_min (tür seçilmeden kapalı); (2) Zaman
+geçmişi — RWALL / INTER / PART / SECTIO aç-kapa + değişken çipleri (backend
+TH_VARS ile aynı liste), düğüm kimlikleri + değişken çipleri; (3) Kesitler —
+kart başına ad, M / M1 / M2 (x y z), parça çipleri (seçim yok = tümü), Iframe
+seçimi. Varsayılan durum backend varsayılanını gönderir (eski deck). Sonuç
+panelinde kesit Fmax + impuls, Δt_min + eklenen kütle %; kuvvet grafiğinde
+"Kesit k" serileri. Geçersiz sayı / düğüm kimliği gönderimi durdurur, hata alan
+adıyla. Testler: kart 4, panel +1; frontend 145/145, tsc temiz. Ekran
+görüntüsü geometrisiz (UI'da mevcut geometriyi açma yolu yok): üç bölüm 340 px
+panelde.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.15d Crash sekmesinde engine / çıktı UI'ı
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
   kodundan bağımsız)

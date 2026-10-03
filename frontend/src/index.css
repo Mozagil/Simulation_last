@@ -4262,6 +4262,56 @@ p {
   resize: vertical;
 }
 
+/* 1.15d — çıktı kartı: değişken çipleri, TH grupları, kesit adı */
+.crash-var-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 6px;
+}
+
+.crash-var-chip {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+.crash-var-chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.crash-var-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.crash-var-note {
+  align-self: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-th-group {
+  margin-top: 4px;
+}
+
+.crash-section-name {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
 /* 1.12b — kuvvet–zaman grafiği: seri renkleri tema token'larından */
 .crash-force-card {
   margin-top: 10px;

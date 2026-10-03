@@ -25,7 +25,13 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
     .sort((a, b) => Number(a[1]) - Number(b[1]))
     .map((m) => ({ key: m[0], label: `Temas ${m[1]}`, values: curves[m[0]] }));
   const wall = curves.rwall_force ? [{ key: "rwall_force", label: "Rijit duvar", values: curves.rwall_force }] : [];
-  return [...contacts, ...wall].filter((s) => s.values.length > 1);
+  // 1.15c — kesit kuvveti (FN + FT, global; bileşen dI/dt)
+  const sections = Object.keys(curves)
+    .map((k) => /^section_(\d+)_force$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]))
+    .map((m) => ({ key: m[0], label: `Kesit ${m[1]}`, values: curves[m[0]] }));
+  return [...contacts, ...wall, ...sections].filter((s) => s.values.length > 1);
 }
 
 export default function CrashForceChart({ time, series }: { time: number[]; series: ForceSeries[] }) {

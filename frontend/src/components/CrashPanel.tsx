@@ -11,6 +11,7 @@ import {
 } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
 import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
+import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
 
@@ -82,6 +83,8 @@ export default function CrashPanel({
   // partCards'ta olmayan parça global karta düşer.
   const [matCard, setMatCard] = useState<MatCardState>(defaultMatCard);
   const [partCards, setPartCards] = useState<Record<number, MatCardState>>({});
+  // 1.15d — engine / TH / kesit ayarları; boş = backend varsayılanı (eski deck)
+  const [output, setOutput] = useState<OutputState>(defaultOutput);
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
@@ -243,6 +246,7 @@ export default function CrashPanel({
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
         model: modelFor(matCard, "Global"),
+        ...outputPayload(output),
       });
       setResult(body);
       setSnapshot({
@@ -284,6 +288,10 @@ export default function CrashPanel({
     errors: msgList(diagnostics?.starter_errors),
     warnings: msgList(diagnostics?.starter_warnings),
   };
+  const sectionPeaks = Object.keys(scalars)
+    .map((k) => /^section_(\d+)_force_max$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
   const contactPeaks = Object.keys(scalars)
     .map((k) => /^contact_(\d+)_force_max$/.exec(k))
     .filter((m): m is RegExpExecArray => m != null)
@@ -638,6 +646,9 @@ export default function CrashPanel({
         </>
       )}
 
+      <p className="material-assignments-title">Çıktı ve kontrol</p>
+      <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
+
       <label className="material-check">
         <input
           type="checkbox"
@@ -688,6 +699,18 @@ export default function CrashPanel({
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
               {scalars.rwall_impulse_final != null && (
                 <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
+              )}
+              {sectionPeaks.map((m) => (
+                <li key={m[0]}>
+                  Kesit {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`section_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
+              {scalars.timestep_min != null && (
+                <li data-testid="crash-timestep">
+                  Δt_min {fmt(scalars.timestep_min)} ms
+                  {scalars.mass_added_rel ? ` · eklenen kütle %${(scalars.mass_added_rel * 100).toFixed(1)}` : ""}
+                </li>
               )}
               {scalars.elements_deleted != null && (
                 <li data-testid="crash-deleted">

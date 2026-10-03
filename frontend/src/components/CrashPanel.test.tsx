@@ -331,4 +331,29 @@ describe("CrashPanel", () => {
       "Starter · 0 hata · uyarı ID 1220 ×2, 1912",
     );
   });
+  it("1.15d: engine / th / sections gönderir; kesit ve Δt sonuçlarını gösterir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j12", geometry_id: 1, status: "solved", message: "OpenRadioss bitti",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: true, solver_ran: true,
+      scalars: {
+        section_1_force_max: 123.9, section_1_impulse_final: 13.42,
+        timestep_min: 0.001, mass_added_rel: 0.565,
+      },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} partIds={[0]} />);
+    fireEvent.change(screen.getByLabelText("TH aralığı (ms)"), { target: { value: "0.002" } });
+    fireEvent.click(screen.getByRole("button", { name: "+ Kesit ekle" }));
+    fireEvent.change(screen.getByLabelText("Kesit 1 M1 y"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Kesit 1 M2 z"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.engine?.th_dt_ms).toBe(0.002);
+    expect(body.th?.rwall.vars).toEqual(["FNX", "FNY", "FNZ"]);
+    expect(body.sections).toHaveLength(1);
+    expect(body.sections?.[0].corner1).toEqual([0, 60, 0]);
+    expect(await screen.findByText(/Kesit 1 Fmax 123\.9 kN · impuls 13\.420 N·s/)).toBeInTheDocument();
+    expect(screen.getByTestId("crash-timestep")).toHaveTextContent("Δt_min 1.000e-3 ms · eklenen kütle %56.5");
+  });
 });

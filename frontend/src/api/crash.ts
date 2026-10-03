@@ -99,6 +99,35 @@ export interface CrashContactSpec {
   iedge: number;
 }
 
+/** 1.15a — engine çıktı aralıkları + zaman adımı kartı; null/"" = varsayılan. */
+export interface CrashEnginePayload {
+  th_dt_ms: number | null;
+  anim_dt_ms: number | null;
+  dt_kind: string;
+  dt_scale: number;
+  dt_min_ms: number;
+}
+
+/** 1.15b — /TH grupları; değişkenler backend'de Radioss sırasına dizilir. */
+export interface CrashThPayload {
+  rwall: { enabled: boolean; vars: string[] };
+  inter: { enabled: boolean; vars: string[] };
+  part: { enabled: boolean; vars: string[] };
+  sect: { enabled: boolean; vars: string[] };
+  node_ids: number[];
+  node_vars: string[];
+}
+
+/** 1.15c — /SECT/PARAL paralelkenar kesit (mm). */
+export interface CrashSectionPayload {
+  name: string;
+  origin: [number, number, number];
+  corner1: [number, number, number];
+  corner2: [number, number, number];
+  parts: number[];
+  iframe: number;
+}
+
 export interface CrashSolveRequest {
   geometry_id: number;
   barrier: CrashBarrierPayload;
@@ -113,6 +142,9 @@ export interface CrashSolveRequest {
   name?: string;
   model?: CrashModelPayload;
   scenario?: "rigid_wall" | "plate_ball";
+  engine?: CrashEnginePayload;
+  th?: CrashThPayload;
+  sections?: CrashSectionPayload[];
 }
 
 export interface CrashSolveResponse {
