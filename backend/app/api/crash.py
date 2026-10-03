@@ -211,9 +211,23 @@ def crash_solve(
             "youngs_modulus": a.material.youngs_modulus,
             "poisson_ratio": a.material.poisson_ratio,
             "yield_strength": a.material.yield_strength,
+            "material_id": a.material.id,
+            "crash_curves": a.material.crash_curves,
         }
         for a in assignments
     ]
+    # 1.14c2 — LAW36 eğrisinin kaynağı ve kullanılan eğri, parça başına. Malzeme
+    # eğrisi sonradan değişse de iş kendi kopyasını job.json'da tutar.
+    part_model = {p.part_id: p.model for p in body.parts if p.model is not None}
+    law36_curve_source: dict[str, dict[str, Any]] = {}
+    for m in materials:
+        eff = part_model.get(m["part_id"], body.model)
+        if eff.law == "tabulated":
+            law36_curve_source[str(m["part_id"])] = (
+                {"source": "istek", "curves": [c.model_dump() for c in eff.tab_curves]}
+                if eff.tab_curves
+                else {"source": f"malzeme #{m['material_id']}", "curves": m["crash_curves"]}
+            )
 
     # Kabuk kalınlığının tek kaynağı ürün ağacı bileşeni (Malzeme adımı); aynı
     # mesh parça numarası (2D'de ATA, bileşen ve export hepsi mesh numarası).
@@ -294,6 +308,7 @@ def crash_solve(
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,
+        "law36_curve_source": law36_curve_source,
         "scalars": {},
         "curves": {},
     }
@@ -311,6 +326,7 @@ def crash_solve(
         "progress_url": f"/crash/jobs/{job_id}",
         "ws_url": f"/crash/jobs/{job_id}/ws",
         "cards": cards,
+        "law36_curve_source": law36_curve_source,
         "openradioss_available": or_ok,
         "solver_ran": False,
         "scalars": {},

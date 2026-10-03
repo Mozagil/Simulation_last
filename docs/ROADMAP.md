@@ -866,11 +866,27 @@ Radioss varsayılanı. 1.14f sonuçları panelde: "Silinen eleman N · ilk ≤ �
 LAW36 eğri kartı ve /FAIL bölümü kontrol edildi; parça "Ayrı" kartı yalnız
 testlerle (geometri yüklü değildi).
 
+**1.14c2 — LAW36 eğrileri malzeme kütüphanesinde** — ✅ 2026-10-03 (şema onayı 2026-10-03)
+DB: `materials.crash_curves` JSON nullable; migration `e2f3a4b5c6d7` yalnız
+kolon ekler (downgrade siler; dev DB'de yukarı/aşağı/yukarı denendi). İçerik
+tab_curves formatı, doğrulama crash ile ortak (`parse_tab_curves`: ε_p kesin
+artan, σ ≥ 0, ε̇ kesin artan). API: `POST /materials` `crash_curves` alır,
+`PUT /materials/{id}/crash-curves` {curves | null} — kütüphane malzemesi
+(is_editable = false) 403, geçersiz eğri 422; listeleme alanı döndürür.
+Crash: law = tabulated ve istekte eğri varsa istek; yoksa parçaya atanan
+malzemenin eğrileri; ikisi de yoksa 422 ("akma eğrisi yok"). Boş `tab_curves`
+artık parametre hatası değil, kontrol deck kurulurken. job.json + yanıt
+`law36_curve_source` {part_id: {source: "istek" | "malzeme #id", curves}} —
+malzeme sonradan değişse de işin kopyası kalır. Dataset arşivi kolonu taşır
+(eski arşivde None). 4 adaptör + 1 malzeme API + 1 crash API testi; backend
+977/977 (+1 skip). Çözücü koşusu yok: deck aynı /MAT/LAW36 + /FUNCT kartları
+(LAW36 ≡ LAW2 eşdeğerliği 1.14c'de koşuldu).
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
-- 1.14c2 LAW36 eğrilerini malzeme kütüphanesinde kalıcı tutma (materials
-  tablosuna kolon + Alembic migration; aynı eğri birden çok senaryoda) —
-  DB şeması değişikliği, ayrı onay
+- Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
+  kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
+  (şu an UI her zaman istekte eğri gönderir)
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability

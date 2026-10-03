@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models.geometry import Geometry
 from app.models.material import Material, MaterialAssignment
+from app.solvers.crash_params import CrashTabCurve, parse_tab_curves
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def _material_payload(m: Material) -> dict[str, Any]:
         "ultimate_strength": m.ultimate_strength,
         "elongation": m.elongation,
         "sn_curve": m.sn_curve,
+        "crash_curves": m.crash_curves,
         "source": m.source,
         "is_editable": m.is_editable,
     }
@@ -78,6 +80,29 @@ class CreateMaterialRequest(BaseModel):
         default=None,
         description="sn_mode=tested ise kullanıcı S-N verisi",
     )
+    crash_curves: list[CrashTabCurve] | None = Field(
+        default=None,
+        description="LAW36 akma eğrileri (1.14c2); ε̇ artan, ε_p kesin artan, σ MPa",
+    )
+
+
+class CrashCurvesRequest(BaseModel):
+    curves: list[CrashTabCurve] | None = Field(
+        default=None, description="Boş / null → malzemenin crash eğrileri silinir"
+    )
+
+
+def _curves_json(curves: list[CrashTabCurve] | None) -> list[dict[str, Any]] | None:
+    if not curves:
+        return None
+    try:
+        parse_tab_curves([c.model_dump() for c in curves])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return [
+        {"eps_dot_per_s": c.eps_dot_per_s, "points": [[float(x), float(y)] for x, y in c.points]}
+        for c in curves
+    ]
 
 
 class SnCurveRequest(BaseModel):
@@ -142,6 +167,7 @@ def create_material(
         ultimate_strength=body.ultimate_strength,
         elongation=body.elongation,
         sn_curve=sn_curve,
+        crash_curves=_curves_json(body.crash_curves),
         source="user_defined",
         is_editable=True,
     )
@@ -175,6 +201,25 @@ def set_sn_curve(
     else:
         raise HTTPException(status_code=400, detail="source estimated|tested olmalı.")
 
+    db.commit()
+    db.refresh(mat)
+    return {"material": _material_payload(mat)}
+
+
+@router.put("/{material_id}/crash-curves")
+def set_crash_curves(
+    material_id: int, body: CrashCurvesRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """LAW36 akma eğrilerini malzemeye yazar (1.14c2). Kütüphane malzemesi değişmez."""
+    mat = db.get(Material, material_id)
+    if mat is None:
+        raise HTTPException(status_code=404, detail="Malzeme bulunamadı.")
+    if not mat.is_editable:
+        raise HTTPException(
+            status_code=403,
+            detail="Kütüphane malzemesi değiştirilemez; kullanıcı malzemesi oluşturun.",
+        )
+    mat.crash_curves = _curves_json(body.curves)
     db.commit()
     db.refresh(mat)
     return {"material": _material_payload(mat)}

@@ -28,7 +28,7 @@ from app.solvers.base import (
     SolverAdapter,
     SolverError,
 )
-from app.solvers.crash_params import CrashContactParams, CrashModelParams
+from app.solvers.crash_params import CrashContactParams, CrashModelParams, parse_tab_curves
 
 # Codespace Dockerfile bu etiketi indirir (reproducible). Kaynak derlenmez.
 OPENRADIOSS_RELEASE = "latest-20260728"
@@ -336,6 +336,16 @@ def _mat_prop_cards(
         # hızları beşer beşer. Eğriler /FUNCT (ε_p, σ): σ MPa → GPa, ε̇ 1/s → 1/ms.
         # fct_IDp, Fct_IDE 0 (basınç / E değişimi yok); eğri ölçeği 1.
         curves = model.tab_curves
+        if not curves:
+            try:
+                curves = parse_tab_curves(mat.get("crash_curves"))
+            except ValueError as exc:
+                raise SolverError(f"Malzeme '{title}' crash_curves geçersiz: {exc}") from exc
+        if not curves:
+            raise SolverError(
+                f"LAW36 için akma eğrisi yok: istekte tab_curves boş, malzeme '{title}' "
+                "kütüphanesinde crash_curves yok."
+            )
         fids = [card_id * 100 + k for k in range(1, len(curves) + 1)]
         mat_lines = [
             f"/MAT/LAW36/{card_id}",

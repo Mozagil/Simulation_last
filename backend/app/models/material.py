@@ -39,6 +39,9 @@ class Material(Base):
     ultimate_strength: Mapped[float] = mapped_column(Float, nullable=False)  # Pa
     elongation: Mapped[float | None] = mapped_column(Float, nullable=True)  # %
     sn_curve: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 1.14c2 — LAW36 akma eğrileri, crash tab_curves formatında:
+    # [{"eps_dot_per_s": 1/s, "points": [[ε_p, σ MPa], …]}, …]
+    crash_curves: Mapped[list | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(String, nullable=False, default="library")
     is_editable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

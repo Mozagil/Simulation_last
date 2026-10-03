@@ -94,6 +94,7 @@ _MATERIAL_COLS = [
     "ultimate_strength",
     "elongation",
     "sn_curve",
+    "crash_curves",  # 1.14c2; eski arşivde yok → None
     "source",
     "is_editable",
     "created_at",

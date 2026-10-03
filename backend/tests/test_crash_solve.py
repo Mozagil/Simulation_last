@@ -371,3 +371,40 @@ def test_crash_job_survives_hub_reset():
     snap = client.get(f"/crash/jobs/{body['job_id']}")
     assert snap.status_code == 200
     assert snap.json()["status"] == "rad_only"
+
+
+@requires_db
+def test_crash_solve_law36_curves_from_material_library():
+    """1.14c2: istekte eğri yoksa atanmış malzemenin crash_curves'ü; kaynak job.json'da."""
+    import uuid
+
+    geometry_id = _upload_and_mesh_box()
+    lib = [{"eps_dot_per_s": 0.0, "points": [[0.0, 235.0], [0.2, 320.0]]}]
+    mat = client.post(
+        "/materials",
+        json={
+            "name": f"T_c2_api_{uuid.uuid4().hex[:8]}", "density": 7850, "youngs_modulus": 210e9,
+            "poisson_ratio": 0.3, "yield_strength": 235e6, "ultimate_strength": 360e6,
+            "crash_curves": lib,
+        },
+    ).json()["material"]
+    client.post(
+        "/materials/assignments",
+        json={"geometry_id": geometry_id, "part_id": 0, "material_id": mat["id"]},
+    )
+    req = {"geometry_id": geometry_id, "barrier": _barrier(), "model": {"law": "tabulated"}}
+    r = client.post("/crash/solve", json=req)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cards"]["has_law36"] is True
+    assert body["law36_curve_source"]["0"] == {"source": f"malzeme #{mat['id']}", "curves": lib}
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["law36_curve_source"]["0"]["source"] == f"malzeme #{mat['id']}"
+
+    own = [{"eps_dot_per_s": 0.0, "points": [[0.0, 500.0], [1.0, 500.0]]}]
+    r2 = client.post("/crash/solve", json={**req, "model": {"law": "tabulated", "tab_curves": own}})
+    assert r2.json()["law36_curve_source"]["0"]["source"] == "istek"
+
+    client.put(f"/materials/{mat['id']}/crash-curves", json={"curves": None})
+    r3 = client.post("/crash/solve", json=req)
+    assert r3.status_code == 422 and "akma eğrisi yok" in r3.json()["detail"]

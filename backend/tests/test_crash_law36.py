@@ -1,7 +1,8 @@
 """1.14c — LAW36 (tabulated): /MAT/LAW36 + /FUNCT akma eğrileri.
 
 Kart düzeni hm_cfg radioss2017 matl36_plas_tab (2022 bunu kullanır), /FUNCT
-radioss90 (X Y çiftleri, %20). Eğriler istekte gelir (DB değişmez).
+radioss90 (X Y çiftleri, %20). Eğriler istekte; yoksa malzeme kütüphanesinden (1.14c2,
+test_crash_material_curves).
 """
 
 from __future__ import annotations
@@ -56,7 +57,6 @@ def test_each_part_gets_its_own_function_ids(tmp_path):
 @pytest.mark.parametrize(
     "raw",
     [
-        {"law": "tabulated"},  # eğri yok
         {"law": "tabulated", "tab_curves": [{"eps_dot_per_s": 1.0, "points": [(0.0, 235.0)]}]},  # tek nokta
         {"law": "tabulated", "tab_curves": [{"eps_dot_per_s": 1.0, "points": [(0.1, 235.0), (0.1, 300.0)]}]},  # ε_p artmıyor
         {"law": "tabulated", "tab_curves": [_CURVES[1], _CURVES[0]]},  # hız azalan

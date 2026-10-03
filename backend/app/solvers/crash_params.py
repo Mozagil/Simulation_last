@@ -190,6 +190,19 @@ class CrashTabCurve(BaseModel):
         return self
 
 
+def check_curve_rates(curves: list[CrashTabCurve]) -> None:
+    rates = [c.eps_dot_per_s for c in curves]
+    if any(b <= a for a, b in zip(rates, rates[1:])):
+        raise ValueError("LAW36 eğrilerinin hızları kesin artan sırada olmalı.")
+
+
+def parse_tab_curves(raw: Any) -> list[CrashTabCurve]:
+    """Malzeme kütüphanesindeki `crash_curves` JSON'u → doğrulanmış eğriler (1.14c2)."""
+    curves = [CrashTabCurve.model_validate(c) for c in (raw or [])]
+    check_curve_rates(curves)
+    return curves
+
+
 class CrashFailJohnson(BaseModel):
     """/FAIL/JOHNSON (1.14d): Johnson-Cook hasar D1…D5; hm_cfg radioss2017 düzeni.
     Hasar 1'e ulaşınca eleman silinir (Ifail_sh / Ifail_so davranışı)."""
@@ -328,12 +341,10 @@ class CrashModelParams(BaseModel):
             _finite(getattr(self, name), name)
         if self.tab_vp not in (0, 1):
             raise ValueError("tab_vp 0 veya 1 olmalı.")
+        # Eğri yoksa (1.14c2) deck kurulurken parçaya atanmış malzemenin
+        # kütüphane eğrileri kullanılır; o da yoksa SolverError → 422.
         if self.law == "tabulated":
-            if not self.tab_curves:
-                raise ValueError("LAW36 (tabulated) için en az bir akma eğrisi gerekli.")
-            rates = [c.eps_dot_per_s for c in self.tab_curves]
-            if any(b <= a for a, b in zip(rates, rates[1:])):
-                raise ValueError("LAW36 eğrilerinin hızları kesin artan sırada olmalı.")
+            check_curve_rates(self.tab_curves)
         if self.jc_icc not in (0, 1, 2):
             raise ValueError("jc_icc 0, 1 veya 2 olmalı.")
         if self.jc_fsmooth not in (0, 1):
