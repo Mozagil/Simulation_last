@@ -27,6 +27,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
     CrashModelParams,
+    CrashThParams,
 )
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
 from app.solvers.openradioss_progress import ParsedCrashProgress
@@ -89,6 +90,10 @@ class CrashSolveRequest(BaseModel):
     engine: CrashEngineParams = Field(
         default_factory=CrashEngineParams,
         description="Çıktı aralıkları + zaman adımı kartı (1.15a); boş = eski davranış",
+    )
+    th: CrashThParams = Field(
+        default_factory=CrashThParams,
+        description="/TH grupları + değişkenleri (1.15b); boş = eski deck",
     )
 
     @field_validator("scenario")
@@ -260,6 +265,7 @@ def crash_solve(
                 "materials": materials,
                 "t_end_ms": body.t_end_ms,
                 "engine": body.engine.model_dump(),
+                "th": body.th.model_dump(),
                 "th_nodes": body.th_nodes,
                 "title": (body.name or "crash")[:80],
                 "model": body.model.model_dump(),
@@ -316,6 +322,7 @@ def crash_solve(
         "contacts": [c.model_dump() for c in body.contacts],
         "use_rigid_wall": body.use_rigid_wall,
         "engine": body.engine.model_dump(),
+        "th": body.th.model_dump(),
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

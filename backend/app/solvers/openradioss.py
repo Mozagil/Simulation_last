@@ -8,6 +8,7 @@ dokunulmaz. `submit` ikili yoksa SolverError.
 
 from __future__ import annotations
 
+import json
 import math
 
 import os
@@ -32,6 +33,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
     CrashModelParams,
+    CrashThParams,
     parse_tab_curves,
 )
 
@@ -722,7 +724,20 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     nx, ny, nz = (float(v) for v in wall["normal"])
     norm = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
     nx, ny, nz = nx / norm, ny / norm, nz / norm
-    th_vars = lambda names: "".join(f"{n:>10}" for n in names)  # noqa: E731
+    try:
+        th = CrashThParams.model_validate(params.get("th") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz /TH seçimi: {exc}") from exc
+    # Eski `th_nodes` (yalnız ivme) yeni düğüm listesine eklenir.
+    th_node_ids = list(th.node_ids) + [
+        int(n) for n in (params.get("th_nodes") or []) if int(n) not in th.node_ids
+    ]
+    th_spec: list[dict[str, Any]] = []
+
+    def th_vars(names: list[str]) -> list[str]:
+        # hm_cfg FREE_CELL_LIST %-10s, satır 100 karakter → satır başına 10
+        return ["".join(f"{n:<10}" for n in names[i : i + 10]) for i in range(0, len(names), 10)]
+
     # Duvar kapatılabilir (1.12: temasla parça–parça çarpışma). Varsayılan açık.
     if params.get("use_rigid_wall", True):
         lines.extend(
@@ -733,38 +748,45 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
                 f"{_f(0.0)}{'':>20}{_f(0.0)}",
                 f"{_f(px)}{_f(py)}{_f(pz)}",
                 f"{_f(px + nx)}{_f(py + ny)}{_f(pz + nz)}",
-                "/TH/RWALL/1",
-                "barrier_th",
-                th_vars(["FNX", "FNY", "FNZ"]),
-                _i(1),
             ]
         )
-    if inter_ids:
-        # Normal (FN*) + teğetsel (FT*) temas kuvveti; post-process grup
-        # başlığı "contact_th" ile arayüz başına altışar sütun okur.
-        lines.extend(["/TH/INTER/1", "contact_th", th_vars(["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"])])
+        if th.rwall.enabled:
+            lines += ["/TH/RWALL/1", "barrier_th", *th_vars(th.rwall.vars), _i(1)]
+            th_spec.append({"kind": "rwall", "title": "barrier_th", "objects": [1], "vars": th.rwall.vars})
+    if inter_ids and th.inter.enabled:
+        # Post-process grup başlığı "contact_th" ile arayüz başına len(vars) sütun okur.
+        lines += ["/TH/INTER/2", "contact_th", *th_vars(th.inter.vars)]
         for i in range(0, len(inter_ids), 10):
             lines.append("".join(_i(v) for v in inter_ids[i : i + 10]))
-    lines.extend(
-        [
-            "/TH/PART/1",
-            "part_energy",
-            th_vars(["IE", "KE"]),
-            "".join(_i(_rid(p)) for p in part_ids),
-        ]
-    )
-    th_nodes = params.get("th_nodes") or []
-    if th_nodes:
-        lines.extend(["/TH/NODE/1", "hic_nodes", th_vars(["ACCX", "ACCY", "ACCZ"])])
-        ids_th = [int(n) for n in th_nodes]
-        for i in range(0, len(ids_th), 10):
-            chunk = ids_th[i : i + 10]
-            row = "".join(_i(v) for v in chunk)
-            if len(chunk) < 10:
-                row += _i(0)
-            lines.append(row)
+        th_spec.append({"kind": "inter", "title": "contact_th", "objects": inter_ids, "vars": th.inter.vars})
+    if th.part.enabled:
+        lines += ["/TH/PART/3", "part_energy", *th_vars(th.part.vars)]
+        for i in range(0, len(part_ids), 10):
+            lines.append("".join(_i(_rid(p)) for p in part_ids[i : i + 10]))
+        th_spec.append(
+            {
+                "kind": "part",
+                "title": "part_energy",
+                "objects": [_rid(p) for p in part_ids],
+                "names": [f"part_{p}_{roles[p]}"[:100] for p in part_ids],
+                "mesh_ids": list(part_ids),
+                "vars": th.part.vars,
+            }
+        )
+    if th_node_ids:
+        node_set = {int(n["id"]) for n in nodes}
+        missing = [n for n in th_node_ids if n not in node_set]
+        if missing:
+            raise SolverError(f"/TH/NODE: düğüm mesh'te yok: {missing[:10]}")
+        # hm_cfg th_node r110: satır başına bir düğüm — node_ID skew_ID ad (%10d%10d%-80s)
+        lines += ["/TH/NODE/4", "th_nodes", *th_vars(th.node_vars)]
+        lines += [f"{_i(n)}{_i(0)}n{n}" for n in th_node_ids]
+        th_spec.append({"kind": "node", "title": "th_nodes", "objects": th_node_ids, "vars": th.node_vars})
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
+    # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
+    # değişkeni adsız "var N" yazar).
+    (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
 
 
 def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:

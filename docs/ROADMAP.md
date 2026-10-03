@@ -903,12 +903,38 @@ STEP 0.1E-02" yankıladı. (3) /DT 0 0 → starter "TIME STEP SCALE FACTOR 0.9",
 /ANIM/DT 1 ms → 5 animasyon dosyası. İşler `3565bff7…`, `35ad798a…`,
 `06c5e223…`.
 
+**1.15b — `/TH` seçimi (gruplar, değişkenler, düğümler)** — ✅ 2026-10-03
+API `th`: `rwall` / `inter` / `part` {enabled, vars}, `node_ids` + `node_vars`.
+Değişkenler hm_cfg OUTPUTBLOCK listelerinden (th_node r110, th_part r2025,
+th_rwall / th_inter r110), yalnız tekil olanlar (DEF ve D/V/A/XYZ kısa yolları
+sütun sayısını belirsiz bırakır). Radioss sütunları kendi (hm_cfg liste)
+sırasıyla yazar → istek o sıraya dizilir. Boş `th` = eski grup seti.
+Düzeltmeler (gerçek koşu kanıtlı): (1) TH grup kimlikleri tekil olmalı —
+/TH/RWALL/1 + /TH/PART/1 + /TH/NODE/1 starter hata 79 "DUPLICATE ID IN TH
+GROUP"; yeni kimlikler RWALL 1, INTER 2, PART 3, NODE 4. (2) /TH/NODE hm_cfg'ye
+göre satır başına bir düğüm (`node_ID skew_ID ad`) ve ivme AX/AY/AZ — eski
+`th_nodes` yolu on düğümü tek satıra ve ACCX yazıyordu (hiç gerçek koşuda
+kullanılmamıştı); `th_nodes` artık düğüm grubuna AX AY AZ ile eklenir.
+(3) RWALL FN / FT bileşkeleri bu ikilide sütun yazmıyor (FNX FNY FNZ FN → 3
+sütun) → RWALL/INTER yalnız FN*/FT* bileşenleri. Post-process: deck yanına
+`th_spec.json`; th_to_csv adsız "var N" sütunları spec sırasıyla
+`th_rwall_<V>`, `th_inter_<k>_<V>`, `th_node_<id>_<V>`, `th_part_<mesh id>_<V>`
+eğrileri olur (PART adlı sütundan). Sütun sayısı tutmazsa grup adlandırılmaz,
+`diagnostics.th_unmapped_groups`'a yazılır. Duvar / temas kuvveti ve HIC
+ivmesi spec varken adla seçilir. 13 test; backend 1004/1004 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, 10 m/s, TH 0.002 ms): varsayılan `th`
+→ sonuç 1.15a ile aynı (IE_son 55.614 J, tepe 130.943 kN, impuls 14.387 N·s);
+RWALL 6 bileşen + PART IE KE XMOM MASS HE + düğüm 1, 2 (DX, AX AY AZ / DX DY
+DZ VX AX) → hepsi adlandı; arka düğüm 2: VX₀ = −10 mm/ms, geri sekme, DX_son
+7.70 mm. HIC ilk düğümden (eski davranış): düğüm 1 duvardaki ön kenarda, ham
+ivme (filtre yok) → acc_peak 120 464 g — veri; düğüm/filtre seçimi mühendisin.
+İşler `ddc643c5…`, `b1b05ef6…`, `819c80a1…`.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.15b `/TH` seçimi (gruplar + değişkenler)
 - 1.15c `/SECT` kesit kuvveti kartları
 - 1.15d Crash sekmesinde engine / çıktı UI'ı
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma

@@ -68,7 +68,7 @@ def test_type24_cards_and_self_contact(tmp_path):
     assert int(c1[5][30:40]) == -1  # Inacti
     c2 = _card(s, "/INTER/TYPE24/2")
     assert c2[1][:20] == f"{1001:10d}{0:10d}"  # self-contact: surf_ID2 = 0
-    th = _card(s, "/TH/INTER/1")
+    th = _card(s, "/TH/INTER/2")  # 1.15b: TH grup kimlikleri tekil
     assert th[0] == "contact_th"
     assert th[1].split() == ["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"]
     assert th[2] == f"{1:10d}{2:10d}"

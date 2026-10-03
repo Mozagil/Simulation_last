@@ -64,7 +64,7 @@ def test_two_parts_get_own_cards_and_groups(tmp_path):
     inivel = s.split("/INIVEL/TRA/1", 1)[1].splitlines()[2]
     assert inivel.endswith(f"{1:10d}{0:10d}")
     # TH/PART iki parçayı da listeler
-    assert s.split("/TH/PART/1", 1)[1].splitlines()[3] == f"{1:10d}{2:10d}"
+    assert s.split("/TH/PART/3", 1)[1].splitlines()[3] == f"{1:10d}{2:10d}"
 
 
 def test_all_parts_moving_by_default_no_bcs(tmp_path):

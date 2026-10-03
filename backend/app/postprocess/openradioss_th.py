@@ -359,6 +359,57 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     return packed
 
 
+def named_th_curves(
+    cols: dict[str, list[float]], spec: dict[str, Any]
+) -> tuple[dict[str, list[float]], list[str]]:
+    """th_spec.json (deck) → `th_<tür>_<nesne>_<DEĞİŞKEN>` eğrileri (1.15b).
+
+    PART sütunları adlı ("<parça adı> IE"); RWALL / INTER / NODE adsız "var N"
+    — grup başlığındaki sütunlar dosya sırasıyla nesne × değişken. Sütun sayısı
+    tutmazsa grup adlandırılmaz, adı ikinci listede döner (yanlış etiket yok).
+    """
+    headers = list(cols.keys())
+    out: dict[str, list[float]] = {}
+    unmapped: list[str] = []
+    for g in spec.get("groups") or []:
+        kind, title, objs, names = g["kind"], g["title"], g["objects"], g["vars"]
+        if kind == "part":
+            ok = True
+            for pname, mesh_id in zip(g.get("names") or [], g.get("mesh_ids") or objs):
+                for v in names:
+                    h = next((h for h in headers if h.strip().startswith(pname) and h.split()[-1] == v), None)
+                    if h is None:
+                        ok = False
+                        continue
+                    out[f"th_part_{mesh_id}_{v}"] = cols[h]
+            if not ok:
+                unmapped.append(title)
+            continue
+        gcols = [h for h in headers if h.strip().lower().startswith(title.lower())]
+        if len(gcols) != len(objs) * len(names):
+            unmapped.append(title)
+            continue
+        k = 0
+        for idx, obj in enumerate(objs, start=1):
+            for v in names:
+                key = {"rwall": f"th_rwall_{v}", "inter": f"th_inter_{idx}_{v}"}.get(kind, f"th_node_{obj}_{v}")
+                out[key] = cols[gcols[k]]
+                k += 1
+    return out, unmapped
+
+
+def _read_th_spec(work_dir: Path) -> dict[str, Any] | None:
+    p = work_dir / "th_spec.json"
+    if not p.is_file():
+        return None
+    import json
+
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+
+
 def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     work_dir = Path(work_dir)
     csv_path = _find_csv(work_dir)
@@ -377,8 +428,30 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     contact_fn: list[tuple[list[float], list[float]]] = []
     time_header = "TIME"
 
+    spec = _read_th_spec(work_dir)
+    named: dict[str, list[float]] = {}
+    unmapped: list[str] = []
+    if cols and spec is not None:
+        named, unmapped = named_th_curves(cols, spec)
+
     if cols:
         packed = _series_from_csv_cols(cols)
+        if spec is not None:
+            # Deck spec'i varsa duvar / temas / ivme sütunları adla seçilir
+            # (sıra tahmini yerine). Değişken seçilmemişse ilgili skaler yok.
+            packed["fnx"], packed["fny"], packed["fnz"] = (
+                named.get("th_rwall_FNX"), named.get("th_rwall_FNY"), named.get("th_rwall_FNZ")
+            )
+            packed["contacts"] = []
+            k = 1
+            while all(f"th_inter_{k}_{v}" in named for v in ("FNX", "FNY", "FNZ")):
+                packed["contacts"].append([named[f"th_inter_{k}_{v}"] for v in ("FNX", "FNY", "FNZ")])
+                k += 1
+            node_ids = next((g["objects"] for g in spec.get("groups") or [] if g["kind"] == "node"), [])
+            first = node_ids[0] if node_ids else None
+            packed["ax"] = named.get(f"th_node_{first}_AX")
+            packed["ay"] = named.get(f"th_node_{first}_AY")
+            packed["az"] = named.get(f"th_node_{first}_AZ")
         time = packed["time"]
         time_header = packed["time_header"]
         ie = packed["ie"] or ie
@@ -455,6 +528,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             curves[f"contact_{k}_force"] = fn
             curves[f"contact_{k}_impulse"] = imp
 
+    curves.update(named)
+    if unmapped:
+        diag["th_unmapped_groups"] = unmapped
     raw = csv_path or out_path or work_dir
     return ResultSet(scalars=scalars, curves=curves, raw_result_path=raw, diagnostics=diag)
 

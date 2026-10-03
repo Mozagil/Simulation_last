@@ -449,3 +449,69 @@ class CrashEngineParams(BaseModel):
         if self.dt_kind in ("NODA/CST/0", "NODA/STOP") and self.dt_min_ms <= 0:
             raise ValueError(f"/DT/{self.dt_kind} için dt_min_ms > 0 olmalı.")
         return self
+
+# 1.15b — /TH seçimi. Değişkenler hm_cfg OUTPUTBLOCK (th_node r110, th_part
+# r2025, th_rwall r110, th_inter r110) listelerinden; yalnız tekil değişkenler —
+# DEF ve kısa yollar (D, V, A, XYZ, DX_iii …) sütun sayısını belirsiz bıraktığı
+# için yok (post-process sütunları deck sırasıyla adlandırır).
+TH_VARS: dict[str, tuple[str, ...]] = {
+    "node": (
+        "DX", "DY", "DZ", "VX", "VY", "VZ", "AX", "AY", "AZ", "VRX", "VRY", "VRZ",
+        "ARX", "ARY", "ARZ", "REACX", "REACY", "REACZ", "REACXX", "REACYY", "REACZZ",
+        "X", "Y", "Z", "DRX", "DRY", "DRZ",
+    ),
+    "part": (
+        "IE", "KE", "XMOM", "YMOM", "ZMOM", "MASS", "HE", "TURBKE", "XCG", "YCG", "ZCG",
+        "XXMOM", "YYMOM", "ZZMOM", "IXX", "IYY", "IZZ", "IXY", "IYZ", "IZX", "RIE",
+        "KERB", "RKERB", "RKE", "ERODED", "HEAT", "VX", "VY", "VZ", "PW",
+    ),
+    # FN / FT (bileşke) ve OFRIC listede var ama bu ikili th_to_csv'de sütun
+    # yazmıyor (1.15b koşusu: RWALL FNX FNY FNZ FN → 3 sütun); yalnız bileşenler.
+    "rwall": ("FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"),
+    "inter": ("FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"),
+}
+
+
+def _th_vars_ok(kind: str, values: list[str]) -> list[str]:
+    out = [v.strip().upper() for v in values]
+    bad = [v for v in out if v not in TH_VARS[kind]]
+    if bad:
+        raise ValueError(f"/TH/{kind.upper()} değişkeni geçersiz: {', '.join(bad)}")
+    if len(set(out)) != len(out):
+        raise ValueError(f"/TH/{kind.upper()} değişkenleri tekrar ediyor.")
+    # Radioss sütunları kendi (hm_cfg liste) sırasıyla yazar, istek sırasıyla
+    # değil (1.15b koşusu: PART IE KE HE MASS XMOM → IE KE XMOM MASS HE).
+    order = TH_VARS[kind]
+    return sorted(out, key=order.index)
+
+
+class CrashThGroup(BaseModel):
+    enabled: bool = True
+    vars: list[str] = Field(default_factory=list)
+
+
+class CrashThParams(BaseModel):
+    """Zaman geçmişi grupları. Varsayılan = 1.15 öncesi deck (RWALL FN*, INTER
+    FN*+FT*, PART IE KE, düğüm yok)."""
+
+    rwall: CrashThGroup = Field(default_factory=lambda: CrashThGroup(vars=["FNX", "FNY", "FNZ"]))
+    inter: CrashThGroup = Field(
+        default_factory=lambda: CrashThGroup(vars=["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"])
+    )
+    part: CrashThGroup = Field(default_factory=lambda: CrashThGroup(vars=["IE", "KE"]))
+    node_ids: list[int] = Field(default_factory=list, description="/TH/NODE düğümleri (mesh id)")
+    node_vars: list[str] = Field(default_factory=lambda: ["AX", "AY", "AZ"])
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashThParams":
+        for kind in ("rwall", "inter", "part"):
+            g: CrashThGroup = getattr(self, kind)
+            g.vars = _th_vars_ok(kind, g.vars)
+            if g.enabled and not g.vars:
+                raise ValueError(f"/TH/{kind.upper()} açıkken en az bir değişken gerekli.")
+        self.node_vars = _th_vars_ok("node", self.node_vars)
+        if self.node_ids and not self.node_vars:
+            raise ValueError("/TH/NODE düğümleri için en az bir değişken gerekli.")
+        if any(n <= 0 for n in self.node_ids) or len(set(self.node_ids)) != len(self.node_ids):
+            raise ValueError("node_ids pozitif ve tekil olmalı.")
+        return self
