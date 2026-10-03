@@ -28,7 +28,12 @@ from app.solvers.base import (
     SolverAdapter,
     SolverError,
 )
-from app.solvers.crash_params import CrashContactParams, CrashModelParams, parse_tab_curves
+from app.solvers.crash_params import (
+    CrashContactParams,
+    CrashEngineParams,
+    CrashModelParams,
+    parse_tab_curves,
+)
 
 # Codespace Dockerfile bu etiketi indirir (reproducible). Kaynak derlenmez.
 OPENRADIOSS_RELEASE = "latest-20260728"
@@ -764,9 +769,15 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
 
 def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
     t_end = float(params.get("t_end_ms") or 10.0)
-    dt_anim = float(params.get("dt_anim_ms") or max(t_end / 20.0, 0.1))
+    try:
+        eng = CrashEngineParams.model_validate(params.get("engine") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz engine parametresi: {exc}") from exc
+    dt_anim = float(
+        eng.anim_dt_ms or params.get("dt_anim_ms") or max(t_end / 20.0, 0.1)
+    )
     # /RUN veri satırı = Tstop (ms). /TFILE: zaman geçmişi yazma aralığı.
-    dt_th = max(t_end / 200.0, 1e-3)
+    dt_th = float(eng.th_dt_ms or max(t_end / 200.0, 1e-3))
     lines = [
         "#RADIOSS ENGINE",
         f"/RUN/{run_name}/1",
@@ -778,9 +789,12 @@ def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
         "/ANIM/VECT/DISP",
         "/ANIM/VECT/VEL",
         "/ANIM/ELEM/ENER",
-        "/END",
-        "",
     ]
+    # Zaman adımı: /DT (eleman) ya da /DT/NODA/… (düğüm); Δt_sca Δt_min, ms.
+    if eng.dt_kind:
+        header = "/DT" if eng.dt_kind == "DT" else f"/DT/{eng.dt_kind}"
+        lines += [header, f"{_f(eng.dt_scale)}{_f(eng.dt_min_ms)}"]
+    lines += ["/END", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
 
 

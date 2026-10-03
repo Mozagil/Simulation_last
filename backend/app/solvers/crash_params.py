@@ -415,3 +415,37 @@ def apply_barrier(params: dict[str, Any], barrier: CrashBarrierParams) -> dict[s
     params["initial_velocity"] = vel
     params["rigid_wall"] = wall
     return params
+
+# 1.15a — engine kontrol kartları. Zaman adımı kartının türü mühendisin
+# kararıdır; "" = kart yazılmaz (Radioss eleman zaman adımı, Δt_sca 0.9).
+DT_KINDS = ("", "DT", "NODA/0", "NODA/STOP", "NODA/CST/0")
+
+
+class CrashEngineParams(BaseModel):
+    """Engine çıktı aralıkları + zaman adımı kontrolü (hm_cfg: eng_tfile r51,
+    eng_anim_dt r51, eng_dt r110, eng_dt_noda r2017). Süreler ms."""
+
+    th_dt_ms: float | None = Field(
+        default=None, gt=0, description="/TFILE TH yazma aralığı (ms); boş = t_end/200"
+    )
+    anim_dt_ms: float | None = Field(
+        default=None, gt=0, description="/ANIM/DT aralığı (ms); boş = max(t_end/20, 0.1)"
+    )
+    dt_kind: str = Field(default="", description="'' | DT | NODA/0 | NODA/STOP | NODA/CST/0")
+    dt_scale: float = Field(default=0.0, ge=0, le=1, description="Δt_sca; 0 = Radioss varsayılanı (0.9)")
+    dt_min_ms: float = Field(default=0.0, ge=0, description="Δt_min (ms)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashEngineParams":
+        for name in ("th_dt_ms", "anim_dt_ms", "dt_scale", "dt_min_ms"):
+            v = getattr(self, name)
+            if v is not None:
+                _finite(v, name)
+        if self.dt_kind not in DT_KINDS:
+            raise ValueError("dt_kind '', DT, NODA/0, NODA/STOP veya NODA/CST/0 olmalı.")
+        if self.dt_kind == "" and (self.dt_scale or self.dt_min_ms):
+            raise ValueError("dt_scale / dt_min_ms için dt_kind seçilmeli.")
+        # Tutarlılık: CST (kütle ekleme) ve STOP, Δt_min olmadan anlamsız.
+        if self.dt_kind in ("NODA/CST/0", "NODA/STOP") and self.dt_min_ms <= 0:
+            raise ValueError(f"/DT/{self.dt_kind} için dt_min_ms > 0 olmalı.")
+        return self

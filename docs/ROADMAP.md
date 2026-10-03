@@ -667,9 +667,9 @@ gerektirir. Düzeltme: kuvvet = bileşen bileşen dI/dt, sonra bileşke
 eğrileri + `_impulse_final` skalerleri eklendi. Düzeltilmiş tepe kuvvetler:
 1.10 125.6 kN, 1.11b 82.9 kN, 1.12a 86.4 kN. Filtre yok (ham türev; CFC
 mühendis kararı).
-- [ ] Tepe kuvvet TH örnekleme aralığına duyarlı: `/TFILE` = t_end/200
-      (3 ms → 0.015 ms) ~0.1 ms'lik darbeyi kaba çözüyor — aralık 1.15'te
-      parametre olacak
+- [x] Tepe kuvvet TH örnekleme aralığına duyarlı: `/TFILE` = t_end/200
+      (3 ms → 0.015 ms) ~0.1 ms'lik darbeyi kaba çözüyor — 1.15a'da
+      `engine.th_dt_ms` parametresi
 
 **1.13a — Kabuk: export + /SHELL·/SH3N + /PROP/TYPE1** — ✅ 2026-10-02
 Hacimsiz (2D) mesh kabuk okunur: tri3/tri6 → `/SH3N`, quad4/8/9 → `/SHELL`
@@ -882,12 +882,35 @@ malzeme sonradan değişse de işin kopyası kalır. Dataset arşivi kolonu taş
 977/977 (+1 skip). Çözücü koşusu yok: deck aynı /MAT/LAW36 + /FUNCT kartları
 (LAW36 ≡ LAW2 eşdeğerliği 1.14c'de koşuldu).
 
+**1.15a — Engine çıktı aralıkları + zaman adımı kontrolü** — ✅ 2026-10-03
+API `engine`: `th_dt_ms` (/TFILE; boş = t_end/200), `anim_dt_ms` (/ANIM/DT;
+boş = max(t_end/20, 0.1)), `dt_kind` ∈ {"" (kart yok), DT, NODA/0, NODA/STOP,
+NODA/CST/0} + `dt_scale` (Δt_sca, 0 = Radioss 0.9) + `dt_min_ms`. Kart
+düzenleri hm_cfg eng_tfile / eng_anim_dt r51, eng_dt r110, eng_dt_noda r2017.
+Grup gerektiren /DT/NODA/…/1 ve CST1/CST2 yok. Tutarlılık: STOP ve CST/0
+Δt_min > 0 ister; tür seçilmeden Δt_sca/Δt_min verilemez. Boş `engine` = eski
+deck (birebir). Listing'den (basılan cycle'lar): `timestep_min`,
+`timestep_final`, `mass_model` (TOTAL MASS − ilk MASS ADDED),
+`mass_added_final`, `mass_added_rel`. 14 test; backend 991/991 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, t 3, LAW2 σ_y 235 MPa, 10 m/s, duvar,
+4 ms): (1) TH 0.002 ms (2000 örnek; eski 0.02 ms, 200 örnek): duvar tepe
+kuvveti 130.9 kN (eski örneklemede 122.3, +%7), impuls 14.387 N·s aynı —
+tepe değer örneklemeye duyarlı, impuls değil. (2) /DT/NODA/CST/0 Δt_sca 0.9,
+Δt_min 0.001 ms (doğal Δt 0.00054 ms): Δt 0.001'e sabitlendi, eklenen kütle
+0.671 kg = modelin %56.5'i; ilk KE 91.9 J (eklenen kütle de ilk hızı alıyor;
+kütle eklemesiz 59.3), IE_son 90.2 J, impuls 20.78 N·s. Starter "NODAL MINIMUM TIME
+STEP 0.1E-02" yankıladı. (3) /DT 0 0 → starter "TIME STEP SCALE FACTOR 0.9",
+/ANIM/DT 1 ms → 5 animasyon dosyası. İşler `3565bff7…`, `35ad798a…`,
+`06c5e223…`.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
+- 1.15b `/TH` seçimi (gruplar + değişkenler)
+- 1.15c `/SECT` kesit kuvveti kartları
+- 1.15d Crash sekmesinde engine / çıktı UI'ı
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
   kodundan bağımsız)

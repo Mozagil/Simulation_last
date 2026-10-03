@@ -22,7 +22,12 @@ from app.jobs.progress import get_hub
 from app.models.component import Component
 from app.models.material import MaterialAssignment
 from app.solvers.base import InputArtifact, SolverError
-from app.solvers.crash_params import CrashBarrierParams, CrashContactParams, CrashModelParams
+from app.solvers.crash_params import (
+    CrashBarrierParams,
+    CrashContactParams,
+    CrashEngineParams,
+    CrashModelParams,
+)
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
 from app.solvers.openradioss_progress import ParsedCrashProgress
 
@@ -81,6 +86,10 @@ class CrashSolveRequest(BaseModel):
         description="False ise /RWALL yazılmaz (parça–parça çarpışma temasla).",
     )
     scenario: str = Field(default="rigid_wall", description="rigid_wall | plate_ball")
+    engine: CrashEngineParams = Field(
+        default_factory=CrashEngineParams,
+        description="Çıktı aralıkları + zaman adımı kartı (1.15a); boş = eski davranış",
+    )
 
     @field_validator("scenario")
     @classmethod
@@ -250,6 +259,7 @@ def crash_solve(
                 "barrier": body.barrier.model_dump(),
                 "materials": materials,
                 "t_end_ms": body.t_end_ms,
+                "engine": body.engine.model_dump(),
                 "th_nodes": body.th_nodes,
                 "title": (body.name or "crash")[:80],
                 "model": body.model.model_dump(),
@@ -305,6 +315,7 @@ def crash_solve(
         "parts": [p.model_dump() for p in body.parts],
         "contacts": [c.model_dump() for c in body.contacts],
         "use_rigid_wall": body.use_rigid_wall,
+        "engine": body.engine.model_dump(),
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

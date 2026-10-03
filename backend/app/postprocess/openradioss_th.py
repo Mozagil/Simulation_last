@@ -220,6 +220,27 @@ def parse_ruptures(path: Path) -> list[dict[str, Any]]:
     return out
 
 
+def parse_cycle_table(path: Path) -> dict[str, list[float]]:
+    """Engine listing cycle satırları: CYCLE TIME TIME-STEP ELEMENT … TOTAL MASS
+    MASS ADDED (1.15a). Basma aralığındaki satırlar; ara cycle'lar listing'de yok."""
+    out: dict[str, list[float]] = {"time": [], "dt": [], "total_mass": [], "mass_added": []}
+    in_table = False
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "CYCLE" in raw and "TIME-STEP" in raw:
+            in_table = "MASS ADDED" in raw
+            continue
+        if not in_table or not _CYCLE_RE.match(raw):
+            continue
+        tok = raw.split()
+        try:
+            vals = (float(tok[1]), float(tok[2]), float(tok[-2]), float(tok[-1]))
+        except (ValueError, IndexError):
+            continue
+        for k, v in zip(("time", "dt", "total_mass", "mass_added"), vals):
+            out[k].append(v)
+    return out
+
+
 def parse_starter_messages(path: Path) -> dict[str, dict[str, int]]:
     """Starter .out "ERROR ID : n" / "WARNING ID : n" → {"errors": {id: adet}, "warnings": …}.
 
@@ -245,6 +266,17 @@ def _diagnostics(work_dir: Path, engine_out: Path | None) -> tuple[dict[str, Any
         scalars["starter_error_count"] = float(sum(msgs["errors"].values()))
         scalars["starter_warning_count"] = float(sum(msgs["warnings"].values()))
     if engine_out is not None and engine_out.name.endswith("_0001.out"):
+        cyc = parse_cycle_table(engine_out)
+        if cyc["dt"]:
+            # listing basılan cycle'lardaki değerler (ara adımlar görünmez)
+            scalars["timestep_min"] = float(min(cyc["dt"]))
+            scalars["timestep_final"] = float(cyc["dt"][-1])
+            scalars["mass_added_final"] = float(cyc["mass_added"][-1])
+            # TOTAL MASS eklenen kütleyi içerir; oran modelin kendi kütlesine göre
+            m0 = cyc["total_mass"][0] - cyc["mass_added"][0]
+            if m0 > 0:
+                scalars["mass_model"] = float(m0)
+                scalars["mass_added_rel"] = float(cyc["mass_added"][-1]) / m0
         rup = parse_ruptures(engine_out)
         diag["deleted_elements"] = rup
         scalars["elements_deleted"] = float(len({(r["kind"], r["element"]) for r in rup}))
