@@ -27,7 +27,9 @@ from app.solvers.base import InputArtifact, SolverError
 from app.solvers.crash_params import (
     CrashBarrierParams,
     CrashContactParams,
+    CrashBcParams,
     CrashEngineParams,
+    CrashImpVelParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -108,6 +110,12 @@ class CrashSolveRequest(BaseModel):
     )
     rigid_bodies: list[CrashRigidBodyParams] = Field(
         default_factory=list, description="/RBODY — bölge ya da parça rijit + ana düğüme kütle (1.17b)"
+    )
+    boundary_conditions: list[CrashBcParams] = Field(
+        default_factory=list, description="/BCS — bölge ya da parçada kilitli serbestlikler (1.17c)"
+    )
+    imposed_velocities: list[CrashImpVelParams] = Field(
+        default_factory=list, description="/IMPVEL — bölge, parça ya da rijit gövdeye sabit hız (1.17c)"
     )
 
     @field_validator("scenario")
@@ -281,7 +289,11 @@ def crash_solve(
 
     # 1.17b — kütle / rijit gövde bölgeleri: PhysicalGroup (CAD varlıkları) →
     # mesh düğümleri. Yalnız istekte geçen bölgeler okunur.
-    wanted_regions = {s.region for s in [*body.added_masses, *body.rigid_bodies] if s.region}
+    wanted_regions = {
+        s.region
+        for s in [*body.added_masses, *body.rigid_bodies, *body.boundary_conditions, *body.imposed_velocities]
+        if s.region
+    }
     region_nodes: dict[str, list[int]] = {}
     if wanted_regions:
         groups = {
@@ -324,6 +336,8 @@ def crash_solve(
                 "component_thickness": component_thickness,
                 "added_masses": [m.model_dump() for m in body.added_masses],
                 "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+                "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
+                "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
                 "region_nodes": region_nodes,
             }
         )
@@ -377,6 +391,8 @@ def crash_solve(
         "sections": [s.model_dump() for s in body.sections],
         "added_masses": [m.model_dump() for m in body.added_masses],
         "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+        "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
+        "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

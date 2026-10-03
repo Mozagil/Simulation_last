@@ -31,7 +31,9 @@ from app.solvers.base import (
 )
 from app.solvers.crash_params import (
     CrashContactParams,
+    CrashBcParams,
     CrashEngineParams,
+    CrashImpVelParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -530,6 +532,10 @@ def _contact_cards(
 _SECT_GR_BASE = 8000
 _MASS_GR_BASE = 8500
 _RBODY_GR_BASE = 8700
+_BC_GR_BASE = 8800
+_BC_ID_BASE = 10  # /BCS/1 = sabit parçalar (1.11b)
+_IMPVEL_GR_BASE = 8900
+_IMPVEL_FUNCT_BASE = 9900
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -630,6 +636,8 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     try:
         masses = [CrashMassParams.model_validate(r) for r in params.get("added_masses") or []]
         rbodies = [CrashRigidBodyParams.model_validate(r) for r in params.get("rigid_bodies") or []]
+        bcs = [CrashBcParams.model_validate(r) for r in params.get("boundary_conditions") or []]
+        impvels = [CrashImpVelParams.model_validate(r) for r in params.get("imposed_velocities") or []]
     except ValueError as exc:
         raise SolverError(f"Geçersiz ek kütle / rijit gövde: {exc}") from exc
     region_nodes: dict[str, list[int]] = {
@@ -812,6 +820,37 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         # (ek kütle ancak böyle momentuma girer).
         lines += _grnod_nodes(_RBODY_GR_BASE, "rbody_masters_moving", moving_masters)
         lines += ["/INIVEL/TRA/2", "impact_vel_rbody", f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(_RBODY_GR_BASE)}{_i(0)}"]
+
+    # 1.17c — bölge / parça sınır koşulu (/BCS, hm_cfg r51: "   111 111" skew grnod)
+    # ve zorlanmış hız (/IMPVEL r120 + sabit /FUNCT; v(t) = Scale_y · f(t), f = v, Scale_y = 1).
+    for k, bc in enumerate(bcs, start=1):
+        gid = _BC_GR_BASE + k
+        lines += _grnod_nodes(gid, f"bcs_{bc.name}"[:100], _selected(bc))
+        d = bc.dofs
+        lines += [f"/BCS/{_BC_ID_BASE + k}", bc.name[:100], f"   {d[:3]} {d[3:]}{_i(0)}{_i(gid)}"]
+    master_of = {rb.name: master for rb, _ids, master in rbody_sets}
+    for k, iv in enumerate(impvels, start=1):
+        gid = _IMPVEL_GR_BASE + k
+        if iv.rigid_body is not None:
+            if iv.rigid_body not in master_of:
+                raise SolverError(f"'{iv.name}': rijit gövde '{iv.rigid_body}' tanımlı değil.")
+            ids = [master_of[iv.rigid_body]]
+        else:
+            ids = _selected(iv)
+        fid = _IMPVEL_FUNCT_BASE + k
+        lines += _grnod_nodes(gid, f"impvel_{iv.name}"[:100], ids)
+        lines += [
+            f"/FUNCT/{fid}",
+            f"impvel_{iv.name}_sabit"[:100],
+            # Hız fonksiyonun değeri, ölçek 1: Radioss Scale_y = 0'ı varsayılan 1
+            # sayar — sıfır hız ölçekle yazılınca 1 mm/ms uygulanıyordu (1.17c).
+            f"{_f(0.0)}{_f(iv.velocity_m_s)}",
+            f"{_f(1.0e30)}{_f(iv.velocity_m_s)}",
+            f"/IMPVEL/{k}",
+            iv.name[:100],
+            f"{_i(fid)}{iv.direction:>10}{_i(0)}{_i(0)}{_i(gid)}{'':10}{_i(0)}",
+            f"{_f(1.0)}{_f(1.0)}{_f(iv.t_start_ms)}{_f(iv.t_stop_ms)}",
+        ]
     # /RWALL/PLANE: node_ID=0 sabit duvar; Slide=0 kayan; grnd_ID1 = tüm
     # düğümler. Düzlem M noktası ve M1 = M + n (normal, ikincil düğümlerin
     # bulunduğu tarafa bakar). d = 0, sürtünme yok (Slide=0).

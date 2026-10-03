@@ -600,3 +600,44 @@ class CrashRigidBodyParams(_NodeSelection):
         if self.icog not in (0, 1, 2, 3, 4):
             raise ValueError("icog 0–4 olmalı.")
         return self
+
+
+class CrashBcParams(_NodeSelection):
+    """/BCS (1.17c, hm_cfg radioss51): bölge ya da parça düğümlerinde kilitli
+    serbestlikler. `dofs` 6 hane Tx Ty Tz Rx Ry Rz (1 = kilitli)."""
+
+    dofs: str = Field(default="111111", description="Tx Ty Tz Rx Ry Rz, ör. 111000")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashBcParams":
+        if len(self.dofs) != 6 or any(c not in "01" for c in self.dofs) or "1" not in self.dofs:
+            raise ValueError(f"'{self.name}': dofs 6 haneli 0/1 olmalı ve en az bir 1 içermeli.")
+        return self
+
+
+class CrashImpVelParams(BaseModel):
+    """/IMPVEL (1.17c, hm_cfg radioss120): sabit zorlanmış hız (m/s = mm/ms).
+    Hedef bölge, parça ya da rijit gövde (ana düğümü). t_stop 0 = Radioss
+    varsayılanı (sonsuz)."""
+
+    name: str = Field(default="impvel", min_length=1, max_length=60)
+    region: str | None = None
+    part_id: int | None = Field(default=None, ge=0)
+    rigid_body: str | None = Field(default=None, description="rigid_bodies[].name")
+    direction: str = Field(default="X", description="X Y Z (öteleme) | XX YY ZZ (dönme)")
+    velocity_m_s: float = Field(..., description="İşaretli; dönmede rad/ms")
+    t_start_ms: float = Field(default=0.0, ge=0)
+    t_stop_ms: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashImpVelParams":
+        targets = [t for t in (self.region, self.part_id, self.rigid_body) if t is not None]
+        if len(targets) != 1:
+            raise ValueError(f"'{self.name}': region, part_id ya da rigid_body'den tam olarak biri.")
+        if self.direction not in ("X", "Y", "Z", "XX", "YY", "ZZ"):
+            raise ValueError("direction X, Y, Z, XX, YY ya da ZZ olmalı.")
+        for n in ("velocity_m_s", "t_start_ms", "t_stop_ms"):
+            _finite(getattr(self, n), n)
+        if self.t_stop_ms and self.t_stop_ms <= self.t_start_ms:
+            raise ValueError("t_stop_ms, t_start_ms'den büyük olmalı (0 = sonsuz).")
+        return self

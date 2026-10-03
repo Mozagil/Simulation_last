@@ -1059,6 +1059,27 @@ değiyor, ½·0.0097·10² = 0.486 J hemen duruyor. Eski işlerin job.json
 skalerleri değişmedi (yeniden işlenirse yeni tanım). İşler `eb971f21…`,
 `bb3fe909…`.
 
+**1.17c — Bölge / parça sınır koşulu `/BCS` + zorlanmış hız `/IMPVEL`** — ✅ 2026-10-03
+API (`/crash/solve`, `/crash/scenario`): `boundary_conditions` [{name, region
+| part_id, dofs "Tx Ty Tz Rx Ry Rz" 6 hane}], `imposed_velocities` [{name,
+region | part_id | rigid_body, direction X Y Z XX YY ZZ, velocity_m_s,
+t_start_ms, t_stop_ms (0 = sonsuz)}]. Kartlar hm_cfg: bcs r51 (`/BCS/10+k`;
+/BCS/1 sabit parçalar), impvel r120 + /FUNCT 9900+k; düğüm grupları
+8800+k (BC), 8900+k (hız); rijit gövde hedefi = ana düğüm. Hata (gerçek
+koşuda bulundu): sıfır hız Scale_y = 0 olarak yazılınca Radioss varsayılan
+1'i kullandı — Y, Z ve dönmelere 1 mm/ms · 1 rad/ms uygulandı, model patladı
+(IE −18 kJ, 3.68 ms'de durdu). Düzeltme: hız fonksiyon değerinde, Scale_y = 1.
+10 test; backend 1041/1041 (+1 skip). Gerçek koşular (crash box senaryosu):
+(1) BCS kutu_arka 011000, 4 ms: arka düğüm 2 DY = DZ = 0, DX serbest
+(7.68 mm geri sekme) ✓. (2) Rijit gövde kutu_arka + IMPVEL X −10 m/s, yalnız
+X: arka köşe VX −10.2 → −12.2 mm/ms — rijit uç katlanma sırasında dönüyor
+(kılavuzsuz itici; köşe hızı = V + ω×r). (3) Aynı + Y, Z, XX, YY, ZZ = 0
+(kılavuzlu itici), 10 ms: arka düğüm VX −10.000, DX −25.00 / −50.00 /
+−99.90 mm (= −10·t), DY = DZ = 0 ✓; enerji dengesi %2.6, hourglass / IE %7.4;
+ortalama duvar kuvveti (1–10 ms) 53.7 kN, IE / ezilme 5094 J / 100 mm =
+50.9 kN — 1.17f ortalama ezilme kuvveti için ilk veri. İşler `cdc5aa61…`,
+`2d5d4ed6…`, `cded46ab…` (patlayan `9169dc48…`).
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1066,8 +1087,6 @@ parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
 *1.17 — Standart explicit ortam*
-- 1.17c Bölgeye sınır koşulu + zorlanmış hareket: şablon bölgelerine `/BCS`
-  (kenar / köşe sabit), `/IMPVEL` (sabit hız). Bugün yalnız "tüm parça sabit".
 - 1.17d Deforme şekil görüntüleme: animasyon (A0xx) → web 3B, zaman
   kaydırıcılı (katlanma modu bugün görülemiyor — 1.13a açık maddesi).
 - 1.17e CFC filtre (SAE J211): kuvvet / ivme eğrilerine sınıf seçimi; ham veri

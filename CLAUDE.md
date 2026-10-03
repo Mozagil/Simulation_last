@@ -27,8 +27,8 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.17b tamam (2026-10-03): ek kütle
-(/ADMAS) + rijit gövde (/RBODY), global enerji dengesi.** 1.10–1.16 bitti (temas, kabuk,
+**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.17c tamam (2026-10-03): bölge /BCS
++ zorlanmış hız /IMPVEL (1.17b: ek kütle, rijit gövde).** 1.10–1.16 bitti (temas, kabuk,
 malzeme + /FAIL, çıktı kartları, crash_runs geçmişi). Sırada **1.17c–g standart
 explicit ortam** (bölge BC + zorlanmış hız, deforme
 şekil görüntüleme, CFC filtre, validasyon, temizlik) → 1.18 plaka–küre →
