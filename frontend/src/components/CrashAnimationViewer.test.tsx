@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { jet, triangulate } from "./CrashAnimationViewer";
+import { jet, triangulate, VIEW_VECTORS } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -38,6 +38,15 @@ describe("CrashAnimationViewer yardımcıları", () => {
     expect(jet(0.5)).toEqual([0.5, 1, 0.5]);
     expect(jet(1)).toEqual([0.5, 0, 0]);
     expect(jet(-3)).toEqual(jet(0)); // kırpılır
+  });
+});
+
+describe("hazır görünümler", () => {
+  it("eksen görünümleri tek eksende, izo üçünde", () => {
+    expect(VIEW_VECTORS["+X"]).toEqual([1, 0, 0]);
+    expect(VIEW_VECTORS["-X"]).toEqual([-1, 0, 0]);
+    expect(VIEW_VECTORS["+Z"]).toEqual([0, 0, 1]);
+    expect(VIEW_VECTORS.izo.every((c) => c > 0)).toBe(true);
   });
 });
 

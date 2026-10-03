@@ -16,6 +16,17 @@ const SCALAR_LABELS: Record<string, string> = {
   "3DELEM_Specific_Energy": "Özgül enerji (solid)",
 };
 
+export type ViewDir = "+X" | "-X" | "+Y" | "+Z" | "izo";
+
+/** Kamera yönü (merkezden), birim değil — konum = merkez + v·d. */
+export const VIEW_VECTORS: Record<ViewDir, [number, number, number]> = {
+  "+X": [1, 0, 0],
+  "-X": [-1, 0, 0],
+  "+Y": [0, 1, 0],
+  "+Z": [0, 0, 1],
+  izo: [0.6, 0.5, 0.9],
+};
+
 /** GeometryViewer / ModalModeGrid jetColor() ile aynı formül. */
 export function jet(t: number): [number, number, number] {
   const x = Math.min(1, Math.max(0, t));
@@ -54,6 +65,8 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
   const [scalar, setScalar] = useState("disp_mag");
   const holderRef = useRef<HTMLDivElement | null>(null);
   const meshRef = useRef<{ geom: THREE.BufferGeometry; render: () => void } | null>(null);
+  /** 1.17g — hazır görünümler: model eksenlerine göre kamera konumu */
+  const viewRef = useRef<((dir: ViewDir) => void) | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -118,6 +131,16 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
     const render = () => renderer.render(scene, camera);
     controls.addEventListener("change", render);
     meshRef.current = { geom, render };
+    viewRef.current = (dir: ViewDir) => {
+      const d = size * 1.25;
+      const v = VIEW_VECTORS[dir];
+      camera.position.set(center.x + v[0] * d, center.y + v[1] * d, center.z + v[2] * d);
+      // +Y bakışında yukarı yönü Z al (kamera yukarı vektörü bakışa paralel olmasın)
+      camera.up.set(0, dir === "+Y" ? 0 : 1, dir === "+Y" ? -1 : 0);
+      controls.target.copy(center);
+      controls.update();
+      render();
+    };
     render();
     return () => {
       controls.dispose();
@@ -126,6 +149,7 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
       renderer.dispose();
       holder.removeChild(renderer.domElement);
       meshRef.current = null;
+      viewRef.current = null;
     };
   }, [data, tri]);
 
@@ -206,6 +230,19 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
                 setFrame(Number(e.target.value));
               }}
             />
+          </div>
+          <div className="crash-var-chips" role="group" aria-label="Hazır görünüm">
+            {(Object.keys(VIEW_VECTORS) as ViewDir[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="crash-var-chip"
+                title={v === "izo" ? "İzometrik" : `${v} yönünden bak`}
+                onClick={() => viewRef.current?.(v)}
+              >
+                {v === "izo" ? "İzo" : v}
+              </button>
+            ))}
           </div>
           <label className="mesh-field">
             <span>Renk</span>
