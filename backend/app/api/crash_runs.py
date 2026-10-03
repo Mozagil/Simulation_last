@@ -146,6 +146,32 @@ def compare_crash_runs(
     return {"runs": out}
 
 
+@router.get("/{run_id}/animation")
+def crash_run_animation(run_id: int, db: Session = Depends(get_db)) -> Any:
+    """Deforme şekil (1.17d): yüzey + kare başına koordinat / skaler. İlk istekte
+    anim_to_vtk ile üretilir, iş klasöründe `anim.json` olarak önbelleklenir."""
+    from fastapi.responses import FileResponse
+
+    from app.postprocess.openradioss_anim import build_animation, write_animation_cache
+    from app.solvers.openradioss import convert_animation, resolve_openradioss
+
+    run = _get_or_404(db, run_id)
+    work = CRASH_DIR / run.job_id
+    cache = work / "anim.json"
+    if not cache.is_file():
+        bins = resolve_openradioss()
+        if bins is None:
+            raise HTTPException(status_code=503, detail="OpenRadioss (anim_to_vtk) bulunamadı.")
+        texts = convert_animation(bins, work)
+        if not texts:
+            raise HTTPException(status_code=404, detail="Bu koşuda animasyon dosyası yok.")
+        data = build_animation(texts)
+        if not data["frames"]:
+            raise HTTPException(status_code=422, detail="Animasyon okunamadı.")
+        write_animation_cache(work, data)
+    return FileResponse(cache, media_type="application/json")
+
+
 @router.get("/{run_id}")
 def get_crash_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     run = _get_or_404(db, run_id)

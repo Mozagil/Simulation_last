@@ -275,6 +275,24 @@ export async function patchCrashRun(
   });
 }
 
+/** 1.17d — deforme şekil (anim_to_vtk → yüzey + kare başına konum / skaler). */
+export interface CrashAnimation {
+  faces: number[][];
+  face_part: number[];
+  scalars: Record<string, { location: "node" | "face"; min: number; max: number }>;
+  frames: {
+    time: number | null;
+    positions: number[];
+    node?: Record<string, number[]>;
+    face_alive?: number[];
+    face?: Record<string, number[]>;
+  }[];
+}
+
+export async function fetchCrashAnimation(runId: number): Promise<CrashAnimation> {
+  return getJson<CrashAnimation>(`${API_BASE_URL}/crash/runs/${runId}/animation`);
+}
+
 export async function compareCrashRuns(ids: number[]): Promise<CrashRunCompared[]> {
   return (
     await getJson<{ runs: CrashRunCompared[] }>(`${API_BASE_URL}/crash/runs/compare?ids=${ids.join(",")}`)

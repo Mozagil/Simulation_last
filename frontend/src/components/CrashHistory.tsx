@@ -6,6 +6,7 @@ import {
   type CrashRunCompared,
   type CrashRunSummary,
 } from "../api/crash";
+import CrashAnimationViewer from "./CrashAnimationViewer";
 import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
 
 /** Crash koşu geçmişi + karşılaştırma (1.16b). Veri gösterir: koşular, skalerler,
@@ -61,6 +62,8 @@ export default function CrashHistory({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
+  /** 1.17d — deforme şekli açık koşu */
+  const [animRun, setAnimRun] = useState<CrashRunSummary | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -173,6 +176,16 @@ export default function CrashHistory({
                 <button
                   type="button"
                   className="crash-run-exclude"
+                  aria-label={`${label(r)} deforme şekil`}
+                  title="Deforme şekil (animasyon)"
+                  disabled={!r.solver_ran || r.status !== "solved"}
+                  onClick={() => setAnimRun((a) => (a?.id === r.id ? null : r))}
+                >
+                  {animRun?.id === r.id ? "■" : "▶"}
+                </button>
+                <button
+                  type="button"
+                  className="crash-run-exclude"
                   aria-label={`${label(r)} ${r.excluded ? "geri al" : "dışla"}`}
                   title={r.excluded ? "Dışlamayı geri al" : "Dışla (korpus almaz)"}
                   onClick={() => void toggleExcluded(r)}
@@ -184,6 +197,7 @@ export default function CrashHistory({
           })}
         </ul>
       )}
+      {animRun && <CrashAnimationViewer runId={animRun.id} title={`#${animRun.id} ${label(animRun)}`} />}
       <button
         type="button"
         className="doe-btn doe-btn-ghost crash-contact-add"

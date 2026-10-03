@@ -688,8 +688,8 @@ varsayılan değil), 10 m/s, duvar x = 0, 4 ms. Starter 0 hata / 0 uyarı;
 1.187 kg (aynı); IE_son 55.9 J (solid 55.4), KE_son 2.93 J, denge %0.93;
 duvar impulsu 14.41 N·s (solid 14.50; m·(v₀+v_son) = 14.51), tepe 123.1 kN
 (solid 125.6). İş `uploads/crash/20b1e7b5…` (betikle, API dışı).
-- [ ] Katlanma modu görsel olarak karşılaştırılmadı (animasyon görüntüleyici
-      yok); 4 ms / 10 m/s'de ezilme kısa
+- [x] Katlanma modu görsel olarak karşılaştırılmadı (animasyon görüntüleyici
+      yok); 4 ms / 10 m/s'de ezilme kısa → 1.17d görüntüleyici
 
 **1.13b — Kabuk crash box şablonu + yüzey-only dikiş** — ✅ 2026-10-02
 `crash_box_shell` (`surface_only=True`): `crash_box_plate` kutusuyla aynı L,
@@ -1080,6 +1080,28 @@ ortalama duvar kuvveti (1–10 ms) 53.7 kN, IE / ezilme 5094 J / 100 mm =
 50.9 kN — 1.17f ortalama ezilme kuvveti için ilk veri. İşler `cdc5aa61…`,
 `2d5d4ed6…`, `cded46ab…` (patlayan `9169dc48…`).
 
+**1.17d — Deforme şekil görüntüleme (zaman kaydırıcılı 3B)** — ✅ 2026-10-03
+Backend: `convert_animation` — imajdaki `anim_to_vtk` ile A001… → ASCII VTK
+(Docker'da tek `sh -c` döngüsü, kare başına konteyner yok; ara .vtk silinir);
+`openradioss_anim.build_animation` — yüzey (kabuk tri/quad; solid tet/hex dış
+yüzleri), kare başına deforme koordinat, düğüm |u|, eleman skalerleri
+(plastik şekil değiştirme, özgül enerji), EROSION_STATUS (silinen yüz); hep
+sıfır skaler atlanır; >60 kare seyreltilir (son kare korunur). Rijit duvar
+(NODE_ID 0 sentetik noktalar) ve rijit gövde ana düğümündeki dejenere dörtgen
+atlanır (ilk görüntüde duvar kutuyu örtüyordu). `GET /crash/runs/{id}/animation`
+ilk istekte üretir, `anim.json` önbelleği. Engine deck'e `/ANIM/ELEM/EPSP`
+eklendi (VTK adı `2DELEM_Plastic_Strain`). Frontend `CrashAnimationViewer`
+(three.js, OrbitControls): kare kaydırıcı, oynat, renk skaleri seçimi, jet
+renk ölçeği (proje görüntüleyicileriyle aynı formül; çubuk birebir duraklar),
+silinen eleman sayısı; geçmiş listesinde çözülmüş koşuya ▶. Testler: backend
+4, frontend 3 (WebGL jsdom'da yok — yardımcılar + açılma bağlantısı); backend
+1045/1045 (+1 skip), frontend 151/151. Gerçek koşu: kızak 50 kg (test değeri),
+20 ms, anim 0.5 ms → 41 kare, 1961 kabuk, 4.7 MB, ilk açılış 20 s; |u|max
+41.4 mm, plastik şekil değiştirme max 1.294 ön uçta (katlanma), son karede
+silinen yok. İş `b6374029…` (koşu #47).
+- [ ] Görüntüleyicide hazır görünüm (yan / üst / ön) ve impact bölgesine
+  yakınlaştırma yok — fare ile yapılıyor
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1087,8 +1109,6 @@ parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
 *1.17 — Standart explicit ortam*
-- 1.17d Deforme şekil görüntüleme: animasyon (A0xx) → web 3B, zaman
-  kaydırıcılı (katlanma modu bugün görülemiyor — 1.13a açık maddesi).
 - 1.17e CFC filtre (SAE J211): kuvvet / ivme eğrilerine sınıf seçimi; ham veri
   korunur, sınıf mühendisin (HIC'teki 120 bin g filtresiz düğüm ivmesi).
 - 1.17f Validasyon seti: enerji / momentum dengesi; kare tüp ortalama ezilme

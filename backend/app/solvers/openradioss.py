@@ -996,6 +996,7 @@ def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
         "/ANIM/VECT/DISP",
         "/ANIM/VECT/VEL",
         "/ANIM/ELEM/ENER",
+        "/ANIM/ELEM/EPSP",  # 1.17d — plastik şekil değiştirme (deforme şekil rengi)
     ]
     # Zaman adımı: /DT (eleman) ya da /DT/NODA/… (düğüm); Δt_sca Δt_min, ms.
     if eng.dt_kind:
@@ -1033,6 +1034,42 @@ def _convert_time_history(bins: OpenRadiossBins, work_dir: Path, starter_name: s
     except (OSError, subprocess.TimeoutExpired) as exc:  # pragma: no cover — ortam
         return f"=== th_to_csv === çalıştırılamadı: {exc}"
     return "=== th_to_csv ===\n" + (proc.stdout or "") + (proc.stderr or "")
+
+
+def convert_animation(bins: OpenRadiossBins, work_dir: Path, job: str = "crash") -> list[str]:
+    """`<job>A001…` → anim_to_vtk ASCII metinleri, kare sırasıyla (1.17d).
+
+    Docker'da tek `sh -c` döngüsü (kare başına konteyner açmamak için); yerel
+    ikilide kare başına çağrı. Ara .vtk dosyaları okunduktan sonra silinir.
+    """
+    work_dir = Path(work_dir)
+    anims = sorted(p for p in work_dir.glob(f"{job}A[0-9][0-9][0-9]") if p.is_file())
+    if not anims:
+        return []
+    conv = bins.engine.with_name("anim_to_vtk_linux64_gf")
+    if bins.docker_image is not None:
+        script = f'for f in {job}A[0-9][0-9][0-9]; do "{conv.as_posix()}" "$f" > "$f.vtk"; done'
+        subprocess.run(
+            launch_command(bins, Path("/bin/sh"), ["-c", script], work_dir),
+            cwd=str(work_dir), capture_output=True, text=True, timeout=600, check=False,
+            env=runtime_env(bins),
+        )
+    else:
+        if not conv.is_file():
+            raise SolverError(f"anim_to_vtk bulunamadı ({conv}).")
+        for a in anims:
+            proc = subprocess.run(
+                [str(conv), a.name], cwd=str(work_dir), capture_output=True, text=True,
+                timeout=120, check=False, env=runtime_env(bins),
+            )
+            (work_dir / f"{a.name}.vtk").write_text(proc.stdout, encoding="utf-8")
+    texts = []
+    for a in anims:
+        v = work_dir / f"{a.name}.vtk"
+        if v.is_file():
+            texts.append(v.read_text(encoding="utf-8", errors="replace"))
+            v.unlink()
+    return texts
 
 
 class OpenRadiossAdapter(SolverAdapter):
