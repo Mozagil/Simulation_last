@@ -181,6 +181,80 @@ def parse_energy_listing(path: Path) -> dict[str, list[float]]:
     return out
 
 
+_CYCLE_RE = re.compile(r"^\s+\d+\s+([-+0-9.Ee]+)\s+[-+0-9.Ee]+\s+[A-Z]")
+_RUPTURE_RE = re.compile(r"RUPTURE\s*\(([^)]*)\)\s+OF\s+(\w+)\s+ELEMENT\s+NUMBER\s+(\d+)")
+_MSG_RE = re.compile(r"^(ERROR|WARNING) ID :\s+(\d+)")
+
+
+def parse_ruptures(path: Path) -> list[dict[str, Any]]:
+    """Engine .out "-- RUPTURE (KRİTER) OF SHELL ELEMENT NUMBER n" satırları.
+
+    Listing kopma anını yazmaz; `time` kopmadan sonra basılan ilk cycle
+    satırının zamanıdır (üst sınır, çözünürlük = listing basma aralığı).
+    Kopma sonrası cycle satırı yoksa `time` None.
+    """
+    out: list[dict[str, Any]] = []
+    waiting: list[dict[str, Any]] = []
+    in_table = False
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "CYCLE" in raw and "TIME" in raw and "TIME-STEP" in raw:
+            in_table = True
+            continue
+        m = _RUPTURE_RE.search(raw)
+        if m:
+            rec = {"criterion": m.group(1).strip(), "kind": m.group(2).lower(),
+                   "element": int(m.group(3)), "time": None}
+            out.append(rec)
+            waiting.append(rec)
+            continue
+        if in_table and waiting:
+            c = _CYCLE_RE.match(raw)
+            if c:
+                try:
+                    t = float(c.group(1))
+                except ValueError:
+                    continue
+                for rec in waiting:
+                    rec["time"] = t
+                waiting = []
+    return out
+
+
+def parse_starter_messages(path: Path) -> dict[str, dict[str, int]]:
+    """Starter .out "ERROR ID : n" / "WARNING ID : n" → {"errors": {id: adet}, "warnings": …}.
+
+    Özet tablodaki ("|--- 1 WARNING ID : …") satırlar sayılmaz.
+    """
+    res: dict[str, dict[str, int]] = {"errors": {}, "warnings": {}}
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = _MSG_RE.match(raw)
+        if m:
+            bucket = res["errors" if m.group(1) == "ERROR" else "warnings"]
+            bucket[m.group(2)] = bucket.get(m.group(2), 0) + 1
+    return res
+
+
+def _diagnostics(work_dir: Path, engine_out: Path | None) -> tuple[dict[str, Any], dict[str, float]]:
+    diag: dict[str, Any] = {}
+    scalars: dict[str, float] = {}
+    starter = sorted(work_dir.glob("*_0000.out"))
+    if starter:
+        msgs = parse_starter_messages(starter[0])
+        diag["starter_errors"] = msgs["errors"]
+        diag["starter_warnings"] = msgs["warnings"]
+        scalars["starter_error_count"] = float(sum(msgs["errors"].values()))
+        scalars["starter_warning_count"] = float(sum(msgs["warnings"].values()))
+    if engine_out is not None and engine_out.name.endswith("_0001.out"):
+        rup = parse_ruptures(engine_out)
+        diag["deleted_elements"] = rup
+        scalars["elements_deleted"] = float(len({(r["kind"], r["element"]) for r in rup}))
+        times = [r["time"] for r in rup if r["time"] is not None]
+        if times:
+            scalars["deletion_time_first"] = float(min(times))
+            scalars["deletion_time_last"] = float(max(times))
+    return diag, scalars
+
+
 def _th_group_columns(headers: list[str], titles: tuple[str, ...]) -> list[str]:
     """Başlığında TH grubu adı geçen ve 'var N' ile biten sütunlar, dosya sırasıyla."""
     out: list[str] = []
@@ -301,11 +375,14 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         ie = listing.get("IE") or []
         ke = listing.get("KE") or []
 
+    diag, diag_scalars = _diagnostics(work_dir, out_path)
     if not time and not ie:
-        return ResultSet(scalars={}, curves={}, raw_result_path=work_dir)
+        return ResultSet(
+            scalars=diag_scalars, curves={}, raw_result_path=work_dir, diagnostics=diag
+        )
 
     time_s = _time_to_seconds(time, time_header) if time else []
-    scalars: dict[str, float] = {}
+    scalars: dict[str, float] = dict(diag_scalars)
     if ie:
         scalars["internal_energy_final"] = float(ie[-1])
         scalars["internal_energy_max"] = float(max(ie))
@@ -347,7 +424,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             curves[f"contact_{k}_impulse"] = imp
 
     raw = csv_path or out_path or work_dir
-    return ResultSet(scalars=scalars, curves=curves, raw_result_path=raw)
+    return ResultSet(scalars=scalars, curves=curves, raw_result_path=raw, diagnostics=diag)
 
 
 def _find_csv(work_dir: Path) -> Path | None:

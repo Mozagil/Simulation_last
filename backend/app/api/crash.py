@@ -158,6 +158,7 @@ def _complete_crash_job(job_id: str) -> None:
         meta["solver_ran"] = True
         meta["scalars"] = parsed.scalars
         meta["curves"] = parsed.curves
+        meta["diagnostics"] = parsed.diagnostics
         _write_job(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
@@ -339,6 +340,7 @@ def crash_solve(
             result["message"] = done.get("message")
             result["solver_ran"] = bool(done.get("solver_ran"))
             result["scalars"] = done.get("scalars") or {}
+            result["diagnostics"] = done.get("diagnostics") or {}
 
     else:
         hub.update(job_id, state="done", percent=0.0, message="rad_only")

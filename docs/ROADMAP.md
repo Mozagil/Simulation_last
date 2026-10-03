@@ -782,7 +782,7 @@ IE_son 54.01 J, KE_son 4.76 J (daha çok geri sekme), impuls 15.15 N·s
 (m·(v₀+v_son) = 15.23); denge %0.96 / %0.97. Starter CC ve ε̇₀'ı doğru yankıladı.
 Radioss starter uyarısı 1220: hız etkisi açık ama filtre (Fsmooth) kapalı —
 çözücünün kendi notu; seçim mühendisin. İşler `0f78a91d…`, `083db7cd…`.
-- [ ] Starter uyarı/hata ID'leri iş sonucunda veri olarak gösterilmiyor
+- [x] Starter uyarı/hata ID'leri iş sonucunda veri olarak gösterilmiyor (1.14f)
 
 **1.14b — Parça başına malzeme kartı** — ✅ 2026-10-02
 API `parts[].model` (CrashModelParams: kanun, LAW2/JC, Isolid/NIP, kabuk
@@ -833,8 +833,20 @@ impuls 14.39 N·s) — bu darbede gerinim eşiklere ulaşmıyor. (2) Silme kanı
 0.003 (D2…D5 = 0), Ifail_sh 1 → 259 kabuk "RUPTURE (JOHNSON-COOK)", IE_son
 15.19 J, KE_son 34.94 J, tepe 27.0 kN, denge %15.5. Denge sapması silmeyle
 birlikte artıyor (silmesiz %1.1); bileşenlerine ayrıştırılmadı. İşler `7fd1cb11…`, `4b64725c…`, `21f7c6a2…`, `c3d79087…`.
-- [ ] Silinen eleman sayısı / zamanı iş sonucunda veri olarak gösterilmiyor
-  (şimdilik yalnız `crash_0001.out`'ta)
+- [x] Silinen eleman sayısı / zamanı iş sonucunda veri olarak (1.14f)
+
+**1.14f — Kopma listesi + starter mesaj ID'leri iş sonucunda** — ✅ 2026-10-03
+`ResultSet.diagnostics` (yeni alan, varsayılan boş; diğer adaptörler etkilenmez)
+→ job.json / `/crash/jobs/{id}` `diagnostics`: `starter_errors`,
+`starter_warnings` ({ID: adet}; özet tablo satırları sayılmaz),
+`deleted_elements` [{criterion, kind, element, time}]. Skalerler:
+`starter_error_count`, `starter_warning_count`, `elements_deleted` (tekil
+eleman), `deletion_time_first` / `_last`. Listing kopma anını yazmaz; `time` =
+kopmadan sonra basılan ilk cycle satırı (üst sınır, çözünürlük = basma aralığı,
+bu kutuda ~0.054 ms). 4 test; backend 972/972. Gerçek işlerde: `21f7c6a2…` 133
+silme, ilk 0.054 / son 3.78 ms; `c3d79087…` 259, 0.054 / 3.996 ms; `7fd1cb11…`
+0 silme, uyarı {1912: 1}; eski hatalı iş `f3d5116a…` 10 hata (573, 574, 668,
+53, 260, 1109) / 5 uyarı.
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
