@@ -32,7 +32,9 @@ from app.solvers.base import (
 from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
+    CrashMassParams,
     CrashModelParams,
+    CrashRigidBodyParams,
     CrashSectionParams,
     CrashThParams,
     parse_tab_curves,
@@ -526,6 +528,8 @@ def _contact_cards(
 
 
 _SECT_GR_BASE = 8000
+_MASS_GR_BASE = 8500
+_RBODY_GR_BASE = 8700
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -621,6 +625,54 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
 
     # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
     # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
+    # 1.17b — ek kütle / rijit gövde: düğüm kümeleri (bölge ya da parça). Rijit
+    # gövde ana düğümü seçimin ağırlık merkezinde yeni düğüm (en büyük id + k).
+    try:
+        masses = [CrashMassParams.model_validate(r) for r in params.get("added_masses") or []]
+        rbodies = [CrashRigidBodyParams.model_validate(r) for r in params.get("rigid_bodies") or []]
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz ek kütle / rijit gövde: {exc}") from exc
+    region_nodes: dict[str, list[int]] = {
+        str(k): [int(v) for v in vs] for k, vs in (params.get("region_nodes") or {}).items()
+    }
+    part_nodes: dict[int, set[int]] = {}
+    for el in [*tets, *bricks, *shells, *sh3n]:
+        part_nodes.setdefault(element_parts.get(int(el[0]), 0), set()).update(int(v) for v in el[1:])
+
+    def _selected(sel: Any) -> list[int]:
+        if sel.region is not None:
+            if sel.region not in region_nodes:
+                raise SolverError(f"'{sel.name}': bölge '{sel.region}' bu geometride yok.")
+            ids = region_nodes[sel.region]
+        else:
+            if sel.part_id not in part_nodes:
+                raise SolverError(f"'{sel.name}': parça #{sel.part_id} mesh'te yok.")
+            ids = sorted(part_nodes[sel.part_id])
+        if not ids:
+            raise SolverError(f"'{sel.name}': seçimde düğüm yok.")
+        return ids
+
+    xyz_of = {
+        int(n["id"] if isinstance(n, dict) else n[0]): (
+            (float(n["x"]), float(n["y"]), float(n["z"]))
+            if isinstance(n, dict)
+            else (float(n[1]), float(n[2]), float(n[3]))
+        )
+        for n in nodes
+    }
+    next_node = max(xyz_of) + 1 if xyz_of else 1
+    mass_sets = [(m, _selected(m)) for m in masses]
+    rbody_sets: list[tuple[CrashRigidBodyParams, list[int], int]] = []
+    extra_nodes: list[tuple[int, float, float, float]] = []
+    for rb in rbodies:
+        ids = _selected(rb)
+        cx = sum(xyz_of[i][0] for i in ids) / len(ids)
+        cy = sum(xyz_of[i][1] for i in ids) / len(ids)
+        cz = sum(xyz_of[i][2] for i in ids) / len(ids)
+        extra_nodes.append((next_node, cx, cy, cz))
+        rbody_sets.append((rb, ids, next_node))
+        next_node += 1
+
     units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
     lines: list[str] = ["#RADIOSS STARTER"]
     if params.get("coincident_nodes") is not None:
@@ -641,6 +693,8 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             if isinstance(n, dict)
             else (float(n[1]), float(n[2]), float(n[3]))
         )
+        lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
+    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
 
     # Radioss parça/kart kimlikleri 1 tabanlı: part_ID = mesh part_id + 1.
@@ -721,6 +775,43 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(1)}{_i(0)}",
         ]
     )
+
+    def _grnod_nodes(gid: int, title: str, ids: list[int]) -> list[str]:
+        out = [f"/GRNOD/NODE/{gid}", title]
+        for i in range(0, len(ids), 10):
+            out.append("".join(_i(v) for v in ids[i : i + 10]))
+        return out
+
+    # 1.17b — /ADMAS (hm_cfg radioss110: MASS grnd_ID) ve /RBODY (radioss2021:
+    # node_ID sens skew Ispher Mass grnd Ikrem ICoG surf · J · Ioptoff).
+    for k, (m, ids) in enumerate(mass_sets, start=1):
+        gid = _MASS_GR_BASE + k
+        lines += _grnod_nodes(gid, f"admas_{m.name}"[:100], ids)
+        lines += [
+            f"/ADMAS/{1 if m.distribution == 'total' else 0}/{k}",
+            m.name[:100],
+            f"{_f(m.mass_kg)}{_i(gid)}",
+        ]
+    moving_nodes: set[int] = set().union(*(part_nodes.get(p, set()) for p in moving)) if moving else set()
+    moving_masters: list[int] = []
+    for k, (rb, ids, master) in enumerate(rbody_sets, start=1):
+        gid = _RBODY_GR_BASE + k
+        lines += _grnod_nodes(gid, f"rbody_{rb.name}"[:100], ids)
+        lines += [
+            f"/RBODY/{k}",
+            rb.name[:100],
+            f"{_i(master)}{_i(0)}{_i(0)}{_i(0)}{_f(rb.mass_kg)}{_i(gid)}{_i(rb.ikrem)}{_i(rb.icog)}{_i(0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_i(0)}",
+        ]
+        if set(ids) & moving_nodes:
+            moving_masters.append(master)
+    if moving_masters:
+        # Hareketli parçaya bağlı rijit gövde ana düğümü de ilk hızı alır
+        # (ek kütle ancak böyle momentuma girer).
+        lines += _grnod_nodes(_RBODY_GR_BASE, "rbody_masters_moving", moving_masters)
+        lines += ["/INIVEL/TRA/2", "impact_vel_rbody", f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(_RBODY_GR_BASE)}{_i(0)}"]
     # /RWALL/PLANE: node_ID=0 sabit duvar; Slide=0 kayan; grnd_ID1 = tüm
     # düğümler. Düzlem M noktası ve M1 = M + n (normal, ikincil düğümlerin
     # bulunduğu tarafa bakar). d = 0, sürtünme yok (Slide=0).

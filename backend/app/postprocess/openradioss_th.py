@@ -315,9 +315,18 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
             return None
         return cols[headers[idx]]
 
-    packed["ie"] = col("IE", "IENERGY", "internal")
-    packed["ke"] = col("KE", "KENERGY", "kinetic")
-    packed["hg"] = col("HOURGLASS", "HG")
+    # 1.17b — th_to_csv global enerji sütunları (tüm model: rijit gövde ana
+    # düğümü, ek kütle dahil) varsa onlar; yoksa eski ad araması (parça TH'si
+    # rijit gövde ana düğümünün kütlesini içermez — kızaklı koşuda KE 71 J
+    # okunuyordu, global 2559 J).
+    def exact(name: str) -> list[float] | None:
+        return next((cols[h] for h in headers if h.strip().upper() == name), None)
+
+    packed["ie"] = exact("INTERNAL ENERGY") or col("IE", "IENERGY", "internal")
+    packed["ke"] = exact("KINETIC ENERGY") or col("KE", "KENERGY", "kinetic")
+    packed["hg"] = exact("HOURGLASS ENERGY") or col("HOURGLASS", "HG")
+    packed["rot"] = exact("ROTATION ENERGY")
+    packed["ext"] = exact("EXTERNAL WORK")
     # Duvar FN* adla aranırken temas grubunun (contact_th) FN* sütunları hariç.
     wall_headers = [h for h in headers if "contact_th" not in h.lower()]
 
@@ -424,6 +433,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     listing = parse_energy_listing(out_path) if out_path is not None else {}
 
     time: list[float] = []
+    hg_e: list[float] | None = None
+    rot_e: list[float] | None = None
+    ext_w: list[float] | None = None
     ie: list[float] = []
     ke: list[float] = []
     force: list[float] = []
@@ -460,6 +472,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         time_header = packed["time_header"]
         ie = packed["ie"] or ie
         ke = packed["ke"] or ke
+        hg_e, rot_e, ext_w = packed["hg"], packed["rot"], packed["ext"]
         fnx, fny, fnz = packed["fnx"], packed["fny"], packed["fnz"]
         # FN* impuls (Radioss TH): kuvvet = dI/dt. 1.10–1.12a arası impuls
         # yanlışlıkla kuvvet diye raporlanıyordu (düz plato = momentum değişimi).
@@ -500,10 +513,21 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         scalars["kinetic_energy_final"] = float(ke[-1])
         scalars["kinetic_energy_max"] = float(max(ke))
         if ie:
-            e0 = ie[0] + ke[0]
-            e1 = ie[-1] + ke[-1]
+            # Toplam = IE + KE (+ dönme + hourglass − dış iş, sütun varsa).
+            def total(i: int) -> float:
+                e = ie[i] + ke[i]
+                for extra, sign in ((rot_e, 1.0), (hg_e, 1.0), (ext_w, -1.0)):
+                    if extra and len(extra) == len(ie):
+                        e += sign * extra[i]
+                return e
+
+            e0, e1 = total(0), total(-1)
             denom = max(abs(e0), abs(e1), 1e-30)
             scalars["energy_balance_rel"] = abs(e1 - e0) / denom
+    if hg_e and ie:
+        scalars["hourglass_energy_final"] = float(hg_e[-1])
+        if abs(ie[-1]) > 1e-30:
+            scalars["hourglass_ratio"] = float(hg_e[-1]) / float(ie[-1])
     if force:
         scalars["rwall_force_max"] = float(max(abs(f) for f in force))
     if impulse:

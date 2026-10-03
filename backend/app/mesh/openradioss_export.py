@@ -182,3 +182,31 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         sh3n=sh3n,
         element_parts=element_parts,
     )
+
+
+def region_node_ids(mesh_path: Path, groups: dict[str, tuple[int, list[int]]]) -> dict[str, list[int]]:
+    """Bölge (CAD varlıkları: boyut + etiketler) → mesh düğüm kimlikleri (1.17b).
+
+    Crash deck'inde düğüm kimliği = gmsh düğüm etiketi (`gmsh_msh_to_radioss`),
+    bu yüzden eşleme doğrudan. Varlığın sınırındaki düğümler dahil (kenarın uç
+    noktaları, yüzeyin kenarları).
+    """
+    mesh_path = Path(mesh_path)
+    if not mesh_path.exists():
+        raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+    out: dict[str, list[int]] = {}
+    _gmsh_lock.acquire()
+    gmsh.initialize(interruptible=False)
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(mesh_path))
+        for name, (dim, tags) in groups.items():
+            ids: set[int] = set()
+            for tag in tags:
+                nt, _c, _p = gmsh.model.mesh.getNodes(int(dim), int(tag), includeBoundary=True)
+                ids.update(int(t) for t in nt)
+            out[name] = sorted(ids)
+    finally:
+        gmsh.finalize()
+        _gmsh_lock.release()
+    return out

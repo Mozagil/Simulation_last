@@ -24,7 +24,9 @@ from app.models.material import Material, MaterialAssignment
 from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
+    CrashMassParams,
     CrashModelParams,
+    CrashRigidBodyParams,
     CrashSectionParams,
     CrashThParams,
 )
@@ -69,6 +71,11 @@ class CrashScenarioRequest(BaseModel):
     th: CrashThParams = Field(default_factory=CrashThParams)
     sections: list[CrashSectionParams] = Field(default_factory=list)
     contacts: list[CrashContactParams] = Field(default_factory=list)
+    added_masses: list[CrashMassParams] = Field(default_factory=list)
+    rigid_bodies: list[CrashRigidBodyParams] = Field(
+        default_factory=list,
+        description="Ör. kızak: region 'kutu_arka' + mass_kg (değer mühendisin)",
+    )
     name: str | None = None
     run_solver: bool = True
     wait: bool = False
@@ -148,6 +155,8 @@ def crash_scenario(
         th=req.th,
         sections=req.sections,
         contacts=req.contacts,
+        added_masses=req.added_masses,
+        rigid_bodies=req.rigid_bodies,
     )
     result = crash_solve(solve, background_tasks, db)
     logger.info(

@@ -552,3 +552,51 @@ class CrashSectionParams(BaseModel):
         if _norm(n) < 1e-9:
             raise ValueError(f"Kesit '{self.name}': M, M1, M2 doğrusal (alan sıfır).")
         return self
+
+
+class _NodeSelection(BaseModel):
+    """Düğüm seçimi: şablon / kullanıcı bölgesi (PhysicalGroup adı) ya da parça."""
+
+    name: str = Field(default="set", min_length=1, max_length=60)
+    region: str | None = Field(default=None, description="Bölge adı (ör. kutu_arka)")
+    part_id: int | None = Field(default=None, ge=0, description="Mesh parça numarası")
+
+    @model_validator(mode="after")
+    def _one_target(self):
+        if (self.region is None) == (self.part_id is None):
+            raise ValueError(f"'{self.name}': region ya da part_id'den tam olarak biri verilmeli.")
+        return self
+
+
+class CrashMassParams(_NodeSelection):
+    """/ADMAS (1.17b, hm_cfg radioss110): Iflag 1 = toplam kütle düğümlere
+    eşit dağıtılır, 0 = her düğüme bu kütle. kg (kg–mm–ms)."""
+
+    mass_kg: float = Field(..., gt=0)
+    distribution: str = Field(default="total", description="total (type 1) | per_node (type 0)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashMassParams":
+        _finite(self.mass_kg, "mass_kg")
+        if self.distribution not in ("total", "per_node"):
+            raise ValueError("distribution total veya per_node olmalı.")
+        return self
+
+
+class CrashRigidBodyParams(_NodeSelection):
+    """/RBODY (1.17b, hm_cfg radioss2021): seçili düğümler rijit; ana düğüm
+    seçimin ağırlık merkezinde yeni düğüm; `mass_kg` ana düğüme eklenir (ör.
+    kızak). Ikrem, ICoG Radioss bayrakları (0 = varsayılan); atalet ek yok."""
+
+    mass_kg: float = Field(default=0.0, ge=0)
+    ikrem: int = Field(default=0, description="0: bağımlı düğümler rijit duvardan çıkarılır, 1: çıkarılmaz")
+    icog: int = Field(default=0, description="0–4 (hm_cfg); 0 = Radioss varsayılanı (1)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashRigidBodyParams":
+        _finite(self.mass_kg, "mass_kg")
+        if self.ikrem not in (0, 1):
+            raise ValueError("ikrem 0 veya 1 olmalı.")
+        if self.icog not in (0, 1, 2, 3, 4):
+            raise ValueError("icog 0–4 olmalı.")
+        return self

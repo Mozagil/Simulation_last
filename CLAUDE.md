@@ -27,10 +27,10 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.17a tamam (2026-10-03): crash
-senaryo şablonu (`POST /crash/scenario`).** 1.10–1.16 bitti (temas, kabuk,
-malzeme + /FAIL, çıktı kartları, crash_runs geçmişi). Sırada **1.17b–g standart
-explicit ortam** (ek kütle / rijit gövde, bölge BC + zorlanmış hız, deforme
+**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.17b tamam (2026-10-03): ek kütle
+(/ADMAS) + rijit gövde (/RBODY), global enerji dengesi.** 1.10–1.16 bitti (temas, kabuk,
+malzeme + /FAIL, çıktı kartları, crash_runs geçmişi). Sırada **1.17c–g standart
+explicit ortam** (bölge BC + zorlanmış hız, deforme
 şekil görüntüleme, CFC filtre, validasyon, temizlik) → 1.18 plaka–küre →
 **ML en sonda** (1.19, ML tezgahında). Durability (CalculiX `/solve`, modal,
 DOE, surrogate) paralel ve dokunulmaz; `/solve` refaktör edilmez. Solver:

@@ -1029,6 +1029,36 @@ mesh'i 0.00054 — o mesh'te x = 4.828 / 4.829 gibi kısa kenarlar var).
 Bariyer modelleri (Ansys/LSTC IIHS MDB) araştırıldı: ftp.lstc.com 401 (kimlik
 ister), lisans belirtilmemiş, proje kuralı (Ansys/LS-DYNA yok) → kullanılmadı.
 
+**1.17b — Ek kütle `/ADMAS` + rijit gövde `/RBODY`** — ✅ 2026-10-03
+API (`/crash/solve` ve `/crash/scenario`): `added_masses` [{name, region |
+part_id, mass_kg, distribution total (type 1) | per_node (type 0)}],
+`rigid_bodies` [{name, region | part_id, mass_kg (ana düğüme), ikrem, icog}].
+Bölge = PhysicalGroup (şablon bölgesi, ör. `kutu_arka`, ya da kullanıcı yüzey
+grubu) → CAD varlıkları → mesh düğümleri (`region_node_ids`; crash deck düğüm
+kimliği = gmsh etiketi, sınır düğümleri dahil). Kartlar hm_cfg: admas r110
+(MASS grnd_ID), rbody r2021; düğüm grupları /GRNOD/NODE (8500+k kütle,
+8700+k rijit gövde). Rijit gövde ana düğümü seçimin ağırlık merkezinde yeni
+düğüm; seçim hareketli parçadaysa ana düğüm `/INIVEL/TRA/2` ile ilk hızı alır
+(yoksa ek kütle momentuma girmez). Enerji düzeltmesi: post-process global
+enerji sütunlarını (INTERNAL / KINETIC / HOURGLASS / ROTATION ENERGY, EXTERNAL
+WORK) tercih eder — parça TH'si rijit gövde ana düğümünü içermiyordu (kızaklı
+koşuda KE 71 J okunuyordu, global 2559 J); `energy_balance_rel` artık IE + KE
++ dönme + hourglass − dış iş; yeni `hourglass_energy_final`, `hourglass_ratio`
+(HE / IE_son). 12 test; backend 1031/1031 (+1 skip). Gerçek koşular (crash
+box senaryosu, 10 m/s; kütleler TEST değeri, mühendis seçimi değil):
+(1) `/RBODY` kutu_arka + 50 kg, 20 ms: starter 36 bağımlı düğüm, ana düğüm
+(300, 25, 20), kütle 50.0097 (bağımlılar 0.0097); KE₀ 2558.9 J (½·51.187·10²
+= 2559.4), IE_son 2441.3 + KE 4.7 + hourglass 112.8 = 2558.8 J → denge %0.04,
+hourglass / IE %4.6; duvar impulsu 533.6 N·s = 51.19 · (10 + 0.42) — küçük
+geri sekme; Δt_min 0.0002 ms (katlanma eleman bozulması). Uyarı 446: rijit
+gövde bağımlı 36 düğüm duvardan çıkarıldı (Ikrem 0; arka uç duvara değmez).
+48 s. (2) `/ADMAS` kutu_arka toplam 1 kg, 4 ms: starter "TOTAL ADDED MASS =
+1.0", KE₀ 108.86 J (beklenen 109.35), denge %0.13. Gözlem: global KE ilk
+örnekte ½mv²'den 0.49 J düşük — ön halka (36 düğüm, 0.0097 kg) duvara t = 0'da
+değiyor, ½·0.0097·10² = 0.486 J hemen duruyor. Eski işlerin job.json
+skalerleri değişmedi (yeniden işlenirse yeni tanım). İşler `eb971f21…`,
+`bb3fe909…`.
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1036,10 +1066,6 @@ parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
 *1.17 — Standart explicit ortam*
-- 1.17b Ek kütle + rijit gövde: `/ADMAS` (bölgeye kütle, ör. kutu arkasında
-  kızak) + `/RBODY` (rijit parça). Gerekçe: bugünkü kutu yalnız kendi
-  kütlesiyle (1.19 kg, 10 m/s → 59 J) çarpıyor; tepe ~120 kN'da ezilme ~0.5 mm,
-  katlanma yok. Kütle değeri mühendisin.
 - 1.17c Bölgeye sınır koşulu + zorlanmış hareket: şablon bölgelerine `/BCS`
   (kenar / köşe sabit), `/IMPVEL` (sabit hız). Bugün yalnız "tüm parça sabit".
 - 1.17d Deforme şekil görüntüleme: animasyon (A0xx) → web 3B, zaman

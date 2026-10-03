@@ -21,13 +21,16 @@ from app.api.crash_runs import record_from_meta
 from app.db.session import SessionLocal, get_db
 from app.jobs.progress import get_hub
 from app.models.component import Component
+from app.models.geometry import PhysicalGroup
 from app.models.material import MaterialAssignment
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.crash_params import (
     CrashBarrierParams,
     CrashContactParams,
     CrashEngineParams,
+    CrashMassParams,
     CrashModelParams,
+    CrashRigidBodyParams,
     CrashSectionParams,
     CrashThParams,
 )
@@ -99,6 +102,12 @@ class CrashSolveRequest(BaseModel):
     )
     sections: list[CrashSectionParams] = Field(
         default_factory=list, description="/SECT/PARAL kesitleri (1.15c); TH th.sect"
+    )
+    added_masses: list[CrashMassParams] = Field(
+        default_factory=list, description="/ADMAS — bölge ya da parçaya ek kütle (1.17b)"
+    )
+    rigid_bodies: list[CrashRigidBodyParams] = Field(
+        default_factory=list, description="/RBODY — bölge ya da parça rijit + ana düğüme kütle (1.17b)"
     )
 
     @field_validator("scenario")
@@ -270,6 +279,25 @@ def crash_solve(
             if comp.property_kind == "shell" and comp.thickness and comp.thickness > 0:
                 component_thickness[int(comp.part_id)] = float(comp.thickness)
 
+    # 1.17b — kütle / rijit gövde bölgeleri: PhysicalGroup (CAD varlıkları) →
+    # mesh düğümleri. Yalnız istekte geçen bölgeler okunur.
+    wanted_regions = {s.region for s in [*body.added_masses, *body.rigid_bodies] if s.region}
+    region_nodes: dict[str, list[int]] = {}
+    if wanted_regions:
+        groups = {
+            g.name: (int(g.dim), list(g.entity_tags or []))
+            for g in db.query(PhysicalGroup).filter(PhysicalGroup.geometry_id == body.geometry_id)
+            if g.name in wanted_regions
+        }
+        unknown = sorted(wanted_regions - set(groups))
+        if unknown:
+            raise HTTPException(
+                status_code=422, detail=f"Bölge bu geometride yok: {', '.join(unknown)}"
+            )
+        from app.mesh.openradioss_export import region_node_ids
+
+        region_nodes = region_node_ids(mesh_path, groups)
+
     job_id = str(uuid.uuid4())
     work_dir = _job_dir(job_id)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -294,6 +322,9 @@ def crash_solve(
                 "contacts": [c.model_dump() for c in body.contacts],
                 "use_rigid_wall": body.use_rigid_wall,
                 "component_thickness": component_thickness,
+                "added_masses": [m.model_dump() for m in body.added_masses],
+                "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+                "region_nodes": region_nodes,
             }
         )
     except SolverError as exc:
@@ -344,6 +375,8 @@ def crash_solve(
         "engine": body.engine.model_dump(),
         "th": body.th.model_dump(),
         "sections": [s.model_dump() for s in body.sections],
+        "added_masses": [m.model_dump() for m in body.added_masses],
+        "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,
