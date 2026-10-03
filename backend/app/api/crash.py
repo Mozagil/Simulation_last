@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, _get_geometry_or_404
-from app.db.session import get_db
+from app.api.crash_runs import record_from_meta
+from app.db.session import SessionLocal, get_db
 from app.jobs.progress import get_hub
 from app.models.component import Component
 from app.models.material import MaterialAssignment
@@ -144,6 +145,18 @@ def _merged_snapshot(job_id: str) -> dict[str, Any] | None:
     return out
 
 
+def _sync_run(meta: dict[str, Any]) -> None:
+    """1.16a — job.json durumunu crash_runs'a yansıt (arka plan işi kendi oturumuyla)."""
+    db = SessionLocal()
+    try:
+        record_from_meta(db, meta)
+    except Exception as exc:  # noqa: BLE001 — kayıt hatası çözümü düşürmesin
+        logger.warning("crash_runs güncellenemedi job_id=%s: %s", meta.get("job_id"), exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _complete_crash_job(job_id: str) -> None:
     meta = _read_job(job_id)
     if meta is None:
@@ -178,6 +191,7 @@ def _complete_crash_job(job_id: str) -> None:
         meta["curves"] = parsed.curves
         meta["diagnostics"] = parsed.diagnostics
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
         logger.warning("crash job başarısız job_id=%s: %s", job_id, exc)
@@ -185,6 +199,7 @@ def _complete_crash_job(job_id: str) -> None:
         meta["message"] = str(exc)
         meta["solver_ran"] = False
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="failed", message=str(exc))
 
 
@@ -333,10 +348,12 @@ def crash_solve(
         "solver_ran": False,
         "openradioss_available": or_ok,
         "law36_curve_source": law36_curve_source,
+        "materials": materials,
         "scalars": {},
         "curves": {},
     }
     _write_job(meta)
+    run = record_from_meta(db, meta)
     hub = get_hub()
     hub.create(job_id)
 
@@ -350,6 +367,7 @@ def crash_solve(
         "progress_url": f"/crash/jobs/{job_id}",
         "ws_url": f"/crash/jobs/{job_id}/ws",
         "cards": cards,
+        "run_id": run.id if run is not None else None,
         "law36_curve_source": law36_curve_source,
         "openradioss_available": or_ok,
         "solver_ran": False,
@@ -361,6 +379,7 @@ def crash_solve(
             meta["status"] = "failed"
             meta["message"] = "OpenRadioss bulunamadı"
             _write_job(meta)
+            record_from_meta(db, meta)
             hub.update(job_id, state="failed", message=meta["message"])
             result["status"] = "failed"
             result["message"] = meta["message"]
@@ -369,6 +388,7 @@ def crash_solve(
             meta["status"] = "pending"
             meta["message"] = "OpenRadioss çalışıyor…"
             _write_job(meta)
+            record_from_meta(db, meta)
             hub.update(job_id, state="running", percent=0.0, message=meta["message"])
             background_tasks.add_task(_complete_crash_job, job_id)
             result["status"] = "pending"

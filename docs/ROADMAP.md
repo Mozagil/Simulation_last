@@ -966,12 +966,34 @@ adıyla. Testler: kart 4, panel +1; frontend 145/145, tsc temiz. Ekran
 görüntüsü geometrisiz (UI'da mevcut geometriyi açma yolu yok): üç bölüm 340 px
 panelde.
 
+**1.16a — `crash_runs` tablosu, geçmiş ve karşılaştırma API'si** — ✅ 2026-10-03 (şema + içe aktarma onayı 2026-10-03)
+DB: yeni `crash_runs` (job_id tekil, geometry_id FK, name, created_at,
+dimension, t_end_ms, status, message, solver_ran, request JSON — bariyer /
+model / parçalar / temas / engine / th / kesitler / law36 eğri kaynağı,
+materials_snapshot JSON, scalars JSON, diagnostics JSON, excluded +
+exclude_reason); migration `f3a4b5c6d7e8` yalnız tablo ekler (dev DB'de
+yukarı / aşağı / yukarı denendi); analysis_runs değişmedi. Eğriler DB'de yok,
+job.json'da. `/crash/solve` kayıt açar (`run_id` yanıtta), arka plan işi
+bitince kendi oturumuyla günceller (başarısız da). API: `GET /crash/runs`
+(?geometry_id, include_excluded), `GET /crash/runs/{id}` (girdi + skaler +
+eğriler), `PATCH /crash/runs/{id}` (ad, excluded, exclude_reason — girdi /
+sonuç değişmez), `GET /crash/runs/compare?ids=…&curves=…` (boş = *_force
+eğrileri + time; her koşu kendi zaman ekseniyle). İçe aktarma
+`scripts/import_crash_jobs.py` (job_id ile tekrarsız; created_at = job.json
+zamanı): dev'de 37 iş aktarıldı (29 solved, 4 rad_only, 4 failed; 23'ü crash
+box 3931), 293 iş atlandı — geometrisi dev DB'de yok (test koşularının
+uploads'a bıraktığı işler, test geometri kimlikleri); ikinci çalıştırma 37
+güncelleme, çoğaltma yok. Eski işlerde materials_snapshot boş. 4 test;
+backend 1016/1016 (+1 skip). Gerçek koşu `wait=false`: kayıt pending →
+solved, section_1_impulse_final 13.42 N·s; compare 38 ↔ 17 iki koşunun duvar
++ kesit kuvvetlerini döndürdü.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
+- 1.16b Crash sekmesinde geçmiş listesi + karşılaştırma grafiği (UI)
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
   kodundan bağımsız)
 
