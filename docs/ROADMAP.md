@@ -813,12 +813,34 @@ Gerçek koşu — eşdeğerlik: kabuk crash box, LAW36 tek düz eğri σ = 235 M
 123.05 / 123.14 kN (%0.07), impuls 14.409 / 14.409 N·s; starter 0 hata / 0
 uyarı, "TABULATED ELASTIC PLASTIC LAW 36", fonksiyon 101. İş `d21ab83f…`.
 
+**1.14d — `/FAIL/JOHNSON` + `/FAIL/TENSSTRAIN`, eleman silme** — ✅ 2026-10-03
+`model.fail` = {`johnson`?, `tensstrain`?}; ikisi aynı malzemede birlikte
+olabilir, boş = kopma yok (eski davranış). Parça başına (`parts[].model.fail`,
+1.14b). Kartlar `/MAT` hemen ardından, başlıkta malzeme kimliği, title satırı
+yok. JOHNSON hm_cfg radioss2017: D1…D5 · ε̇₀ (1/s → 1/ms) Ifail_sh Ifail_so ·
+Dadv · Ixfem = 0. TENSSTRAIN radioss2021: ε_t1 ε_t2 fct_ID = 0 ε_f1 ε_f2 S_Flag
+(yalnız ek kart istemeyen 0/1/11/21; ölçek fonksiyonu yok). Tutarlılık:
+Ifail ∈ {0,1,2}; d4 ≠ 0 ⇒ ε̇₀ > 0; ε_t2 > ε_t1; TENSSTRAIN'de en az bir sınır.
+API `cards.n_fail`. 9 test; tüm backend 968/968 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, t 3, LAW2 σ_y 235 MPa, 10 m/s, duvar,
+4 ms): starter iki kriteri de yankıladı ("FAILURE MODEL TYPE = TENSSTRAIN /
+JOHNSON", D1…D5, ε_t1/ε_t2), 0 hata, tek uyarı 1912 (kabuk ek kütle; FAIL'den
+bağımsız). (1) TENSSTRAIN 0.05/0.10 ve JOHNSON D1-D3 = 0.05/3.44/−2.12 →
+hiç eleman silinmedi, iki koşu birebir aynı (IE_son 55.41 J, tepe 122.3 kN,
+impuls 14.39 N·s) — bu darbede gerinim eşiklere ulaşmıyor. (2) Silme kanıtı
+(eşikler bilerek düşük): TENSSTRAIN 0.002/0.004 → 133 kabuk "RUPTURE
+(TENS_STRAIN)", IE_son 50.31 J, impuls 9.05 N·s, denge %6.5; JOHNSON D1 =
+0.003 (D2…D5 = 0), Ifail_sh 1 → 259 kabuk "RUPTURE (JOHNSON-COOK)", IE_son
+15.19 J, KE_son 34.94 J, tepe 27.0 kN, denge %15.5. Denge sapması silmeyle
+birlikte artıyor (silmesiz %1.1); bileşenlerine ayrıştırılmadı. İşler `7fd1cb11…`, `4b64725c…`, `21f7c6a2…`, `c3d79087…`.
+- [ ] Silinen eleman sayısı / zamanı iş sonucunda veri olarak gösterilmiyor
+  (şimdilik yalnız `crash_0001.out`'ta)
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - 1.14c2 LAW36 eğrilerini malzeme kütüphanesinde kalıcı tutma (materials
   tablosuna kolon + Alembic migration; aynı eğri birden çok senaryoda) —
   DB şeması değişikliği, ayrı onay
-- 1.14d `/FAIL` + eleman silme (kriter kararı bekliyor: JOHNSON, TENSSTRAIN…)
 - 1.14e Crash sekmesinde parça başına malzeme kartı editörü
 - 1.15 Çıktı kartları (`/SECT`, `/TH` seçimi), zaman adımı kontrolü
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma

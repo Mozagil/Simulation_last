@@ -190,6 +190,62 @@ class CrashTabCurve(BaseModel):
         return self
 
 
+class CrashFailJohnson(BaseModel):
+    """/FAIL/JOHNSON (1.14d): Johnson-Cook hasar D1…D5; hm_cfg radioss2017 düzeni.
+    Hasar 1'e ulaşınca eleman silinir (Ifail_sh / Ifail_so davranışı)."""
+
+    d1: float = 0.0
+    d2: float = 0.0
+    d3: float = 0.0
+    d4: float = 0.0
+    d5: float = 0.0
+    eps_dot0_per_s: float = Field(default=0.0, ge=0, description="ε̇₀ (1/s)", json_schema_extra={"unit": "1/s"})
+    ifail_sh: int = Field(default=0, description="Kabuk silme: 0, 1, 2")
+    ifail_so: int = Field(default=0, description="Solid silme: 0, 1, 2")
+    dadv: float = Field(default=0.0, ge=0, description="Dadv (çatlak ilerleme ölçütü)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashFailJohnson":
+        for name in ("d1", "d2", "d3", "d4", "d5", "eps_dot0_per_s", "dadv"):
+            _finite(getattr(self, name), name)
+        if self.ifail_sh not in (0, 1, 2) or self.ifail_so not in (0, 1, 2):
+            raise ValueError("ifail_sh / ifail_so 0, 1 veya 2 olmalı.")
+        if self.d4 != 0 and self.eps_dot0_per_s <= 0:
+            raise ValueError("d4 ≠ 0 iken eps_dot0_per_s > 0 olmalı.")
+        return self
+
+
+class CrashFailTensStrain(BaseModel):
+    """/FAIL/TENSSTRAIN (1.14d): çekme şekil değiştirmesi; hm_cfg radioss2021 düzeni.
+    ε_t1'de hasar başlar, ε_t2'de eleman silinir. S_Flag yalnız ek kart
+    gerektirmeyen değerler (0, 1, 11, 21); ölçek fonksiyonu yok."""
+
+    eps_t1: float = Field(default=0.0, ge=0, description="ε_t1: hasar başlangıcı")
+    eps_t2: float = Field(default=0.0, ge=0, description="ε_t2: kopma (silme)")
+    eps_f1: float = Field(default=0.0, ge=0, description="ε_f1: 1. asal çekme kopma")
+    eps_f2: float = Field(default=0.0, ge=0, description="ε_f2: 2. asal çekme kopma")
+    s_flag: int = Field(default=0, description="S_Flag: 0, 1, 11, 21")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashFailTensStrain":
+        for name in ("eps_t1", "eps_t2", "eps_f1", "eps_f2"):
+            _finite(getattr(self, name), name)
+        if self.s_flag not in (0, 1, 11, 21):
+            raise ValueError("s_flag 0, 1, 11 veya 21 olmalı (ek kartlı seçenekler yok).")
+        if self.eps_t2 > 0 and self.eps_t2 <= self.eps_t1:
+            raise ValueError("eps_t2, eps_t1'den büyük olmalı.")
+        if self.eps_t1 == 0 and self.eps_t2 == 0 and self.eps_f1 == 0 and self.eps_f2 == 0:
+            raise ValueError("TENSSTRAIN için en az bir şekil değiştirme sınırı gerekli.")
+        return self
+
+
+class CrashFailParams(BaseModel):
+    """Parça/malzeme başına kopma kriterleri (ikisi birden olabilir)."""
+
+    johnson: CrashFailJohnson | None = None
+    tensstrain: CrashFailTensStrain | None = None
+
+
 class CrashModelParams(BaseModel):
     """Solid kart + malzeme kanunu (OpenRadioss TYPE14 / LAW1|LAW2).
 
@@ -236,6 +292,9 @@ class CrashModelParams(BaseModel):
     tab_vp: int = Field(default=0, description="LAW36 VP: 0 toplam, 1 plastik hız")
     shell: CrashShellParams = Field(
         default_factory=CrashShellParams, description="Kabuk parçalar için /PROP/TYPE1"
+    )
+    fail: CrashFailParams = Field(
+        default_factory=CrashFailParams, description="/FAIL kriterleri (1.14d); boş = kopma yok"
     )
 
     @field_validator("law")

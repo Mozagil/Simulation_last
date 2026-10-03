@@ -364,6 +364,7 @@ def _mat_prop_cards(
             _f(rho),
             f"{_f(e_gpa)}{_f(nu)}",
         ]
+    mat_lines += _fail_cards(model, card_id)
     if shell_thickness is not None:
         sh = model.shell
         # /PROP/TYPE1 (SHELL), hm_cfg radioss2020 düzeni: Ishell Ismstr Ish3n
@@ -388,6 +389,30 @@ def _mat_prop_cards(
         f"{_f(0.0)}{_i(0)}{_i(0)}",
     ]
     return mat_lines + prop_lines
+
+
+def _fail_cards(model: CrashModelParams, mat_id: int) -> list[str]:
+    """/FAIL kartları (1.14d) — başlıkta malzeme kimliği; başlık satırı yok.
+
+    JOHNSON (hm_cfg radioss2017): D1…D5; ε̇₀ Ifail_sh Ifail_so · Dadv · Ixfem.
+    TENSSTRAIN (radioss2021): ε_t1 ε_t2 fct_ID ε_f1 ε_f2 S_Flag. ε̇₀ 1/s → 1/ms.
+    """
+    lines: list[str] = []
+    j = model.fail.johnson
+    if j is not None:
+        lines += [
+            f"/FAIL/JOHNSON/{mat_id}",
+            f"{_f(j.d1)}{_f(j.d2)}{_f(j.d3)}{_f(j.d4)}{_f(j.d5)}",
+            f"{_f(j.eps_dot0_per_s * PER_S_TO_PER_MS)}{_i(j.ifail_sh)}{_i(j.ifail_so)}"
+            f"{' ' * 20}{_f(j.dadv)}{' ' * 10}{_i(0)}",
+        ]
+    t = model.fail.tensstrain
+    if t is not None:
+        lines += [
+            f"/FAIL/TENSSTRAIN/{mat_id}",
+            f"{_f(t.eps_t1)}{_f(t.eps_t2)}{_i(0)}{_f(t.eps_f1)}{_f(t.eps_f2)}{_i(t.s_flag)}",
+        ]
+    return lines
 
 
 def _contacts(params: dict[str, Any]) -> list[CrashContactParams]:
