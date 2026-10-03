@@ -14,6 +14,7 @@ import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } 
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashHistory from "./CrashHistory";
+import CrashScenarioCard from "./CrashScenarioCard";
 import CrashValidation from "./CrashValidation";
 import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
 
@@ -87,6 +88,8 @@ export default function CrashPanel({
   const [partCards, setPartCards] = useState<Record<number, MatCardState>>({});
   // 1.15d — engine / TH / kesit ayarları; boş = backend varsayılanı (eski deck)
   const [output, setOutput] = useState<OutputState>(defaultOutput);
+  /** 1.17g-7 — hızlı senaryo başlayınca / bitince geçmişi yenile */
+  const [scenarioTick, setScenarioTick] = useState(0);
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
@@ -753,7 +756,8 @@ export default function CrashPanel({
         </div>
       )}
 
-      <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}`} />
+      <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} />
+      <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`} />
       <CrashValidation />
     </div>
   );

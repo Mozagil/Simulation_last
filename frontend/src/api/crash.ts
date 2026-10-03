@@ -234,6 +234,41 @@ function detailMessage(body: unknown, status: number): string {
   return `HTTP ${status}`;
 }
 
+/** 1.17a — POST /crash/scenario (şablon → mesh → malzeme → çözüm). */
+export interface CrashScenarioRequest {
+  template_id?: string;
+  name?: string;
+  geometry?: Record<string, number>;
+  element_size_mm?: number;
+  material_id?: number;
+  material_name?: string;
+  thickness_mm?: number | null;
+  speed_m_s?: number;
+  angle_deg?: number;
+  t_end_ms?: number;
+  rigid_bodies?: { name: string; region?: string; part_id?: number; mass_kg?: number }[];
+  filters?: CrashFilterPayload;
+  run_solver?: boolean;
+  wait?: boolean;
+}
+
+export interface CrashScenarioResponse {
+  geometry_id: number;
+  scenario: Record<string, unknown>;
+  crash: CrashSolveResponse;
+}
+
+export async function postCrashScenario(body: CrashScenarioRequest): Promise<CrashScenarioResponse> {
+  const response = await fetch(`${API_BASE_URL}/crash/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as CrashScenarioResponse;
+}
+
 export async function postCrashSolve(
   body: CrashSolveRequest,
 ): Promise<CrashSolveResponse> {

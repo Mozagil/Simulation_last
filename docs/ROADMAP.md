@@ -640,8 +640,8 @@ plaka derisi, bayraklar varsayılan): starter 0 hata / 0 uyarı, 28 225
 düzeltilmiş — önce impuls "6.74 kN" diye raporlanmıştı). Radioss GAPmin 0.263 mm → ilk temas 0.075 ms
 (= (1 − 0.263) mm / 10 mm/ms), temas enerjisi tepe 0.235 J. İş
 `uploads/crash/a7bbb6c3…`.
-- [ ] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
-      koşuyla doğrulanacak — tek arayüzde 6 sütun beklenen sırada
+- [x] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
+      koşuyla doğrulanacak — tek arayüzde 6 sütun beklenen sırada → 1.17g-6
 
 **1.12b — Crash sekmesi: temas kartları + kuvvet grafiği** — ✅ 2026-10-02
 "Temas — /INTER" bölümü: "+ Temas ekle" ile temas başına kart (TYPE7 |
@@ -732,9 +732,9 @@ Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
 - [x] Kalınlık iki yerde → aşağıda "1.13 — kabuk kalınlığı tek kaynak"
       (bileşen otomatik t = 3 ve seçili malzemeyle oluşmaya devam ediyor —
       durability davranışı, dokunulmadı)
-- [ ] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor
-- [ ] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de)
-- [ ] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri)
+- [x] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor → 1.17g-1
+- [x] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de) → 1.17g-1
+- [x] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri) → 1.17g-1
 - [x] Hacimli (midsurface) dosyada 2D parça numarası → aşağıda "1.13 düzeltme
       — Crash paneli 2D parça listesi"
 
@@ -1006,8 +1006,8 @@ silme; t ≤ 0.3 ms. Bulgu: #7'nin eklenen kütle oranı DB'de 0.362 idi —
 1.15a'daki oran hatası düzeltilmeden önce job.json'a yazılmış; o iş ham
 çıktılardan yeniden işlendi → 0.565. 1.14f / 1.15a öncesi çözülen işlerde
 yeni skalerler (silinen eleman, Δt_min) yok, tabloda "—".
-- [ ] Eski işleri ham çıktılardan yeniden işleme (yeni skalerler için) —
-  istenirse ayrı adım
+- [x] Eski işleri ham çıktılardan yeniden işleme (yeni skalerler için) —
+  istenirse ayrı adım → 1.17g-5
 
 **1.17a — Crash senaryo şablonu `POST /crash/scenario`** — ✅ 2026-10-03
 Tek çağrıda: geometri şablonu (`crash_box_shell`; liste `CRASH_TEMPLATES`) →
@@ -1099,8 +1099,8 @@ silinen eleman sayısı; geçmiş listesinde çözülmüş koşuya ▶. Testler:
 20 ms, anim 0.5 ms → 41 kare, 1961 kabuk, 4.7 MB, ilk açılış 20 s; |u|max
 41.4 mm, plastik şekil değiştirme max 1.294 ön uçta (katlanma), son karede
 silinen yok. İş `b6374029…` (koşu #47).
-- [ ] Görüntüleyicide hazır görünüm (yan / üst / ön) ve impact bölgesine
-  yakınlaştırma yok — fare ile yapılıyor
+- [x] Görüntüleyicide hazır görünüm (yan / üst / ön) → 1.17g-2 (impact
+  bölgesine otomatik yakınlaştırma yok — fare ile)
 
 **1.17e — SAE J211 CFC kanal filtresi** — ✅ 2026-10-03
 `app/postprocess/cfc.py`: 4 kutuplu fazsız Butterworth (2 kutuplu ileri +
@@ -1162,19 +1162,42 @@ frontend +1. Koşular #51–#56.
 - [ ] Kabul kriterleri (oran bantları, enerji / hourglass eşikleri) — mühendis
 - [ ] Dikdörtgen kesitte C = (b+d)/2 ve formül geçerliliği — mühendis değerlendirmesi
 
+**1.17g — Temizlik + frontend eksikleri** — ✅ 2026-10-04 (kullanıcı gece
+"1.17'yi tamamen bitir, frontend eksiklerini tamamla" — alt adımlar ayrı commit)
+- g1 UI küçükleri: ağaçta bölge türü boyuttan (kenar / yüzey / nokta + adet),
+  iş bitince hub'ın eski "cycle 1" satırı gösterilmez, şema altyazısı 2D / 3D.
+- g2 Deforme şekil görüntüleyicide hazır görünümler +X −X +Y +Z İzo.
+- g3 Material adımında crash LAW36 eğri düzenleyici (kullanıcı malzemesi;
+  kütüphane salt okunur; PUT /materials/{id}/crash-curves) + Crash kartında
+  "eğriler malzemeden" (tab_curves boş → 1.14c2 malzeme eğrisi).
+- g4 Çözüm sonrası Radioss restart (*.rst) silinir — crash klasörünün ~%49'u
+  (847 MB'ın 414 MB'ı), restart desteği yok; `CRASH_KEEP_RST=1` korur. Eski
+  işler için kuru-koşulu `scripts/cleanup_crash_rst.py` (çalıştırılmadı: 97
+  dosya / 433 MB — karar kullanıcının).
+- g5 `scripts/reprocess_crash_jobs.py`: eski işler ham çıktıdan güncel
+  post-process ile; ilk seferde `scalars_prev` saklanır; dev'de 48 kaydın 33'ü
+  güncellendi (226 yeni skaler), ikinci koşu 0 değişiklik.
+- g6 Çok arayüzde TH sütun sırası doğrulandı (geometri 3928, kutu + plaka,
+  solid, 3 ms): A [kutu→plaka TYPE7, kutu self] → contact_1 86.349 kN /
+  6.743 N·s (1.12a tek temasla birebir), contact_2 0; B sıra ters → contact_2
+  86.349 / 6.743, contact_1 0. Başlıklar arayüz numarası + adıyla
+  ("contact_1_p0_on_p1"), arayüz-majör. İşler `7d9bd501…`, `d38d5df6…`.
+- g7 Crash panelinde "Hızlı senaryo" kartı: 1.17a `/crash/scenario` arayüzü
+  (L h b t, eleman, v0, süre, kızak kg → rijit gövde kutu_arka, CFC, malzeme)
+  — geometri yüklemeden koşu, ilerleme, bitince geçmiş yenilenir. Tarayıcıda
+  uçtan uca: koşu #60 (kızak 50 kg, 12 ms, CFC600) solved → geçmiş üstte →
+  grafikler. Gözlem: bu koşuda CFC600 tepe (122 kN) ham tepeden (120 kN)
+  büyük — varsayılan TH aralığı t_end/200 = 0.06 ms ham tepeyi kaba
+  örnekliyor (#50'de 0.01 ms ile 126.7) + Butterworth basamak aşımı; veri.
+Testler: backend 1059/1059 (+1 skip), frontend 164/164.
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
 parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
-*1.17 — Standart explicit ortam*
-- 1.17g Temizlik: çıktı dosyası saklama (iş başına ~95 MB; anim / rst ayarı),
-  eski işleri ham çıktıdan yeniden işleme, çok arayüzde th_to_csv sütun sırası
-  doğrulaması, UI küçükleri (ilerleme "cycle 1", 2D'de "3D mesh" altyazısı,
-  ağaçta kenar bölgeleri "yüzey"), Material adımında LAW36 eğri editörü +
-  Crash kartında "eğri: malzemeden".
-
+*1.17 — Standart explicit ortam* — ✅ tamam 2026-10-04 (b–g)
 *1.18 — Plaka–küre delinme örneği* (kullanıcı isteği 2026-10-03; 1.17b/c
 üzerine): iki parçalı plaka + küre şablonu, rijit küre, plaka köşe / kenar
 sabit, küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk mühendisin

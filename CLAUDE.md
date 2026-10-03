@@ -27,10 +27,11 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.17f tamam (2026-10-04): validasyon seti
-(1.17b–e: ek kütle / rijit gövde, bölge BC + hız, deforme şekil, CFC).** 1.10–1.16 bitti (temas, kabuk,
-malzeme + /FAIL, çıktı kartları, crash_runs geçmişi). Sırada **1.17g
-temizlik** → 1.18 plaka–küre →
+**FAZ 1 — Crash (OpenRadioss), 1.17 standart explicit ortam TAMAM (2026-10-04):
+ek kütle / rijit gövde, bölge BC + hız, deforme şekil, CFC, validasyon seti,
+temizlik + hızlı senaryo UI.** 1.10–1.16 bitti (temas, kabuk,
+malzeme + /FAIL, çıktı kartları, crash_runs geçmişi). Sırada **1.18 plaka–küre** (onay) →
+explicit şablon kataloğu →
 **ML en sonda** (1.19, ML tezgahında). Durability (CalculiX `/solve`, modal,
 DOE, surrogate) paralel ve dokunulmaz; `/solve` refaktör edilmez. Solver:
 OpenRadioss artık kapalı kaynak; donmuş AGPL ikilisi Docker imajında koşar
