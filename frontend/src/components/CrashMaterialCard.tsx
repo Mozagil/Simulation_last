@@ -54,6 +54,8 @@ export interface MatCardState {
   jcRhoCp: string;
   jcTr: string;
   tabCurves: TabCurveRow[];
+  /** 1.17g — LAW36 eğrileri istekte değil, atanan malzemeden (1.14c2) */
+  curvesFromMaterial: boolean;
   tabEpsT: string;
   tabEpsM: string;
   tabEpsF: string;
@@ -88,6 +90,7 @@ export function defaultMatCard(): MatCardState {
     jcRhoCp: "0",
     jcTr: "0",
     tabCurves: [newCurve()],
+    curvesFromMaterial: false,
     tabEpsT: "0",
     tabEpsM: "0",
     tabEpsF: "0",
@@ -153,7 +156,8 @@ export function matCardPayload(s: MatCardState, label = "Malzeme"): Partial<Cras
       jc_fsmooth: num(s.jcFsmooth, `${label} Fsmooth`),
       jc_fcut_hz: num(s.jcFcut, `${label} F_cut`),
       jc_chard: num(s.jcChard, `${label} Chard`),
-      tab_curves: s.tabCurves.map((c, i) => ({
+      // boş liste → backend parçaya atanmış malzemenin crash_curves'ünü kullanır
+      tab_curves: s.curvesFromMaterial ? [] : s.tabCurves.map((c, i) => ({
         eps_dot_per_s: num(c.rate, `${label} eğri ${i + 1} ε̇`),
         points: parseCurvePoints(c.points, `${label} eğri ${i + 1}`),
       })),
@@ -280,6 +284,17 @@ export default function CrashMaterialCard({
 
       {law === "tabulated" && (
         <>
+          <label className="material-check">
+            <input
+              type="checkbox"
+              checked={value.curvesFromMaterial}
+              disabled={disabled}
+              onChange={(e) => set({ curvesFromMaterial: e.target.checked })}
+            />
+            Eğriler malzemeden (3 · Material → Crash LAW36 eğrileri)
+          </label>
+          {!value.curvesFromMaterial && (
+          <>
           <div className="crash-mat-curves">
             {value.tabCurves.map((c, i) => (
               <div key={c.id} className="crash-mat-curve">
@@ -332,6 +347,8 @@ export default function CrashMaterialCard({
             Satır başına ε_p ve gerçek gerilme σ (MPa); ε_p kesin artan, eğriler ε̇ artan
             sırada. Excel'den iki sütun yapıştırılabilir.
           </p>
+          </>
+          )}
           <div className="mesh-grid">
             {field("tabEpsT", "Eps_t")}
             {field("tabEpsM", "Eps_m")}

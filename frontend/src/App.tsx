@@ -69,6 +69,7 @@ import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
+import MaterialCrashCurves from "./components/MaterialCrashCurves";
 import {
   fetchCorpusMembership,
   type SurrogatePredictResult,
@@ -4100,6 +4101,12 @@ function App() {
                     : "yok"}
                 </p>
               </div>
+            )}
+            {selectedMaterial && (
+              <MaterialCrashCurves
+                material={selectedMaterial}
+                onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
+              />
             )}
             <div className="material-action-row">
               <button

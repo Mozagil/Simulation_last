@@ -15,6 +15,8 @@ export interface Material {
   ultimate_strength: number;
   elongation: number | null;
   sn_curve: Record<string, unknown> | null;
+  /** 1.14c2 — LAW36 akma eğrileri (crash tab_curves biçimi) */
+  crash_curves?: { eps_dot_per_s: number; points: [number, number][] }[] | null;
   source: string;
   is_editable: boolean;
 }
@@ -133,6 +135,24 @@ export async function setMaterialSnCurve(
     throw new Error(`S-N güncellenemedi (HTTP ${response.status}).`);
   }
   const body = (await response.json()) as { material: Material };
+  return body.material;
+}
+
+/** 1.17g — LAW36 eğrileri (null = sil). Kütüphane malzemesi 403. */
+export async function setMaterialCrashCurves(
+  materialId: number,
+  curves: { eps_dot_per_s: number; points: [number, number][] }[] | null,
+): Promise<Material> {
+  const response = await fetch(`${API_BASE_URL}/materials/${materialId}/crash-curves`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ curves }),
+  });
+  const body = (await response.json().catch(() => null)) as { material?: Material; detail?: unknown } | null;
+  if (!response.ok || !body?.material) {
+    const d = body?.detail;
+    throw new Error(typeof d === "string" ? d : `Eğriler kaydedilemedi (HTTP ${response.status}).`);
+  }
   return body.material;
 }
 
