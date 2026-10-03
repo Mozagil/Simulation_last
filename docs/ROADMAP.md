@@ -1086,6 +1086,33 @@ geçilmez.
 sabit, küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk mühendisin
 (explicit süre maliyeti).
 
+*Explicit şablon kataloğu — 1.18 sonrası, 1.19'dan (ML) ÖNCE* (kullanıcı
+kararı 2026-10-03: "durability ile aynı mantık"). Her örnek durability
+şablonları gibi: parametrik `GeometryTemplate` (parametreler, bölgeler,
+karakteristik uzunluk) + crash senaryo varsayılanları (duvar / impaktör,
+kütle, bölge BC, hız, çıktılar — 1.17a deseni) + kendi doğrulama referansı
+(analitik ya da literatür; durability'deki `analytic` karşılığı) + daha sonra
+ML tezgahında şablon başına DOE / model. Problem tanımları açık literatür ve
+Altair Radioss Example Guide'dan (RD-E; Radioss ailesi) referans alınır, dosya
+kopyalanmaz. Durum: ✓ hazır · ◐ küçük ek altyapı · ✗ büyük yeni kabiliyet.
+- Otomotiv: (1) crash box eksenel ezilme ✓ [RD-E 1700]; (2) S-kiriş / ön kiriş
+  eğilmeli çarpma ◐ [RD-E 0300]; (3) direk (pole) yan çarpması ◐
+  (`/RWALL/CYL`); (4) tampon / kaput impaktörü (HIC) ◐ (rijit küre + CFC);
+  (5) düşme testi ◐ (`/GRAV` + zemin) [RD-E 0600]; (6) kapı intrüzyonu ◐
+  (zorlanmış hız, 1.17c)
+- Savunma: (7) plaka delinme ◐ (= 1.18) [RD-E 2600]; (8) Taylor çubuğu ◐;
+  (9) Hopkinson çubuğu ◐ [RD-E 0800]; (10) patlama yüklü plaka ◐ (zamana bağlı
+  basınç yükü); (11) kuş / yumuşak cisim ✗ (SPH) [RD-E 4900]; (12) mayın /
+  araç altı patlama ✗ (ALE, Faz 1 dışı)
+- İş makineleri: (13) ROPS (ISO 3471) ◐ kabin çerçevesi + yavaş itme + enerji;
+  (14) FOPS (ISO 3449) ◐ rijit cisim düşürme; (15) kepçe / bıçak taş darbesi ◐
+- Verifikasyon tabanı (1.17f ile ortak): dalga yayılımı [RD-E 1900], çekme
+  testi [RD-E 1100], kare plaka [RD-E 1800]
+- Ortak altyapı (katalogdan önce): silindirik / küresel rijit duvar, yerçekimi,
+  zamana bağlı basınç yükü, zorlanmış hız (1.17c), CFC (1.17e). Önerilen ilk
+  set (en az yeni altyapı): crash box, direk, düşme testi, plaka delinme,
+  Taylor çubuğu, ROPS. Öncelik ve sıra kullanıcının; ✗ olanlar ayrı faz.
+
 *1.19 — ML tezgahı entegrasyonu* (1.17 + 1.18 bittikten sonra): crash
 senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params →
 girdi × hedef), vekil model (`ml/crash/`, durability kodundan bağımsız), CV
