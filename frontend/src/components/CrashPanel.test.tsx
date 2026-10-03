@@ -7,6 +7,9 @@ vi.mock("../api/crash", () => ({
   postCrashSolve: vi.fn(),
   fetchCrashJob: vi.fn(),
   crashJobWsUrl: vi.fn(() => "ws://localhost/crash/jobs/j1/ws"),
+  fetchCrashRuns: vi.fn(() => Promise.resolve([])),
+  patchCrashRun: vi.fn(),
+  compareCrashRuns: vi.fn(() => Promise.resolve([])),
 }));
 
 import { fetchCrashJob, postCrashSolve } from "../api/crash";

@@ -4312,6 +4312,107 @@ p {
   background: var(--surface-2);
 }
 
+/* 1.16b — koşu geçmişi + karşılaştırma; dar panelde tablo kendi içinde kayar */
+.crash-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.crash-history-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.crash-run-list {
+  max-height: 300px;
+  margin: 4px 0 6px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-run-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.crash-run-row:last-child {
+  border-bottom: none;
+}
+
+.crash-run-main {
+  min-width: 0;
+}
+
+.crash-compare-table td:first-child,
+.crash-compare-table th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.crash-run-name {
+  display: block;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.crash-run-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-run-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.crash-run-status {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.crash-run-solved { color: var(--doe-ok); }
+.crash-run-failed { color: var(--doe-warn); }
+.crash-run-rad_only,
+.crash-run-pending { color: var(--muted); }
+
+.crash-run-excluded td {
+  opacity: 0.55;
+}
+
+.crash-run-exclude {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.crash-run-exclude:hover {
+  color: var(--doe-warn);
+}
+
+.crash-compare {
+  margin-top: 6px;
+}
+
+.crash-compare-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
 /* 1.12b — kuvvet–zaman grafiği: seri renkleri tema token'larından */
 .crash-force-card {
   margin-top: 10px;

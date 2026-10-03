@@ -161,6 +161,8 @@ export interface CrashSolveResponse {
   solver_ran: boolean;
   scalars: Record<string, number>;
   diagnostics?: CrashDiagnostics;
+  /** 1.16a — crash_runs kaydı (geometri yoksa null) */
+  run_id?: number | null;
 }
 
 /** 1.14f — solver listing'inden okunan veri (yorum yok). */
@@ -185,6 +187,27 @@ export interface CrashJobSnapshot {
   starter_url?: string;
   solver_ran?: boolean;
   diagnostics?: CrashDiagnostics;
+}
+
+/** 1.16 — crash koşu kaydı (crash_runs). */
+export interface CrashRunSummary {
+  id: number;
+  job_id: string;
+  geometry_id: number;
+  name: string | null;
+  created_at: string | null;
+  dimension: number | null;
+  t_end_ms: number | null;
+  status: string;
+  message: string | null;
+  solver_ran: boolean;
+  scalars: Record<string, number>;
+  excluded: boolean;
+  exclude_reason: string | null;
+}
+
+export interface CrashRunCompared extends CrashRunSummary {
+  curves: Record<string, number[]>;
 }
 
 function detailMessage(body: unknown, status: number): string {
@@ -226,6 +249,36 @@ export async function fetchCrashJob(jobId: string): Promise<CrashJobSnapshot> {
     throw new CrashApiError(detailMessage(payload, response.status));
   }
   return payload as CrashJobSnapshot;
+}
+
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as T;
+}
+
+/** geometryId null → tüm geometrilerin koşuları. */
+export async function fetchCrashRuns(geometryId: number | null): Promise<CrashRunSummary[]> {
+  const q = geometryId != null ? `?geometry_id=${geometryId}` : "";
+  return (await getJson<{ runs: CrashRunSummary[] }>(`${API_BASE_URL}/crash/runs${q}`)).runs;
+}
+
+export async function patchCrashRun(
+  id: number,
+  body: { name?: string | null; excluded?: boolean; exclude_reason?: string | null },
+): Promise<CrashRunSummary> {
+  return getJson<CrashRunSummary>(`${API_BASE_URL}/crash/runs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function compareCrashRuns(ids: number[]): Promise<CrashRunCompared[]> {
+  return (
+    await getJson<{ runs: CrashRunCompared[] }>(`${API_BASE_URL}/crash/runs/compare?ids=${ids.join(",")}`)
+  ).runs;
 }
 
 export function crashJobWsUrl(jobId: string): string {

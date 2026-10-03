@@ -988,12 +988,32 @@ backend 1016/1016 (+1 skip). Gerçek koşu `wait=false`: kayıt pending →
 solved, section_1_impulse_final 13.42 N·s; compare 38 ↔ 17 iki koşunun duvar
 + kesit kuvvetlerini döndürdü.
 
+**1.16b — Crash sekmesinde koşu geçmişi + karşılaştırma** — ✅ 2026-10-03
+`CrashHistory` (frontend), Crash panelinin altında: koşu listesi (seç | ad +
+#id · tarih · durum | duvar Fmax | dışla/geri al), geometri yoksa tüm
+geometriler (satırda geo id); dışlananlar varsayılan gizli, "Dışlananları
+göster" ile görünür; liste yeni iş / iş bitince yenilenir. En çok 6 koşu
+seçilip "Karşılaştır": eğri seçimi (*_force), "t üst (ms)" yalnız görünüm
+kırpma (boş = tümü), kuvvet grafiği her koşunun kendi zaman ekseniyle
+(`CrashForceChart` seri başına `time`), skaler tablosu (duvar Fmax / impuls,
+IE / KE son, enerji dengesi, Δt_min, eklenen kütle oranı, silinen eleman,
+kesit / temas Fmax; sütun başlığı #id). Dar panel (340 px): ilk tablo
+denemesi yatay taştı → satır listesi (grid) + 300 px dikey kaydırma.
+Dışlama gerekçesi UI'dan girilmiyor (API alanı var). Testler: geçmiş 3, panel
+mock'u güncellendi; frontend 148/148, tsc temiz. Ekran görüntüleri gerçek
+veriyle (38 koşu): #14 TH 0.02, #6 TH 0.002, #7 NODA/CST/0, #4 TENSSTRAIN
+silme; t ≤ 0.3 ms. Bulgu: #7'nin eklenen kütle oranı DB'de 0.362 idi —
+1.15a'daki oran hatası düzeltilmeden önce job.json'a yazılmış; o iş ham
+çıktılardan yeniden işlendi → 0.565. 1.14f / 1.15a öncesi çözülen işlerde
+yeni skalerler (silinen eleman, Δt_min) yok, tabloda "—".
+- [ ] Eski işleri ham çıktılardan yeniden işleme (yeni skalerler için) —
+  istenirse ayrı adım
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.16b Crash sekmesinde geçmiş listesi + karşılaştırma grafiği (UI)
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
   kodundan bağımsız)
 

@@ -11,6 +11,8 @@ export interface ForceSeries {
   key: string;
   label: string;
   values: number[];
+  /** 1.16b — karşılaştırmada her koşunun kendi zaman ekseni; yoksa ortak `time`. */
+  time?: number[];
 }
 
 const W = 400;
@@ -34,19 +36,28 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
   return [...contacts, ...wall, ...sections].filter((s) => s.values.length > 1);
 }
 
-export default function CrashForceChart({ time, series }: { time: number[]; series: ForceSeries[] }) {
-  if (time.length < 2 || series.length === 0) return null;
-  const tMin = time[0];
-  const tMax = time[time.length - 1];
+export default function CrashForceChart({
+  time,
+  series,
+  title = "Kuvvet · kN",
+}: {
+  time: number[];
+  series: ForceSeries[];
+  title?: string;
+}) {
+  const tOf = (s: ForceSeries) => s.time ?? time;
+  if (series.length === 0 || series.some((s) => tOf(s).length < 2)) return null;
+  const tMin = Math.min(...series.map((s) => tOf(s)[0]));
+  const tMax = Math.max(...series.map((s) => tOf(s)[tOf(s).length - 1]));
   const tSpan = tMax - tMin || 1;
   const fMax = Math.max(...series.flatMap((s) => s.values.map((v) => Math.abs(v))), 1e-9) * 1.1;
 
   const px = (t: number) => 8 + ((t - tMin) / tSpan) * (W - 16);
   const py = (f: number) => 8 + (1 - f / fMax) * (H - 16);
-  const path = (values: number[]) =>
-    values
-      .slice(0, time.length)
-      .map((v, i) => `${px(time[i]).toFixed(1)},${py(Math.abs(v)).toFixed(1)}`)
+  const path = (s: ForceSeries) =>
+    s.values
+      .slice(0, tOf(s).length)
+      .map((v, i) => `${px(tOf(s)[i]).toFixed(1)},${py(Math.abs(v)).toFixed(1)}`)
       .join(" ");
 
   const peaks = series.map((s) => {
@@ -54,13 +65,13 @@ export default function CrashForceChart({ time, series }: { time: number[]; seri
     s.values.forEach((v, j) => {
       if (Math.abs(v) > Math.abs(s.values[i])) i = j;
     });
-    return { ...s, peak: Math.abs(s.values[i]), at: time[i] };
+    return { ...s, peak: Math.abs(s.values[i]), at: tOf(s)[i] };
   });
 
   return (
     <figure className="cv-card crash-force-card">
       <span className="cv-card-head">
-        <strong>Kuvvet · kN</strong>
+        <strong>{title}</strong>
         <span className="crash-force-legend">
           {series.map((s, i) => (
             <span key={s.key} className="ds-sb crash-force-legend-item">
@@ -79,7 +90,7 @@ export default function CrashForceChart({ time, series }: { time: number[]; seri
       >
         <rect x="0.5" y="0.5" width={W - 1} height={H - 1} className="cv-frame" />
         {series.map((s, i) => (
-          <polyline key={s.key} points={path(s.values)} className={`crash-force-line crash-series-${i % 4}`} />
+          <polyline key={s.key} points={path(s)} className={`crash-force-line crash-series-${i % 4}`} />
         ))}
       </svg>
       <span className="cv-axis ds-sb">
