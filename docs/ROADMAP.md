@@ -862,8 +862,9 @@ durdurur, hata alan adıyla gösterilir ("Parça #1 c: …"). Öneri yok, 0 =
 Radioss varsayılanı. 1.14f sonuçları panelde: "Silinen eleman N · ilk ≤ … ms
 · son ≤ … ms" ve "Starter · hata ID … · uyarı ID …". Testler: kart 5, panel
 +3; frontend 140/140, tsc temiz. 340 px panelde DOM ölçümü: taşma yok, alanlar
-108 px (3 sütun), eğri alanı tam genişlik. Tarayıcı ekran görüntüsü alınamadı
-(eklenti zaman aşımı) — görsel kontrol kullanıcıda.
+108 px (3 sütun), eğri alanı tam genişlik. Ekran görüntüsünde (geometrisiz)
+LAW36 eğri kartı ve /FAIL bölümü kontrol edildi; parça "Ayrı" kartı yalnız
+testlerle (geometri yüklü değildi).
 
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
