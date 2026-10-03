@@ -308,6 +308,63 @@ export async function fetchCrashRun(runId: number): Promise<CrashRunDetail> {
   return getJson<CrashRunDetail>(`${API_BASE_URL}/crash/runs/${runId}`);
 }
 
+/** 1.17f — validasyon raporu (oranlar veri; kabul kriteri yok). */
+export interface CrashValidationRow {
+  quantity: string;
+  sim: number | null;
+  ref: number | null;
+  ref_label: string;
+  ratio: number | null;
+  alt_ref?: number | null;
+  alt_label?: string;
+}
+
+export interface CrashValidationMeshRow {
+  element_mm: number;
+  run_id: number;
+  wall_s: number;
+  crush_mm: number;
+  t_stop_ms: number;
+  ie_stop_j: number;
+  pm_energy_kn: number;
+  f_mean_kn: number;
+  f_peak_kn: number | null;
+  ratio_wa: number;
+  ratio_aj: number;
+  energy_balance_rel: number | null;
+  hourglass_ratio: number | null;
+}
+
+export interface CrashValidationCase {
+  id: string;
+  title: string;
+  run_id?: number;
+  rows?: CrashValidationRow[];
+  energy_balance_rel?: number | null;
+  hourglass_ratio?: number | null;
+  references?: { wierzbicki_abramowicz_1983_kn: number; abramowicz_jones_1984_kn: number; formula: string };
+  mesh?: CrashValidationMeshRow[];
+}
+
+export interface CrashValidationReport {
+  generated_at: string;
+  setup: {
+    template: string;
+    L_mm: number;
+    h_mm: number;
+    b_mm: number;
+    t_mm: number;
+    material: string;
+    v0_m_s: number;
+    note: string;
+  };
+  cases: CrashValidationCase[];
+}
+
+export async function fetchCrashValidation(): Promise<CrashValidationReport> {
+  return getJson<CrashValidationReport>(`${API_BASE_URL}/crash/validation`);
+}
+
 export async function fetchCrashAnimation(runId: number): Promise<CrashAnimation> {
   return getJson<CrashAnimation>(`${API_BASE_URL}/crash/runs/${runId}/animation`);
 }

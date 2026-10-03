@@ -4413,6 +4413,21 @@ p {
   gap: 8px;
 }
 
+/* 1.17f — validasyon raporu */
+.crash-validation {
+  margin-top: 8px;
+}
+
+.crash-validation-case {
+  margin: 6px 0 10px;
+}
+
+.crash-validation-title {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
 /* 1.17e2 — koşu detay grafikleri */
 .crash-run-charts {
   margin: 6px 0;

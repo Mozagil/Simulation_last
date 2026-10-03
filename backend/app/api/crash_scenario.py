@@ -11,6 +11,7 @@ verir; burada hepsi açık girdi, varsayılanlar 1.13–1.16 elle koşulan crash
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -185,3 +186,17 @@ def crash_scenario(
         },
         "crash": result,
     }
+
+
+#: 1.17f validasyon raporu (scripts/crash_validation.py üretir; repo docs/validation).
+VALIDATION_REPORT = Path(__file__).resolve().parents[3] / "docs" / "validation" / "crash_validation.json"
+
+
+@router.get("/validation")
+def crash_validation_report() -> dict[str, Any]:
+    """Son validasyon raporu (veri; kabul kriteri yok)."""
+    import json
+
+    if not VALIDATION_REPORT.is_file():
+        raise HTTPException(status_code=404, detail="Validasyon raporu yok (scripts/crash_validation.py).")
+    return json.loads(VALIDATION_REPORT.read_text(encoding="utf-8"))

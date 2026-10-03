@@ -1144,6 +1144,24 @@ listesi tüm eğriler, ivmede eksen "İvme · g". Testler: frontend +3, backend
 kesit x=150 kuvveti duvar kuvvetini izliyor (kızak yavaşlama kuvveti); #49
 ivme ham 120 464 g / CFC1000 1 931 g (ilk 0.3 ms).
 
+**1.17f — Validasyon seti (veri; kabul kriteri yok)** — ✅ 2026-10-04
+Rapor `docs/validation/crash_validation.md` (+ `.json`), üretici
+`backend/scripts/crash_validation.py` (çalışan backend'e senaryo koşuları),
+saf hesaplar `app/postprocess/crash_validation.py` (dalga hızı, ρcvA, 2L/c,
+kare tüp Pm formülleri, temas penceresi, plato, kızak ezilmesi δ = ∫(v0 −
+I/M) dt — mesh'ten bağımsız). `GET /crash/validation` + Crash panelinde
+"Validasyon (1.17f)" kartı (oranlar 3 hane; geçti/kaldı yok). Sonuçlar
+(crash_box_shell 300×50×40, t 3, S235, 10 m/s): V1 elastik — plato 204.54
+/ ρ·c₀·v·A 204.63 kN (0.9995; levha hızıyla 0.954), temas 0.1182 / 2L/c₀
+0.1160 ms (1.019), impuls / 2Mv0 0.966. V2 elasto-plastik — plato 118.89 /
+σy·A 118.44 kN (1.004), impuls 0.974. V3 kızak 50 kg (test) — Pm = IE/δ
+5 / 4 / 3 / 2.5 mm: 59.53 / 59.01 / 56.36 / 55.97 kN (3→2.5 mm %0.7), W&A
+1983 48.73 kN (oran 1.15–1.22), A&J 1984 66.57 kN (0.84–0.89); enerji dengesi
+≤ %0.51 (V1), ≤ %0.18 (V3); 2.5 mm koşusu 228 s. Testler: backend +5,
+frontend +1. Koşular #51–#56.
+- [ ] Kabul kriterleri (oran bantları, enerji / hourglass eşikleri) — mühendis
+- [ ] Dikdörtgen kesitte C = (b+d)/2 ve formül geçerliliği — mühendis değerlendirmesi
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1151,9 +1169,6 @@ parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
 geçilmez.
 
 *1.17 — Standart explicit ortam*
-- 1.17f Validasyon seti: enerji / momentum dengesi; kare tüp ortalama ezilme
-  kuvveti (analitik formüllerle karşılaştırma; 1.17b kızak kütlesi şart);
-  mesh yakınsaması (5 / 4 / 3 mm). Kabul kriterleri mühendisin.
 - 1.17g Temizlik: çıktı dosyası saklama (iş başına ~95 MB; anim / rst ayarı),
   eski işleri ham çıktıdan yeniden işleme, çok arayüzde th_to_csv sütun sırası
   doğrulaması, UI küçükleri (ilerleme "cycle 1", 2D'de "3D mesh" altyazısı,

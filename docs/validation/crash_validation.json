@@ -1,0 +1,165 @@
+{
+ "generated_at": "2026-10-03T21:09:19.545656+00:00",
+ "setup": {
+  "template": "crash_box_shell",
+  "L_mm": 300.0,
+  "h_mm": 50.0,
+  "b_mm": 40.0,
+  "t_mm": 3.0,
+  "material": "S235 (ρ 7850, E 210 GPa, ν 0.3, σy 235 MPa)",
+  "v0_m_s": 10.0,
+  "area_mm2": 504.0,
+  "note": "Kabul kriteri yok — oranlar veri; eşik mühendisin."
+ },
+ "cases": [
+  {
+   "id": "V1",
+   "title": "Elastik kutu rijit duvara (LAW1)",
+   "run_id": 51,
+   "wall_s": 8.422780275344849,
+   "rows": [
+    {
+     "quantity": "Plato kuvveti (kN)",
+     "sim": 204.5375164033584,
+     "ref": 204.63268947067084,
+     "ref_label": "ρ·c₀·v·A (çubuk)",
+     "ratio": 0.9995349078020789,
+     "alt_ref": 214.5133454697292,
+     "alt_label": "ρ·c_p·v·A (levha)"
+    },
+    {
+     "quantity": "Temas süresi (ms)",
+     "sim": 0.1182372,
+     "ref": 0.11600492600378165,
+     "ref_label": "2L/c₀",
+     "ratio": 1.0192429241853538,
+     "alt_ref": 0.11066164647247934,
+     "alt_label": "2L/c_p"
+    },
+    {
+     "quantity": "Duvar impulsu (N·s)",
+     "sim": 22.93398,
+     "ref": 23.740000000000002,
+     "ref_label": "2·M·v0 (elastik geri sekme)",
+     "ratio": 0.9660480202190395
+    }
+   ],
+   "energy_balance_rel": 0.00512262731956056,
+   "hourglass_ratio": 0.08415737609696017,
+   "timestep_min_ms": 0.0005393,
+   "mass_model_kg": 1.187
+  },
+  {
+   "id": "V2",
+   "title": "Elasto-plastik kutu rijit duvara (LAW2, kısa)",
+   "run_id": 52,
+   "wall_s": 10.949809312820435,
+   "rows": [
+    {
+     "quantity": "Plato kuvveti (kN)",
+     "sim": 118.88581731044192,
+     "ref": 118.44,
+     "ref_label": "σy·A",
+     "ratio": 1.0037640772580372
+    },
+    {
+     "quantity": "Duvar impulsu (N·s)",
+     "sim": 14.38706,
+     "ref": 14.77829499638534,
+     "ref_label": "M·(v0 + v_son), v_son = √(2·KE_son/M)",
+     "ratio": 0.9735263779427171
+    },
+    {
+     "quantity": "Temas süresi (ms)",
+     "sim": 0.1241852,
+     "ref": null,
+     "ref_label": "— (plastik dalga; analitik yok)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.0006745887186242747,
+   "hourglass_ratio": 0.0008103727350796043,
+   "timestep_min_ms": 0.0005396,
+   "mass_model_kg": 1.187
+  },
+  {
+   "id": "V3",
+   "title": "Kızaklı eksenel ezilme (50 kg test kütlesi) + mesh yakınsaması",
+   "references": {
+    "wierzbicki_abramowicz_1983_kn": 48.73163049626466,
+    "abramowicz_jones_1984_kn": 66.57270860682179,
+    "formula": "Pm = k·σ0·t^(5/3)·C^(1/3), k = 9.56 (W&A 1983) | 13.06 (A&J 1984), σ0 = σy, C = (47+37)/2 mm"
+   },
+   "mesh": [
+    {
+     "element_mm": 5.0,
+     "run_id": 53,
+     "wall_s": 38.732181787490845,
+     "crush_mm": 41.07431472176216,
+     "t_stop_ms": 8.533036164141937,
+     "ie_stop_j": 2444.97,
+     "pm_energy_kn": 59.52552140095952,
+     "f_mean_kn": 60.02930242632849,
+     "f_peak_kn": 126.68948568276248,
+     "ratio_wa": 1.2214966089739647,
+     "ratio_aj": 0.8941430001371442,
+     "energy_balance_rel": 0.0003832885152298061,
+     "hourglass_ratio": 0.046208672036767366,
+     "timestep_min_ms": 0.0002236,
+     "mass_model_kg": 51.19
+    },
+    {
+     "element_mm": 4.0,
+     "run_id": 54,
+     "wall_s": 83.06984829902649,
+     "crush_mm": 41.57204177503182,
+     "t_stop_ms": 8.355151772912802,
+     "ie_stop_j": 2453.255,
+     "pm_energy_kn": 59.012136408306645,
+     "f_mean_kn": 61.30740039122139,
+     "f_peak_kn": 127.26714030728309,
+     "ratio_wa": 1.210961665089987,
+     "ratio_aj": 0.8864313566814915,
+     "energy_balance_rel": 0.00036804201973268934,
+     "hourglass_ratio": 0.04292621255827173,
+     "timestep_min_ms": 0.0001377,
+     "mass_model_kg": 51.19
+    },
+    {
+     "element_mm": 3.0,
+     "run_id": 55,
+     "wall_s": 166.63726449012756,
+     "crush_mm": 43.75563714251351,
+     "t_stop_ms": 8.730614242244013,
+     "ie_stop_j": 2465.902,
+     "pm_energy_kn": 56.35621284563812,
+     "f_mean_kn": 58.66312178941988,
+     "f_peak_kn": 127.35547096109869,
+     "ratio_wa": 1.1564606452057435,
+     "ratio_aj": 0.84653627627618,
+     "energy_balance_rel": 0.0002975535093194595,
+     "hourglass_ratio": 0.03759707202959996,
+     "timestep_min_ms": 6.882e-05,
+     "mass_model_kg": 51.19
+    },
+    {
+     "element_mm": 2.5,
+     "run_id": 56,
+     "wall_s": 228.26002955436707,
+     "crush_mm": 43.949752380063686,
+     "t_stop_ms": 9.414675067524117,
+     "ie_stop_j": 2459.681,
+     "pm_energy_kn": 55.96575331595613,
+     "f_mean_kn": 54.43619965721941,
+     "f_peak_kn": 127.05917691297601,
+     "ratio_wa": 1.1484481997836287,
+     "ratio_aj": 0.8406711171463623,
+     "energy_balance_rel": 0.0018497200031829246,
+     "hourglass_ratio": 0.03875422333705849,
+     "timestep_min_ms": 7.583e-05,
+     "mass_model_kg": 51.19
+    }
+   ]
+  }
+ ]
+}

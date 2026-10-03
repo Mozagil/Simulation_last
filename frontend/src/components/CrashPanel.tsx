@@ -14,6 +14,7 @@ import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } 
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashHistory from "./CrashHistory";
+import CrashValidation from "./CrashValidation";
 import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
@@ -752,6 +753,7 @@ export default function CrashPanel({
       )}
 
       <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}`} />
+      <CrashValidation />
     </div>
   );
 }
