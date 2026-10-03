@@ -3113,7 +3113,10 @@ function App() {
         {physicalGroups.map((g) => (
           <div className="model-tree-row model-tree-depth-2" key={g.id}>
             <span className="model-tree-leaf">{g.name}</span>
-            <span className="model-tree-value">yüzey</span>
+            {/* 1.17g — bölge türü boyuttan (kenar bölgeleri "yüzey" görünüyordu) */}
+            <span className="model-tree-value">
+              {g.entity_tags.length} {["nokta", "kenar", "yüzey", "hacim"][g.dim] ?? "varlık"}
+            </span>
           </div>
         ))}
         <div className="model-tree-row model-tree-depth-1">

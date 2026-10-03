@@ -56,7 +56,7 @@ function RigidWallSchematic() {
         <line x1="160" y1="92" x2="160" y2="116" className="template-schematic-dim" />
       </svg>
       <figcaption className="crash-schematic-caption">
-        Rigid wall: yüklenen 3D mesh + sonsuz düzlem. 0° = duvara dik (−n).
+        Rigid wall: yüklenen mesh (3D solid ya da 2D kabuk) + sonsuz düzlem. 0° = duvara dik (−n).
       </figcaption>
     </figure>
   );

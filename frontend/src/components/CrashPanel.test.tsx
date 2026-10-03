@@ -374,4 +374,16 @@ describe("CrashPanel", () => {
     const peaks = await screen.findAllByTestId("crash-cfc-peak");
     expect(peaks.map((p) => p.textContent)).toEqual(["rwall_force_max CFC600 101.2"]);
   });
+  it("1.17g: iş bitince eski cycle satırı gösterilmez", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j14", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: false, scalars: {},
+    });
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "j14", status: "solved", message: "bitti", cycle: 1, time_ms: 0 });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    expect(await screen.findByText(/solved · bitti/)).toBeInTheDocument();
+    expect(screen.queryByText(/cycle 1/)).not.toBeInTheDocument();
+  });
 });

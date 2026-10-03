@@ -684,7 +684,8 @@ export default function CrashPanel({
               <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
             </div>
           )}
-          {snapshot?.cycle != null && (
+          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
+          {polling && snapshot?.cycle != null && (
             <p className="material-assign-hint">
               cycle {snapshot.cycle}
               {snapshot.time_ms != null ? ` · t=${fmt(snapshot.time_ms)} ms` : ""} · %{fmt(percent)}
