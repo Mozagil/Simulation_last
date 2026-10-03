@@ -1009,13 +1009,42 @@ yeni skalerler (silinen eleman, Δt_min) yok, tabloda "—".
 - [ ] Eski işleri ham çıktılardan yeniden işleme (yeni skalerler için) —
   istenirse ayrı adım
 
+**1.17a — Crash senaryo şablonu `POST /crash/scenario`** — ✅ 2026-10-03
+Tek çağrıda: geometri şablonu (`crash_box_shell`; liste `CRASH_TEMPLATES`) →
+2D mesh (varsayılan quad 5 mm) → malzeme ataması (material_id ya da adı,
+varsayılan S235) → /crash/solve (parça 0 hareketli, kabuk kalınlığı = istek ya
+da şablonun wall'u; bariyer hız / açı; duvar istek ya da şablondan: ön uç x = 0
+kesit merkezi, normal +x; model varsayılan LAW2 σy malzemeden; engine / th /
+kesit / temas olduğu gibi). Yeni çözücü mantığı yok — mevcut uç fonksiyonları
+sırayla (DOE runner deseni); kayıt crash_runs'a /crash/solve'dan. Yanıtta
+çözülmüş senaryo (şablon parametreleri varsayılanlarla birleşik). Hangi
+parametrenin değişeceği DOE'de (1.17b) mühendisin. 3 test; backend 1019/1019
+(+1 skip). Gerçek koşular: (1) varsayılan senaryo + TH 0.002 + kesit x=20 /
+x=150 → yeni geometri 3934, sonuç elle kurulan 3931 koşusuyla (905f7376)
+BİREBİR aynı: IE_son 55.61423 J, duvar tepe 130.9434 kN, impuls 14.38706 N·s,
+kesit impulsu 13.4208 / 7.4786 N·s. (2) L 250, t 2, 15 m/s, eleman 4 mm →
+kütle 0.675 kg (elle: çevre 172 × 250 × 2 mm × 7.85e-6 = 0.675), KE 75.95 J
+(½·0.675·15²), deck Thick 2, /INIVEL −15; Δt_min 0.00061 ms (3931'in 5 mm
+mesh'i 0.00054 — o mesh'te x = 4.828 / 4.829 gibi kısa kenarlar var).
+Bariyer modelleri (Ansys/LSTC IIHS MDB) araştırıldı: ftp.lstc.com 401 (kimlik
+ister), lisans belirtilmemiş, proje kuralı (Ansys/LS-DYNA yok) → kullanılmadı.
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability
-  kodundan bağımsız)
+- 1.17b Crash DOE (LHS, sıralı arka plan koşusu, devam) — DB şeması, ayrı onay;
+  değişken parametreler + aralıklar mühendisin
+- 1.17c Korpus: crash_runs (+ geometri template_params) → girdi × hedef; hedef
+  tanımları (ezilme mesafesi, ortalama kuvvet …) mühendisten
+- 1.17d Vekil model (`ml/crash/`, durability kodundan bağımsız), CV metrikleri,
+  predict
+- 1.17e UI: DOE başlatma / ilerleme + tahmin paneli
+- 1.18 Plaka–küre delinme örneği (kullanıcı isteği 2026-10-03, 1.17 sonrası):
+  iki parçalı plaka + küre şablonu, rijit küre (/RBODY), bölgeye sınır koşulu
+  (köşe / kenar sabit), küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk
+  mühendisin (explicit süre maliyeti).
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 
