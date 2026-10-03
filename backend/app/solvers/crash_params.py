@@ -469,6 +469,8 @@ TH_VARS: dict[str, tuple[str, ...]] = {
     # yazmıyor (1.15b koşusu: RWALL FNX FNY FNZ FN → 3 sütun); yalnız bileşenler.
     "rwall": ("FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"),
     "inter": ("FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"),
+    # 1.15c — th_sectio r110; bileşenler + moment (sütun yazdığı koşuyla doğrulandı)
+    "sect": ("FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ", "MX", "MY", "MZ"),
 }
 
 
@@ -499,12 +501,17 @@ class CrashThParams(BaseModel):
         default_factory=lambda: CrashThGroup(vars=["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"])
     )
     part: CrashThGroup = Field(default_factory=lambda: CrashThGroup(vars=["IE", "KE"]))
+    # Kesitte FN/FT ayrımı Radioss'un kesit normaline bağlı (1.15c: x yönlü
+    # eksenel kuvvet FTX'te çıktı); toplam = FN + FT, bu yüzden ikisi de varsayılan.
+    sect: CrashThGroup = Field(
+        default_factory=lambda: CrashThGroup(vars=["FNX", "FNY", "FNZ", "FTX", "FTY", "FTZ"])
+    )
     node_ids: list[int] = Field(default_factory=list, description="/TH/NODE düğümleri (mesh id)")
     node_vars: list[str] = Field(default_factory=lambda: ["AX", "AY", "AZ"])
 
     @model_validator(mode="after")
     def _ok(self) -> "CrashThParams":
-        for kind in ("rwall", "inter", "part"):
+        for kind in ("rwall", "inter", "part", "sect"):
             g: CrashThGroup = getattr(self, kind)
             g.vars = _th_vars_ok(kind, g.vars)
             if g.enabled and not g.vars:
@@ -514,4 +521,34 @@ class CrashThParams(BaseModel):
             raise ValueError("/TH/NODE düğümleri için en az bir değişken gerekli.")
         if any(n <= 0 for n in self.node_ids) or len(set(self.node_ids)) != len(self.node_ids):
             raise ValueError("node_ids pozitif ve tekil olmalı.")
+        return self
+
+
+class CrashSectionParams(BaseModel):
+    """/SECT/PARAL (1.15c, hm_cfg radioss110): paralelkenar kesit M, M1, M2
+    (mm); seçili parçaların kesitten geçen elemanları. N1–N3 = 0 yazılır (yerel
+    eksen yok). FN*/FT* ayrımında Radioss'un kullandığı normal (M1−M)×(M2−M)
+    DEĞİL — x = sabit kesitte x kuvveti FTX'te çıktı; global toplam FN + FT.
+    Iframe (moment merkezi): 10 global eksen C0, 11 kesit geometrik merkezi,
+    12 kesit ağırlık merkezi, 13 (0,0,0)."""
+
+    name: str = Field(default="section", min_length=1, max_length=60)
+    origin: tuple[float, float, float]
+    corner1: tuple[float, float, float]
+    corner2: tuple[float, float, float]
+    parts: list[int] = Field(default_factory=list, description="Boş = tüm parçalar")
+    iframe: int = Field(default=10)
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashSectionParams":
+        for name in ("origin", "corner1", "corner2"):
+            for v in getattr(self, name):
+                _finite(v, name)
+        if self.iframe not in (10, 11, 12, 13):
+            raise ValueError("iframe 10, 11, 12 veya 13 olmalı.")
+        a = [c - o for c, o in zip(self.corner1, self.origin)]
+        b = [c - o for c, o in zip(self.corner2, self.origin)]
+        n = (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+        if _norm(n) < 1e-9:
+            raise ValueError(f"Kesit '{self.name}': M, M1, M2 doğrusal (alan sıfır).")
         return self

@@ -27,6 +27,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
     CrashModelParams,
+    CrashSectionParams,
     CrashThParams,
 )
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
@@ -94,6 +95,9 @@ class CrashSolveRequest(BaseModel):
     th: CrashThParams = Field(
         default_factory=CrashThParams,
         description="/TH grupları + değişkenleri (1.15b); boş = eski deck",
+    )
+    sections: list[CrashSectionParams] = Field(
+        default_factory=list, description="/SECT/PARAL kesitleri (1.15c); TH th.sect"
     )
 
     @field_validator("scenario")
@@ -266,6 +270,7 @@ def crash_solve(
                 "t_end_ms": body.t_end_ms,
                 "engine": body.engine.model_dump(),
                 "th": body.th.model_dump(),
+                "sections": [s.model_dump() for s in body.sections],
                 "th_nodes": body.th_nodes,
                 "title": (body.name or "crash")[:80],
                 "model": body.model.model_dump(),
@@ -323,6 +328,7 @@ def crash_solve(
         "use_rigid_wall": body.use_rigid_wall,
         "engine": body.engine.model_dump(),
         "th": body.th.model_dump(),
+        "sections": [s.model_dump() for s in body.sections],
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

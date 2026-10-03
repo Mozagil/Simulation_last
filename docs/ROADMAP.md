@@ -930,12 +930,32 @@ DZ VX AX) → hepsi adlandı; arka düğüm 2: VX₀ = −10 mm/ms, geri sekme, 
 ivme (filtre yok) → acc_peak 120 464 g — veri; düğüm/filtre seçimi mühendisin.
 İşler `ddc643c5…`, `b1b05ef6…`, `819c80a1…`.
 
+**1.15c — `/SECT/PARAL` kesit kuvveti** — ✅ 2026-10-03
+API `sections`: [{name, origin M, corner1 M1, corner2 M2 (mm), parts (boş =
+tümü), iframe ∈ {10 global C0, 11 kesit geometrik merkezi, 12 kesit ağırlık
+merkezi, 13 (0,0,0)}}]. Kart hm_cfg radioss110 sect_paral (N1–N3 = 0, ISAVE 0,
+dosya yok); eleman grupları /GRBRIC|GRSHEL|GRSH3N/PART (kimlik 8000 + 10·k +
+tür). TH: `th.sect` (FNX…FTZ, MX MY MZ) → /TH/SECTIO/5; varsayılan FN* + FT*.
+Bulgu (tek değişkenli koşularla doğrulandı): x = sabit kesitte x yönlü kuvvet
+FTX'te, FN* sıfır — Radioss'un FN/FT ayrımındaki normal (M1−M)×(M2−M) değil
+(N1–N3 = 0 iken; kural belirlenmedi). Global bileşen ayrımdan bağımsız:
+F = FN + FT → `section_<k>_force` (bileşen dI/dt, bileşke) ve
+`section_<k>_impulse`; skaler `section_<k>_force_max`, `_impulse_final`.
+Kesit TH'si RWALL gibi birikimli impuls. 8 test; backend 1012/1012 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, 10 m/s, TH 0.002 ms; kesitler x = 20 ve
+x = 150): starter 0 hata, kesit 1'de 38 düğüm / 40 kabuk; impuls x = 20: 13.42
+N·s (kesit arkasındaki kütle 280/300 · duvar impulsu 14.39 = 13.43), x = 150:
+7.48 N·s (150/300 · 14.39 = 7.19, %4); tepe kesit kuvveti 123.9 / 117.5 kN
+(duvar 130.9). Varsayılan TH (FN*+FT*) ile 9 değişkenli koşu aynı sonuç.
+İşler `ffeda999…`, `3a08ae25…` (yalnız FTX), `9bae2dbe…` (yalnız FNX),
+`905f7376…`.
+- [ ] Kesit normali / yerel eksen (N1–N3 düğümleri) — FN/FT ayrımı gerekiyorsa
+
 **Sonraki mikro-adımlar (her biri ayrı onay):**
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Material adımında LAW36 eğri editörü (kütüphane `crash_curves`; 1.14e eğri
   kartı yeniden kullanılır) + Crash kartında "eğri: malzemeden" seçeneği
   (şu an UI her zaman istekte eğri gönderir)
-- 1.15c `/SECT` kesit kuvveti kartları
 - 1.15d Crash sekmesinde engine / çıktı UI'ı
 - 1.16 Crash run'larının kendi tablosuna kaydı, geçmiş ve karşılaştırma
 - 1.17 Crash şablonu + DOE + korpus + vekil model (`ml/crash/`, durability

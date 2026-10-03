@@ -33,6 +33,7 @@ from app.solvers.crash_params import (
     CrashContactParams,
     CrashEngineParams,
     CrashModelParams,
+    CrashSectionParams,
     CrashThParams,
     parse_tab_curves,
 )
@@ -524,6 +525,9 @@ def _contact_cards(
     return lines
 
 
+_SECT_GR_BASE = 8000
+
+
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
     title = str(params.get("title") or "crash")[:80]
     nodes = params.get("nodes") or []
@@ -782,6 +786,57 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         lines += ["/TH/NODE/4", "th_nodes", *th_vars(th.node_vars)]
         lines += [f"{_i(n)}{_i(0)}n{n}" for n in th_node_ids]
         th_spec.append({"kind": "node", "title": "th_nodes", "objects": th_node_ids, "vars": th.node_vars})
+
+    # 1.15c — /SECT/PARAL kesitleri + eleman grupları (/GRSHEL, /GRSH3N, /GRBRIC
+    # PART); grup kimlikleri _SECT_GR_BASE + 10·k + tür, diğer gruplarla çakışmaz.
+    try:
+        sections = [CrashSectionParams.model_validate(r) for r in params.get("sections") or []]
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz kesit: {exc}") from exc
+    shell_pids = {element_parts.get(int(el[0]), 0) for el in shells}
+    sh3n_pids = {element_parts.get(int(el[0]), 0) for el in sh3n}
+    solid_pids = {element_parts.get(int(el[0]), 0) for el in list(tets) + list(bricks)}
+    for k, sec in enumerate(sections, start=1):
+        pids = sec.parts or list(part_ids)
+        unknown = [p for p in pids if p not in part_ids]
+        if unknown:
+            raise SolverError(f"Kesit '{sec.name}': parça mesh'te yok: {unknown}")
+        gids = {}
+        for kind, card, have in (
+            ("bric", "/GRBRIC/PART", solid_pids),
+            ("shel", "/GRSHEL/PART", shell_pids),
+            ("sh3n", "/GRSH3N/PART", sh3n_pids),
+        ):
+            sel = [p for p in pids if p in have]
+            if not sel:
+                gids[kind] = 0
+                continue
+            gid = _SECT_GR_BASE + 10 * k + len(gids)
+            gids[kind] = gid
+            lines += [f"{card}/{gid}", f"sect{k}_{kind}"]
+            rids = [_rid(p) for p in sel]
+            for i in range(0, len(rids), 10):
+                lines.append("".join(_i(v) for v in rids[i : i + 10]))
+        # hm_cfg sect_paral r110: N1 N2 N3 · ISAVE · Δt α; dosya adı; grbric _
+        # grshel grtrus grbeam grsprg grtria Niter _ Iframe; M; M1; M2.
+        lines += [
+            f"/SECT/PARAL/{k}",
+            sec.name,
+            f"{_i(0)}{_i(0)}{_i(0)}{'':10}{_i(0)}{'':10}{_f(0.0)}{_f(0.0)}",
+            "",
+            f"{_i(gids['bric'])}{'':10}{_i(gids['shel'])}{_i(0)}{_i(0)}{_i(0)}{_i(gids['sh3n'])}"
+            f"{_i(0)}{'':10}{_i(sec.iframe)}",
+            "".join(_f(v) for v in sec.origin),
+            "".join(_f(v) for v in sec.corner1),
+            "".join(_f(v) for v in sec.corner2),
+        ]
+    if sections and th.sect.enabled:
+        lines += ["/TH/SECTIO/5", "sect_th", *th_vars(th.sect.vars)]
+        ids = list(range(1, len(sections) + 1))
+        for i in range(0, len(ids), 10):
+            lines.append("".join(_i(v) for v in ids[i : i + 10]))
+        th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
+                        "names": [s.name for s in sections], "vars": th.sect.vars})
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu

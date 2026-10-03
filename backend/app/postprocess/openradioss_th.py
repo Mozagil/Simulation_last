@@ -392,7 +392,11 @@ def named_th_curves(
         k = 0
         for idx, obj in enumerate(objs, start=1):
             for v in names:
-                key = {"rwall": f"th_rwall_{v}", "inter": f"th_inter_{idx}_{v}"}.get(kind, f"th_node_{obj}_{v}")
+                key = {
+                    "rwall": f"th_rwall_{v}",
+                    "inter": f"th_inter_{idx}_{v}",
+                    "sect": f"th_sect_{idx}_{v}",
+                }.get(kind, f"th_node_{obj}_{v}")
                 out[key] = cols[gcols[k]]
                 k += 1
     return out, unmapped
@@ -488,6 +492,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
 
     time_s = _time_to_seconds(time, time_header) if time else []
     scalars: dict[str, float] = dict(diag_scalars)
+    curves_extra: dict[str, list[float]] = {}
     if ie:
         scalars["internal_energy_final"] = float(ie[-1])
         scalars["internal_energy_max"] = float(max(ie))
@@ -507,6 +512,21 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
         if fn:
             scalars[f"contact_{k}_force_max"] = float(max(fn))
             scalars[f"contact_{k}_impulse_final"] = float(imp[-1])
+    # 1.15c — kesit: TH birikimli impuls (RWALL gibi); global bileşen = FN + FT
+    # (normal ayrımından bağımsız). Altısı da seçiliyse kuvvet = bileşen dI/dt.
+    k = 1
+    while f"th_sect_{k}_FNX" in named or f"th_sect_{k}_FTX" in named:
+        comps = []
+        for ax in ("X", "Y", "Z"):
+            fn, ft = named.get(f"th_sect_{k}_FN{ax}"), named.get(f"th_sect_{k}_FT{ax}")
+            comps.append([a + b for a, b in zip(fn, ft)] if fn and ft else None)
+        if all(c is not None for c in comps) and time:
+            sf, si = impulse_components_to_force(time, comps)
+            curves_extra[f"section_{k}_force"] = sf
+            curves_extra[f"section_{k}_impulse"] = si
+            scalars[f"section_{k}_force_max"] = float(max(sf)) if sf else 0.0
+            scalars[f"section_{k}_impulse_final"] = float(si[-1]) if si else 0.0
+        k += 1
     if acc_g and time_s:
         scalars["acc_peak_g"] = float(max(abs(v) for v in acc_g))
         scalars["hic15"] = hic15(time_s, acc_g)
@@ -529,6 +549,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
             curves[f"contact_{k}_impulse"] = imp
 
     curves.update(named)
+    curves.update(curves_extra)
     if unmapped:
         diag["th_unmapped_groups"] = unmapped
     raw = csv_path or out_path or work_dir
