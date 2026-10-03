@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -122,7 +123,7 @@ def compare_crash_runs(
     ids: str = Query(..., description="Virgülle koşu kimlikleri, örn. 3,5,9"),
     curves: str | None = Query(
         default=None,
-        description="Virgülle eğri adları; boş = *_force eğrileri (duvar, temas, kesit)",
+        description="Virgülle eğri adları; boş = kuvvetler (+ CFC) ve acc_g (+ CFC)",
     ),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -138,7 +139,10 @@ def compare_crash_runs(
     for rid in run_ids:
         run = _get_or_404(db, rid)
         all_curves = _curves(run.job_id)
-        keys = wanted if wanted is not None else [k for k in all_curves if k.endswith("_force")]
+        # varsayılan: kuvvetler (ham + CFC) ve ivme bileşkesi (ham + CFC) — 1.17e2
+        keys = wanted if wanted is not None else [
+            k for k in all_curves if re.search(r"(_force|^acc_g)(_cfc\d+)?$", k)
+        ]
         sel = {k: all_curves[k] for k in keys if k in all_curves}
         if sel and "time" in all_curves:
             sel["time"] = all_curves["time"]

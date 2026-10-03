@@ -4336,7 +4336,7 @@ p {
 
 .crash-run-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
@@ -4413,6 +4413,15 @@ p {
   gap: 8px;
 }
 
+/* 1.17e2 — koşu detay grafikleri */
+.crash-run-charts {
+  margin: 6px 0;
+}
+
+.crash-run-charts .cv-card + .cv-card {
+  margin-top: 8px;
+}
+
 /* 1.17d — deforme şekil görünümü */
 .crash-anim {
   margin: 6px 0;
@@ -4484,6 +4493,19 @@ p {
   stroke: currentColor;
   stroke-width: 1.8;
   vector-effect: non-scaling-stroke;
+}
+
+.crash-force-line-raw {
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+.crash-force-line-cfc {
+  stroke-width: 2.4;
+}
+
+.crash-force-swatch-cfc {
+  border-top-width: 3px;
 }
 
 .crash-series-0 { color: var(--accent-hover); }

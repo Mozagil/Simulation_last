@@ -42,4 +42,19 @@ describe("CrashForceChart", () => {
     const s = forceSeriesFromCurves({ time: [0, 1, 2], rwall_force: [0, 5, 0], rwall_force_cfc600: [0, 4, 0], section_1_force_cfc600: [0, 3, 0], section_1_force: [0, 6, 0] });
     expect(s.map((x) => x.label)).toEqual(["Rijit duvar", "Kesit 1", "Rijit duvar CFC600", "Kesit 1 CFC600"]);
   });
+  it("1.17e2: CFC serisi ham eşiyle aynı renk ve kalın, eşi olan ham soluk", () => {
+    const { container } = render(
+      <CrashForceChart time={[0, 1, 2]} series={[
+        { key: "rwall_force", label: "ham", values: [0, 5, 0] },
+        { key: "section_1_force", label: "kesit", values: [0, 3, 0] },
+        { key: "rwall_force_cfc600", label: "cfc", values: [0, 4, 0] },
+      ]} />,
+    );
+    const cls = [...container.querySelectorAll("polyline")].map((p) => p.getAttribute("class"));
+    expect(cls).toEqual([
+      "crash-force-line crash-series-0 crash-force-line-raw",
+      "crash-force-line crash-series-1",
+      "crash-force-line crash-series-0 crash-force-line-cfc",
+    ]);
+  });
 });

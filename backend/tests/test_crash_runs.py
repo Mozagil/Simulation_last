@@ -79,6 +79,11 @@ def test_compare_returns_force_curves_side_by_side():
     only = client.get("/crash/runs/compare", params={"ids": str(a["run_id"]), "curves": "internal_energy"}).json()
     assert only["runs"][0]["curves"] == {"internal_energy": [0, 1], "time": [0, 1]}
     assert client.get("/crash/runs/compare", params={"ids": "x"}).status_code == 422
+    # 1.17e2: varsayılan CFC kuvvet + ivme bileşkesini de getirir, enerjiyi getirmez
+    _put_curves(a["job_id"], {"time": [0, 1], "rwall_force": [0, 5], "rwall_force_cfc600": [0, 4],
+                              "acc_g": [0, 9], "acc_g_cfc1000": [0, 2], "internal_energy": [0, 1]}, {})
+    got = client.get("/crash/runs/compare", params={"ids": str(a["run_id"])}).json()["runs"][0]["curves"]
+    assert set(got) == {"time", "rwall_force", "rwall_force_cfc600", "acc_g", "acc_g_cfc1000"}
 
 
 @requires_db

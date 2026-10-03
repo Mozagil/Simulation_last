@@ -1128,6 +1128,22 @@ olay ~0.12 ms (≈ dikdörtgen darbe), CFC600 bunu tümüyle yayıyor; süzülm�
 (ilk tepe, katlanma salınımları 25–90 kN, ~50 kN plato, kızak ~9.5 ms'de
 duruyor). İşler `262d471a…` (#49), `3530b829…` (#50).
 
+**1.17e2 — Koşu detay grafikleri (kuvvet, ivme, enerji; ham + CFC)** — ✅ 2026-10-04
+Kullanıcı isteği ("grafikler frontendde mutlaka olmalı"): 1.17e'de ham–CFC
+karşılaştırma görüntüleri uygulama dışında çizilmişti. `CrashRunCharts`:
+geçmişte çözülmüş koşuya 📈 → o koşunun job.json eğrilerinden kuvvet (duvar,
+temas, kesit; ham + CFC), ivme bileşkesi (ham + CFC, g), enerji (IE, KE, J)
+grafikleri + IE / enerji dengesi / hourglass / impuls / HIC (ham + CFC);
+"t üst (ms)" görünüm kırpma. `CrashForceChart`: birim / aria parametresi;
+CFC serisi ham eşiyle aynı renk ve kalın, eşi olan ham ince ve soluk (renk
+sırası taban anahtara göre — ilk denemede 4 renk döngüsü eşleri ayırıyordu;
+yamada `\d` kaçışı düşmüştü, testle yakalanacak hale getirildi).
+Karşılaştırma: varsayılan eğriler kuvvetler + CFC + acc_g (+ CFC); eğri
+listesi tüm eğriler, ivmede eksen "İvme · g". Testler: frontend +3, backend
++1; frontend 156/156. Ekran: koşu #50 (kızak 50 kg test, CFC600) kuvvet —
+kesit x=150 kuvveti duvar kuvvetini izliyor (kızak yavaşlama kuvveti); #49
+ivme ham 120 464 g / CFC1000 1 931 g (ilk 0.3 ms).
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken

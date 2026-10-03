@@ -50,10 +50,15 @@ export default function CrashForceChart({
   time,
   series,
   title = "Kuvvet · kN",
+  unit = "kN",
+  ariaLabel = "Kuvvet–zaman grafiği",
 }: {
   time: number[];
   series: ForceSeries[];
   title?: string;
+  /** 1.17e2 — tepe değer birimi (kN, g, J …) */
+  unit?: string;
+  ariaLabel?: string;
 }) {
   const tOf = (s: ForceSeries) => s.time ?? time;
   if (series.length === 0 || series.some((s) => tOf(s).length < 2)) return null;
@@ -70,6 +75,16 @@ export default function CrashForceChart({
       .map((v, i) => `${px(tOf(s)[i]).toFixed(1)},${py(Math.abs(v)).toFixed(1)}`)
       .join(" ");
 
+  // 1.17e2 — CFC süzülmüş seri ham eşiyle aynı renk, kalın; eşi olan ham seri
+  // ince ve soluk. Renk sırası taban anahtara (…_cfcN eki atılmış) göre.
+  const baseKey = (k: string) => k.replace(/_cfc\d+$/, "");
+  const bases = [...new Set(series.map((s) => baseKey(s.key)))];
+  const colorOf = (k: string) => bases.indexOf(baseKey(k)) % 4;
+  const isCfc = (k: string) => /_cfc\d+$/.test(k);
+  const hasTwin = (k: string) => !isCfc(k) && series.some((o) => isCfc(o.key) && baseKey(o.key) === k);
+  const lineClass = (k: string) =>
+    `crash-force-line crash-series-${colorOf(k)}${isCfc(k) ? " crash-force-line-cfc" : hasTwin(k) ? " crash-force-line-raw" : ""}`;
+
   const peaks = series.map((s) => {
     let i = 0;
     s.values.forEach((v, j) => {
@@ -83,9 +98,9 @@ export default function CrashForceChart({
       <span className="cv-card-head">
         <strong>{title}</strong>
         <span className="crash-force-legend">
-          {series.map((s, i) => (
+          {series.map((s) => (
             <span key={s.key} className="ds-sb crash-force-legend-item">
-              <span className={`crash-force-swatch crash-series-${i % 4}`} />
+              <span className={`crash-force-swatch crash-series-${colorOf(s.key)}${isCfc(s.key) ? " crash-force-swatch-cfc" : ""}`} />
               {s.label}
             </span>
           ))}
@@ -94,13 +109,13 @@ export default function CrashForceChart({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label="Kuvvet–zaman grafiği"
+        aria-label={ariaLabel}
         preserveAspectRatio="none"
         className="cv-svg"
       >
         <rect x="0.5" y="0.5" width={W - 1} height={H - 1} className="cv-frame" />
-        {series.map((s, i) => (
-          <polyline key={s.key} points={path(s)} className={`crash-force-line crash-series-${i % 4}`} />
+        {series.map((s) => (
+          <polyline key={s.key} points={path(s)} className={lineClass(s.key)} />
         ))}
       </svg>
       <span className="cv-axis ds-sb">
@@ -112,7 +127,7 @@ export default function CrashForceChart({
         {peaks.map((p) => (
           <span key={p.key}>
             <span className="ml-k">{p.label} tepe</span>
-            <strong>{`${niceValue(p.peak)} kN`}</strong>
+            <strong>{`${niceValue(p.peak)} ${unit}`}</strong>
             <span className="ds-sb">{`t = ${niceValue(p.at)} ms`}</span>
           </span>
         ))}

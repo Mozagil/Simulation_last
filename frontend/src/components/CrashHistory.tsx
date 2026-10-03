@@ -7,6 +7,7 @@ import {
   type CrashRunSummary,
 } from "../api/crash";
 import CrashAnimationViewer from "./CrashAnimationViewer";
+import CrashRunCharts from "./CrashRunCharts";
 import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
 
 /** Crash koşu geçmişi + karşılaştırma (1.16b). Veri gösterir: koşular, skalerler,
@@ -64,6 +65,8 @@ export default function CrashHistory({
   const [tick, setTick] = useState(0);
   /** 1.17d — deforme şekli açık koşu */
   const [animRun, setAnimRun] = useState<CrashRunSummary | null>(null);
+  /** 1.17e2 — grafik detayı açık koşu */
+  const [chartRun, setChartRun] = useState<CrashRunSummary | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -98,7 +101,7 @@ export default function CrashHistory({
     try {
       const res = await compareCrashRuns(selected);
       setCompared(res);
-      const keys = new Set(res.flatMap((r) => Object.keys(r.curves).filter((k) => k.endsWith("_force"))));
+      const keys = new Set(res.flatMap((r) => Object.keys(r.curves).filter((k) => k !== "time")));
       if (!keys.has(curveKey)) setCurveKey([...keys][0] ?? "rwall_force");
       setError(null);
     } catch (e) {
@@ -108,7 +111,7 @@ export default function CrashHistory({
 
   const curveKeys = useMemo(
     () =>
-      [...new Set((compared ?? []).flatMap((r) => Object.keys(r.curves).filter((k) => k.endsWith("_force"))))].sort(),
+      [...new Set((compared ?? []).flatMap((r) => Object.keys(r.curves).filter((k) => k !== "time")))].sort(),
     [compared],
   );
   const tMax = Number(tMaxRaw.replace(",", "."));
@@ -176,6 +179,16 @@ export default function CrashHistory({
                 <button
                   type="button"
                   className="crash-run-exclude"
+                  aria-label={`${label(r)} grafikler`}
+                  title="Grafikler (kuvvet, ivme, enerji)"
+                  disabled={r.status !== "solved"}
+                  onClick={() => setChartRun((a) => (a?.id === r.id ? null : r))}
+                >
+                  {chartRun?.id === r.id ? "■" : "📈"}
+                </button>
+                <button
+                  type="button"
+                  className="crash-run-exclude"
                   aria-label={`${label(r)} deforme şekil`}
                   title="Deforme şekil (animasyon)"
                   disabled={!r.solver_ran || r.status !== "solved"}
@@ -197,6 +210,7 @@ export default function CrashHistory({
           })}
         </ul>
       )}
+      {chartRun && <CrashRunCharts runId={chartRun.id} title={`#${chartRun.id} ${label(chartRun)}`} />}
       {animRun && <CrashAnimationViewer runId={animRun.id} title={`#${animRun.id} ${label(animRun)}`} />}
       <button
         type="button"
@@ -233,7 +247,12 @@ export default function CrashHistory({
             </label>
           </div>
           {series.length > 0 ? (
-            <CrashForceChart time={series[0].time ?? []} series={series} />
+            <CrashForceChart
+              time={series[0].time ?? []}
+              series={series}
+              title={curveKey.startsWith("acc_g") ? "İvme · g" : "Kuvvet · kN"}
+              unit={curveKey.startsWith("acc_g") ? "g" : "kN"}
+            />
           ) : (
             <p className="doe-empty">Seçili koşularda bu eğri yok.</p>
           )}

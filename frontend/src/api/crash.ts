@@ -296,6 +296,18 @@ export interface CrashAnimation {
   }[];
 }
 
+/** 1.17e2 — koşu detayı: girdi + skaler + tüm eğriler (job.json). */
+export interface CrashRunDetail extends CrashRunSummary {
+  request: Record<string, unknown>;
+  materials_snapshot: unknown[];
+  diagnostics: CrashDiagnostics;
+  curves: Record<string, number[]>;
+}
+
+export async function fetchCrashRun(runId: number): Promise<CrashRunDetail> {
+  return getJson<CrashRunDetail>(`${API_BASE_URL}/crash/runs/${runId}`);
+}
+
 export async function fetchCrashAnimation(runId: number): Promise<CrashAnimation> {
   return getJson<CrashAnimation>(`${API_BASE_URL}/crash/runs/${runId}/animation`);
 }
