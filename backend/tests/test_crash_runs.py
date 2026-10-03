@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import uuid
 
 from fastapi.testclient import TestClient
@@ -121,3 +122,36 @@ def test_cleanup_outputs_removes_rst_unless_kept(tmp_path, monkeypatch):
     monkeypatch.delenv("CRASH_KEEP_RST")
     assert _cleanup_outputs(tmp_path) == ["crash_0000_0001.rst", "crash_0001_0001.rst"]
     assert sorted(p.name for p in tmp_path.iterdir()) == ["crashA001", "crashT01"]  # anim + TH korunur
+
+
+@requires_db
+def test_reprocess_keeps_previous_scalars(tmp_path):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("reprocess", Path(__file__).parents[1] / "scripts" / "reprocess_crash_jobs.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    gid = _upload_and_mesh_box()
+    jid = str(uuid.uuid4())
+    work = tmp_path / jid
+    work.mkdir()
+    # global enerji sütunlu TH; eski kayıtta yalnız eski skaler
+    (work / "crashT01.csv").write_text('"time","INTERNAL ENERGY","KINETIC ENERGY"\n0,0,10\n1,9,1\n', encoding="utf-8")
+    meta = {"job_id": jid, "geometry_id": gid, "status": "solved", "solver_ran": True,
+            "scalars": {"internal_energy_final": 1.0}}
+    (work / "job.json").write_text(json.dumps(meta), encoding="utf-8")
+    db = SessionLocal()
+    try:
+        from app.api.crash_runs import record_from_meta
+
+        record_from_meta(db, meta)
+        assert mod.reprocess(db, tmp_path, apply=False)["changed"] == 1  # kuru: yazmaz
+        assert json.loads((work / "job.json").read_text(encoding="utf-8"))["scalars"] == {"internal_energy_final": 1.0}
+        mod.reprocess(db, tmp_path, apply=True)
+        out = json.loads((work / "job.json").read_text(encoding="utf-8"))
+        assert out["scalars_prev"] == {"internal_energy_final": 1.0}
+        assert out["scalars"]["internal_energy_final"] == 9.0 and "reprocessed_at" in out
+        assert mod.reprocess(db, tmp_path, apply=True)["unchanged"] == 1  # ikinci kez değişmez
+    finally:
+        db.close()
