@@ -109,3 +109,15 @@ def test_import_job_dirs_idempotent(tmp_path):
     assert len(runs) == 1 and runs[0]["job_id"] == ok and runs[0]["scalars"] == {"rwall_force_max": 1.0}
     assert client.get(f"/crash/runs/{runs[0]['id']}").json()["request"] == {"model": {"law": "plastic"}}
 
+
+
+def test_cleanup_outputs_removes_rst_unless_kept(tmp_path, monkeypatch):
+    from app.api.crash import _cleanup_outputs
+
+    for n in ("crash_0000_0001.rst", "crash_0001_0001.rst", "crashA001", "crashT01"):
+        (tmp_path / n).write_text("x", encoding="utf-8")
+    monkeypatch.setenv("CRASH_KEEP_RST", "1")
+    assert _cleanup_outputs(tmp_path) == []
+    monkeypatch.delenv("CRASH_KEEP_RST")
+    assert _cleanup_outputs(tmp_path) == ["crash_0000_0001.rst", "crash_0001_0001.rst"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["crashA001", "crashT01"]  # anim + TH korunur

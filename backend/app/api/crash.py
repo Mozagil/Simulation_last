@@ -166,6 +166,24 @@ def _merged_snapshot(job_id: str) -> dict[str, Any] | None:
     return out
 
 
+def _cleanup_outputs(work_dir: Path) -> list[str]:
+    """1.17g — çözüm sonrası kullanılmayan çıktılar: Radioss restart (*.rst)
+    dosyaları iş başına ~5 MB+ (crash klasörünün ~%49'u); restart desteği yok.
+    `CRASH_KEEP_RST=1` ise dokunulmaz. Animasyon (A0xx) ve TH korunur."""
+    import os
+
+    if os.environ.get("CRASH_KEEP_RST", "").strip() in ("1", "true", "yes"):
+        return []
+    removed = []
+    for f in sorted(work_dir.glob("*.rst")):
+        try:
+            f.unlink()
+            removed.append(f.name)
+        except OSError:
+            pass
+    return removed
+
+
 def _sync_run(meta: dict[str, Any]) -> None:
     """1.16a — job.json durumunu crash_runs'a yansıt (arka plan işi kendi oturumuyla)."""
     db = SessionLocal()
@@ -205,6 +223,7 @@ def _complete_crash_job(job_id: str) -> None:
             progress_cb=_cb,
         )
         parsed = adapter.parse_results(handle)
+        meta["removed_outputs"] = _cleanup_outputs(_job_dir(job_id))
         meta["status"] = "solved"
         meta["message"] = "OpenRadioss bitti"
         meta["solver_ran"] = True
