@@ -9,14 +9,14 @@ import {
   type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
-import ButtonGroup from "./ButtonGroup";
 import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashHistory from "./CrashHistory";
+import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
 import CrashValidation from "./CrashValidation";
-import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
+import CrashSchematic from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -66,7 +66,6 @@ export default function CrashPanel({
    * kaynağı Malzeme adımıdır; panel yalnız gösterir, backend oradan okur. */
   componentThickness?: Record<number, number | null>;
 }) {
-  const [scenario, setScenario] = useState<CrashScenarioId>("rigid_wall");
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
   const [partRoles, setPartRoles] = useState<Record<number, "moving" | "fixed">>({});
@@ -98,6 +97,11 @@ export default function CrashPanel({
   const [ish3n, setIsh3n] = useState("0");
   const [shellIsmstr, setShellIsmstr] = useState("0");
   const [shellNip, setShellNip] = useState("0");
+  // 1.17h — hourglass kontrolü; 0 = Radioss varsayılanı
+  const [hgHm, setHgHm] = useState("0");
+  const [hgHf, setHgHf] = useState("0");
+  const [hgHr, setHgHr] = useState("0");
+  const [hgSolid, setHgSolid] = useState("0");
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,25 +144,6 @@ export default function CrashPanel({
       ws?.close();
     };
   }, [jobId, polling]);
-
-  function applyScenario(id: CrashScenarioId) {
-    setScenario(id);
-    if (id === "rigid_wall") {
-      setSpeed("10");
-      setAngle("0");
-      setTEnd("10");
-    } else {
-      setSpeed("20");
-      setAngle("0");
-      setTEnd("5");
-    }
-    setWx("0");
-    setWy("0");
-    setWz("0");
-    setNx("0");
-    setNy("0");
-    setNz("1");
-  }
 
   // Tek parçalı mesh'te partIds boş gelir: parça 0 (self-contact mümkün).
   const partOptions = partIds.length > 0 ? partIds : [0];
@@ -210,6 +195,7 @@ export default function CrashPanel({
         isolid: num(isolid),
         ismstr: num(ismstr),
         nip: num(nip),
+        solid_hourglass_h: num(hgSolid),
         ...(isShell
           ? {
               shell: {
@@ -217,6 +203,9 @@ export default function CrashPanel({
                 ish3n: num(ish3n),
                 ismstr: num(shellIsmstr),
                 nip: num(shellNip),
+                hm: num(hgHm),
+                hf: num(hgHf),
+                hr: num(hgHr),
               },
             }
           : {}),
@@ -225,7 +214,6 @@ export default function CrashPanel({
         ({ ...elementFlags, ...matCardPayload(card, label) }) as CrashModelPayload;
       const body = await postCrashSolve({
         geometry_id: geometryId,
-        scenario,
         barrier: {
           speed_m_s: num(speed),
           angle_deg: num(angle),
@@ -274,16 +262,10 @@ export default function CrashPanel({
   const canRun = geometryId != null && (meshDimension === 2 || meshDimension === 3) && !busy;
   // Duvar kapalıyken nokta/normal yine gönderilir: bariyer ilk hız yönünü
   // normalden türetir (açı 0° → −normal yönünde).
-  const wallTitle = !useRigidWall
-    ? "Bariyer nokta (mm) — duvar kapalı"
-    : scenario === "plate_ball"
-      ? "Rijit plaka nokta (mm) — /RWALL"
-      : "Rigid wall nokta (mm)";
+  const wallTitle = !useRigidWall ? "Bariyer nokta (mm) — duvar kapalı" : "Rigid wall nokta (mm)";
   const normalTitle = !useRigidWall
     ? "Bariyer normal — duvar kapalı, yalnız ilk hız yönü"
-    : scenario === "plate_ball"
-      ? "Rijit plaka normal"
-      : "Rigid wall normal";
+    : "Rigid wall normal";
   const curves = snapshot?.curves;
   const forceSeries = forceSeriesFromCurves(curves);
   const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
@@ -322,24 +304,7 @@ export default function CrashPanel({
         <p className="material-assign-hint">Önce geometri yükleyin.</p>
       )}
 
-      <ButtonGroup
-        title="Senaryo"
-        items={[
-          {
-            key: "rigid_wall",
-            label: "Rigid wall",
-            active: scenario === "rigid_wall",
-            onClick: () => applyScenario("rigid_wall"),
-          },
-          {
-            key: "plate_ball",
-            label: "Plaka–küre",
-            active: scenario === "plate_ball",
-            onClick: () => applyScenario("plate_ball"),
-          },
-        ]}
-      />
-      <CrashSchematic scenario={scenario} />
+      <CrashSchematic />
 
       <p className="material-assignments-title">Kinematik</p>
       <div className="mesh-grid">
@@ -630,6 +595,25 @@ export default function CrashPanel({
               <input value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
             </label>
           </div>
+          <p className="material-assignments-title">Hourglass kontrolü — /PROP/TYPE1</p>
+          <div className="mesh-grid">
+            <label className="mesh-field">
+              <span>Hm</span>
+              <input aria-label="Hourglass Hm" value={hgHm} onChange={(e) => setHgHm(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Hf</span>
+              <input aria-label="Hourglass Hf" value={hgHf} onChange={(e) => setHgHf(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Hr</span>
+              <input aria-label="Hourglass Hr" value={hgHr} onChange={(e) => setHgHr(e.target.value)} />
+            </label>
+          </div>
+          <p className="material-assign-hint">
+            Hm membran, Hf düzlem dışı, Hr dönme katsayısı; aralık 0…0.05, 0 = Radioss
+            varsayılanı (0.01). Ishell 1–4 hourglass formülasyonlarında etkili.
+          </p>
           <p className="material-assign-hint">
             Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı); burada yalnız
             gösterilir. Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
@@ -651,7 +635,14 @@ export default function CrashPanel({
             <span>NIP</span>
             <input value={nip} onChange={(e) => setNip(e.target.value)} />
           </label>
+          <label className="mesh-field">
+            <span>h (hourglass)</span>
+            <input aria-label="Hourglass h" value={hgSolid} onChange={(e) => setHgSolid(e.target.value)} />
+          </label>
         </div>
+        <p className="material-assign-hint">
+          h: hourglass viskozite katsayısı, aralık 0…0.15, 0 = Radioss varsayılanı (0.10).
+        </p>
         </>
       )}
 
@@ -706,6 +697,11 @@ export default function CrashPanel({
               <li>acc_peak_g {fmt(scalars.acc_peak_g)}</li>
               <li>IE_final {fmt(scalars.internal_energy_final)}</li>
               <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
+              {scalars.hourglass_energy_final != null && (
+                <li>
+                  HG_final {fmt(scalars.hourglass_energy_final)} · HG/IE {fmt(scalars.hourglass_ratio)}
+                </li>
+              )}
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
               {scalars.rwall_impulse_final != null && (
                 <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
@@ -756,6 +752,7 @@ export default function CrashPanel({
         </div>
       )}
 
+      <CrashCatalog />
       <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} />
       <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`} />
       <CrashValidation />

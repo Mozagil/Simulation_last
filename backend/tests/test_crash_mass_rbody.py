@@ -109,3 +109,20 @@ def test_global_energy_columns_preferred(tmp_path):
     assert s["kinetic_energy_max"] == 2559
     assert s["energy_balance_rel"] == pytest.approx(abs(2441 + 4.7 + 113 - 2559) / 2559)
     assert s["hourglass_energy_final"] == 113 and s["hourglass_ratio"] == pytest.approx(113 / 2441)
+
+
+def test_hourglass_energy_curve_stored(tmp_path):
+    # 1.17h — global HOURGLASS ENERGY sütunu grafikte görünsün diye eğri olarak saklanır
+    h = ['"time"', '"INTERNAL ENERGY"', '"KINETIC ENERGY"', '"HOURGLASS ENERGY"']
+    rows = ["0,0,100,0", "1,90,5,3"]
+    (tmp_path / "crashT01.csv").write_text("\n".join([",".join(h), *rows]) + "\n", encoding="utf-8")
+    assert parse_openradioss_dir(tmp_path).curves["hourglass_energy"] == [0.0, 3.0]
+
+
+def test_energy_balance_scale_for_driven_run(tmp_path):
+    # K4 — KE₀ = 0, dış iş = IE: denge ≈ 0 (payda enerji ölçeği), eskiden 1.0
+    h = ['"time"', '"INTERNAL ENERGY"', '"KINETIC ENERGY"', '"EXTERNAL WORK"']
+    rows = ["0,0,0,0", "1,1000,5,1004"]
+    (tmp_path / "crashT01.csv").write_text("\n".join([",".join(h), *rows]) + "\n", encoding="utf-8")
+    s = parse_openradioss_dir(tmp_path).scalars
+    assert s["energy_balance_rel"] == pytest.approx(1.0 / 1004.0)

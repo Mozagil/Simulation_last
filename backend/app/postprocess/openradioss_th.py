@@ -567,7 +567,13 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
                 return e
 
             e0, e1 = total(0), total(-1)
-            denom = max(abs(e0), abs(e1), 1e-30)
+            # K4 — zorlanmış hızla sürülen koşuda KE₀ ≈ 0, e0 ≈ e1 ≈ 0: payda
+            # sorunun enerji ölçeği (en büyük IE / KE / |dış iş|) — aksi halde
+            # oran hep ~1 çıkıyordu (ROPS #85). Çarpma koşularında payda KE₀ kalır.
+            scale = [abs(e0), abs(e1), max(ie), max(ke)]
+            if ext_w and len(ext_w) == len(ie):
+                scale.append(max(abs(v) for v in ext_w))
+            denom = max(*scale, 1e-30)
             scalars["energy_balance_rel"] = abs(e1 - e0) / denom
     if hg_e and ie:
         scalars["hourglass_energy_final"] = float(hg_e[-1])
@@ -619,6 +625,9 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
 
     curves.update(named)
     curves.update(curves_extra)
+    # 1.17h — hourglass enerjisi eğrisi (global sütun), grafikte IE / KE yanında
+    if hg_e and len(hg_e) == len(time):
+        curves["hourglass_energy"] = hg_e
     _apply_cfc(work_dir, time, time_header, curves, scalars, acc_comp)
     if unmapped:
         diag["th_unmapped_groups"] = unmapped

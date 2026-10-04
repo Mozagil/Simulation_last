@@ -19,6 +19,8 @@ export interface CrashModelPayload {
   isolid: number;
   ismstr: number;
   nip: number;
+  /** 1.17h — /PROP/TYPE14 hourglass katsayısı h (0 = varsayılan; hm_cfg 0…0.15) */
+  solid_hourglass_h?: number;
   sigma_y_pa?: number | null;
   harden_b_mpa: number;
   harden_n: number;
@@ -70,12 +72,17 @@ export interface CrashShellPayload {
   ismstr: number;
   /** N: kalınlık boyunca integrasyon noktası (0, 1, 3…10) */
   nip: number;
+  /** 1.17h — hourglass Hm / Hf / Hr (0 = varsayılan; hm_cfg 0…0.05) */
+  hm?: number;
+  hf?: number;
+  hr?: number;
 }
 
 /** Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Verilmeyen parça hareketli. */
 export interface CrashPartSpec {
   part_id: number;
-  role: "moving" | "fixed";
+  /** free (1.18b): ilk hız yok, /BCS yok */
+  role: "moving" | "fixed" | "free";
   /** Kabuk parça kalınlığı (mm); boşsa model.shell.thickness_mm. */
   thickness_mm?: number | null;
   /** 1.14b — parça başına kart; yoksa istekteki global model */
@@ -248,6 +255,26 @@ export interface CrashScenarioRequest {
   t_end_ms?: number;
   rigid_bodies?: { name: string; region?: string; part_id?: number; mass_kg?: number }[];
   filters?: CrashFilterPayload;
+  /** 1.18b — plaka–küre: küre malzemesi (boş = plaka), kabuk kalınlığı, ana düğüm ek kütlesi */
+  ball_material_id?: number;
+  ball_thickness_mm?: number;
+  ball_mass_kg?: number;
+  /** K5 — küre toplam kütlesi; ek kütle = toplam − kabuk */
+  ball_total_mass_kg?: number;
+  template_defaults?: boolean;
+  /** K2 — düşme yüksekliği (mm); verilirse çarpma hızı √(2·g·H), speed_m_s yerine */
+  drop_height_mm?: number;
+  /** K2 — /GRAV; boşsa düşme şablonunda −9.81 m/s² Z */
+  gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
+  /** K3 — direk çapı (mm, /RWALL/CYL) ve uç rijit gövde ek kütlesi (kg) */
+  pole_diameter_mm?: number;
+  end_mass_kg?: number;
+  /** K4 — ROPS yanal itme hızı (m/s) */
+  push_speed_m_s?: number;
+  /** K10 — Friedlander patlama darbesi: Ps (MPa), td (ms), b */
+  blast_peak_mpa?: number;
+  blast_duration_ms?: number;
+  blast_decay?: number;
   run_solver?: boolean;
   wait?: boolean;
 }
@@ -377,12 +404,28 @@ export interface CrashValidationCase {
   rows?: CrashValidationRow[];
   energy_balance_rel?: number | null;
   hourglass_ratio?: number | null;
-  references?: { wierzbicki_abramowicz_1983_kn: number; abramowicz_jones_1984_kn: number; formula: string };
+  references?: {
+    wierzbicki_abramowicz_1983_kn?: number;
+    abramowicz_jones_1984_kn?: number;
+    formula: string;
+    k_n_per_mm?: number;
+    ball_mass_kg?: number;
+  };
   mesh?: CrashValidationMeshRow[];
+  /** 1.18e V5 — Recht–Ipson uydurması (tutarlılık verisi) */
+  fit?: {
+    a: number;
+    v_bl_m_s: number;
+    r2: number;
+    bracket_low_m_s: number | null;
+    bracket_high_m_s: number | null;
+    v_bl_in_bracket: boolean;
+  };
 }
 
 export interface CrashValidationReport {
   generated_at: string;
+  updated_at?: string;
   setup: {
     template: string;
     L_mm: number;
@@ -413,4 +456,35 @@ export async function compareCrashRuns(ids: number[]): Promise<CrashRunCompared[
 export function crashJobWsUrl(jobId: string): string {
   const base = API_BASE_URL.replace(/\/$/, "");
   return `${base.replace(/^http/, "ws")}/crash/jobs/${jobId}/ws`;
+}
+
+/** K0 — explicit şablon kataloğu (GET /crash/catalog). */
+export interface CrashCatalogEntry {
+  id: string;
+  sector: "otomotiv" | "savunma" | "is_makineleri" | string;
+  title: string;
+  /** ready: /crash/scenario ile koşulur · planned: küçük ek altyapı · major: ayrı faz */
+  status: "ready" | "planned" | "major";
+  template_id: string | null;
+  mesh_dim: number | null;
+  reference: string;
+  validation: string;
+  infrastructure: string;
+  step: string;
+  /** Kart başlangıç değerleri (aynı şablonu paylaşan örnekler; K5) */
+  defaults?: {
+    geometry?: Record<string, number>;
+    extras?: Record<string, string>;
+    common?: Partial<Record<"elem" | "speed" | "tEnd" | "forceCfc", string>>;
+    acc_cfc?: number | null;
+  };
+}
+
+export interface CrashCatalog {
+  entries: CrashCatalogEntry[];
+  scenario_templates: Record<string, number>;
+}
+
+export async function fetchCrashCatalog(): Promise<CrashCatalog> {
+  return getJson<CrashCatalog>(`${API_BASE_URL}/crash/catalog`);
 }

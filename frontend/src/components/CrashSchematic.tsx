@@ -1,11 +1,8 @@
-/** Crash senaryo şeması — mühendise karar önermez, düzeni gösterir. */
+/** Crash şeması (rijit duvar) — mühendise karar önermez, düzeni gösterir.
+ * Eski "Plaka–küre" ön ayarı kaldırıldı (2026-10-04): yalnız duvar yönünü
+ * z'ye çeviriyordu, 1.18 plaka–küre şablonuyla karışıyordu. */
 
-export type CrashScenarioId = "rigid_wall" | "plate_ball";
-
-export default function CrashSchematic({ scenario }: { scenario: CrashScenarioId }) {
-  if (scenario === "plate_ball") {
-    return <PlateBallSchematic />;
-  }
+export default function CrashSchematic() {
   return <RigidWallSchematic />;
 }
 
@@ -57,46 +54,6 @@ function RigidWallSchematic() {
       </svg>
       <figcaption className="crash-schematic-caption">
         Rigid wall: yüklenen mesh (3D solid ya da 2D kabuk) + sonsuz düzlem. 0° = duvara dik (−n).
-      </figcaption>
-    </figure>
-  );
-}
-
-function PlateBallSchematic() {
-  return (
-    <figure className="template-schematic crash-schematic">
-      <svg
-        viewBox="0 0 320 150"
-        role="img"
-        aria-label="Plaka-küre: küre aşağı hız, rijit plaka RWALL"
-      >
-        <defs>
-          <pattern
-            id="crash-plate-hatch"
-            width="6"
-            height="6"
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <line x1="0" y1="0" x2="0" y2="6" className="template-schematic-hatch" />
-          </pattern>
-        </defs>
-        <rect x="48" y="112" width="224" height="16" className="template-schematic-wall" />
-        <rect x="48" y="112" width="224" height="16" fill="url(#crash-plate-hatch)" />
-        <text x="160" y="144" textAnchor="middle" className="template-schematic-caption">
-          rijit plaka = /RWALL
-        </text>
-        <ellipse cx="160" cy="58" rx="28" ry="26" className="template-schematic-face-end" />
-        <ellipse cx="160" cy="52" rx="28" ry="12" className="template-schematic-face-top" />
-        <line x1="160" y1="22" x2="160" y2="8" className="template-schematic-load" />
-        <polygon points="154,20 166,20 160,30" className="template-schematic-load-head" />
-        <text x="176" y="18" className="template-schematic-label">
-          v
-        </text>
-      </svg>
-      <figcaption className="crash-schematic-caption">
-        Plaka–küre: plaka şu an rijit duvar. Deforme plaka + /INTER ayrı adım.
-        Mesh olarak küre (veya impactor) yüklenir.
       </figcaption>
     </figure>
   );

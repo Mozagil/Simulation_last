@@ -60,6 +60,7 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
       [
         ["internal_energy", "İç enerji"],
         ["kinetic_energy", "Kinetik enerji"],
+        ["hourglass_energy", "Hourglass enerjisi"],
       ] as const
     )
       .filter(([k]) => curves[k])

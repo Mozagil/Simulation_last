@@ -123,3 +123,68 @@ def test_export_assigns_parts_by_volume_order(tmp_path):
             assert max(xs) <= 10.0 + 1e-9
         else:
             assert min(xs) >= 20.0 - 1e-9
+
+
+def test_free_role_gets_no_initial_velocity_and_no_bcs(tmp_path):
+    # 1.18b — serbest parça: ilk hız grubunda değil, /BCS yok (kenar BC ayrı)
+    s = OpenRadiossAdapter().build_input(
+        _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "moving"}])
+    ).path.read_text(encoding="utf-8")
+    assert "part_0_free" in s and "part_1_moving" in s
+    assert "/GRNOD/PART/1\nmoving_parts\n         2\n" in s
+    assert "/BCS/" not in s and "fixed_parts" not in s
+
+
+def test_unknown_role_is_error(tmp_path):
+    with pytest.raises(SolverError, match="rolü"):
+        OpenRadiossAdapter().build_input(_two_part_params(tmp_path, parts=[{"part_id": 1, "role": "serbest"}]))
+
+
+def test_gravity_card_on_all_part_nodes(tmp_path):
+    # K2 — /GRAV r51: funct DIR skew sensor grnod (10 boş) Ascale_x Fscale_Y; −9.81 m/s² → −9.81e-3 mm/ms²
+    p = _two_part_params(tmp_path, parts=[])
+    p["gravity"] = {"accel_m_s2": -9.81, "direction": "Z"}
+    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    assert "/GRNOD/PART/8950\ngrav_parts\n         1         2\n" in s
+    card = s.split("/GRAV/1\n", 1)[1].splitlines()[1]
+    assert card[:60] == f"{9950:10d}{'Z':>10}{0:10d}{0:10d}{8950:10d}{'':10}"
+    assert float(card[60:80]) == 1.0 and float(card[80:100]) == pytest.approx(-9.81e-3)
+    assert "/FUNCT/9950" in s and "/GRAV/2" not in s  # rijit gövde yok
+
+
+def test_gravity_zero_rejected():
+    from pydantic import ValidationError
+
+    from app.solvers.crash_params import CrashGravityParams
+
+    with pytest.raises(ValidationError):
+        CrashGravityParams(accel_m_s2=0.0)
+    with pytest.raises(ValidationError):
+        CrashGravityParams(direction="W")
+
+
+def test_no_moving_part_allowed_with_imposed_velocity(tmp_path):
+    # K4 — hareketli parça yoksa grup 1 ve ilk hız yazılmaz; zorlanmış hız yük verir
+    p = _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "fixed"}])
+    p["imposed_velocities"] = [{"name": "itme", "part_id": 0, "direction": "Y", "velocity_m_s": 1.0}]
+    p["use_rigid_wall"] = False
+    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    assert "/INIVEL/" not in s and "moving_parts" not in s and "/IMPVEL/1" in s
+    p2 = _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "fixed"}])
+    with pytest.raises(SolverError, match="zorlanmış hız"):
+        OpenRadiossAdapter().build_input(p2)
+
+
+def test_bcs_on_rigid_body_master(tmp_path):
+    # K7 — /BCS rijit gövde ana düğümüne (kızak kılavuzu 011111)
+    p = _two_part_params(tmp_path, parts=[])
+    p["rigid_bodies"] = [{"name": "kizak", "part_id": 1, "mass_kg": 5.0}]
+    p["boundary_conditions"] = [{"name": "kilavuz", "rigid_body": "kizak", "dofs": "011111"}]
+    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    master = int(s.split("/RBODY/1\n", 1)[1].splitlines()[1][:10])
+    grp = s.split("/GRNOD/NODE/8801\n", 1)[1].splitlines()
+    assert grp[0] == "bcs_kilavuz" and int(grp[1][:10]) == master
+    assert "   011 111" in s
+    p["boundary_conditions"] = [{"name": "x", "rigid_body": "yok", "dofs": "011111"}]
+    with pytest.raises(SolverError, match="yok"):
+        OpenRadiossAdapter().build_input(p)

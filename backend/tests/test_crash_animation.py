@@ -91,3 +91,9 @@ def test_frame_thinning_keeps_last():
     a = build_animation([_vtk(float(t), 0.0) for t in range(10)], max_frames=4)
     times = [f["time"] for f in a["frames"]]
     assert times[0] == 0.0 and times[-1] == 9.0 and len(times) <= 5
+
+
+def test_elements_off_at_start_are_rigid_not_eroded():
+    # 1.18b — rijit gövde elemanı ilk karede EROSION_STATUS 0 (koşu #63, küre); çizilir
+    a = build_animation([_vtk(0.0, 0.0, alive=0), _vtk(1.0, -3.0, alive=0)])
+    assert [f["face_alive"] for f in a["frames"]] == [[1, 1], [1, 1]]

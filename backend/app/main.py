@@ -26,6 +26,7 @@ from app.api.crash import CRASH_DIR
 from app.api.crash import router as crash_router
 from app.api.crash_runs import router as crash_runs_router
 from app.api.crash_scenario import router as crash_scenario_router
+from app.api.crash_catalog import router as crash_catalog_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -73,6 +74,7 @@ app.include_router(surrogate_router)
 app.include_router(crash_runs_router)  # /crash/runs — /crash/jobs'tan önce değil, ayrı önek
 app.include_router(crash_router)
 app.include_router(crash_scenario_router)  # /crash/scenario (1.17a)
+app.include_router(crash_catalog_router)  # /crash/catalog (K0)
 
 # Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.
 Path(TESSELLATION_DIR).mkdir(parents=True, exist_ok=True)

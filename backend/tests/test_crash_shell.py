@@ -168,3 +168,22 @@ def test_thickness_precedence_component_then_explicit(tmp_path):
 def test_missing_thickness_points_to_product_tree(tmp_path):
     with pytest.raises(SolverError, match="ürün ağacından"):
         _deck(tmp_path, model={"law": "elastic"})
+
+
+def test_shell_hourglass_coefficients_in_prop_type1(tmp_path):
+    # 1.17h — Hm Hf Hr satırı (hm_cfg prop_p1_shell); 0 = varsayılan
+    model = {"law": "elastic", "shell": {"thickness_mm": 3.0, "ishell": 1, "hm": 0.02, "hf": 0.03, "hr": 0.04}}
+    prop = _card(_deck(tmp_path, model=model), "/PROP/TYPE1/1")
+    assert [float(prop[2][i:i + 20]) for i in range(0, 100, 20)] == [0.02, 0.03, 0.04, 0.0, 0.0]
+
+
+def test_solid_hourglass_h_in_prop_type14(tmp_path):
+    model = {"law": "elastic", "solid_hourglass_h": 0.12, "shell": {"thickness_mm": 3.0}}
+    prop = _card(_deck(tmp_path, model=model), "/PROP/TYPE14/2")
+    assert [float(prop[2][i:i + 20]) for i in range(0, 100, 20)] == [0.0, 0.0, 0.12, 0.0, 0.0]
+
+
+@pytest.mark.parametrize("raw", [{"hm": -0.01}, {"hf": 0.06}, {"hr": float("nan")}])
+def test_shell_hourglass_out_of_hm_cfg_range_rejected(raw):
+    with pytest.raises(ValidationError):
+        CrashShellParams(**raw)
