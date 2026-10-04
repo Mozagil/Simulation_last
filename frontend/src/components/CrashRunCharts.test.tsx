@@ -17,6 +17,7 @@ vi.mock("../api/crash", () => ({
         acc_g_cfc1000: [0, 8000, 2, 0],
         internal_energy: [0, 1000, 2400, 2441],
         kinetic_energy: [2559, 1500, 100, 4.7],
+        hourglass_energy: [0, 20, 90, 113],
       },
     }),
   ),
@@ -32,6 +33,7 @@ describe("CrashRunCharts", () => {
     expect(box).toHaveTextContent("Rijit duvar CFC600");
     expect(box).toHaveTextContent("|a| CFC1000");
     expect(box).toHaveTextContent("Kinetik enerji");
+    expect(box).toHaveTextContent("Hourglass enerjisi");
     expect(box).toHaveTextContent("8000 g"); // CFC ivme tepesi, birim g
     expect(screen.getByTestId("crash-run-scalars")).toHaveTextContent("HIC15 CFC1000 2600000.0");
   });

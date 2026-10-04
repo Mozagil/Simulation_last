@@ -28,9 +28,13 @@ from app.solvers.crash_params import (
     CrashBarrierParams,
     CrashContactParams,
     CrashBcParams,
+    CrashBlastLoadParams,
     CrashEngineParams,
     CrashFilterParams,
+    CrashGravityParams,
     CrashImpVelParams,
+    CrashPressureLoadParams,
+    CrashSphProjectileParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -51,7 +55,10 @@ class CrashPartSpec(BaseModel):
     """Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Mühendis seçer."""
 
     part_id: int = Field(..., ge=0, description="Mesh part_id (hacim sırası)")
-    role: str = Field(default="moving", description="moving | fixed")
+    role: str = Field(
+        default="moving",
+        description="moving (ilk hız) | fixed (tüm düğümler /BCS) | free (ilk hız yok, /BCS yok — 1.18b)",
+    )
     thickness_mm: float | None = Field(
         default=None, gt=0, description="Kabuk parça kalınlığı (mm); solid parçada yok sayılır"
     )
@@ -64,8 +71,8 @@ class CrashPartSpec(BaseModel):
     @classmethod
     def _role_ok(cls, value: str) -> str:
         v = value.strip().lower()
-        if v not in ("moving", "fixed"):
-            raise ValueError("role moving veya fixed olmalı.")
+        if v not in ("moving", "fixed", "free"):
+            raise ValueError("role moving, fixed veya free olmalı.")
         return v
 
 
@@ -120,6 +127,18 @@ class CrashSolveRequest(BaseModel):
     )
     filters: CrashFilterParams = Field(
         default_factory=CrashFilterParams, description="SAE J211 CFC sınıfları (1.17e); ham korunur"
+    )
+    gravity: CrashGravityParams | None = Field(
+        default=None, description="/GRAV sabit yerçekimi (K2); boş = yok"
+    )
+    pressure_loads: list[CrashPressureLoadParams] = Field(
+        default_factory=list, description="/PLOAD zamana bağlı basınç (K10, Friedlander)"
+    )
+    sph_projectiles: list[CrashSphProjectileParams] = Field(
+        default_factory=list, description="SPH mermiler (K12, ör. kuş)"
+    )
+    blast_loads: list[CrashBlastLoadParams] = Field(
+        default_factory=list, description="/LOAD/PBLAST ampirik patlama (K13, mayın)"
     )
 
     @field_validator("scenario")
@@ -362,6 +381,10 @@ def crash_solve(
                 "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
                 "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
                 "filters": body.filters.model_dump(),
+                "gravity": body.gravity.model_dump() if body.gravity else None,
+                "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
+                "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
+                "blast_loads": [bl.model_dump() for bl in body.blast_loads],
                 "region_nodes": region_nodes,
             }
         )
@@ -418,6 +441,10 @@ def crash_solve(
         "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
         "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
         "filters": body.filters.model_dump(),
+        "gravity": body.gravity.model_dump() if body.gravity else None,
+        "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
+        "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
+        "blast_loads": [bl.model_dump() for bl in body.blast_loads],
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

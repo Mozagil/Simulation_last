@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchCrashValidation, type CrashValidationReport } from "../api/crash";
 
-/** Crash validasyon raporu (1.17f): analitik / literatür referanslarına göre
- * oranlar. Kabul kriteri yok — oranlar veri, eşik mühendisin. */
+/** Crash validasyon raporu (1.17f, 1.18e): analitik / literatür referanslarına
+ * göre oranlar. Kabul kriteri yok — oranlar veri, eşik mühendisin. */
 
 function fmt(v: number | null | undefined, digits = 3): string {
   if (v == null || Number.isNaN(v)) return "—";
@@ -29,7 +29,7 @@ export default function CrashValidation() {
 
   return (
     <details className="crash-mat-section crash-validation" data-testid="crash-validation">
-      <summary>Validasyon (1.17f){report ? ` · ${report.generated_at.slice(0, 10)}` : ""}</summary>
+      <summary>Validasyon{report ? ` · ${(report.updated_at ?? report.generated_at).slice(0, 10)}` : ""}</summary>
       {error && <p className="material-assign-hint">{error}</p>}
       {report && (
         <>
@@ -41,8 +41,16 @@ export default function CrashValidation() {
             c.rows ? (
               <div key={c.id} className="crash-validation-case">
                 <p className="crash-validation-title">
-                  {c.id} · {c.title} <span className="crash-run-meta">koşu #{c.run_id}</span>
+                  {c.id} · {c.title} {c.run_id != null && <span className="crash-run-meta">koşu #{c.run_id}</span>}
                 </p>
+                {c.references?.formula && <p className="crash-run-meta">{c.references.formula}</p>}
+                {c.fit && (
+                  <p className="crash-run-meta" data-testid={`crash-validation-fit-${c.id}`}>
+                    v_bl {fmt(c.fit.v_bl_m_s)} m/s · a {fr(c.fit.a)} · R² {fr(c.fit.r2)} · tarama aralığı{" "}
+                    {c.fit.bracket_low_m_s ?? "—"}–{c.fit.bracket_high_m_s ?? "—"} m/s (
+                    {c.fit.v_bl_in_bracket ? "v_bl aralıkta" : "v_bl aralık dışında"})
+                  </p>
+                )}
                 <div className="crash-history-scroll">
                   <table className="doe-table crash-compare-table">
                     <thead>
@@ -73,9 +81,11 @@ export default function CrashValidation() {
                     </tbody>
                   </table>
                 </div>
-                <p className="crash-run-meta">
-                  enerji dengesi {fr(c.energy_balance_rel)} · hourglass/IE {fr(c.hourglass_ratio)}
-                </p>
+                {c.energy_balance_rel != null && (
+                  <p className="crash-run-meta">
+                    enerji dengesi {fr(c.energy_balance_rel)} · hourglass/IE {fr(c.hourglass_ratio)}
+                  </p>
+                )}
               </div>
             ) : (
               <div key={c.id} className="crash-validation-case">

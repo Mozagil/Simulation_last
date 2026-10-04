@@ -135,8 +135,9 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
       const d = size * 1.25;
       const v = VIEW_VECTORS[dir];
       camera.position.set(center.x + v[0] * d, center.y + v[1] * d, center.z + v[2] * d);
-      // +Y bakışında yukarı yönü Z al (kamera yukarı vektörü bakışa paralel olmasın)
-      camera.up.set(0, dir === "+Y" ? 0 : 1, dir === "+Y" ? -1 : 0);
+      // +Y bakışında yukarı yönü +Z al (kamera yukarı vektörü bakışa paralel olmasın;
+      // −Z idi, plaka–küre koşusunda (1.18b) z ters görünüyordu)
+      camera.up.set(0, dir === "+Y" ? 0 : 1, dir === "+Y" ? 1 : 0);
       controls.target.copy(center);
       controls.update();
       render();
@@ -178,6 +179,10 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
+    // Konumlar her karede değişir; sınır küresi ilk (sıfır) dizilimden kalırsa
+    // three.js görüş hacmi kırpması orijin görünmeyen bakışlarda modeli siler
+    // (K1 Taylor çubuğu, merkez x = 25: +Y / +Z boş ekran).
+    m.geom.computeBoundingSphere();
     m.geom.computeVertexNormals();
     m.render();
   }, [data, tri, frame, scalar]);

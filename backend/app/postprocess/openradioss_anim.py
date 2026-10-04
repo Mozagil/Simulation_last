@@ -135,6 +135,11 @@ def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any
     node_scalars = ("Displacement",)
     cell_names = [k for k in first["cell_data"] if k not in ("ELEMENT_ID", "PART_ID", "EROSION_STATUS")]
     scal_range: dict[str, list[float]] = {}
+    # 1.18b — Radioss rijit gövde elemanlarının hesabını kapatır; anim'de
+    # EROSION_STATUS ilk karede 0 gelir (koşu #63: küre 540 kabuk). t = 0'da
+    # kopma olmaz: ilk karede kapalı eleman silinmiş sayılmaz, çizilir.
+    er0 = first["cell_data"].get("EROSION_STATUS")
+    off_at_start = {c for c, v in enumerate(er0) if not v} if er0 else set()
     for f in frames:
         pts = f["points"]
         fr: dict[str, Any] = {
@@ -149,7 +154,7 @@ def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any
             r[0], r[1] = min(r[0], min(mag)), max(r[1], max(mag))
         er = f["cell_data"].get("EROSION_STATUS")
         if er:
-            fr["face_alive"] = [1 if er[c] else 0 for c in owner]
+            fr["face_alive"] = [1 if er[c] or c in off_at_start else 0 for c in owner]
         cd: dict[str, list[float]] = {}
         for name in cell_names:
             vals = f["cell_data"][name]

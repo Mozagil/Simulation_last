@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import TemplatePanel from "./TemplatePanel";
+import TemplatePanel, { templatesForKind } from "./TemplatePanel";
 
 vi.mock("../api/templates", () => ({
   TemplateApiError: class TemplateApiError extends Error {},
@@ -245,5 +245,14 @@ describe("TemplatePanel", () => {
     expect(label).toHaveTextContent("Length");
     expect(label).toHaveTextContent("L");
     expect(label).toHaveTextContent("(mm)");
+  });
+});
+
+describe("templatesForKind", () => {
+  it("crash sekmesi yalnız crash etiketli şablonları, durability geri kalanını görür", () => {
+    const mk = (id: string, tags: string[]) => ({ id, tags }) as unknown as Parameters<typeof templatesForKind>[0][number];
+    const list = [mk("cantilever_beam", ["grup1"]), mk("crash_box_shell", ["crash", "kabuk"]), mk("plate_ball_shell", ["crash"])];
+    expect(templatesForKind(list, "crash").map((t) => t.id)).toEqual(["crash_box_shell", "plate_ball_shell"]);
+    expect(templatesForKind(list, "durability").map((t) => t.id)).toEqual(["cantilever_beam"]);
   });
 });

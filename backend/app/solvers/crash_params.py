@@ -54,7 +54,15 @@ def _add(
 
 
 class RigidWallParams(BaseModel):
-    """Sonsuz düzlem bariyer: düzlem üzerindeki bir nokta + normal."""
+    """Rijit duvar: sonsuz düzlem (nokta + normal) ya da K3 silindir (/RWALL/CYL:
+    eksen üzerindeki nokta + eksen yönü + çap). Silindirde `normal` yalnız ilk
+    hız yönü içindir (açı 0 → −normal), duvar geometrisi değil."""
+
+    kind: str = Field(default="plane", description="plane | cyl")
+    axis: tuple[float, float, float] = Field(
+        (0.0, 0.0, 1.0), description="cyl: silindir ekseni (nokta → nokta + eksen)"
+    )
+    diameter_mm: float | None = Field(default=None, gt=0, description="cyl: çap (mm)")
 
     point: tuple[float, float, float] = Field(
         (0.0, 0.0, 0.0),
@@ -76,6 +84,13 @@ class RigidWallParams(BaseModel):
     @model_validator(mode="after")
     def _normal_nonzero(self) -> RigidWallParams:
         _unit(self.normal, "wall.normal")
+        if self.kind not in ("plane", "cyl"):
+            raise ValueError("wall.kind plane ya da cyl olmalı.")
+        if self.kind == "cyl":
+            _unit(self.axis, "wall.axis")
+            if self.diameter_mm is None:
+                raise ValueError("cyl duvar için diameter_mm gerekli.")
+            _finite(self.diameter_mm, "diameter_mm")
         return self
 
     def unit_normal(self) -> tuple[float, float, float]:
@@ -128,10 +143,11 @@ class CrashBarrierParams(BaseModel):
         vx, vy, vz = self.velocity_mm_per_ms()
         nx, ny, nz = self.wall.unit_normal()
         px, py, pz = self.wall.point
-        return (
-            {"vx": vx, "vy": vy, "vz": vz},
-            {"point": [px, py, pz], "normal": [nx, ny, nz]},
-        )
+        wall: dict = {"point": [px, py, pz], "normal": [nx, ny, nz]}
+        if self.wall.kind == "cyl":
+            wall.update(kind="cyl", axis=list(_unit(self.wall.axis, "wall.axis")),
+                        diameter_mm=float(self.wall.diameter_mm or 0.0))
+        return {"vx": vx, "vy": vy, "vz": vz}, wall
 
 
 class CrashShellParams(BaseModel):
@@ -150,6 +166,12 @@ class CrashShellParams(BaseModel):
     ismstr: int = Field(default=0, description="Ismstr (küçük/büyük şekil değiştirme)")
     ish3n: int = Field(default=0, description="Ish3n (üçgen formülasyonu)")
     nip: int = Field(default=0, description="N: kalınlık boyunca integrasyon noktası")
+    # 1.17h — hourglass kontrolü (hm_cfg prop_p1_shell: Hm Hf Hr Dm Dn satırı);
+    # 0 = Radioss varsayılanı (hm_cfg: 0.01; aralık 0…0.05). Etkisi Ishell'e bağlı (1–4 hourglass katsayılı
+    # formülasyonlar; 12 / 24 farklı stabilizasyon) — seçim mühendisin.
+    hm: float = Field(default=0.0, ge=0, le=0.05, description="Hm: düzlem içi (membran) hourglass katsayısı")
+    hf: float = Field(default=0.0, ge=0, le=0.05, description="Hf: düzlem dışı (eğilme) hourglass katsayısı")
+    hr: float = Field(default=0.0, ge=0, le=0.05, description="Hr: dönme hourglass katsayısı")
 
     @model_validator(mode="after")
     def _flags_ok(self) -> "CrashShellParams":
@@ -164,6 +186,8 @@ class CrashShellParams(BaseModel):
                 raise ValueError(f"kabuk {name} {sorted(ok)} olmalı.")
         if self.thickness_mm is not None:
             _finite(self.thickness_mm, "thickness_mm")
+        for name in ("hm", "hf", "hr"):
+            _finite(getattr(self, name), name)
         return self
 
 
@@ -303,6 +327,8 @@ class CrashModelParams(BaseModel):
     tab_eps_m: float = Field(default=0.0, ge=0, description="LAW36 Eps_m: maksimum çekme şekil değiştirmesi")
     tab_eps_f: float = Field(default=0.0, ge=0, description="LAW36 Eps_f: eleman silme çekme şekil değiştirmesi")
     tab_vp: int = Field(default=0, description="LAW36 VP: 0 toplam, 1 plastik hız")
+    # 1.17h — solid hourglass katsayısı h (/PROP/TYPE14 "qa qb h" satırı); 0 = varsayılan (hm_cfg: 0.10; aralık 0…0.15)
+    solid_hourglass_h: float = Field(default=0.0, ge=0, le=0.15, description="Solid hourglass katsayısı h")
     shell: CrashShellParams = Field(
         default_factory=CrashShellParams, description="Kabuk parçalar için /PROP/TYPE1"
     )
@@ -563,8 +589,10 @@ class _NodeSelection(BaseModel):
 
     @model_validator(mode="after")
     def _one_target(self):
-        if (self.region is None) == (self.part_id is None):
-            raise ValueError(f"'{self.name}': region ya da part_id'den tam olarak biri verilmeli.")
+        # K7 — /BCS rijit gövde ana düğümüne de verilebilir (CrashBcParams.rigid_body).
+        targets = [t for t in (self.region, self.part_id, getattr(self, "rigid_body", None)) if t is not None]
+        if len(targets) != 1:
+            raise ValueError(f"'{self.name}': region, part_id (ya da rigid_body) tam olarak biri verilmeli.")
         return self
 
 
@@ -591,6 +619,9 @@ class CrashRigidBodyParams(_NodeSelection):
     mass_kg: float = Field(default=0.0, ge=0)
     ikrem: int = Field(default=0, description="0: bağımlı düğümler rijit duvardan çıkarılır, 1: çıkarılmaz")
     icog: int = Field(default=0, description="0–4 (hm_cfg); 0 = Radioss varsayılanı (1)")
+    # K5 — ana düğüm ivmesi /TH/NODE'a (ilk sırada) yazılır: kafa formu ivmesi,
+    # HIC ve CFC (1.17e) bu kanaldan hesaplanır.
+    th_accel: bool = Field(default=False, description="Ana düğüm ivmesini TH'ye yaz (HIC kanalı)")
 
     @model_validator(mode="after")
     def _ok(self) -> "CrashRigidBodyParams":
@@ -607,6 +638,9 @@ class CrashBcParams(_NodeSelection):
     serbestlikler. `dofs` 6 hane Tx Ty Tz Rx Ry Rz (1 = kilitli)."""
 
     dofs: str = Field(default="111111", description="Tx Ty Tz Rx Ry Rz, ör. 111000")
+    # K7 — rijit gövde ana düğümü (ör. kızağı yalnız x'te yönlendirmek: 011111);
+    # bağımlı düğümlere /BCS Radioss'ta kinematik çakışma verir.
+    rigid_body: str | None = Field(default=None, description="rigid_bodies[].name — ana düğüm")
 
     @model_validator(mode="after")
     def _ok(self) -> "CrashBcParams":
@@ -640,6 +674,144 @@ class CrashImpVelParams(BaseModel):
             _finite(getattr(self, n), n)
         if self.t_stop_ms and self.t_stop_ms <= self.t_start_ms:
             raise ValueError("t_stop_ms, t_start_ms'den büyük olmalı (0 = sonsuz).")
+        return self
+
+
+class CrashGravityParams(BaseModel):
+    """/GRAV (K2, hm_cfg radioss51 LOADS/grav): sabit yerçekimi ivmesi tüm parça
+    düğümlerine (+ rijit gövde ana düğümleri). İşaretli büyüklük m/s²; deck
+    mm/ms²'ye çevirir (1 m/s² = 1e-3 mm/ms²). Değer / yön mühendisin."""
+
+    accel_m_s2: float = Field(default=-9.81, description="İşaretli ivme (m/s²), ör. −9.81")
+    direction: str = Field(default="Z", description="X | Y | Z (global)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashGravityParams":
+        _finite(self.accel_m_s2, "accel_m_s2")
+        if self.accel_m_s2 == 0:
+            # Radioss Fscale_Y = 0'ı varsayılan 1 sayar (1.17c tuzağı) — sıfır yerçekimi = kart yok.
+            raise ValueError("accel_m_s2 sıfır olamaz; yerçekimi istenmiyorsa gravity boş bırakılır.")
+        if self.direction not in ("X", "Y", "Z"):
+            raise ValueError("direction X, Y ya da Z olmalı.")
+        return self
+
+
+class CrashPressureLoadParams(BaseModel):
+    """/PLOAD (K10, hm_cfg radioss2021 LOADS/pload): parçanın kabuk yüzeyine
+    zamana bağlı basınç, Friedlander pozitif evresi
+    p(t) = Ps·(1 − τ)·e^(−b·τ), τ = (t − t0)/td ∈ [0, 1]; dışında 0. Basınç
+    kabuk normali boyunca (yön mesh normaline bağlı — işaret mühendisin;
+    negatif Ps ters yön). Birim: MPa, ms."""
+
+    name: str = Field(default="pload", min_length=1, max_length=60)
+    part_id: int = Field(default=0, ge=0)
+    peak_mpa: float = Field(..., description="Ps (MPa), işaretli")
+    duration_ms: float = Field(..., gt=0, description="td (ms) pozitif evre süresi")
+    decay: float = Field(default=1.0, ge=0, description="b: Friedlander sönüm katsayısı (0 = doğrusal)")
+    t_start_ms: float = Field(default=0.0, ge=0, description="t0 (ms)")
+    samples: int = Field(default=40, ge=4, le=400, description="/FUNCT nokta sayısı")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashPressureLoadParams":
+        for n in ("peak_mpa", "duration_ms", "decay", "t_start_ms"):
+            _finite(getattr(self, n), n)
+        if self.peak_mpa == 0:
+            raise ValueError("peak_mpa sıfır olamaz (Radioss Fscale 0'ı 1 sayar).")
+        return self
+
+    def pressure_mpa(self, t_ms: float) -> float:
+        import math
+
+        tau = (t_ms - self.t_start_ms) / self.duration_ms
+        if tau < 0.0 or tau > 1.0:
+            return 0.0
+        return self.peak_mpa * (1.0 - tau) * math.exp(-self.decay * tau)
+
+    def impulse_per_area_mpa_ms(self) -> float:
+        """∫p dt (MPa·ms) — kapalı form: Ps·td·[1/b − (1 − e^(−b))/b²]; b = 0 → Ps·td/2."""
+        import math
+
+        b = self.decay
+        if b < 1e-9:
+            return self.peak_mpa * self.duration_ms / 2.0
+        return self.peak_mpa * self.duration_ms * (1.0 / b - (1.0 - math.exp(-b)) / (b * b))
+
+
+class CrashSphProjectileParams(BaseModel):
+    """K12 — SPH mermi (ör. kuş): kapsül (silindir + iki yarım küre) içinde kübik
+    kafes parçacıklar; /SPHCEL + /PROP/SPH (hm_cfg r2019) + /MAT/HYDRO (LAW6,
+    r2020: P = C1·μ, Pmin kesmesi). Mesh'e girmez, deck'te üretilir. Hedef parça
+    yüzeyine TYPE7 (SPH düğümleri slave). Değerler mühendisin; varsayılanlar
+    literatürdeki su benzeri kuş modeli mertebesi."""
+
+    name: str = Field(default="kus", min_length=1, max_length=60)
+    diameter_mm: float = Field(default=100.0, gt=0)
+    length_mm: float = Field(default=200.0, gt=0, description="Toplam boy (≥ çap; = çap → küre)")
+    centre: tuple[float, float, float] = Field(default=(0.0, 0.0, 0.0))
+    axis: tuple[float, float, float] = Field(default=(0.0, 0.0, 1.0), description="Kapsül ekseni")
+    spacing_mm: float = Field(default=10.0, gt=0, description="Parçacık aralığı")
+    density_kg_m3: float = Field(default=950.0, gt=0)
+    bulk_gpa: float = Field(default=2.2, gt=0, description="C1 hacim modülü (GPa)")
+    pmin_gpa: float = Field(default=-1.0e-4, le=0, description="Pmin çekme kesmesi (GPa)")
+    velocity_m_s: tuple[float, float, float] = Field(default=(0.0, 0.0, -100.0))
+    target_part: int = Field(default=0, ge=0, description="Çarptığı mesh parçası (TYPE7 master)")
+    gapmin_mm: float = Field(default=0.0, ge=0, description="TYPE7 GAPmin (0 = Radioss varsayılanı)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashSphProjectileParams":
+        if self.length_mm < self.diameter_mm:
+            raise ValueError("length_mm, diameter_mm'den küçük olamaz.")
+        _unit(self.axis, "sph.axis")
+        if self.diameter_mm / self.spacing_mm > 60:
+            raise ValueError("spacing_mm çok küçük (çap / aralık ≤ 60).")
+        for v in (*self.centre, *self.velocity_m_s):
+            _finite(v, "sph")
+        return self
+
+    def particles(self) -> list[tuple[float, float, float]]:
+        """Kapsül içindeki kübik kafes noktaları (merkezlenmiş)."""
+        import math
+
+        ax = _unit(self.axis, "sph.axis")
+        r, half = self.diameter_mm / 2.0, (self.length_mm - self.diameter_mm) / 2.0
+        ext = self.length_mm / 2.0
+        n = int(math.ceil(ext / self.spacing_mm)) + 1
+        cx, cy, cz = self.centre
+        out = []
+        for i in range(-n, n + 1):
+            for j in range(-n, n + 1):
+                for k in range(-n, n + 1):
+                    x, y, z = i * self.spacing_mm, j * self.spacing_mm, k * self.spacing_mm
+                    s = x * ax[0] + y * ax[1] + z * ax[2]  # eksen boyunca
+                    s_c = max(-half, min(half, s))
+                    dx, dy, dz = x - s_c * ax[0], y - s_c * ax[1], z - s_c * ax[2]
+                    if dx * dx + dy * dy + dz * dz <= r * r + 1e-9:
+                        out.append((cx + x, cy + y, cz + z))
+        return out
+
+    def particle_mass_kg(self) -> float:
+        return self.density_kg_m3 * (self.spacing_mm ** 3) * 1e-9
+
+
+class CrashBlastLoadParams(BaseModel):
+    """K13 — /LOAD/PBLAST (hm_cfg radioss2022): ampirik patlama basıncı (TM5-1300,
+    Kingery–Bulmash; OpenRadioss hesaplar) parçanın yüzeyine. exp_data 1 serbest
+    hava küresel, 2 zemin yansımalı yarım küre (mayın). TNT eşdeğeri kg, mm, ms.
+    Değerler / model seçimi mühendisin."""
+
+    name: str = Field(default="mayin", min_length=1, max_length=60)
+    part_id: int = Field(default=0, ge=0)
+    tnt_kg: float = Field(..., gt=0, description="TNT eşdeğeri kütle (kg)")
+    point: tuple[float, float, float] = Field(..., description="Patlama noktası (mm)")
+    exp_data: int = Field(default=2, description="1 serbest hava (küresel), 2 zemin yansımalı (yarım küre)")
+    t_det_ms: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashBlastLoadParams":
+        if self.exp_data not in (1, 2):
+            raise ValueError("exp_data 1 ya da 2 olmalı.")
+        for v in (*self.point, self.tnt_kg, self.t_det_ms):
+            _finite(v, "pblast")
         return self
 
 

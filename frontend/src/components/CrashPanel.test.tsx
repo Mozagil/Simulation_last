@@ -12,9 +12,11 @@ vi.mock("../api/crash", () => ({
   compareCrashRuns: vi.fn(() => Promise.resolve([])),
   fetchCrashValidation: vi.fn(() => new Promise(() => undefined)),
   postCrashScenario: vi.fn(),
+  fetchCrashCatalog: vi.fn(() => new Promise(() => undefined)),
 }));
 
 vi.mock("../api/materials", () => ({ fetchMaterials: vi.fn(() => Promise.resolve([])) }));
+vi.mock("../api/templates", () => ({ fetchTemplates: vi.fn(() => new Promise(() => undefined)) }));
 
 import { fetchCrashJob, postCrashSolve } from "../api/crash";
 
@@ -80,6 +82,7 @@ describe("CrashPanel", () => {
     expect(screen.queryByLabelText(/t (mm) — ortak/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Ishell"), { target: { value: "24" } });
     fireEvent.change(screen.getByLabelText("N"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Hourglass Hm"), { target: { value: "0.02" } });
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     const body = vi.mocked(postCrashSolve).mock.calls[0][0];
@@ -88,7 +91,8 @@ describe("CrashPanel", () => {
       { part_id: 0, role: "moving" },
       { part_id: 1, role: "moving" },
     ]);
-    expect(body.model?.shell).toEqual({ ishell: 24, ish3n: 0, ismstr: 0, nip: 5 });
+    expect(body.model?.shell).toEqual({ ishell: 24, ish3n: 0, ismstr: 0, nip: 5, hm: 0.02, hf: 0, hr: 0 });
+    expect(body.model?.solid_hourglass_h).toBe(0);
   });
 
   it("3D mesh: solid kartı gösterir, kabuk alanı göndermez", async () => {
@@ -131,7 +135,6 @@ describe("CrashPanel", () => {
       expect.objectContaining({
         geometry_id: 1,
         run_solver: false,
-        scenario: "rigid_wall",
         barrier: expect.objectContaining({ speed_m_s: 15 }),
         model: expect.objectContaining({
           law: "elastic",
@@ -181,7 +184,8 @@ describe("CrashPanel", () => {
       scalars: {},
     });
     render(<CrashPanel geometryId={1} meshDimension={3} />);
-    fireEvent.click(screen.getByRole("button", { name: "Plaka–küre" }));
+    // eski "Plaka–küre" ön ayarı kaldırıldı — seçici yok
+    expect(screen.queryByRole("button", { name: "Plaka–küre" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "LAW2 plastik" }));
     fireEvent.change(screen.getByLabelText("NIP"), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("Isolid"), { target: { value: "14" } });
@@ -190,8 +194,7 @@ describe("CrashPanel", () => {
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
       expect.objectContaining({
-        scenario: "plate_ball",
-        barrier: expect.objectContaining({ speed_m_s: 20 }),
+        barrier: expect.objectContaining({ speed_m_s: 10 }),
         model: expect.objectContaining({
           law: "plastic",
           isolid: 14,
@@ -200,7 +203,7 @@ describe("CrashPanel", () => {
         }),
       }),
     );
-    expect(screen.getByRole("img", { name: /Plaka-küre/i })).toBeInTheDocument();
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0]).not.toHaveProperty("scenario");
   });
   it("temas satırlarını ve duvar bayrağını gönderir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({

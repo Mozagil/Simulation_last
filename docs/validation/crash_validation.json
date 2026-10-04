@@ -160,6 +160,875 @@
      "mass_model_kg": 51.19
     }
    ]
+  },
+  {
+   "id": "V4",
+   "title": "Plaka–küre elastik yarı-statik (LAW1, küre 50 kg test, 1 m/s)",
+   "run_id": 72,
+   "wall_s": 38.21040105819702,
+   "references": {
+    "k_n_per_mm": 4769.53601953602,
+    "ball_mass_kg": 50.33942,
+    "formula": "k = D/(0.0056·a²), D = E·t³/12(1−ν²); F = v·√(k·m), δ = v·√(m/k), T = π·√(m/k)"
+   },
+   "rows": [
+    {
+     "quantity": "Temas tepe kuvveti (kN)",
+     "sim": 20.85364326690438,
+     "ref": 15.495021035563388,
+     "ref_label": "v·√(k·m)",
+     "ratio": 1.345828651606355
+    },
+    {
+     "quantity": "Temas tepe kuvveti CFC60 (kN)",
+     "sim": 15.134907957162222,
+     "ref": 15.495021035563388,
+     "ref_label": "v·√(k·m)",
+     "ratio": 0.9767594327510332
+    },
+    {
+     "quantity": "Küre en büyük ilerlemesi (mm)",
+     "sim": 3.2682504755748205,
+     "ref": 3.248748090400362,
+     "ref_label": "v·√(m/k) (plaka çökmesi)",
+     "ratio": 1.0060030462909961
+    },
+    {
+     "quantity": "Temas süresi (ms)",
+     "sim": 10.299795,
+     "ref": 10.206243134165646,
+     "ref_label": "π·√(m/k)",
+     "ratio": 1.009166141214213
+    },
+    {
+     "quantity": "Temas impulsu (N·s)",
+     "sim": 99.56756971281467,
+     "ref": 100.67884,
+     "ref_label": "2·m·v0 (elastik geri sekme)",
+     "ratio": 0.9889622259534842
+    }
+   ],
+   "energy_balance_rel": 0.02120346721267444,
+   "hourglass_ratio": 0.2217819383169634,
+   "timestep_min_ms": 0.0008437,
+   "mass_model_kg": 53.59
+  },
+  {
+   "id": "V5",
+   "title": "Plaka–küre Recht–Ipson (p = 2) uydurması — 1.18d tarama (TEST değerleri)",
+   "references": {
+    "formula": "v_r = a·√(v0² − v_bl²); en küçük kareler v_r² ~ v0²",
+    "sweep_setup": {
+     "material": "S235",
+     "plate_size": 300.0,
+     "plate_t": 2.0,
+     "ball_d": 50.0,
+     "gap": 1.0,
+     "ball_mass": 1.0,
+     "ball_t": 1.0,
+     "elem": 5.0,
+     "t_end": 2.0,
+     "eps_t1": 0.15,
+     "eps_t2": 0.25,
+     "test_values": true
+    },
+    "sweep_generated": "2026-10-04T16:08:39+00:00"
+   },
+   "fit": {
+    "a": 0.987973667208721,
+    "v_bl_m_s": 28.754229811187123,
+    "r2": 0.9997807663794517,
+    "bracket_low_m_s": 25,
+    "bracket_high_m_s": 50,
+    "v_bl_in_bracket": true
+   },
+   "rows": [
+    {
+     "quantity": "Son hız v0 = 50 m/s (#67)",
+     "sim": 37.48609870240497,
+     "ref": 40.412763879190805,
+     "ref_label": "Recht–Ipson uydurma",
+     "ratio": 0.9275806726425653
+    },
+    {
+     "quantity": "Son hız v0 = 100 m/s (#68)",
+     "sim": 95.30436108955475,
+     "ref": 94.62495039675896,
+     "ref_label": "Recht–Ipson uydurma",
+     "ratio": 1.0071800375054047
+    },
+    {
+     "quantity": "Son hız v0 = 150 m/s (#69)",
+     "sim": 146.3637806725945,
+     "ref": 145.44769103121644,
+     "ref_label": "Recht–Ipson uydurma",
+     "ratio": 1.0062984130919028
+    },
+    {
+     "quantity": "Son hız v0 = 200 m/s (#70)",
+     "sim": 195.11088813131636,
+     "ref": 195.54191430617772,
+     "ref_label": "Recht–Ipson uydurma",
+     "ratio": 0.9977957351169915
+    }
+   ]
+  },
+  {
+   "id": "V6",
+   "title": "Taylor çubuğu (S235 LAW2, tet4, L0 50 / D0 10 mm)",
+   "references": {
+    "formula": "L1/L0 = h/L0 + (1 − h/L0)·exp(−ρ·v0²/(2·σ0)); h = 0 (alt sınır)"
+   },
+   "rows": [
+    {
+     "quantity": "L1/L0 — v0 100 m/s, 1.5 mm (#75)",
+     "sim": 0.867512,
+     "ref": 0.8461816072816717,
+     "ref_label": "Wilkins–Guinan exp(−ρv²/2σy), h = 0",
+     "ratio": 1.0252078189064537
+    },
+    {
+     "quantity": "D1/D0 uç çapı — v0 100 m/s, 1.5 mm (#75)",
+     "sim": 1.2893201309217195,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Duvar impulsu (N·s) — v0 100 m/s, 1.5 mm (#75)",
+     "sim": 3.16241,
+     "ref": 3.166722711586049,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9986381151812661
+    },
+    {
+     "quantity": "L1/L0 — v0 150 m/s, 1.5 mm (#76)",
+     "sim": 0.735578,
+     "ref": 0.6867411283916542,
+     "ref_label": "Wilkins–Guinan exp(−ρv²/2σy), h = 0",
+     "ratio": 1.0711139461280286
+    },
+    {
+     "quantity": "D1/D0 uç çapı — v0 150 m/s, 1.5 mm (#76)",
+     "sim": 1.5842996024742289,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Duvar impulsu (N·s) — v0 150 m/s, 1.5 mm (#76)",
+     "sim": 4.683115,
+     "ref": 4.689392032065175,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9986614401137175
+    },
+    {
+     "quantity": "L1/L0 — v0 100 m/s, 1 mm (#77)",
+     "sim": 0.867806,
+     "ref": 0.8461816072816717,
+     "ref_label": "Wilkins–Guinan exp(−ρv²/2σy), h = 0",
+     "ratio": 1.025555262052783
+    },
+    {
+     "quantity": "D1/D0 uç çapı — v0 100 m/s, 1 mm (#77)",
+     "sim": 1.3116371237503155,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Duvar impulsu (N·s) — v0 100 m/s, 1 mm (#77)",
+     "sim": 3.182835,
+     "ref": 3.196000948777734,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9958804928444188
+    }
+   ],
+   "runs": [
+    {
+     "run_id": 75,
+     "v0_m_s": 100.0,
+     "element_mm": 1.5,
+     "wall_s": 32.240318775177,
+     "L1_mm": 43.3756,
+     "D1_mm": 12.893201309217195,
+     "energy_balance_rel": 0.0005027294658570082,
+     "hourglass_ratio": 0.0,
+     "timestep_min_ms": 4.515e-05,
+     "mass_model_kg": 0.0305
+    },
+    {
+     "run_id": 76,
+     "v0_m_s": 150.0,
+     "element_mm": 1.5,
+     "wall_s": 32.757535219192505,
+     "L1_mm": 36.7789,
+     "D1_mm": 15.84299602474229,
+     "energy_balance_rel": 0.0006796809874700316,
+     "hourglass_ratio": 0.0,
+     "timestep_min_ms": 3.242e-05,
+     "mass_model_kg": 0.0305
+    },
+    {
+     "run_id": 77,
+     "v0_m_s": 100.0,
+     "element_mm": 1.0,
+     "wall_s": 99.95834732055664,
+     "L1_mm": 43.390299999999996,
+     "D1_mm": 13.116371237503154,
+     "energy_balance_rel": 0.0003956885633749128,
+     "hourglass_ratio": 0.0,
+     "timestep_min_ms": 2.812e-05,
+     "mass_model_kg": 0.03068
+    }
+   ],
+   "energy_balance_rel": 0.0006796809874700316,
+   "hourglass_ratio": 0.0
+  },
+  {
+   "id": "V7",
+   "title": "Düşme testi 1 m (kabuk kutu 200×150×50 t2, S235 LAW2, yüzey + köşe)",
+   "references": {
+    "formula": "v0 = √(2gH); g = v0·t + ½·g·t²; I = m·(vz_son − vz₀) + m·g·t"
+   },
+   "rows": [
+    {
+     "quantity": "KE₀ (J) — yüzey (#80)",
+     "sim": 14.64593,
+     "ref": 14.63652,
+     "ref_label": "m·g·H",
+     "ratio": 1.0006429123862774
+    },
+    {
+     "quantity": "Temas anı (ms) — yüzey (#80)",
+     "sim": 0.2257445,
+     "ref": 0.22570540824029164,
+     "ref_label": "serbest düşme g = 1 mm (TH aralığı 0.005 ms)",
+     "ratio": 1.000173198152464
+    },
+    {
+     "quantity": "Zemin impulsu (N·s) — yüzey (#80)",
+     "sim": 7.543007,
+     "ref": 7.545551510797511,
+     "ref_label": "m·(vz_son − vz₀) + m·g·t",
+     "ratio": 0.9996627800109946
+    },
+    {
+     "quantity": "KE₀ (J) — köşe (#81)",
+     "sim": 14.64591,
+     "ref": 14.626710000000001,
+     "ref_label": "m·g·H",
+     "ratio": 1.0013126670317523
+    },
+    {
+     "quantity": "Temas anı (ms) — köşe (#81)",
+     "sim": 0.2256151,
+     "ref": 0.22570540824029164,
+     "ref_label": "serbest düşme g = 1 mm (TH aralığı 0.005 ms)",
+     "ratio": 0.9995998844644631
+    },
+    {
+     "quantity": "Zemin impulsu (N·s) — köşe (#81)",
+     "sim": 4.446266,
+     "ref": 4.44476661313338,
+     "ref_label": "m·(vz_son − vz₀) + m·g·t",
+     "ratio": 1.0003373375920772
+    }
+   ],
+   "runs": [
+    {
+     "run_id": 80,
+     "orientation": "yüzey",
+     "wall_s": 24.4475417137146,
+     "vz_end_m_s": 0.5788854,
+     "force_max_kn": 471.55114305437155,
+     "ie_final_j": 7.554461,
+     "energy_balance_rel": 0.07125938939605743,
+     "hourglass_ratio": 0.1654353632906438,
+     "timestep_min_ms": 0.0008207,
+     "mass_model_kg": 1.492
+    },
+    {
+     "run_id": 81,
+     "orientation": "köşe",
+     "wall_s": 26.275113105773926,
+     "vz_end_m_s": -1.49739,
+     "force_max_kn": 11.025860060573125,
+     "ie_final_j": 7.266856,
+     "energy_balance_rel": 0.005263390809314798,
+     "hourglass_ratio": 0.057489676415770456,
+     "timestep_min_ms": 0.00103,
+     "mass_model_kg": 1.491
+    }
+   ],
+   "energy_balance_rel": 0.07125938939605743,
+   "hourglass_ratio": 0.1654353632906438
+  },
+  {
+   "id": "V8",
+   "title": "Direk yan çarpması Ø254 (kiriş L800 h60 b40 t2, S235, uçlar 10+10 kg test, 5 m/s)",
+   "references": {
+    "formula": "P = 4·Mp/L, Mp = σy·Zp, Zp = t·(h'b' + h'²/2) = 7772 mm³"
+   },
+   "rows": [
+    {
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 10 mm (#83)",
+     "sim": 7.350347456209351,
+     "ref": 9.132100000000001,
+     "ref_label": "4·Mp/L (rijit-plastik üç nokta eğilme)",
+     "ratio": 0.804891257893513
+    },
+    {
+     "quantity": "Direk impulsu (N·s) — 10 mm (#83)",
+     "sim": 129.1753000056123,
+     "ref": 129.24972544780874,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9994241733052928
+    },
+    {
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 7.5 mm (#84)",
+     "sim": 6.893666986796257,
+     "ref": 9.132100000000001,
+     "ref_label": "4·Mp/L (rijit-plastik üç nokta eğilme)",
+     "ratio": 0.7548829937031193
+    },
+    {
+     "quantity": "Direk impulsu (N·s) — 7.5 mm (#84)",
+     "sim": 127.20814424873831,
+     "ref": 127.32832961223184,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.999056098797027
+    }
+   ],
+   "runs": [
+    {
+     "run_id": 83,
+     "element_mm": 10.0,
+     "wall_s": 47.366222620010376,
+     "crush_mm": 36.73995026886365,
+     "t_stop_ms": 15.359429588558116,
+     "pm_kn": 7.350347456209351,
+     "f_peak_kn": 31.51976856317324,
+     "energy_balance_rel": 0.001973232593132503,
+     "hourglass_ratio": 0.036322472220929276,
+     "timestep_min_ms": 0.001278,
+     "mass_model_kg": 22.41
+    },
+    {
+     "run_id": 84,
+     "element_mm": 7.5,
+     "wall_s": 73.70141816139221,
+     "crush_mm": 39.05050831663509,
+     "t_stop_ms": 16.770213257561455,
+     "pm_kn": 6.893666986796257,
+     "f_peak_kn": 26.7951652606567,
+     "energy_balance_rel": 0.0006307881022977005,
+     "hourglass_ratio": 0.038145905894567934,
+     "timestep_min_ms": 0.0007645,
+     "mass_model_kg": 22.41
+    }
+   ],
+   "energy_balance_rel": 0.001973232593132503,
+   "hourglass_ratio": 0.036322472220929276
+  },
+  {
+   "id": "V9",
+   "title": "ROPS portal yanal yavaş itme (W1000 H1200, 80×60 t4, R150, S235 LAW2, 1 m/s)",
+   "references": {
+    "formula": "Mp = σy·t·(d·e + d²/2) = 7.520 kN·m; F = 4·Mp/H | 4·Mp/(H − R)"
+   },
+   "rows": [
+    {
+     "quantity": "Kesit kuvveti platosu δ 40–95 mm (kN) — 15 mm (#86)",
+     "sim": 28.531036870618397,
+     "ref": 25.066666666666666,
+     "ref_label": "4·Mp/H (taban + kiriş seviyesi mafsalları)",
+     "ratio": 1.1382062581363723,
+     "alt_ref": 28.647619047619045,
+     "alt_label": "4·Mp/(H − R) (rijit büküm altı mafsal)"
+    },
+    {
+     "quantity": "∫F dδ (J) — 15 mm (#86)",
+     "sim": 2720.7923493202093,
+     "ref": 2707.85109,
+     "ref_label": "IE + HG (son)",
+     "ratio": 1.004779162106809
+    },
+    {
+     "quantity": "Kesit kuvveti platosu δ 40–95 mm (kN) — 10 mm (#87)",
+     "sim": 28.086740146037883,
+     "ref": 25.066666666666666,
+     "ref_label": "4·Mp/H (taban + kiriş seviyesi mafsalları)",
+     "ratio": 1.1204816547621497,
+     "alt_ref": 28.647619047619045,
+     "alt_label": "4·Mp/(H − R) (rijit büküm altı mafsal)"
+    },
+    {
+     "quantity": "∫F dδ (J) — 10 mm (#87)",
+     "sim": 2689.1008784107294,
+     "ref": 2676.29355,
+     "ref_label": "IE + HG (son)",
+     "ratio": 1.004785472210524
+    }
+   ],
+   "runs": [
+    {
+     "run_id": 86,
+     "element_mm": 15.0,
+     "wall_s": 56.96292734146118,
+     "plateau_kn": 28.531036870618397,
+     "f_max_kn": 28.97925082675764,
+     "work_j": 2720.7923493202093,
+     "energy_balance_rel": 0.0002474007976913188,
+     "hourglass_ratio": 0.00790552934327696,
+     "timestep_min_ms": 0.001436,
+     "mass_model_kg": 28.76
+    },
+    {
+     "run_id": 87,
+     "element_mm": 10.0,
+     "wall_s": 146.85571694374084,
+     "plateau_kn": 28.086740146037883,
+     "f_max_kn": 28.94964725176329,
+     "work_j": 2689.1008784107294,
+     "energy_balance_rel": 0.00022567503634523213,
+     "hourglass_ratio": 0.006345201715111459,
+     "timestep_min_ms": 0.0009357,
+     "mass_model_kg": 28.76
+    }
+   ],
+   "energy_balance_rel": 0.0002474007976913188,
+   "hourglass_ratio": 0.00790552934327696
+  },
+  {
+   "id": "V10",
+   "title": "Kafa impaktörü Ø165 / 4.5 kg, 11.1 m/s, kaput 600×600×0.8 S235 (kenar sabit)",
+   "run_id": 88,
+   "wall_s": 25.443387031555176,
+   "references": {
+    "formula": "∫|a|dt = Δv = I/m (ivme kanalının bütünlüğü); HIC eşiği mühendisin"
+   },
+   "rows": [
+    {
+     "quantity": "Kafa Δv (m/s): ∫|a| dt",
+     "sim": 14.34767925334341,
+     "ref": 14.355235845600145,
+     "ref_label": "temas impulsu / m",
+     "ratio": 0.9994736002711476
+    },
+    {
+     "quantity": "Kütle (kg): 2·KE₀/v0²",
+     "sim": 4.497823228634039,
+     "ref": 4.5,
+     "ref_label": "istenen toplam (kabuk + ek)",
+     "ratio": 0.9995162730297865
+    },
+    {
+     "quantity": "HIC15 (ham)",
+     "sim": 4794.653280936185,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "HIC15 (CFC1000)",
+     "sim": 4781.899138230954,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Tepe ivme (g, CFC1000)",
+     "sim": 355.0182838045941,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.0035496827005389088,
+   "hourglass_ratio": 0.0016357167139354671,
+   "timestep_min_ms": 0.001406,
+   "mass_model_kg": 6.759
+  },
+  {
+   "id": "V11",
+   "title": "FOPS: 227 kg Ø250 küre, H 5.21 m, tavan 1200²×6 S235 (kenar sabit)",
+   "run_id": 89,
+   "wall_s": 25.269208669662476,
+   "references": {
+    "formula": "v0 = √(2gH), KE₀ = m·g·H; g = v0·t + ½·g·t²; ISO 3449 kriterleri mühendisin"
+   },
+   "rows": [
+    {
+     "quantity": "KE₀ (J)",
+     "sim": 11605.54,
+     "ref": 11601.992699999999,
+     "ref_label": "m·g·H (227 kg istenen)",
+     "ratio": 1.0003057492011698
+    },
+    {
+     "quantity": "Temas anına kadar düşülen mesafe (mm)",
+     "sim": 2.244229870234043,
+     "ref": null,
+     "ref_label": "— (veri; orta yüzeyler arası 5 mm − TYPE7 temas boşluğu)",
+     "ratio": null
+    },
+    {
+     "quantity": "Cisim en büyük ilerlemesi (mm)",
+     "sim": 96.97279420765831,
+     "ref": null,
+     "ref_label": "— (veri; tavan çökmesi + yerel ezilme)",
+     "ratio": null
+    },
+    {
+     "quantity": "Tavan iç enerjisi (J)",
+     "sim": 11123.25,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.00041797206116700426,
+   "hourglass_ratio": 0.0012056584181781404,
+   "timestep_min_ms": 0.003006,
+   "mass_model_kg": 294.8
+  },
+  {
+   "id": "V12",
+   "title": "S-kiriş (L1 100, L2 200, R150, θ45°, 60×40 t2, S235), kılavuzlu kızak 50 kg test, 5 m/s",
+   "run_id": 92,
+   "wall_s": 43.14340353012085,
+   "references": {
+    "formula": "I = M·(v0 + v_son); Pm = IE(t_dur) / δ; düz tüp W&A 9.56·σ0·t^(5/3)·C^(1/3)"
+   },
+   "rows": [
+    {
+     "quantity": "Duvar impulsu (N·s)",
+     "sim": 222.0071,
+     "ref": 221.72360366666322,
+     "ref_label": "M·(v0 ∓ v_son), v_son = √(2·KE_son/M) (ileri: −, geri sekme: +)",
+     "ratio": 1.0012786024069995
+    },
+    {
+     "quantity": "Ortalama kuvvet IE/δ (kN)",
+     "sim": 6.053988374038236,
+     "ref": 25.92126307722099,
+     "ref_label": "aynı kesitli DÜZ tüp eksenel ezilme (W&A) — veri, eğilmeli çökme beklenir",
+     "ratio": 0.23355298528482366
+    },
+    {
+     "quantity": "Ezilme δ (mm)",
+     "sim": 95.31693230112494,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Tepe kuvvet (kN)",
+     "sim": 81.10356590821378,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.00015212537661661346,
+   "hourglass_ratio": 0.09679567162223707,
+   "timestep_min_ms": 0.0003644,
+   "mass_model_kg": 51.68
+  },
+  {
+   "id": "V13",
+   "title": "Kapı intrüzyonu (darbe kirişi L800 40×30 t1.5 S235, uçlar ankastre; Ø305 silindir, 1 m/s)",
+   "run_id": 95,
+   "wall_s": 67.56742691993713,
+   "references": {
+    "formula": "Mp = σy·t·(h'b' + h'²/2) = 0.648 kN·m; P = 8·Mp/L = 6.48 kN"
+   },
+   "rows": [
+    {
+     "quantity": "Temas kuvveti platosu δ 5–20 mm (kN)",
+     "sim": 6.831323747704187,
+     "ref": 6.480271875000001,
+     "ref_label": "8·Mp/L (ankastre kiriş, orta yük, rijit-plastik)",
+     "ratio": 1.0541723988554395
+    },
+    {
+     "quantity": "∫F dδ (J)",
+     "sim": 1685.26761897936,
+     "ref": 1688.03587,
+     "ref_label": "IE + HG (son)",
+     "ratio": 0.9983600757129408
+    },
+    {
+     "quantity": "Kuvvet δ = 120 mm (kN)",
+     "sim": 24.960153544788696,
+     "ref": null,
+     "ref_label": "— (veri; büyük çökmede membran sertleşmesi)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 4.800322664327898e-05,
+   "hourglass_ratio": 0.007800057433830198,
+   "timestep_min_ms": 0.0007812,
+   "mass_model_kg": 1.488
+  },
+  {
+   "id": "V14",
+   "title": "Hopkinson çubuğu (Ø20, Ls 100, Li 500, S235 elastik LAW1, tet4 3 mm, 10 m/s)",
+   "run_id": 96,
+   "wall_s": 32.41393232345581,
+   "references": {
+    "formula": "c₀ = √(E/ρ) = 5172 m/s; σ = ρ·c₀·v0/2; süre 2·Ls/c₀"
+   },
+   "rows": [
+    {
+     "quantity": "Kesit kuvveti platosu (kN)",
+     "sim": 62.690581200094165,
+     "ref": 63.777039079898906,
+     "ref_label": "ρ·c₀·v0·A / 2 (eşit empedans)",
+     "ratio": 0.9829647488268679
+    },
+    {
+     "quantity": "Darbe süresi, yarı genlikte (ms)",
+     "sim": 0.037588149999999994,
+     "ref": 0.03866830866792721,
+     "ref_label": "2·Ls/c₀",
+     "ratio": 0.9720660482669846
+    },
+    {
+     "quantity": "Dalga yolu süresi temas → x = Li/4 (ms)",
+     "sim": 0.02540537,
+     "ref": 0.02416769291745451,
+     "ref_label": "(Li/4)/c₀ (yarı genlik anları)",
+     "ratio": 1.0512120493574961
+    }
+   ],
+   "energy_balance_rel": 0.004864956135641381,
+   "hourglass_ratio": 0.0,
+   "timestep_min_ms": 0.000104,
+   "mass_model_kg": 1.463
+  },
+  {
+   "id": "V15",
+   "title": "Patlama yüklü plaka (400×400×3 S235 ankastre; Friedlander Ps 2 MPa, td 0.2 ms, b 1)",
+   "run_id": 99,
+   "wall_s": 9.172759056091309,
+   "references": {
+    "formula": "I/A = Ps·td·[1/b − (1 − e^(−b))/b²]; momentum = impuls (kısa darbe)"
+   },
+   "rows": [
+    {
+     "quantity": "Serbest plaka momentumu |ZMOM| t = td (N·s) (#100)",
+     "sim": 23.5507,
+     "ref": 23.54428423497231,
+     "ref_label": "A·∫p dt (Friedlander kapalı form)",
+     "ratio": 1.000272497773288
+    },
+    {
+     "quantity": "Ankastre plaka |ZMOM| t = td (N·s)",
+     "sim": 15.32416,
+     "ref": 23.54428423497231,
+     "ref_label": "A·∫p dt — veri: mesnetler darbe sırasında momentum alır",
+     "ratio": 0.6508654010062337
+    },
+    {
+     "quantity": "En büyük yer değiştirme, tüm kareler (mm)",
+     "sim": 8.4331,
+     "ref": null,
+     "ref_label": "— (veri; anim kare aralığıyla)",
+     "ratio": null
+    },
+    {
+     "quantity": "Son karede en büyük yer değiştirme (mm)",
+     "sim": 1.3437,
+     "ref": null,
+     "ref_label": "— (veri; kalıcı + titreşim, merkez)",
+     "ratio": null
+    },
+    {
+     "quantity": "Plaka iç enerjisi son (J)",
+     "sim": 53.09653,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.010282837169543957,
+   "hourglass_ratio": 0.00010479421159913838,
+   "timestep_min_ms": 0.00174,
+   "mass_model_kg": 3.768
+  },
+  {
+   "id": "V16",
+   "title": "Kepçe / taş (taban R500 φ90° W600 t10 S235, kenarlar sabit; taş Ø200 / 300 kg, 5 m/s)",
+   "run_id": 101,
+   "wall_s": 16.89810585975647,
+   "references": {
+    "formula": "∫|a|dt = Δv = I/m; KE₀ = ½·m·v0²"
+   },
+   "rows": [
+    {
+     "quantity": "Taş Δv: ∫|a| dt (m/s)",
+     "sim": 7.782905131367388,
+     "ref": 7.679920491020327,
+     "ref_label": "temas impulsu / m",
+     "ratio": 1.013409597204486
+    },
+    {
+     "quantity": "Taş kütlesi 2·KE₀/v0² (kg)",
+     "sim": 299.98728,
+     "ref": 300.0,
+     "ref_label": "istenen toplam",
+     "ratio": 0.9999576
+    },
+    {
+     "quantity": "Taş en büyük ilerlemesi (mm)",
+     "sim": 8.76735595956492,
+     "ref": null,
+     "ref_label": "— (veri; taban çökmesi + temas boşluğu)",
+     "ratio": null
+    },
+    {
+     "quantity": "Taban iç enerjisi son (J)",
+     "sim": 2751.062,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Temas tepe kuvveti (kN)",
+     "sim": 1241.7544414622243,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.0369786325697584,
+   "hourglass_ratio": 0.008418846976185924,
+   "timestep_min_ms": 0.002428,
+   "mass_model_kg": 336.5
+  },
+  {
+   "id": "V17",
+   "title": "Kuş çarpması SPH (1.82 kg, L/D 2, 150 m/s; plaka 600²×6 S235 ankastre)",
+   "run_id": 104,
+   "wall_s": 37.8381187915802,
+   "references": {
+    "formula": "Kapsül Ø113.5 × L227.1 mm; ρ·A·v² = 216.4 kN; L/v = 1.514 ms"
+   },
+   "rows": [
+    {
+     "quantity": "RİJİT hedef: kararlı akış kuvveti (kN) (#105)",
+     "sim": 204.46265254711966,
+     "ref": 216.40573833206278,
+     "ref_label": "ρ·A·v² (Wilbeck)",
+     "ratio": 0.944811603070261
+    },
+    {
+     "quantity": "RİJİT hedef: darbe süresi %5 (ms)",
+     "sim": 1.39827707,
+     "ref": 1.5138230738471248,
+     "ref_label": "L/v",
+     "ratio": 0.9236727158917691
+    },
+    {
+     "quantity": "RİJİT hedef: aktarılan impuls (N·s)",
+     "sim": 290.4988544330059,
+     "ref": 277.3421333333333,
+     "ref_label": "m·v (sıçramasız akış)",
+     "ratio": 1.0474385948559055
+    },
+    {
+     "quantity": "Kuş kütlesi 2·KE₀/v0² (kg)",
+     "sim": 1.8489475555555555,
+     "ref": 1.82,
+     "ref_label": "istenen (SPH kafes yaklaşığı)",
+     "ratio": 1.0159052503052501
+    },
+    {
+     "quantity": "Ankastre plaka: kararlı akış kuvveti (kN)",
+     "sim": 170.8857733943565,
+     "ref": 216.40573833206278,
+     "ref_label": "ρ·A·v² — veri (deforme olan hedef)",
+     "ratio": 0.7896545383290235
+    },
+    {
+     "quantity": "Ankastre plaka: darbe süresi %5 (ms)",
+     "sim": 2.4896510700000003,
+     "ref": 1.5138230738471248,
+     "ref_label": "L/v — veri",
+     "ratio": 1.6446116544339453
+    },
+    {
+     "quantity": "Ankastre plaka: aktarılan impuls (N·s)",
+     "sim": 308.78511125691074,
+     "ref": 277.3421333333333,
+     "ref_label": "m·v — veri (plaka geri iter)",
+     "ratio": 1.1133725249231663
+    },
+    {
+     "quantity": "Tepe temas kuvveti (kN)",
+     "sim": 1520.0691372271228,
+     "ref": null,
+     "ref_label": "— (Hugoniot evresi, veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.008646199869530575,
+   "hourglass_ratio": 0.000936667760197172,
+   "timestep_min_ms": 0.000902,
+   "mass_model_kg": 18.8
+  },
+  {
+   "id": "V18",
+   "title": "Mayın / araç altı patlama (/LOAD/PBLAST zemin yansımalı; 6 kg TNT, 500 mm, taban 1000²×10 S235)",
+   "run_id": 110,
+   "wall_s": null,
+   "references": {
+    "formula": "Hopkinson–Cranz: Z = R/W^(1/3) aynı → p aynı, i ve t ∝ W^(1/3); toplam I ∝ W"
+   },
+   "rows": [
+    {
+     "quantity": "İmpuls oranı (#108 / #109)",
+     "sim": 7.999951419794005,
+     "ref": 8.0,
+     "ref_label": "Hopkinson–Cranz: toplam impuls ∝ W (geometrik benzerlik)",
+     "ratio": 0.9999939274742506
+    },
+    {
+     "quantity": "Varış süresi oranı",
+     "sim": 2.0000003569236675,
+     "ref": 2.0,
+     "ref_label": "t ∝ W^(1/3)",
+     "ratio": 1.0000001784618338
+    },
+    {
+     "quantity": "Serbest plaka impulsu 6 kg (N·s)",
+     "sim": 5335.474,
+     "ref": null,
+     "ref_label": "— (veri; PBLAST TM5-1300 zemin yansımalı)",
+     "ratio": null
+    },
+    {
+     "quantity": "Ankastre taban en büyük çökme (mm) (#110)",
+     "sim": 182.582,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    },
+    {
+     "quantity": "Ankastre taban iç enerjisi son (J)",
+     "sim": 205625.1,
+     "ref": null,
+     "ref_label": "— (veri)",
+     "ratio": null
+    }
+   ],
+   "energy_balance_rel": 0.019265812338619178,
+   "hourglass_ratio": 0.00029985643775978706,
+   "timestep_min_ms": 0.004039,
+   "mass_model_kg": 78.5
   }
- ]
+ ],
+ "updated_at": "2026-10-04T21:52:32.874671+00:00"
 }

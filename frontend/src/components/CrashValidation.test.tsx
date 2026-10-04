@@ -17,6 +17,9 @@ vi.mock("../api/crash", () => ({
           mesh: [{ element_mm: 5, run_id: 53, wall_s: 40, crush_mm: 49.0, t_stop_ms: 9.5, ie_stop_j: 2450,
                    pm_energy_kn: 50.0, f_mean_kn: 51, f_peak_kn: 126, ratio_wa: 1.027, ratio_aj: 0.751,
                    energy_balance_rel: 0.001, hourglass_ratio: 0.05 }] },
+        { id: "V5", title: "Recht–Ipson", references: { formula: "v_r = a·√(v0² − v_bl²)" },
+          fit: { a: 0.988, v_bl_m_s: 28.75, r2: 0.9998, bracket_low_m_s: 25, bracket_high_m_s: 50, v_bl_in_bracket: true },
+          rows: [{ quantity: "Son hız v0 = 100 m/s (#68)", sim: 95.3, ref: 94.62, ref_label: "Recht–Ipson uydurma", ratio: 1.0072 }] },
       ],
     }),
   ),
@@ -25,7 +28,7 @@ vi.mock("../api/crash", () => ({
 describe("CrashValidation", () => {
   it("vakaları oranlarla ve mesh tablosuyla gösterir; kabul kriteri koymaz", async () => {
     render(<CrashValidation />);
-    expect(await screen.findByText(/Validasyon \(1.17f\) · 2026-10-04/)).toBeInTheDocument();
+    expect(await screen.findByText(/Validasyon · 2026-10-04/)).toBeInTheDocument();
     const box = screen.getByTestId("crash-validation");
     expect(box).toHaveTextContent("Kabul kriteri yok");
     expect(box).toHaveTextContent("ρ·c_p·v·A (levha): 214.5");
@@ -33,6 +36,10 @@ describe("CrashValidation", () => {
     const mesh = within(screen.getByTestId("crash-validation-mesh"));
     expect(mesh.getByText("1.027")).toBeInTheDocument();
     expect(mesh.getByText("0.751")).toBeInTheDocument();
+    // 1.18e — V5 uydurma satırı; koşusuz vakada "koşu #" yok
+    expect(screen.getByTestId("crash-validation-fit-V5")).toHaveTextContent("v_bl 28.750 m/s · a 0.988 · R² 1.000");
+    expect(screen.getByTestId("crash-validation-fit-V5")).toHaveTextContent("v_bl aralıkta");
+    expect(box).not.toHaveTextContent("koşu #undefined");
     expect(box).not.toHaveTextContent(/geçti|kaldı|PASS|FAIL/i);
   });
 });

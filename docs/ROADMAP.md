@@ -1191,6 +1191,17 @@ frontend +1. Koşular #51–#56.
   örnekliyor (#50'de 0.01 ms ile 126.7) + Butterworth basamak aşımı; veri.
 Testler: backend 1059/1059 (+1 skip), frontend 164/164.
 
+**1.17h — Hourglass kontrolü** — ✅ 2026-10-04 (kullanıcı: "hourglass kart
+kontrolü olsun, grafikte de görelim")
+- Kabuk /PROP/TYPE1 Hm Hf Hr, solid /PROP/TYPE14 h; 0 = Radioss varsayılanı.
+  Aralıklar hm_cfg'den (prop_p1_shell 0…0.05, varsayılan 0.01;
+  prop_p14_solid h 0…0.15, varsayılan 0.10) — dışı 422. Dm Dn qa qb sıfır.
+- Global HOURGLASS ENERGY eğri olarak (`hourglass_energy`) saklanır; Enerji
+  grafiğinde İç / Kinetik yanında; panelde HG_final · HG/IE.
+- Gerçek koşu (kutu kabuk, Ishell 1, kızak 50 kg, 8 ms): Hm=Hf=Hr 0.001 →
+  HG 41 J, HG/IE 0.017 (#61); 0.05 → 191 J, 0.081 (#62). Duvar tepe 120.7 /
+  120.8 kN. Veri; seçim mühendisin.
+
 **Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
 kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
 öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
@@ -1202,6 +1213,49 @@ geçilmez.
 üzerine): iki parçalı plaka + küre şablonu, rijit küre, plaka köşe / kenar
 sabit, küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk mühendisin
 (explicit süre maliyeti).
+- 1.18a ✅ 2026-10-04 `plate_ball_shell` şablonu: kare plaka orta yüzeyi
+  (z = 0, a × a) + üstünde g boşlukla küre yüzeyi; iki parça (0 plaka, 1
+  küre); bölgeler plaka_kenar (4 kenar), plaka, kure (6 yüz). Tek parça OCC
+  küresi mesh katmanının dikişli açılışında meshlenmiyor ("Impossible to mesh
+  periodic surface"; dilimli küre kutup kenarı yüzünden kapalı döngü
+  kuramıyor) → küre 6 yamalı küp-küre: kenarlar büyük çember yayı, yama iç
+  yüzeyi küre üstündeki 7×7 eş-açılı noktaya oturtulmuş dolgu. Ölçülen:
+  düğüm yarıçap sapması < %0.2, alan %99.9. Tarayıcıda: 2 parça, 7 yüzey,
+  4263 düğüm / 4140 quad (5 mm). Ek: seçili bölge çipinde hover yazıyı
+  görünmez yapıyordu (CSS).
+- 1.18b ✅ 2026-10-04 `/crash/scenario` plate_ball_shell: yeni parça rolü
+  `free` (ilk hız yok, /BCS yok; grup 1 dışında → rijit duvar ikincili
+  değil); plaka free + kalınlık t, küre moving + `ball_thickness_mm`;
+  `template_defaults` açıkken boş listeler: /RBODY kure (`ball_mass_kg` ana
+  düğüme), /BCS plaka_kenar 111111, TYPE7 master küre / slave plaka; duvar
+  yok, ilk hız −z. Küre malzemesi `ball_material_id` (boş = plaka). Gerçek
+  koşu #63 (S235 300×300×5, D50 + 1 kg, 10 m/s, 4 ms, 5 mm): KE₀ 53.06 J =
+  ½·1.062·10²; temas Fmax 12.9 kN (t 1.66 ms); impuls 15.01 N·s ≈ küre Δp
+  1.062·(10 + 4.16) = 15.03 (geri sekme); plaka IE 42.1 J; denge %0.91;
+  HG/IE 0.006. Düzeltmeler: rijit gövde elemanları anim'de ilk karede
+  EROSION_STATUS 0 → "silinmiş" sayılıp küre çizilmiyordu (t = 0'da kapalı =
+  silinme değil); görüntüleyici +Y görünümünde yukarı −Z idi → +Z.
+- 1.18c ✅ 2026-10-04 Hızlı senaryo kartında şablon seçimi: crash box (rijit
+  duvar) | plaka–küre (a, t, D, g, küre kabuk t, küre ek kütle; kızak alanı
+  yok; kurulum backend `template_defaults`). Malzeme plaka ve küreye aynı.
+  API tipi: rol `free`, `ball_*` alanları.
+- 1.18d ✅ 2026-10-04 Hız taraması `scripts/plate_ball_sweep.py` →
+  `docs/validation/plate_ball_sweep.{json,md}`; küre kütlesi 2·KE₀/v0², son hız
+  impulstan (işaretli) ve enerjiden (kontrol) — `app/postprocess/plate_ball.py`.
+  TEST değerleri (mühendis değer vermeden "devam"): S235 LAW2, plaka 300×300×2,
+  TENSSTRAIN ε_t1 0.15 ε_t2 0.25, küre D50 + 1 kg, 5 mm, 2 ms. Sonuç (veri):
+  25 m/s geri sekme +2.26 m/s, silinen 0 (#66); 50 → −37.5 m/s, 25 silinen
+  (#67); 100 → −95.3, 28 (#68); 150 → −146.4, 56 (#69); 200 → −195.1, 82
+  (#70). İki yöntem ≤ 0.03 m/s örtüşüyor. HG/IE 150–200 m/s'de 0.13–0.17
+  (5 mm eleman, kaba). Delinme eşiği hükmü yok; deneme koşusu #65 (100 m/s).
+- 1.18e ✅ 2026-10-04 Doğrulama (kullanıcı: "doğruluğu nasıl ispatlayacağım"):
+  validasyon setine V4 elastik yarı-statik plaka–küre (ankastre kare plaka
+  k = D/(0.0056·a²), kütle–yay) ve V5 Recht–Ipson uydurması; `--only` ile
+  tek vaka; arayüzde formül + uydurma satırı. V4 #72: CFC60 tepe 0.977,
+  ilerleme 1.006, süre 1.009, impuls 0.989 (ham tepe 1.346 — plaka modları);
+  HG/IE 0.222 (Ishell 0; #73 Ishell 24 → 0). V5: v_bl 28.75 m/s (25–50
+  aralığında), a 0.988, R² 0.9998. Ayrıntı `docs/validation/crash_validation.md`.
+- Açık (mühendis): gerçek malzeme / FAIL değerleri, eleman boyu, kabul
 
 *Explicit şablon kataloğu — 1.18 sonrası, 1.19'dan (ML) ÖNCE* (kullanıcı
 kararı 2026-10-03: "durability ile aynı mantık"). Her örnek durability
@@ -1229,6 +1283,85 @@ kopyalanmaz. Durum: ✓ hazır · ◐ küçük ek altyapı · ✗ büyük yeni k
   zamana bağlı basınç yükü, zorlanmış hız (1.17c), CFC (1.17e). Önerilen ilk
   set (en az yeni altyapı): crash box, direk, düşme testi, plaka delinme,
   Taylor çubuğu, ROPS. Öncelik ve sıra kullanıcının; ✗ olanlar ayrı faz.
+
+**Katalog adımları (kullanıcı 2026-10-04: "senaryolar hazır olsun, DOE'ler
+sonra")**
+- K0 ✅ 2026-10-04 Katalog altyapısı: `app/api/crash_catalog.py` 15 madde
+  (sektör, durum ready / planned / major, şablon, referans, doğrulama, eksik
+  altyapı, adım); GET /crash/catalog; `/crash/scenario` şablon listesi
+  katalogdan (ready). Arayüz: Crash panelinde katalog listesi (2/15 hazır),
+  Hızlı senaryo kartı genel — örnek listesi katalogdan, geometri alanları
+  şablon şemasından (sembol, birim, varsayılan), şablona özgü ek alanlar tek
+  kayıt (EXTRAS).
+- K0 ek: ana sayfa "Şablondan üret" listesi sekmeye göre (crash → `crash`
+  etiketli, durability / modal → diğerleri) + crash şablon şemaları; eski
+  "Senaryo: Rigid wall / Plaka–küre" ön ayarı kaldırıldı (yalnız duvar yönünü
+  z'ye çeviriyordu, 1.18 şablonuyla karışıyordu).
+- K1 ✅ 2026-10-04 Taylor çubuğu: `taylor_bar` (dolu silindir, solid), katalog
+  ready, `/crash/scenario` 3D yolu (tet; kabuk kalınlığı yok; duvar x = 0 +x).
+  V6: L1/L0 100 m/s 0.8675 / WG 0.8462 (1.025), 150 m/s 0.7356 / 0.6867
+  (1.071); 1.0 mm mesh 0.8678 (yakınsamış); impuls 0.996–0.999. Görüntüleyici
+  hatası düzeltildi: sınır küresi sıfır konumdan kalıyordu → orijin görünmeyen
+  bakışlarda (+Y / +Z) model kırpılıyordu.
+- K2 ✅ 2026-10-04 Düşme testi: /GRAV kartı (`CrashGravityParams`, hm_cfg r51;
+  tüm parça düğümleri + rijit gövde ana düğümleri; 0 ivme yasak — Radioss 0'ı
+  1 sayar); `drop_box_shell` (kapalı kabuk kutu, rx / ry ile yüzey / kenar /
+  köşe, en alt nokta g'de); senaryo: zemin z = 0, H → v0 = √(2·g·H),
+  varsayılan /GRAV −9.81 Z. V7: KE₀/mgH 1.001, temas anı 1.000, zemin
+  impulsu (yerçekimi dahil) 0.9997 / 1.0003; yüzey düşmesinde denge %7.1
+  (HG 0.17), köşede %0.5. Kartta H ve g alanları, ana sayfada şema.
+- K3 ✅ 2026-10-04 Direk yan çarpması: rijit duvar türü `cyl` (/RWALL/CYL,
+  hm_cfg r51; eksen noktası + yön + çap; `normal` yalnız ilk hız yönü);
+  `pole_beam_shell` (kabuk dikdörtgen tüp, y ekseni; uç halkaları rijit gövde +
+  `end_mass_kg`); direk Ø `pole_diameter_mm` (varsayılan 254), kiriş ortasında.
+  V8: impuls 0.999; Pm / (4·Mp/L) 0.805 (10 mm), 0.755 (7.5 mm) — kesit
+  yerel çökmesi, mesh'le düşüyor (yakınsamadı). Kartta direk Ø ve uç kütlesi.
+- K4 ✅ 2026-10-04 ROPS: `rops_frame_shell` tek parça bükülmüş dikdörtgen tüp
+  portal (T-birleşimli tüpler dikişli STEP'te ikiz düğüm bırakıyordu → süpürme);
+  senaryo: hareketli parçasız koşu (yük zorlanmış hızdan; grup 1 / ilk hız
+  yazılmaz), tabanlar /BCS, yük köşesi RBODY + IMPVEL +y (`push_speed_m_s`),
+  /SECT z = H/2. V9: plato / 4·Mp/(H − R) 0.996 (15 mm), 0.980 (10 mm);
+  ∫F dδ / IE 1.005. Enerji dengesi paydası düzeltildi (sürülen koşuda hep 1
+  çıkıyordu). Katalog 6/15 hazır; planlı 7, ayrı faz 2.
+- K5 ✅ 2026-10-04 Kafa impaktörü (HIC): katalog örneği `head_impactor` →
+  `plate_ball_shell` (aynı şablon, örnek başına kart başlangıç değerleri
+  `defaults`); rijit gövde `th_accel` (ana düğüm ivmesi /TH/NODE ilk sırada →
+  acc_g / HIC / CFC); `ball_total_mass_kg` (ek = toplam − kabuk). V10: ∫|a|dt /
+  (I/m) 0.9995; HIC15 CFC1000 4782 (düz sac, veri). Katalog 7/15.
+- K6 ✅ 2026-10-04 FOPS: katalog örneği `fops` → `plate_ball_shell` + düşme
+  (H → v0, /GRAV) + toplam kütle; kartta örneğe özgü ek alan kaydı (EXTRAS
+  örnek id'si > şablon). V11: KE₀ / mgH 1.0003; ilerleme 97 mm (veri); temas
+  kabuk orta yüzeyi + TYPE7 boşluğuyla başlıyor (geometrik g değil). Katalog 8/15.
+- K7 ✅ 2026-10-04 S-kiriş: `s_rail_shell` (süpürülmüş S tüp, tek parça);
+  /BCS rijit gövde ana düğümüne (`rigid_body`), S-kiriş senaryosunda kızak
+  kılavuzu 011111 (yönlendirmesiz koşu dönerek duvardan ayrıldı). V12: impuls
+  1.001; ortalama kuvvet / düz tüp W&A 0.234 (eğilmeli çökme, veri). Katalog 9/15.
+- K8 ✅ 2026-10-04 Kapı intrüzyonu: `door_beam_shell` (kiriş + yarım silindir
+  impaktör, iki parça); senaryo: impaktör rijit gövde + IMPVEL +x + kılavuz
+  011111, uçlar /BCS, TYPE7. V13: plato / 8·Mp/L 1.054; ∫F dδ / IE 0.998;
+  120 mm'de 25 kN (membran). Kılavuzsuz impaktör kayıp ayrılıyordu. Katalog 10/15.
+- K9 ✅ 2026-10-05 Hopkinson çubuğu: `hopkinson_bar` (iki solid silindir);
+  senaryo: giriş free + çarpıcı moving, TYPE7, x = Li/4 kesiti. V14: plato /
+  ρcvA/2 0.983, süre / 2Ls/c 0.972, dalga yolu 1.051. Katalog 11/15.
+- K10 ✅ 2026-10-05 Patlama yüklü plaka: zamana bağlı basınç /PLOAD
+  (`CrashPressureLoadParams`, Friedlander, hm_cfg r2021; parça kabuk yüzeyi,
+  normal yönü); `blast_plate_shell`; hareketli parçasız koşu basınçla da. V15:
+  serbest plaka momentumu / impuls 1.0003; ankastrede 0.65 (mesnet, veri).
+  Katalog 12/15.
+- K11 ✅ 2026-10-05 Kepçe / taş: `bucket_rock_shell` (kavisli taban + küp-küre
+  taş; `add_cube_sphere` ortak); senaryo plaka–küre kurulumu (bölge adları
+  parametreli). V16: ∫|a|dt / (I/m) 1.013; denge %3.7 (sert temas, veri).
+  Katalog 13/15 — planlı madde kalmadı; kuş (SPH) ve mayın (ALE) ayrı faz kararı.
+- K12 ✅ 2026-10-05 Kuş çarpması (kullanıcı: "diğer şablonlara devam et"): SPH
+  mermi (`CrashSphProjectileParams`; kapsül kübik kafes, /SPHCEL + /PROP/SPH +
+  /MAT/HYDRO, TYPE7 → hedef), katalog `bird_strike` → `blast_plate_shell` +
+  kuş kütlesi. V17 rijit hedef: ρAv² 0.945, L/v 0.924, impuls 1.047; ankastre
+  plaka veri. SPH parçacıkları animasyonda görünmez (yüzey yok). Katalog 14/15.
+- K13 ✅ 2026-10-05 Mayın / araç altı patlama: /LOAD/PBLAST
+  (`CrashBlastLoadParams`, zemin yansımalı), yük yüzeyi /SURF/SEG patlamaya
+  yönlü; katalog `underbody_blast` → `blast_plate_shell` + TNT / mesafe. V18:
+  Hopkinson–Cranz impuls 8.000 / varış 2.000; ankastre taban çökme 183 mm.
+  Tam ALE kapsam dışı (ayrı faz). **Katalog 15/15.**
 
 *1.19 — ML tezgahı entegrasyonu* (1.17 + 1.18 bittikten sonra): crash
 senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params →
