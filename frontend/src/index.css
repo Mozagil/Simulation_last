@@ -4423,6 +4423,33 @@ p {
   margin-top: 8px;
 }
 
+/* Validasyon eşikleri (mühendis): içinde / dışında işareti */
+.crash-thr-in {
+  color: var(--doe-ok);
+}
+
+.crash-thr-out {
+  color: var(--doe-warn);
+  font-weight: 600;
+}
+
+.crash-thr-editor {
+  margin: 8px 0 12px;
+}
+
+.crash-thr-editor > summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.crash-thr-input {
+  width: 3.6em;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  text-align: right;
+}
+
 .crash-validation-case {
   margin: 6px 0 10px;
 }

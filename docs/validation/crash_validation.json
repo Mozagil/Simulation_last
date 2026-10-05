@@ -393,53 +393,67 @@
    },
    "rows": [
     {
-     "quantity": "KE₀ (J) — yüzey (#80)",
+     "quantity": "KE₀ (J) — yüzey (#127)",
      "sim": 14.64593,
      "ref": 14.63652,
      "ref_label": "m·g·H",
      "ratio": 1.0006429123862774
     },
     {
-     "quantity": "Temas anı (ms) — yüzey (#80)",
+     "quantity": "Temas anı (ms) — yüzey (#127)",
      "sim": 0.2257445,
      "ref": 0.22570540824029164,
      "ref_label": "serbest düşme g = 1 mm (TH aralığı 0.005 ms)",
      "ratio": 1.000173198152464
     },
     {
-     "quantity": "Zemin impulsu (N·s) — yüzey (#80)",
+     "quantity": "Zemin impulsu (N·s) — yüzey (#127)",
      "sim": 7.543007,
      "ref": 7.545551510797511,
      "ref_label": "m·(vz_son − vz₀) + m·g·t",
      "ratio": 0.9996627800109946
     },
     {
-     "quantity": "KE₀ (J) — köşe (#81)",
+     "quantity": "KE₀ (J) — köşe (#128)",
      "sim": 14.64591,
      "ref": 14.626710000000001,
      "ref_label": "m·g·H",
      "ratio": 1.0013126670317523
     },
     {
-     "quantity": "Temas anı (ms) — köşe (#81)",
+     "quantity": "Temas anı (ms) — köşe (#128)",
      "sim": 0.2256151,
      "ref": 0.22570540824029164,
      "ref_label": "serbest düşme g = 1 mm (TH aralığı 0.005 ms)",
      "ratio": 0.9995998844644631
     },
     {
-     "quantity": "Zemin impulsu (N·s) — köşe (#81)",
+     "quantity": "Zemin impulsu (N·s) — köşe (#128)",
      "sim": 4.446266,
      "ref": 4.44476661313338,
      "ref_label": "m·(vz_son − vz₀) + m·g·t",
      "ratio": 1.0003373375920772
+    },
+    {
+     "quantity": "Zemin impulsu (N·s) — yüzey Ishell 24 (#129)",
+     "sim": 7.636589,
+     "ref": 7.639152304182831,
+     "ref_label": "m·(vz_son − vz₀) + m·g·t",
+     "ratio": 0.9996644517505656
+    },
+    {
+     "quantity": "Zemin impulsu (N·s) — yüzey 5 mm (#130)",
+     "sim": 7.479064,
+     "ref": 7.481576975312431,
+     "ref_label": "m·(vz_son − vz₀) + m·g·t",
+     "ratio": 0.9996641115475089
     }
    ],
    "runs": [
     {
-     "run_id": 80,
+     "run_id": 127,
      "orientation": "yüzey",
-     "wall_s": 24.4475417137146,
+     "wall_s": 11.528602123260498,
      "vz_end_m_s": 0.5788854,
      "force_max_kn": 471.55114305437155,
      "ie_final_j": 7.554461,
@@ -449,9 +463,9 @@
      "mass_model_kg": 1.492
     },
     {
-     "run_id": 81,
+     "run_id": 128,
      "orientation": "köşe",
-     "wall_s": 26.275113105773926,
+     "wall_s": 10.281932592391968,
      "vz_end_m_s": -1.49739,
      "force_max_kn": 11.025860060573125,
      "ie_final_j": 7.266856,
@@ -459,6 +473,66 @@
      "hourglass_ratio": 0.057489676415770456,
      "timestep_min_ms": 0.00103,
      "mass_model_kg": 1.491
+    },
+    {
+     "run_id": 129,
+     "orientation": "yüzey Ishell 24",
+     "control": true,
+     "element_mm": 10.0,
+     "wall_s": 11.008643388748169,
+     "vz_end_m_s": 0.641626,
+     "force_max_kn": 478.68528441879687,
+     "ie_final_j": 7.98313,
+     "energy_balance_rel": 0.04016505814243273,
+     "hourglass_ratio": 0.0,
+     "timestep_min_ms": 0.0008083,
+     "mass_model_kg": 1.492,
+     "ext_work_final_j": null
+    },
+    {
+     "run_id": 130,
+     "orientation": "yüzey 5 mm",
+     "control": true,
+     "element_mm": 5.0,
+     "wall_s": 19.48541021347046,
+     "vz_end_m_s": 0.5360078,
+     "force_max_kn": 468.26286178295754,
+     "ie_final_j": 8.575125,
+     "energy_balance_rel": 0.08715300813935328,
+     "hourglass_ratio": 0.16103158846080962,
+     "timestep_min_ms": 0.0008619,
+     "mass_model_kg": 1.492,
+     "ext_work_final_j": null
+    },
+    {
+     "run_id": 131,
+     "orientation": "yüzey TYPE7 zemin",
+     "control": true,
+     "element_mm": 10.0,
+     "wall_s": 16.959933280944824,
+     "vz_end_m_s": 1.565474,
+     "force_max_kn": 613.7777001970808,
+     "ie_final_j": 10.22249,
+     "energy_balance_rel": 0.03726301716542533,
+     "hourglass_ratio": 0.07060771886301674,
+     "timestep_min_ms": 0.0008206,
+     "mass_model_kg": 4.004,
+     "ext_work_final_j": null
+    },
+    {
+     "run_id": 132,
+     "orientation": "yüzey TYPE7 zemin Ishell 24",
+     "control": true,
+     "element_mm": 10.0,
+     "wall_s": 17.77899408340454,
+     "vz_end_m_s": 1.53601,
+     "force_max_kn": 537.3718001402126,
+     "ie_final_j": 10.07436,
+     "energy_balance_rel": 0.11832121215012048,
+     "hourglass_ratio": 0.0,
+     "timestep_min_ms": 0.0008085,
+     "mass_model_kg": 4.004,
+     "ext_work_final_j": null
     }
    ],
    "energy_balance_rel": 0.07125938939605743,
@@ -472,39 +546,67 @@
    },
    "rows": [
     {
-     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 10 mm (#83)",
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 10 mm (#117)",
      "sim": 7.350347456209351,
      "ref": 9.132100000000001,
-     "ref_label": "4·Mp/L (rijit-plastik üç nokta eğilme)",
+     "ref_label": "4·Mp/L üst sınır (rijit-plastik, kesit şekli korunur; yerel kesit çöküşü yok)",
      "ratio": 0.804891257893513
     },
     {
-     "quantity": "Direk impulsu (N·s) — 10 mm (#83)",
+     "quantity": "Direk impulsu (N·s) — 10 mm (#117)",
      "sim": 129.1753000056123,
      "ref": 129.24972544780874,
      "ref_label": "M·(v0 + v_son)",
      "ratio": 0.9994241733052928
     },
     {
-     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 7.5 mm (#84)",
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 7.5 mm (#118)",
      "sim": 6.893666986796257,
      "ref": 9.132100000000001,
-     "ref_label": "4·Mp/L (rijit-plastik üç nokta eğilme)",
+     "ref_label": "4·Mp/L üst sınır (rijit-plastik, kesit şekli korunur; yerel kesit çöküşü yok)",
      "ratio": 0.7548829937031193
     },
     {
-     "quantity": "Direk impulsu (N·s) — 7.5 mm (#84)",
+     "quantity": "Direk impulsu (N·s) — 7.5 mm (#118)",
      "sim": 127.20814424873831,
      "ref": 127.32832961223184,
      "ref_label": "M·(v0 + v_son)",
      "ratio": 0.999056098797027
+    },
+    {
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 5 mm (#119)",
+     "sim": 5.900165472626817,
+     "ref": 9.132100000000001,
+     "ref_label": "4·Mp/L üst sınır (rijit-plastik, kesit şekli korunur; yerel kesit çöküşü yok)",
+     "ratio": 0.6460907647339403
+    },
+    {
+     "quantity": "Direk impulsu (N·s) — 5 mm (#119)",
+     "sim": 122.89180419742313,
+     "ref": 123.22884547527158,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9972649157220572
+    },
+    {
+     "quantity": "Ortalama direk kuvveti IE/δ (kN) — 3.75 mm (#120)",
+     "sim": 5.3292080533507376,
+     "ref": 9.132100000000001,
+     "ref_label": "4·Mp/L üst sınır (rijit-plastik, kesit şekli korunur; yerel kesit çöküşü yok)",
+     "ratio": 0.5835687359260999
+    },
+    {
+     "quantity": "Direk impulsu (N·s) — 3.75 mm (#120)",
+     "sim": 112.6103325650642,
+     "ref": 112.6691076807632,
+     "ref_label": "M·(v0 + v_son)",
+     "ratio": 0.9994783386776654
     }
    ],
    "runs": [
     {
-     "run_id": 83,
+     "run_id": 117,
      "element_mm": 10.0,
-     "wall_s": 47.366222620010376,
+     "wall_s": 21.360509872436523,
      "crush_mm": 36.73995026886365,
      "t_stop_ms": 15.359429588558116,
      "pm_kn": 7.350347456209351,
@@ -515,9 +617,9 @@
      "mass_model_kg": 22.41
     },
     {
-     "run_id": 84,
+     "run_id": 118,
      "element_mm": 7.5,
-     "wall_s": 73.70141816139221,
+     "wall_s": 34.335110664367676,
      "crush_mm": 39.05050831663509,
      "t_stop_ms": 16.770213257561455,
      "pm_kn": 6.893666986796257,
@@ -525,6 +627,32 @@
      "energy_balance_rel": 0.0006307881022977005,
      "hourglass_ratio": 0.038145905894567934,
      "timestep_min_ms": 0.0007645,
+     "mass_model_kg": 22.41
+    },
+    {
+     "run_id": 119,
+     "element_mm": 5.0,
+     "wall_s": 76.4272391796112,
+     "crush_mm": 45.52785870942813,
+     "t_stop_ms": 21.25208022167817,
+     "pm_kn": 5.900165472626817,
+     "f_peak_kn": 28.19924258045713,
+     "energy_balance_rel": 0.0009295219326419754,
+     "hourglass_ratio": 0.04284986839395529,
+     "timestep_min_ms": 0.0004794,
+     "mass_model_kg": 22.41
+    },
+    {
+     "run_id": 120,
+     "element_mm": 3.75,
+     "wall_s": 192.32237005233765,
+     "crush_mm": 50.6327013880314,
+     "t_stop_ms": 24.800665835607774,
+     "pm_kn": 5.3292080533507376,
+     "f_peak_kn": 25.71767432752042,
+     "energy_balance_rel": 0.0004782172444555677,
+     "hourglass_ratio": 0.038428400259871466,
+     "timestep_min_ms": 0.0003493,
      "mass_model_kg": 22.41
     }
    ],
@@ -861,8 +989,8 @@
   {
    "id": "V16",
    "title": "Kepçe / taş (taban R500 φ90° W600 t10 S235, kenarlar sabit; taş Ø200 / 300 kg, 5 m/s)",
-   "run_id": 101,
-   "wall_s": 16.89810585975647,
+   "run_id": 125,
+   "wall_s": 18.037705898284912,
    "references": {
     "formula": "∫|a|dt = Δv = I/m; KE₀ = ½·m·v0²"
    },
@@ -901,6 +1029,40 @@
      "ref": null,
      "ref_label": "— (veri)",
      "ratio": null
+    },
+    {
+     "quantity": "Taş Δv ∫|a| dt (m/s) — 10 mm kontrol (#126)",
+     "sim": 8.029220482768354,
+     "ref": 8.009414713246304,
+     "ref_label": "temas impulsu / m",
+     "ratio": 1.0024728110893413
+    }
+   ],
+   "runs": [
+    {
+     "run_id": 125,
+     "element_mm": 20.0,
+     "wall_s": 18.037705898284912,
+     "dv_ratio": 1.013409597204486,
+     "force_max_kn": 1241.7544414622243,
+     "ie_final_j": 2751.062,
+     "energy_balance_rel": 0.0369786325697584,
+     "hourglass_ratio": 0.008418846976185924,
+     "timestep_min_ms": 0.002428,
+     "mass_model_kg": 336.5
+    },
+    {
+     "run_id": 126,
+     "element_mm": 10.0,
+     "control": true,
+     "wall_s": 33.80392527580261,
+     "dv_ratio": 1.0024728110893413,
+     "force_max_kn": 1247.103941105553,
+     "ie_final_j": 2337.707,
+     "energy_balance_rel": 0.009933208672522814,
+     "hourglass_ratio": 0.004508276700202378,
+     "timestep_min_ms": 0.001214,
+     "mass_model_kg": 336.5
     }
    ],
    "energy_balance_rel": 0.0369786325697584,
@@ -1030,5 +1192,5 @@
    "mass_model_kg": 78.5
   }
  ],
- "updated_at": "2026-10-04T21:52:32.874671+00:00"
+ "updated_at": "2026-10-04T23:48:17.456670+00:00"
 }

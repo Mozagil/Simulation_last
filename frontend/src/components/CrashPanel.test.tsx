@@ -11,6 +11,8 @@ vi.mock("../api/crash", () => ({
   patchCrashRun: vi.fn(),
   compareCrashRuns: vi.fn(() => Promise.resolve([])),
   fetchCrashValidation: vi.fn(() => new Promise(() => undefined)),
+  fetchValidationThresholds: vi.fn(() => new Promise(() => undefined)),
+  putValidationThresholds: vi.fn(),
   postCrashScenario: vi.fn(),
   fetchCrashCatalog: vi.fn(() => new Promise(() => undefined)),
 }));

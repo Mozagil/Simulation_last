@@ -12,7 +12,8 @@ vi.mock("../api/templates", () => ({
   fetchTemplates: vi.fn(() =>
     Promise.resolve([
       { id: "drop_box_shell", name: "Düşme", description: "", tags: ["crash"], regions: [], has_analytic: false,
-        params_schema: { properties: { size_x: num(200, "a"), size_z: num(50, "c"), rot_x: num(0, "rx", "°") } } },
+        params_schema: { properties: { size_x: num(200, "a"), size_z: num(50, "c"), rot_x: num(0, "rx", "°"),
+                                       gap: num(1, "g"), floor_size: num(0, "F") } } },
     ]),
   ),
 }));
@@ -46,8 +47,26 @@ describe("CrashScenarioCard — düşme testi", () => {
     await waitFor(() => expect(postCrashScenario).toHaveBeenCalledTimes(1));
     const body = vi.mocked(postCrashScenario).mock.calls[0][0];
     expect(body.template_id).toBe("drop_box_shell");
-    expect(body.geometry).toEqual({ size_x: 200, size_z: 50, rot_x: 45 });
+    expect(body.geometry).toEqual({ size_x: 200, size_z: 50, rot_x: 45, gap: 1, floor_size: 0 });
     expect(body.drop_height_mm).toBe(1500);
     expect(body.gravity).toEqual({ accel_m_s2: -9.81, direction: "Z" });
+    expect(body.model).toBeUndefined(); // Ishell 0 → sunucu varsayılanı
+  });
+
+  it("zemin plakası (F) ve Ishell seçimi istekte; seçim mühendisin", async () => {
+    vi.mocked(postCrashScenario).mockClear();
+    render(<CrashScenarioCard />);
+    await waitFor(() => expect(screen.getByLabelText("F (mm)")).toHaveValue("0"));
+    fireEvent.change(screen.getByLabelText("F (mm)"), { target: { value: "400" } });
+    fireEvent.change(screen.getByLabelText("g (mm)"), { target: { value: "5" } });
+    const ishell = screen.getByLabelText("Senaryo Ishell");
+    expect([...(ishell as HTMLSelectElement).options].map((o) => o.value)).toEqual(["0", "1", "2", "3", "4", "12", "24"]);
+    fireEvent.change(ishell, { target: { value: "24" } });
+    fireEvent.click(screen.getByRole("button", { name: "Senaryoyu koş" }));
+    await waitFor(() => expect(postCrashScenario).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashScenario).mock.calls[0][0];
+    expect(body.geometry).toMatchObject({ gap: 5, floor_size: 400 });
+    expect(body.model).toEqual({ law: "plastic", shell: { ishell: 24 } });
+    expect(body.name).toContain("Ishell 24");
   });
 });

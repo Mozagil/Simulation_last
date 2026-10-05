@@ -114,14 +114,14 @@ alt sınırla tutarlı (h > 0 L1/L0'ı artırır). Enerji dengesi ≤ 0.0007, HG
 
 ## K2 — Düşme testi (2026-10-04)
 
-### V7 · 1 m düşme, yüzey + köşe (koşular #80, #81)
+### V7 · 1 m düşme, yüzey + köşe (koşular #127–#132)
 
 `drop_box_shell` 200 × 150 × 50 kapalı kabuk, t 2, S235 LAW2, eleman 10 mm,
 zemin rijit duvar z = 0, /GRAV −9.81 m/s² Z (yeni kart, hm_cfg r51), H 1000 mm
 → v0 = √(2·g·H) = 4.429 m/s, boşluk 1 mm, 5 ms. Ağırlık merkezi hızı TH
 /PART VZ. Kabul kriteri yok.
 
-| büyüklük | yüzey #80 | köşe #81 |
+| büyüklük | yüzey #127 | köşe #128 |
 |---|---|---|
 | KE₀ / m·g·H | 1.0006 | 1.0013 |
 | Temas anı sim / serbest düşme (0.2257 ms) | 1.0002 | 0.9996 |
@@ -131,28 +131,72 @@ zemin rijit duvar z = 0, /GRAV −9.81 m/s² Z (yeni kart, hm_cfg r51), H 1000 m
 | HG / IE | 0.165 | 0.058 |
 
 Yüzey düşmesinde tüm taban aynı anda rijit duvara vurur (çok kısa, sert
-darbe): enerji dengesi %7.1 — momentum yine tutuyor. Veri; düzeltme /
-eleman seçimi mühendisin.
+darbe): enerji dengesi %7.1 — momentum yine tutuyor.
+
+Yüzey düşmesi kontrol koşuları (2026-10-05, veri; 5 ms sonu). Denge = bu
+rapordaki tanım (IE + KE + dönme KE + HG − dış iş); "Radioss" = motor
+listesindeki ERROR sütunu (HG'yi ayrı saymaz, paydası E₀ + W_dış).
+
+| koşu | zemin | Ishell | eleman | denge | Radioss | HG/IE | dış iş J | KE son J | tepe kN |
+|---|---|---|---|---|---|---|---|---|---|
+| #127 | /RWALL | 0 | 10 | 0.071 | −1.4% | 0.165 | −5.87 | 0.76 | 471.6 |
+| #129 | /RWALL | 24 | 10 | 0.040 | −6.3% | 0.000 | −5.34 | 0.67 | 478.7 |
+| #130 | /RWALL | 0 | 5 | 0.087 | +0.2% | 0.161 | −5.21 | 0.74 | 468.3 |
+| #131 | plaka + TYPE7 | 0 | 10 | 0.037 | −8.7% | 0.071 | −0.05 | 2.85 | 613.8 |
+| #132 | plaka + TYPE7 | 24 | 10 | 0.118 | −11.9% | 0.000 | −0.05 | 2.71 | 537.4 |
+| #128 | köşe /RWALL | 0 | 10 | 0.005 | −2.3% | 0.058 | 0.12 | 7.3 | 11.0 |
+
+Zemin plakası: z = 0'da 400 × 400 kare (şablon `floor_size`), düğümleri
+/BCS 111111, kutu → zemin TYPE7 (varsayılan ayarlar), g 5 mm.
+
+Bulgular (veri):
+- /RWALL'ın kinematik kaybı dengede görünmüyor değil — motor onu dış işe
+  yazıyor (−5.2 … −5.9 J). Önceki "dengede görünmez" hipotezi yanlıştı.
+- Ceza temaslı zemin de enerji kaybettiriyor (Radioss −8.7 / −11.9%) ve kutu
+  çok daha fazla sekiyor (son KE 2.8 J ↔ duvarda 0.7 J): kinematik duvar
+  düğüm başına plastik çarpma, ceza teması elastik — iki zemin modeli
+  fiziksel olarak farklı sonuç veriyor.
+- TYPE7 temas enerjisi (ceza yayı / sönüm) bu ikilinin /TH/INTER
+  çıktısında yok (hm_cfg th_inter r110: yalnız kuvvet bileşenleri) —
+  temaslı koşularda dengeyi kapatacak terim ölçülemiyor.
+- HG tanımı: V8 direk koşularında (dış iş ≈ 0) denge HG eklenince %0.1'e
+  kapanıyor, Radioss listesi aynı koşuya −3.2 … −4.0% (≈ HG/E₀) diyor →
+  TH IE hourglass'ı içermiyor, rapordaki tanım doğru; liste sütunu HG'yi
+  saymıyor.
+- Ishell 24 her iki zeminde de dengeyi iyileştirmiyor (duvar −6.3%,
+  plaka −11.9% Radioss); Ishell 0'da HG/IE %7–16.
+
+Sonuç: yüzey düşmesinde dengenin %1–12 aralığında oynaması zemin modeline
+(kinematik ↔ ceza) ve formülasyona bağlı; momentum / impuls / temas anı
+her koşuda 1.000. Kapanmayan kısım temas enerjisinin çıktıda olmaması —
+açık. Zemin modeli / formülasyon seçimi mühendisin.
 
 ## K3 — Direk yan çarpması (2026-10-04)
 
-### V8 · Ø254 silindirik rijit direk (koşular #83, #84)
+### V8 · Ø254 silindirik rijit direk (koşular #117–#120)
 
 `pole_beam_shell` L 800, h 60 (çarpma yönü), b 40, t 2 kabuk tüp, S235 LAW2;
 uç halkaları rijit gövde + 10 kg TEST kütlesi (her biri, toplam 22.41 kg),
 5 m/s; direk /RWALL/CYL (yeni kart, hm_cfg radioss110 r51) eksen z, Ø254,
 kirişin ortasında. δ ve durma anı duvar impulsundan (V3 deseni), Pm = IE/δ.
 Referans rijit-plastik üç nokta eğilme P = 4·Mp/L, Mp = σy·Zp, Zp = 7772 mm³
-→ 9.13 kN. Kabul kriteri yok.
+→ 9.13 kN; kesit şekli korunur varsayımıyla **üst sınır**. Kabul kriteri yok.
 
 | eleman mm | koşu | δ mm | Pm kN | Pm / 4Mp/L | impuls oranı | denge | HG/IE |
 |---|---|---|---|---|---|---|---|
-| 10 | #83 | 36.7 | 7.35 | 0.805 | 0.999 | 0.002 | 0.036 |
-| 7.5 | #84 | 39.1 | 6.89 | 0.755 | 0.999 | 0.0006 | 0.038 |
+| 10 | #117 | 36.7 | 7.35 | 0.805 | 0.999 | 0.002 | 0.036 |
+| 7.5 | #118 | 39.1 | 6.89 | 0.755 | 0.999 | 0.0006 | 0.038 |
+| 5 | #119 | 45.5 | 5.90 | 0.646 | 0.997 | 0.0009 | 0.043 |
+| 3.75 | #120 | 50.6 | 5.33 | 0.584 | 0.999 | 0.0005 | 0.038 |
 
-İnce cidarlı kesit direk altında yerel ezilip burkulur (kesit çökmesi);
-kiriş teorisi bunu içermez — oran < 1 ve mesh incelince düşüyor (yakınsamadı;
-5 mm adımı veri için açık). Uyarı 446: uç rijit gövde düğümleri (40) rijit
+(2026-10-05: 5 ve 3.75 mm eklendi; 10 / 7.5 mm aynı sonuçla yeniden koşuldu.)
+İnce cidarlı kesit (b/t = 20) direk altında yerel ezilip burkulur (kesit
+çökmesi); kiriş teorisi bunu içermez. Yutulan enerji sabit (KE₀), δ yerel
+çökme ile büyüdüğü için IE/δ mesh incelince düşüyor: 0.805 → 0.755 → 0.646 →
+0.584 (adım farkları %6 / %14 / %10) — 3.75 mm'de de yakınsamadı. Momentum
+(impuls 0.997–0.999) ve enerji dengesi (≤ %0.2) her mesh'te tutuyor; yani
+fark çözümde değil, referansın yerel çöküşü içermemesinde. Hangi mesh'in
+esas alınacağı / yerel çöküş için ayrı bir referans (ör. deney) mühendisin. Uyarı 446: uç rijit gövde düğümleri (40) rijit
 duvardan çıkarıldı (Ikrem = 0) — direğe değmiyorlar.
 
 ## K4 — ROPS portal yanal yavaş itme (2026-10-04)
@@ -295,7 +339,7 @@ mm). Kalıcı çökme referansı (Nurick vb.) mühendisin.
 
 ## K11 — Kepçe / taş darbesi (2026-10-05)
 
-### V16 · taş Ø200 / 300 kg, 5 m/s (koşu #101)
+### V16 · taş Ø200 / 300 kg, 5 m/s (koşular #125, #126)
 
 `bucket_rock_shell` kavisli taban R 500, φ 90°, W 600, t 10 S235 LAW2
 (uzun kenarlar sabit), taş rijit küp-küre Ø200 kabuk 2 mm, toplam 300 kg,
@@ -309,7 +353,18 @@ mm). Kalıcı çökme referansı (Nurick vb.) mühendisin.
 | Taban iç enerjisi (J) / temas tepe (kN) | 2751 / 1242 | — | — |
 
 Taş ~2.7 m/s geri sekiyor. Enerji dengesi 0.037 (kalın sac + rijit taş,
-sert temas tepesi 1242 kN — eleman 20 mm kaba); HG/IE 0.008. Veri.
+sert temas tepesi 1242 kN); HG/IE 0.008.
+
+Mesh kontrolü (2026-10-05, veri):
+
+| koşu | eleman mm | Δv oranı | denge | HG/IE | temas tepe kN | taban IE J | s |
+|---|---|---|---|---|---|---|---|
+| #125 | 20 | 1.013 | 0.037 | 0.008 | 1242 | 2751 | 18 |
+| #126 | 10 | 1.002 | 0.010 | 0.005 | 1247 | 2338 | 34 |
+
+10 mm'de enerji dengesi %3.7 → %1.0, Δv oranı 1.013 → 1.002; temas tepesi
+aynı (1242 / 1247 kN), taban iç enerjisi %15 düşük (2751 → 2338 J) — 20 mm
+yakınsamamış. Eleman seçimi mühendisin.
 
 ## K12 — Kuş çarpması, SPH (2026-10-05)
 

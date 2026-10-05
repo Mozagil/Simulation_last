@@ -7,7 +7,9 @@ kenar, rx = 35.26 / ry = 45 köşe düşmesi — seçim mühendisin. Döndürmed
 en alt nokta z = g'de (zemin z = 0, crash'te rijit duvar).
 
 Bölgeler (döndürmeden önceki yüzlere göre): taban (z = 0 yüzü), tavan
-(z = c yüzü), kutu (6 yüz). Analitik yok; crash referansı serbest düşme
+(z = c yüzü), kutu (6 yüz). İsteğe bağlı zemin plakası (floor_size > 0):
+z = 0'da kutu merkezinin altında kare yüzey, ayrı parça (1) — rijit duvar
+yerine ceza temaslı (TYPE7) zemin için; 0 = yok (varsayılan, rijit duvar). Analitik yok; crash referansı serbest düşme
 kinematiği + momentum / enerji (K2 V7). Varsayılan BC'ler yalnız durability
 akışı için (taban sabit, tavana basınç).
 """
@@ -17,7 +19,7 @@ from __future__ import annotations
 import itertools
 import math
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.templates.base import GeometryTemplate, Region
 
@@ -38,6 +40,17 @@ class DropBoxShellParams(BaseModel):
     rot_x: float = Field(0.0, ge=-90, le=90, description="x ekseni çevresinde dönme rx", json_schema_extra={"unit": "°", "symbol": "rx"})
     rot_y: float = Field(0.0, ge=-90, le=90, description="y ekseni çevresinde dönme ry", json_schema_extra={"unit": "°", "symbol": "ry"})
     gap: float = Field(1.0, ge=0, description="En alt nokta – zemin boşluğu g", json_schema_extra={"unit": "mm", "symbol": "g"})
+    floor_size: float = Field(
+        0.0, ge=0, description="Zemin plakası kenarı F (0 = yok, rijit duvar /RWALL; > 0 sabit plaka + TYPE7, g > t)", json_schema_extra={"unit": "mm", "symbol": "F"}
+    )
+
+    @model_validator(mode="after")
+    def _floor_gap(self) -> "DropBoxShellParams":
+        # TYPE7 temas boşluğu ≈ (t_kutu + t_zemin)/2 = t: daha küçük g ilk anda
+        # penetrasyon demek (deck geçersiz başlar).
+        if self.floor_size > 0 and self.gap <= self.wall:
+            raise ValueError(f"Zemin plakasıyla g > t olmalı (TYPE7 temas boşluğu ≈ t = {self.wall:g} mm).")
+        return self
 
 
 def _rotate(p: DropBoxShellParams, x: float, y: float, z: float) -> tuple[float, float, float]:
@@ -83,6 +96,15 @@ def _build(p: DropBoxShellParams) -> None:
     if p.rot_y:
         occ.rotate(faces, cx, cy, cz, 0, 1, 0, math.radians(p.rot_y))
     occ.translate(faces, 0.0, 0.0, _z_shift(p))
+    if p.floor_size > 0:
+        half = p.floor_size / 2.0
+        occ.addRectangle(p.size_x / 2.0 - half, p.size_y / 2.0 - half, 0.0, p.floor_size, p.floor_size)
+    occ.synchronize()
+
+
+def _is_floor(bbox, p: BaseModel) -> bool:
+    f = getattr(p, "floor_size", 0.0)
+    return f > 0 and abs(bbox[2]) < _TOL and abs(bbox[5]) < _TOL and abs((bbox[3] - bbox[0]) - f) < _TOL
 
 
 def _face_select(face_z: float):
@@ -109,7 +131,8 @@ DROP_BOX_SHELL = GeometryTemplate(
                dim=2, expected_faces=1),
         Region(name=REGION_TOP, description="Tavan (döndürmeden önce z = c yüzü)",
                select=lambda bb, p: _face_select(p.size_z)(bb, p), dim=2, expected_faces=1),  # type: ignore[attr-defined]
-        Region(name=REGION_BOX, description="Kutunun 6 yüzü", select=lambda bb, p: True, dim=2, expected_faces=6),
+        Region(name=REGION_BOX, description="Kutunun 6 yüzü", select=lambda bb, p: not _is_floor(bb, p), dim=2,
+               expected_faces=6),
     ),
     analytic=None,
     characteristic_length=lambda p: min(p.size_x, p.size_y, p.size_z),

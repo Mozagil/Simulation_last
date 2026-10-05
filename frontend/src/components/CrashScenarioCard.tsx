@@ -70,7 +70,7 @@ const EXTRAS: Record<string, Extras> = {
   },
   drop_box_shell: {
     hint:
-      "Zemin rijit duvar z = 0, /GRAV (g, −z). H verilince çarpma hızı √(2·g·H) — v₀ alanı yok sayılır. " +
+      "Zemin z = 0: F = 0 rijit duvar (/RWALL), F > 0 sabit F × F plaka + TYPE7 (g > t). /GRAV (g, −z). H verilince çarpma hızı √(2·g·H) — v₀ alanı yok sayılır. " +
       "Düşme yönü rx / ry (yüzey 0 / 0, kenar 45 / 0, köşe 35.26 / 45).",
     fields: [
       { key: "height", label: "H düşme (mm)", initial: "1000" },
@@ -208,7 +208,19 @@ function geometryProps(t: GeometryTemplateInfo | undefined): [string, SchemaProp
   return Object.entries((t?.params_schema.properties ?? {}) as Record<string, SchemaProp>);
 }
 
-const COMMON = { elem: "5", speed: "10", tEnd: "4", forceCfc: "" };
+const COMMON = { elem: "5", speed: "10", tEnd: "4", forceCfc: "", ishell: "0" };
+
+/** /PROP/SHELL Ishell (hm_cfg radioss2022 PROP etiketleri). 0 = /DEF_SHELL
+ * değeri (Radioss varsayılanı). Seçim mühendisin; V7 düşme kontrol verisi raporda. */
+const ISHELL_OPTIONS: [string, string][] = [
+  ["0", "0 · varsayılan (/DEF_SHELL)"],
+  ["1", "1 · Q4, visko-elastik HG, ortogonal (Belytschko)"],
+  ["2", "2 · Q4, visko-elastik HG, ortogonalsiz (Hallquist)"],
+  ["3", "3 · Q4, elasto-plastik HG, ortogonal"],
+  ["4", "4 · Q4, geliştirilmiş tip 1 (çarpık eleman)"],
+  ["12", "12 · QBAT / DKT18"],
+  ["24", "24 · QEPH"],
+];
 
 export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
   const [entries, setEntries] = useState<CrashCatalogEntry[]>([]);
@@ -247,6 +259,7 @@ export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
   // Örneğe özgü kayıt (ör. fops) şablonunkini ezer.
   const extras = entry ? (EXTRAS[entry.id] ?? (entry.template_id ? EXTRAS[entry.template_id] : undefined)) : undefined;
   const props = useMemo(() => geometryProps(template), [template]);
+  const isShell = !!template && !template.tags.includes("solid");
 
   // Örnek değişince geometri / ek / ortak alanlar: katalog örneğinin başlangıç
   // değerleri (K5), yoksa şablon varsayılanı.
@@ -285,7 +298,8 @@ export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
     setError(null);
     try {
       const geometry = Object.fromEntries(props.map(([k, p]) => [k, num(geo[k] ?? "", p.symbol ?? k)]));
-      const dims = props.map(([k, p]) => `${p.symbol ?? k}${geo[k]}`).join(" ");
+      const dims = props.map(([k, p]) => `${p.symbol ?? k}${geo[k]}`).join(" ")
+        + (isShell && common.ishell !== "0" ? ` Ishell ${common.ishell}` : "");
       const body: CrashScenarioRequest = {
         template_id: entry.template_id,
         name: `${entry.title} · ${dims} · ${common.speed} m/s${extras?.tag(extra) ?? ""}`,
@@ -296,6 +310,7 @@ export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
         speed_m_s: num(common.speed, "Hız"),
         t_end_ms: num(common.tEnd, "t_end"),
         filters: { force_cfc: common.forceCfc ? Number(common.forceCfc) : null, acc_cfc: defaults?.acc_cfc ?? null },
+        ...(isShell && common.ishell !== "0" ? { model: { law: "plastic", shell: { ishell: Number(common.ishell) } } } : {}),
         wait: false,
       };
       const r = await postCrashScenario(body);
@@ -363,6 +378,19 @@ export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
             ))}
           </select>
         </label>
+        {isShell && (
+          <label className="mesh-field" title="/PROP/SHELL Ishell — kabuk formülasyonu">
+            <span>Ishell</span>
+            <select aria-label="Senaryo Ishell" value={common.ishell} disabled={busy}
+              onChange={(e) => setCommon((c) => ({ ...c, ishell: e.target.value }))}>
+              {ISHELL_OPTIONS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <label className="mesh-field">
         <span>Malzeme (tüm parçalar)</span>

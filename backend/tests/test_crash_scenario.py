@@ -120,6 +120,19 @@ def test_drop_box_scenario_height_gravity_ground():
 
 
 @requires_db
+def test_drop_box_floor_plate_contact_instead_of_wall():
+    # V7 kontrolü — floor_size > 0: rijit duvar yok; zemin parça 1 sabit (/BCS), kutu → zemin TYPE7
+    r = _scenario(template_id="drop_box_shell", element_size_mm=20, drop_height_mm=1000.0, t_end_ms=2.0,
+                  geometry={"gap": 5.0, "floor_size": 400.0})
+    assert r.status_code == 200, r.text
+    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    assert "/RWALL/" not in deck
+    assert "/INTER/TYPE7/1" in deck and "/BCS/" in deck and "/PART/2" in deck
+    vel = _card(deck, "/INIVEL/TRA/1")[1]
+    assert float(vel[40:60]) == pytest.approx(-4.42945, rel=1e-5)
+
+
+@requires_db
 def test_pole_beam_scenario_cylindrical_wall_and_end_masses():
     # K3 — /RWALL/CYL Ø254: eksen z, nokta (−g − D/2, L/2, b/2); uçlar rijit gövde + kütle
     r = _scenario(template_id="pole_beam_shell", element_size_mm=20, speed_m_s=5, end_mass_kg=10.0, t_end_ms=1.0)

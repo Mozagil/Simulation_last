@@ -315,7 +315,8 @@ def crash_scenario(
         raise HTTPException(status_code=422, detail=f"Geometri kurulamadı: {exc}") from exc
     db.add(MaterialAssignment(geometry_id=geo.id, part_id=0, material_id=mat.id))
     ball_mat = None
-    if req.template_id in ("plate_ball_shell", "door_beam_shell", "hopkinson_bar", "bucket_rock_shell"):
+    floor = req.template_id == "drop_box_shell" and float(g.get("floor_size") or 0.0) > 0
+    if req.template_id in ("plate_ball_shell", "door_beam_shell", "hopkinson_bar", "bucket_rock_shell") or floor:
         ball_mat = db.get(Material, req.ball_material_id) if req.ball_material_id is not None else mat
         if ball_mat is None:
             raise HTTPException(status_code=404, detail="Küre malzemesi bulunamadı.")
@@ -405,6 +406,21 @@ def crash_scenario(
             setup["boundary_conditions"] = [
                 CrashBcParams(name=f"kilavuz_{n}", rigid_body=n, dofs="011111") for n in guided
             ]
+    if floor:
+        # K2 — zemin plakası (parça 1): rijit duvar yerine düğümleri sabit (/BCS 111111)
+        # plaka + kutu → zemin TYPE7 (ceza teması). V7 enerji dengesi kontrolü.
+        setup = {
+            "use_rigid_wall": False,
+            "parts": [{"part_id": 0, "role": "moving", "thickness_mm": thickness},
+                      {"part_id": 1, "role": "free", "thickness_mm": thickness}],
+            "rigid_bodies": req.rigid_bodies,
+            "boundary_conditions": req.boundary_conditions or (
+                [CrashBcParams(name="zemin", part_id=1, dofs="111111")] if req.template_defaults else []
+            ),
+            "contacts": req.contacts or (
+                [CrashContactParams(type=7, master_part=1, slave_part=0)] if req.template_defaults else []
+            ),
+        }
     if req.template_id == "pole_beam_shell" and req.template_defaults and not req.rigid_bodies:
         # K3 — uç halkaları rijit gövde (araç kütlesi temsili), ek kütle mühendisin.
         setup["rigid_bodies"] = [
@@ -481,3 +497,60 @@ def crash_validation_report() -> dict[str, Any]:
     if not VALIDATION_REPORT.is_file():
         raise HTTPException(status_code=404, detail="Validasyon raporu yok (scripts/crash_validation.py).")
     return json.loads(VALIDATION_REPORT.read_text(encoding="utf-8"))
+
+
+#: Mühendisin kabul eşikleri (rapordan ayrı; araç yalnız işaretler, eşik koymaz).
+VALIDATION_THRESHOLDS = VALIDATION_REPORT.with_name("crash_thresholds.json")
+
+
+class ValidationThreshold(BaseModel):
+    """Bir vaka (ya da varsayılan) için eşikler; boş alan = kontrol yok.
+    Vaka kaydındaki boş alan varsayılana düşer (arayüz birleştirir)."""
+
+    ratio_min: float | None = Field(default=None, ge=0, description="Referanslı satır oranı alt sınırı")
+    ratio_max: float | None = Field(default=None, ge=0, description="Referanslı satır oranı üst sınırı")
+    energy_balance_max: float | None = Field(default=None, ge=0, description="Enerji dengesi farkı üst sınırı (kesir)")
+    hourglass_max: float | None = Field(default=None, ge=0, description="HG / IE üst sınırı (kesir)")
+
+    @model_validator(mode="after")
+    def _range(self) -> "ValidationThreshold":
+        if self.ratio_min is not None and self.ratio_max is not None and self.ratio_min > self.ratio_max:
+            raise ValueError("ratio_min, ratio_max'tan büyük olamaz.")
+        return self
+
+
+class ValidationThresholds(BaseModel):
+    default: ValidationThreshold = Field(default_factory=ValidationThreshold)
+    cases: dict[str, ValidationThreshold] = Field(default_factory=dict)
+    updated_at: str | None = None
+
+    @model_validator(mode="after")
+    def _ids(self) -> "ValidationThresholds":
+        import re
+
+        bad = [k for k in self.cases if not re.fullmatch(r"V\d{1,3}", k)]
+        if bad:
+            raise ValueError(f"Vaka kimliği V<sayı> olmalı: {bad}")
+        return self
+
+
+@router.get("/validation/thresholds")
+def get_validation_thresholds() -> dict[str, Any]:
+    """Kayıtlı eşikler; dosya yoksa boş (hiç eşik yok)."""
+    if not VALIDATION_THRESHOLDS.is_file():
+        return ValidationThresholds().model_dump()
+    return ValidationThresholds.model_validate_json(VALIDATION_THRESHOLDS.read_text(encoding="utf-8")).model_dump()
+
+
+@router.put("/validation/thresholds")
+def put_validation_thresholds(body: ValidationThresholds) -> dict[str, Any]:
+    """Eşikleri yazar (tamamını değiştirir). Değerler mühendisin."""
+    import json
+    from datetime import datetime, timezone
+
+    out = body.model_copy(update={"updated_at": datetime.now(timezone.utc).isoformat()})
+    data = out.model_dump()
+    # Boş vaka kayıtlarını saklama
+    data["cases"] = {k: v for k, v in data["cases"].items() if any(x is not None for x in v.values())}
+    VALIDATION_THRESHOLDS.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+    return data

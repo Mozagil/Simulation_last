@@ -379,6 +379,33 @@ def v7_drop() -> dict:
                      "force_max_kn": s.get("rwall_force_max"), "ie_final_j": s.get("internal_energy_final"), **_common(job)})
         print(f"  V7 {tag}: t_on {t_on:.4f} / {t_ref:.4f} ms, I {imp:.3f} / {imp_ref:.3f}", flush=True)
     worst = max(runs, key=lambda r: r["energy_balance_rel"] or 0.0)
+    # Yüzey düşmesi kontrol koşuları (veri): kabuk formülasyonu ve eleman boyu.
+    # Zemin plakası + TYPE7 (ceza teması): rijit duvarın kinematik iş hesabını ayırt eder.
+    for label, es, shell, geo in (("yüzey Ishell 24", 10.0, {"ishell": 24}, {}), ("yüzey 5 mm", 5.0, {}, {}),
+                                  ("yüzey TYPE7 zemin", 10.0, {}, {"gap": 5.0, "floor_size": 400.0}),
+                                  ("yüzey TYPE7 zemin Ishell 24", 10.0, {"ishell": 24}, {"gap": 5.0, "floor_size": 400.0})):
+        crash, job, wall = _run(f"V7 düşme 1 m {label}", {
+            "template_id": "drop_box_shell", "geometry": {"gap": DB_GAP, **geo},
+            "drop_height_mm": DB_H_MM, "t_end_ms": 5.0, "element_size_mm": es,
+            "engine": {"th_dt_ms": 0.005}, "model": {"law": "plastic", **({"shell": shell} if shell else {})},
+            "th": {"part": {"vars": ["IE", "KE", "VZ"]}},
+        })
+        c, s = job["curves"], job["scalars"]
+        m = s["mass_model"]
+        vz = c.get("th_part_0_VZ") or []
+        tag = f"{label} (#{crash['run_id']})"
+        if not geo:  # duvar koşuları; zemin plakalıda kütle zemini de içerir, impuls satırı yok
+            imp_ref = drop_wall_impulse_ns(m, -v0, vz[-1], DB_G, c["time"][-1]) if vz else float("nan")
+            rows.append({"quantity": f"Zemin impulsu (N·s) — {tag}", "sim": s["rwall_impulse_final"], "ref": imp_ref,
+                         "ref_label": "m·(vz_son − vz₀) + m·g·t", "ratio": ratio(s["rwall_impulse_final"], imp_ref)})
+        runs.append({"run_id": crash["run_id"], "orientation": label, "control": True, "element_mm": es, "wall_s": wall,
+                     "vz_end_m_s": vz[-1] if vz else None, "force_max_kn": s.get("rwall_force_max"),
+                     "ie_final_j": s.get("internal_energy_final"), **_common(job)})
+        runs[-1]["ext_work_final_j"] = (c.get("external_work") or [None])[-1]
+        if geo:
+            runs[-1]["force_max_kn"] = s.get("contact_1_force_max")
+        print(f"  V7 {tag}: denge {runs[-1]['energy_balance_rel']:.4f}, HG {runs[-1]['hourglass_ratio']:.4f}, "
+              f"F {runs[-1]['force_max_kn'] or float('nan'):.1f} kN, {wall:.0f} s", flush=True)
     return {
         "id": "V7", "title": "Düşme testi 1 m (kabuk kutu 200×150×50 t2, S235 LAW2, yüzey + köşe)",
         "references": {"formula": "v0 = √(2gH); g = v0·t + ½·g·t²; I = m·(vz_son − vz₀) + m·g·t"},
@@ -398,7 +425,7 @@ def v8_pole() -> dict:
     zp = plastic_modulus_mm3(PoleBeamShellParams(**PB_BEAM))
     p_ref = 4.0 * SY * zp / PB_BEAM["length"] / 1e3  # kN
     rows, runs = [], []
-    for es in (10.0, 7.5):
+    for es in (10.0, 7.5, 5.0, 3.75):
         crash, job, wall = _run(f"V8 direk Ø254 eleman {es:g} mm", {
             "template_id": "pole_beam_shell", "geometry": PB_BEAM, "speed_m_s": PB_POLE_V0,
             "end_mass_kg": PB_END_KG, "t_end_ms": 25.0, "element_size_mm": es,
@@ -415,7 +442,7 @@ def v8_pole() -> dict:
         tag = f"{es:g} mm (#{crash['run_id']})"
         rows += [
             {"quantity": f"Ortalama direk kuvveti IE/δ (kN) — {tag}", "sim": pm, "ref": p_ref,
-             "ref_label": "4·Mp/L (rijit-plastik üç nokta eğilme)", "ratio": ratio(pm, p_ref)},
+             "ref_label": "4·Mp/L üst sınır (rijit-plastik, kesit şekli korunur; yerel kesit çöküşü yok)", "ratio": ratio(pm, p_ref)},
             {"quantity": f"Direk impulsu (N·s) — {tag}", "sim": imp, "ref": m * (PB_POLE_V0 + v_end),
              "ref_label": "M·(v0 + v_son)", "ratio": ratio(imp, m * (PB_POLE_V0 + v_end))},
         ]
@@ -767,11 +794,32 @@ def v16_bucket() -> dict:
          "ref_label": "— (veri)", "ratio": None},
     ]
     print(f"  V16 #{crash['run_id']}: Δv {dv_acc:.3f} / {dv_imp:.3f}, ilerleme {-z_min - BR['gap']:.1f} mm", flush=True)
+    runs = [{"run_id": crash["run_id"], "element_mm": 20.0, "wall_s": wall, "dv_ratio": ratio(dv_acc, dv_imp),
+             "force_max_kn": s.get("contact_1_force_max"),
+             "ie_final_j": float((c.get("th_part_0_IE") or [float("nan")])[-1]), **_common(job)}]
+    # Kontrol (veri): eleman 10 mm — enerji dengesi / temas tepesi mesh'e duyarlılığı.
+    crash2, job2, wall2 = _run("V16 kepçe taş 300 kg 5 m/s eleman 10 mm", {
+        "template_id": "bucket_rock_shell", "geometry": BR, "speed_m_s": BR_V0, "ball_total_mass_kg": BR_KG,
+        "ball_thickness_mm": 2.0, "t_end_ms": 20.0, "element_size_mm": 10.0, "engine": {"th_dt_ms": 0.01},
+        "model": {"law": "plastic"},
+    })
+    c2, s2 = job2["curves"], job2["scalars"]
+    m2 = 2.0 * s2["kinetic_energy_max"] / (BR_V0 * BR_V0)
+    t2, a2 = c2["time"], c2["acc_g"]
+    dv2 = sum(0.5 * (a2[i] + a2[i - 1]) * (t2[i] - t2[i - 1]) for i in range(1, len(t2))) * 9.80665e-3
+    dv2_imp = c2["contact_1_impulse"][-1] / m2
+    rows.append({"quantity": f"Taş Δv ∫|a| dt (m/s) — 10 mm kontrol (#{crash2['run_id']})", "sim": dv2, "ref": dv2_imp,
+                 "ref_label": "temas impulsu / m", "ratio": ratio(dv2, dv2_imp)})
+    runs.append({"run_id": crash2["run_id"], "element_mm": 10.0, "control": True, "wall_s": wall2,
+                 "dv_ratio": ratio(dv2, dv2_imp), "force_max_kn": s2.get("contact_1_force_max"),
+                 "ie_final_j": float((c2.get("th_part_0_IE") or [float("nan")])[-1]), **_common(job2)})
+    print(f"  V16 10 mm #{crash2['run_id']}: Δv {dv2:.3f} / {dv2_imp:.3f}, denge {runs[-1]['energy_balance_rel']:.4f}, "
+          f"F {s2.get('contact_1_force_max'):.0f} kN, {wall2:.0f} s", flush=True)
     return {
         "id": "V16", "title": "Kepçe / taş (taban R500 φ90° W600 t10 S235, kenarlar sabit; taş Ø200 / 300 kg, 5 m/s)",
         "run_id": crash["run_id"], "wall_s": wall,
         "references": {"formula": "∫|a|dt = Δv = I/m; KE₀ = ½·m·v0²"},
-        "rows": rows, **_common(job),
+        "rows": rows, "runs": runs, **_common(job),
     }
 
 

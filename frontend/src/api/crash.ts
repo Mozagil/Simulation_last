@@ -283,6 +283,8 @@ export interface CrashScenarioRequest {
   mine_standoff_mm?: number;
   run_solver?: boolean;
   wait?: boolean;
+  /** Malzeme modeli + kabuk kartı; boşsa sunucu varsayılanı (LAW2, Ishell 0). */
+  model?: { law: "elastic" | "plastic" | "tabulated"; shell?: Partial<CrashShellPayload> };
 }
 
 export interface CrashScenarioResponse {
@@ -403,11 +405,27 @@ export interface CrashValidationMeshRow {
   hourglass_ratio: number | null;
 }
 
+/** Çok koşulu vakalarda (mesh / yönelim / kontrol) koşu başına kalite verisi. */
+export interface CrashValidationRun {
+  run_id: number;
+  element_mm?: number;
+  orientation?: string;
+  v0_m_s?: number;
+  control?: boolean;
+  wall_s?: number | null;
+  energy_balance_rel?: number | null;
+  hourglass_ratio?: number | null;
+  force_max_kn?: number | null;
+  f_peak_kn?: number | null;
+  f_max_kn?: number | null;
+}
+
 export interface CrashValidationCase {
   id: string;
   title: string;
   run_id?: number;
   rows?: CrashValidationRow[];
+  runs?: CrashValidationRun[];
   energy_balance_rel?: number | null;
   hourglass_ratio?: number | null;
   references?: {
@@ -447,6 +465,32 @@ export interface CrashValidationReport {
 
 export async function fetchCrashValidation(): Promise<CrashValidationReport> {
   return getJson<CrashValidationReport>(`${API_BASE_URL}/crash/validation`);
+}
+
+/** Mühendisin kabul eşikleri; null = kontrol yok. Oranlar ve dengeler kesir. */
+export interface CrashValidationThreshold {
+  ratio_min: number | null;
+  ratio_max: number | null;
+  energy_balance_max: number | null;
+  hourglass_max: number | null;
+}
+
+export interface CrashValidationThresholds {
+  default: CrashValidationThreshold;
+  cases: Record<string, CrashValidationThreshold>;
+  updated_at?: string | null;
+}
+
+export async function fetchValidationThresholds(): Promise<CrashValidationThresholds> {
+  return getJson<CrashValidationThresholds>(`${API_BASE_URL}/crash/validation/thresholds`);
+}
+
+export async function putValidationThresholds(t: CrashValidationThresholds): Promise<CrashValidationThresholds> {
+  return getJson<CrashValidationThresholds>(`${API_BASE_URL}/crash/validation/thresholds`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(t),
+  });
 }
 
 export async function fetchCrashAnimation(runId: number): Promise<CrashAnimation> {
