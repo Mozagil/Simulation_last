@@ -1526,6 +1526,11 @@ p {
   color: var(--on-accent);
 }
 
+/* seçili çipte hover rengi yazıyı arka planla aynı yapmasın */
+.toolbar-group-chip.active:hover:not(:disabled) {
+  color: var(--on-accent);
+}
+
 .toolbar-group-chip-create {
   border-style: dashed;
 }
@@ -4122,6 +4127,494 @@ p {
   font-size: 12.5px;
   color: var(--muted);
 }
+
+.crash-parts {
+  margin: 6px 0 4px;
+}
+
+.crash-part-missing {
+  color: var(--doe-warn);
+  font-style: italic;
+}
+
+/* 1.12b — temas kartları: dar panelde (≈340 px) alt alta, yatay kaydırma yok */
+.crash-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.crash-contact-card {
+  padding: 8px 10px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-contact-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.crash-contact-head .doe-seg {
+  margin-left: auto;
+}
+
+.crash-contact-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.crash-contact-arrow {
+  padding-bottom: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.mesh-field input:disabled {
+  color: var(--muted);
+}
+
+.crash-contact-remove {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.crash-contact-remove:hover:not(:disabled) {
+  color: var(--doe-warn);
+}
+
+.crash-contact-add {
+  margin: 2px 0 6px;
+}
+
+/* 1.14e — malzeme kartı: LAW1/2/36 + /FAIL; dar panelde alt alta */
+.crash-mat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.crash-mat-part {
+  margin: 6px 0;
+  padding-bottom: 8px;
+}
+
+.crash-mat-section {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.crash-mat-section > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 2px 0 4px;
+}
+
+.crash-mat-curves {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-mat-curve {
+  padding: 6px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-mat-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-mat-rate input {
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.crash-mat-points {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--ink);
+  background: var(--surface-2);
+  resize: vertical;
+}
+
+/* 1.15d — çıktı kartı: değişken çipleri, TH grupları, kesit adı */
+.crash-var-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 6px;
+}
+
+.crash-var-chip {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+.crash-var-chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.crash-var-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.crash-var-note {
+  align-self: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-th-group {
+  margin-top: 4px;
+}
+
+.crash-section-name {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* 1.16b — koşu geçmişi + karşılaştırma; dar panelde tablo kendi içinde kayar */
+.crash-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.crash-history-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.crash-run-list {
+  max-height: 300px;
+  margin: 4px 0 6px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-run-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.crash-run-row:last-child {
+  border-bottom: none;
+}
+
+.crash-run-main {
+  min-width: 0;
+}
+
+.crash-compare-table td:first-child,
+.crash-compare-table th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.crash-run-name {
+  display: block;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.crash-run-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-run-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.crash-run-status {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.crash-run-solved { color: var(--doe-ok); }
+.crash-run-failed { color: var(--doe-warn); }
+.crash-run-rad_only,
+.crash-run-pending { color: var(--muted); }
+
+.crash-run-excluded td {
+  opacity: 0.55;
+}
+
+.crash-run-exclude {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.crash-run-exclude:hover {
+  color: var(--doe-warn);
+}
+
+.crash-compare {
+  margin-top: 6px;
+}
+
+.crash-compare-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* 1.17f — validasyon raporu */
+.crash-validation {
+  margin-top: 8px;
+}
+
+/* Validasyon eşikleri (mühendis): içinde / dışında işareti */
+.crash-thr-in {
+  color: var(--doe-ok);
+}
+
+.crash-thr-out {
+  color: var(--doe-warn);
+  font-weight: 600;
+}
+
+.crash-thr-editor {
+  margin: 8px 0 12px;
+}
+
+.crash-thr-editor > summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.crash-thr-input {
+  width: 3.6em;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  text-align: right;
+}
+
+.crash-validation-case {
+  margin: 6px 0 10px;
+}
+
+.crash-validation-title {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* K0 — explicit şablon kataloğu (dar panel: liste) */
+.crash-catalog-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-catalog-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crash-catalog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crash-catalog-title {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* K0 — explicit şablon kataloğu durum etiketi */
+.crash-catalog-status {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.crash-catalog-ready {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: transparent;
+}
+
+.crash-catalog-planned {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+/* 1.17e2 — koşu detay grafikleri */
+.crash-run-charts {
+  margin: 6px 0;
+}
+
+.crash-run-charts .cv-card + .cv-card {
+  margin-top: 8px;
+}
+
+/* 1.17d — deforme şekil görünümü */
+.crash-anim {
+  margin: 6px 0;
+}
+
+.crash-anim-canvas {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.crash-anim-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.crash-anim-controls input[type="range"] {
+  width: 100%;
+}
+
+.crash-anim-legend {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.crash-anim-bar {
+  height: 8px;
+  border-radius: 4px;
+  /* jet() ile birebir: 0 #000080 · .125 #00f · .375 #0ff · .625 #ff0 · .875 #f00 · 1 #800000 */
+  background: linear-gradient(90deg, #000080 0%, #00f 12.5%, #0ff 37.5%, #ff0 62.5%, #f00 87.5%, #800000 100%);
+}
+
+/* 1.12b — kuvvet–zaman grafiği: seri renkleri tema token'larından */
+.crash-force-card {
+  margin-top: 10px;
+}
+
+.crash-force-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.crash-force-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.crash-force-swatch {
+  width: 14px;
+  border-top: 2px solid currentColor;
+}
+
+.crash-force-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.crash-force-line-raw {
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+.crash-force-line-cfc {
+  stroke-width: 2.4;
+}
+
+.crash-force-swatch-cfc {
+  border-top-width: 3px;
+}
+
+.crash-series-0 { color: var(--accent-hover); }
+.crash-series-1 { color: var(--doe-warn); }
+.crash-series-2 { color: var(--doe-ok); }
+.crash-series-3 { color: var(--muted); }
 
 /* ---- Model + Tahmin aşamaları (ML Studio 1a) ---- */
 .sg-all {

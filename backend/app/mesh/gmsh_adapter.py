@@ -1471,8 +1471,22 @@ class GmshMesherAdapter(MesherAdapter):
         try:
             gmsh.model.add(model_name)
             gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
             gmsh.open(str(cad_file))
             gmsh.model.occ.synchronize()
+            # Yalnız yüzeyden oluşan (kabuk) dosya DİKİŞLİ açılır (1.13b): Gmsh'in
+            # STEP yazıcısı serbest yüzeylerin ortak kenarlarını ikizliyor; geri
+            # okununca kabuk duvarları bağlantısız kalıyor ve 2D mesh köşe boyunca
+            # çakışık ama ayrı düğüm üretiyordu. Hacimli dosyaya dokunulmaz —
+            # dikiş yüz/kenar numarasını değiştirebilir, kayıtlı BC'ler kayar.
+            # Önizleme, BC ve mesh hep bu fonksiyondan açtığı için etiketler tutarlı.
+            if not gmsh.model.getEntities(dim=3) and gmsh.model.getEntities(dim=2):
+                gmsh.clear()
+                gmsh.model.add(model_name)
+                gmsh.option.setNumber("Geometry.OCCSewFaces", 1)
+                gmsh.open(str(cad_file))
+                gmsh.model.occ.synchronize()
+                gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
 
             volumes = gmsh.model.getEntities(dim=3)
             surfaces = gmsh.model.getEntities(dim=2)

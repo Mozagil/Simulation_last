@@ -137,17 +137,176 @@ def test_crash_solve_plastic_writes_law2():
     assert body["cards"]["has_law1"] is False
     text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
     assert "/MAT/LAW2" in text
-    assert "        14         2         0         0         4" in text
+    assert "        14         2         0         0         0         4" in text
 
 
 @requires_db
-def test_crash_solve_rejects_dimension_2():
+def test_crash_solve_contact_without_wall():
+    """1.12a: tek parçalı kutuda TYPE24 self-contact, duvar kapalı."""
     geometry_id = _upload_and_mesh_box()
     response = client.post(
         "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "run_solver": False,
+            "use_rigid_wall": False,
+            "contacts": [{"type": 24, "master_part": 0, "slave_part": 0, "fric": 0.1}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cards"]["has_rwall"] is False
+    assert body["cards"]["n_inter"] == 1
+    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    assert "/SURF/PART/EXT/1001" in text and "/INTER/TYPE24/1" in text
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["use_rigid_wall"] is False
+    assert snap["contacts"][0]["type"] == 24
+
+
+@requires_db
+def test_crash_solve_rejects_bad_contact():
+    geometry_id = _upload_and_mesh_box()
+    bad_type = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "contacts": [{"type": 5, "master_part": 0, "slave_part": 0}],
+        },
+    )
+    assert bad_type.status_code == 422
+    missing_part = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "contacts": [{"type": 7, "master_part": 3, "slave_part": 0}],
+        },
+    )
+    assert missing_part.status_code == 422
+    assert "#3" in missing_part.json()["detail"]
+
+
+@requires_db
+def test_crash_solve_dimension_checks():
+    """1.13a: dimension=2 kabuk kabul edilir ama 2D mesh ister; 1 geçersiz."""
+    geometry_id = _upload_and_mesh_box()
+    no_2d = client.post(
+        "/crash/solve",
         json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2},
     )
-    assert response.status_code == 400
+    assert no_2d.status_code == 404
+    assert "dimension=2" in no_2d.json()["detail"]
+    bad = client.post(
+        "/crash/solve",
+        json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 1},
+    )
+    assert bad.status_code == 400
+
+
+@requires_db
+def test_crash_solve_shell_mesh_writes_shell_cards():
+    """1.13a: midsurface → 2D quad mesh → /SHELL + /PROP/TYPE1 (kalınlık zorunlu)."""
+    with (FIXTURES_DIR / "thin_plate.step").open("rb") as f:
+        up = client.post(
+            "/geometry/upload",
+            files={"file": ("thin_plate.step", f, "application/octet-stream")},
+        )
+    geometry_id = up.json()["geometry_id"]
+    assert client.post(f"/geometry/{geometry_id}/parts/0/midsurface").status_code == 200
+    mesh = client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2, "element_scheme": "quad"},
+    )
+    assert mesh.status_code == 200
+    mats = client.get("/materials").json()["materials"]
+    client.post(
+        "/materials/assignments",
+        json={"geometry_id": geometry_id, "part_id": 0, "material_id": mats[0]["id"]},
+    )
+    base = {"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2}
+    no_t = client.post("/crash/solve", json=base)
+    assert no_t.status_code == 422
+    assert "kalınlığı" in no_t.json()["detail"]
+    ok = client.post(
+        "/crash/solve",
+        json={
+            **base,
+            "parts": [{"part_id": 0, "role": "moving", "thickness_mm": 2.5}],
+            "model": {"law": "elastic", "shell": {"ishell": 24, "nip": 5}},
+        },
+    )
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["cards"]["has_shell"] is True and body["cards"]["has_tetra4"] is False
+    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
+    assert prop[1].startswith(f"{24:10d}")
+    assert prop[3].startswith(f"{5:10d}{0:10d}") and float(prop[3][20:40]) == 2.5
+
+
+@requires_db
+def test_crash_shell_thickness_from_product_tree_component():
+    """2a: kabuk kalınlığı Malzeme adımındaki ürün ağacı bileşeninden okunur."""
+    with (FIXTURES_DIR / "thin_plate.step").open("rb") as f:
+        up = client.post(
+            "/geometry/upload",
+            files={"file": ("thin_plate.step", f, "application/octet-stream")},
+        )
+    geometry_id = up.json()["geometry_id"]
+    assert client.post(f"/geometry/{geometry_id}/parts/0/midsurface").status_code == 200
+    assert client.post(
+        f"/geometry/{geometry_id}/mesh",
+        json={"element_size": 3.0, "dimension": 2, "element_scheme": "quad"},
+    ).status_code == 200
+    mats = {m["name"]: m["id"] for m in client.get("/materials").json()["materials"]}
+    # Uygulamanın yaptığı gibi: bileşen (mesh parça 0) kalınlık + malzeme
+    comp = client.post(
+        f"/geometry/{geometry_id}/components",
+        json={"part_id": 0, "property_kind": "shell", "thickness": 1.8, "material_id": mats["S355"]},
+    )
+    assert comp.status_code == 200, comp.text
+    r = client.post(
+        "/crash/solve",
+        json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2},
+    )
+    assert r.status_code == 200, r.text
+    text = (CRASH_DIR / r.json()["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
+    assert float(prop[3][20:40]) == 1.8
+    # bileşen malzemesi MaterialAssignment'a yansır → deck S355
+    assert text.split("/MAT/LAW1/1\n", 1)[1].splitlines()[0] == "S355"
+
+
+@requires_db
+def test_crash_solve_part_model_override():
+    """1.14b: parts[].model global modeli o parça için ezer (API üzerinden)."""
+    geometry_id = _upload_and_mesh_box()
+    response = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "model": {"law": "elastic"},
+            "parts": [{"part_id": 0, "role": "moving", "model": {"law": "plastic", "isolid": 24}}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cards"]["has_law2"] is True and body["cards"]["has_law1"] is False
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["parts"][0]["model"]["law"] == "plastic"
+    bad = client.post(
+        "/crash/solve",
+        json={
+            "geometry_id": geometry_id,
+            "barrier": _barrier(),
+            "parts": [{"part_id": 0, "model": {"law": "plastic", "jc_c": 0.1}}],
+        },
+    )
+    assert bad.status_code == 422
 
 
 @requires_db
@@ -212,3 +371,40 @@ def test_crash_job_survives_hub_reset():
     snap = client.get(f"/crash/jobs/{body['job_id']}")
     assert snap.status_code == 200
     assert snap.json()["status"] == "rad_only"
+
+
+@requires_db
+def test_crash_solve_law36_curves_from_material_library():
+    """1.14c2: istekte eğri yoksa atanmış malzemenin crash_curves'ü; kaynak job.json'da."""
+    import uuid
+
+    geometry_id = _upload_and_mesh_box()
+    lib = [{"eps_dot_per_s": 0.0, "points": [[0.0, 235.0], [0.2, 320.0]]}]
+    mat = client.post(
+        "/materials",
+        json={
+            "name": f"T_c2_api_{uuid.uuid4().hex[:8]}", "density": 7850, "youngs_modulus": 210e9,
+            "poisson_ratio": 0.3, "yield_strength": 235e6, "ultimate_strength": 360e6,
+            "crash_curves": lib,
+        },
+    ).json()["material"]
+    client.post(
+        "/materials/assignments",
+        json={"geometry_id": geometry_id, "part_id": 0, "material_id": mat["id"]},
+    )
+    req = {"geometry_id": geometry_id, "barrier": _barrier(), "model": {"law": "tabulated"}}
+    r = client.post("/crash/solve", json=req)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cards"]["has_law36"] is True
+    assert body["law36_curve_source"]["0"] == {"source": f"malzeme #{mat['id']}", "curves": lib}
+    snap = client.get(f"/crash/jobs/{body['job_id']}").json()
+    assert snap["law36_curve_source"]["0"]["source"] == f"malzeme #{mat['id']}"
+
+    own = [{"eps_dot_per_s": 0.0, "points": [[0.0, 500.0], [1.0, 500.0]]}]
+    r2 = client.post("/crash/solve", json={**req, "model": {"law": "tabulated", "tab_curves": own}})
+    assert r2.json()["law36_curve_source"]["0"]["source"] == "istek"
+
+    client.put(f"/materials/{mat['id']}/crash-curves", json={"curves": None})
+    r3 = client.post("/crash/solve", json=req)
+    assert r3.status_code == 422 and "akma eğrisi yok" in r3.json()["detail"]

@@ -17,11 +17,30 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.geometry import MESH_DIR, _get_geometry_or_404
-from app.db.session import get_db
+from app.api.crash_runs import record_from_meta
+from app.db.session import SessionLocal, get_db
 from app.jobs.progress import get_hub
+from app.models.component import Component
+from app.models.geometry import PhysicalGroup
 from app.models.material import MaterialAssignment
 from app.solvers.base import InputArtifact, SolverError
-from app.solvers.crash_params import CrashBarrierParams, CrashModelParams
+from app.solvers.crash_params import (
+    CrashBarrierParams,
+    CrashContactParams,
+    CrashBcParams,
+    CrashBlastLoadParams,
+    CrashEngineParams,
+    CrashFilterParams,
+    CrashGravityParams,
+    CrashImpVelParams,
+    CrashPressureLoadParams,
+    CrashSphProjectileParams,
+    CrashMassParams,
+    CrashModelParams,
+    CrashRigidBodyParams,
+    CrashSectionParams,
+    CrashThParams,
+)
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
 from app.solvers.openradioss_progress import ParsedCrashProgress
 
@@ -32,10 +51,39 @@ router = APIRouter(prefix="/crash", tags=["crash"])
 CRASH_DIR = Path("uploads") / "crash"
 
 
+class CrashPartSpec(BaseModel):
+    """Parça rolü: hareketli (ilk hız alır) ya da sabit (/BCS). Mühendis seçer."""
+
+    part_id: int = Field(..., ge=0, description="Mesh part_id (hacim sırası)")
+    role: str = Field(
+        default="moving",
+        description="moving (ilk hız) | fixed (tüm düğümler /BCS) | free (ilk hız yok, /BCS yok — 1.18b)",
+    )
+    thickness_mm: float | None = Field(
+        default=None, gt=0, description="Kabuk parça kalınlığı (mm); solid parçada yok sayılır"
+    )
+    model: CrashModelParams | None = Field(
+        default=None,
+        description="Parça başına malzeme/eleman kartı (1.14b); boşsa istekteki global model",
+    )
+
+    @field_validator("role")
+    @classmethod
+    def _role_ok(cls, value: str) -> str:
+        v = value.strip().lower()
+        if v not in ("moving", "fixed", "free"):
+            raise ValueError("role moving, fixed veya free olmalı.")
+        return v
+
+
 class CrashSolveRequest(BaseModel):
     geometry_id: int
     barrier: CrashBarrierParams
-    dimension: int = Field(default=3, description="Crash solid mesh — yalnız 3")
+    parts: list[CrashPartSpec] = Field(
+        default_factory=list,
+        description="Parça rolleri; verilmeyen parça hareketli sayılır.",
+    )
+    dimension: int = Field(default=3, description="3 = solid (tet/hex), 2 = kabuk (tri/quad)")
     run_solver: bool = False
     wait: bool = Field(
         default=False,
@@ -45,7 +93,53 @@ class CrashSolveRequest(BaseModel):
     name: str | None = None
     th_nodes: list[int] = Field(default_factory=list)
     model: CrashModelParams = Field(default_factory=CrashModelParams)
+    contacts: list[CrashContactParams] = Field(
+        default_factory=list,
+        description="Temas tanımları (/INTER/TYPE7 | TYPE24); boşsa temas yok.",
+    )
+    use_rigid_wall: bool = Field(
+        default=True,
+        description="False ise /RWALL yazılmaz (parça–parça çarpışma temasla).",
+    )
     scenario: str = Field(default="rigid_wall", description="rigid_wall | plate_ball")
+    engine: CrashEngineParams = Field(
+        default_factory=CrashEngineParams,
+        description="Çıktı aralıkları + zaman adımı kartı (1.15a); boş = eski davranış",
+    )
+    th: CrashThParams = Field(
+        default_factory=CrashThParams,
+        description="/TH grupları + değişkenleri (1.15b); boş = eski deck",
+    )
+    sections: list[CrashSectionParams] = Field(
+        default_factory=list, description="/SECT/PARAL kesitleri (1.15c); TH th.sect"
+    )
+    added_masses: list[CrashMassParams] = Field(
+        default_factory=list, description="/ADMAS — bölge ya da parçaya ek kütle (1.17b)"
+    )
+    rigid_bodies: list[CrashRigidBodyParams] = Field(
+        default_factory=list, description="/RBODY — bölge ya da parça rijit + ana düğüme kütle (1.17b)"
+    )
+    boundary_conditions: list[CrashBcParams] = Field(
+        default_factory=list, description="/BCS — bölge ya da parçada kilitli serbestlikler (1.17c)"
+    )
+    imposed_velocities: list[CrashImpVelParams] = Field(
+        default_factory=list, description="/IMPVEL — bölge, parça ya da rijit gövdeye sabit hız (1.17c)"
+    )
+    filters: CrashFilterParams = Field(
+        default_factory=CrashFilterParams, description="SAE J211 CFC sınıfları (1.17e); ham korunur"
+    )
+    gravity: CrashGravityParams | None = Field(
+        default=None, description="/GRAV sabit yerçekimi (K2); boş = yok"
+    )
+    pressure_loads: list[CrashPressureLoadParams] = Field(
+        default_factory=list, description="/PLOAD zamana bağlı basınç (K10, Friedlander)"
+    )
+    sph_projectiles: list[CrashSphProjectileParams] = Field(
+        default_factory=list, description="SPH mermiler (K12, ör. kuş)"
+    )
+    blast_loads: list[CrashBlastLoadParams] = Field(
+        default_factory=list, description="/LOAD/PBLAST ampirik patlama (K13, mayın)"
+    )
 
     @field_validator("scenario")
     @classmethod
@@ -91,6 +185,36 @@ def _merged_snapshot(job_id: str) -> dict[str, Any] | None:
     return out
 
 
+def _cleanup_outputs(work_dir: Path) -> list[str]:
+    """1.17g — çözüm sonrası kullanılmayan çıktılar: Radioss restart (*.rst)
+    dosyaları iş başına ~5 MB+ (crash klasörünün ~%49'u); restart desteği yok.
+    `CRASH_KEEP_RST=1` ise dokunulmaz. Animasyon (A0xx) ve TH korunur."""
+    import os
+
+    if os.environ.get("CRASH_KEEP_RST", "").strip() in ("1", "true", "yes"):
+        return []
+    removed = []
+    for f in sorted(work_dir.glob("*.rst")):
+        try:
+            f.unlink()
+            removed.append(f.name)
+        except OSError:
+            pass
+    return removed
+
+
+def _sync_run(meta: dict[str, Any]) -> None:
+    """1.16a — job.json durumunu crash_runs'a yansıt (arka plan işi kendi oturumuyla)."""
+    db = SessionLocal()
+    try:
+        record_from_meta(db, meta)
+    except Exception as exc:  # noqa: BLE001 — kayıt hatası çözümü düşürmesin
+        logger.warning("crash_runs güncellenemedi job_id=%s: %s", meta.get("job_id"), exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _complete_crash_job(job_id: str) -> None:
     meta = _read_job(job_id)
     if meta is None:
@@ -118,12 +242,15 @@ def _complete_crash_job(job_id: str) -> None:
             progress_cb=_cb,
         )
         parsed = adapter.parse_results(handle)
+        meta["removed_outputs"] = _cleanup_outputs(_job_dir(job_id))
         meta["status"] = "solved"
         meta["message"] = "OpenRadioss bitti"
         meta["solver_ran"] = True
         meta["scalars"] = parsed.scalars
         meta["curves"] = parsed.curves
+        meta["diagnostics"] = parsed.diagnostics
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
         logger.warning("crash job başarısız job_id=%s: %s", job_id, exc)
@@ -131,6 +258,7 @@ def _complete_crash_job(job_id: str) -> None:
         meta["message"] = str(exc)
         meta["solver_ran"] = False
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="failed", message=str(exc))
 
 
@@ -140,17 +268,19 @@ def crash_solve(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """3D mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
-    if body.dimension != 3:
-        raise HTTPException(status_code=400, detail="crash yalnız dimension=3 (solid tet).")
+    """3D (solid) ya da 2D (kabuk) mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
+    if body.dimension not in (2, 3):
+        raise HTTPException(
+            status_code=400, detail="crash dimension=3 (solid) ya da dimension=2 (kabuk) ister."
+        )
 
     geo = _get_geometry_or_404(db, body.geometry_id)
     stem = Path(geo.current_filename).stem
-    mesh_path = MESH_DIR / f"{stem}_d3.msh"
+    mesh_path = MESH_DIR / f"{stem}_d{body.dimension}.msh"
     if not mesh_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Önce dimension=3 mesh üretin ({mesh_path.name}).",
+            detail=f"Önce dimension={body.dimension} mesh üretin ({mesh_path.name}).",
         )
 
     assignments = (
@@ -173,9 +303,54 @@ def crash_solve(
             "youngs_modulus": a.material.youngs_modulus,
             "poisson_ratio": a.material.poisson_ratio,
             "yield_strength": a.material.yield_strength,
+            "material_id": a.material.id,
+            "crash_curves": a.material.crash_curves,
         }
         for a in assignments
     ]
+    # 1.14c2 — LAW36 eğrisinin kaynağı ve kullanılan eğri, parça başına. Malzeme
+    # eğrisi sonradan değişse de iş kendi kopyasını job.json'da tutar.
+    part_model = {p.part_id: p.model for p in body.parts if p.model is not None}
+    law36_curve_source: dict[str, dict[str, Any]] = {}
+    for m in materials:
+        eff = part_model.get(m["part_id"], body.model)
+        if eff.law == "tabulated":
+            law36_curve_source[str(m["part_id"])] = (
+                {"source": "istek", "curves": [c.model_dump() for c in eff.tab_curves]}
+                if eff.tab_curves
+                else {"source": f"malzeme #{m['material_id']}", "curves": m["crash_curves"]}
+            )
+
+    # Kabuk kalınlığının tek kaynağı ürün ağacı bileşeni (Malzeme adımı); aynı
+    # mesh parça numarası (2D'de ATA, bileşen ve export hepsi mesh numarası).
+    component_thickness: dict[int, float] = {}
+    if body.dimension == 2:
+        for comp in db.query(Component).filter(Component.geometry_id == body.geometry_id):
+            if comp.property_kind == "shell" and comp.thickness and comp.thickness > 0:
+                component_thickness[int(comp.part_id)] = float(comp.thickness)
+
+    # 1.17b — kütle / rijit gövde bölgeleri: PhysicalGroup (CAD varlıkları) →
+    # mesh düğümleri. Yalnız istekte geçen bölgeler okunur.
+    wanted_regions = {
+        s.region
+        for s in [*body.added_masses, *body.rigid_bodies, *body.boundary_conditions, *body.imposed_velocities]
+        if s.region
+    }
+    region_nodes: dict[str, list[int]] = {}
+    if wanted_regions:
+        groups = {
+            g.name: (int(g.dim), list(g.entity_tags or []))
+            for g in db.query(PhysicalGroup).filter(PhysicalGroup.geometry_id == body.geometry_id)
+            if g.name in wanted_regions
+        }
+        unknown = sorted(wanted_regions - set(groups))
+        if unknown:
+            raise HTTPException(
+                status_code=422, detail=f"Bölge bu geometride yok: {', '.join(unknown)}"
+            )
+        from app.mesh.openradioss_export import region_node_ids
+
+        region_nodes = region_node_ids(mesh_path, groups)
 
     job_id = str(uuid.uuid4())
     work_dir = _job_dir(job_id)
@@ -190,10 +365,27 @@ def crash_solve(
                 "barrier": body.barrier.model_dump(),
                 "materials": materials,
                 "t_end_ms": body.t_end_ms,
+                "engine": body.engine.model_dump(),
+                "th": body.th.model_dump(),
+                "sections": [s.model_dump() for s in body.sections],
                 "th_nodes": body.th_nodes,
                 "title": (body.name or "crash")[:80],
                 "model": body.model.model_dump(),
                 "scenario": body.scenario,
+                "parts": [p.model_dump() for p in body.parts],
+                "contacts": [c.model_dump() for c in body.contacts],
+                "use_rigid_wall": body.use_rigid_wall,
+                "component_thickness": component_thickness,
+                "added_masses": [m.model_dump() for m in body.added_masses],
+                "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+                "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
+                "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+                "filters": body.filters.model_dump(),
+                "gravity": body.gravity.model_dump() if body.gravity else None,
+                "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
+                "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
+                "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+                "region_nodes": region_nodes,
             }
         )
     except SolverError as exc:
@@ -209,6 +401,21 @@ def crash_solve(
         "has_tfile": "/TFILE" in engine_text,
         "has_law2": "/MAT/LAW2" in starter_text,
         "has_law1": "/MAT/LAW1" in starter_text,
+        "has_law36": "/MAT/LAW36" in starter_text,
+        "n_fail": sum(1 for ln in starter_text.splitlines() if ln.startswith("/FAIL/")),
+        "has_bcs": "/BCS/" in starter_text,
+        "has_shell": "/SHELL/" in starter_text or "/SH3N/" in starter_text,
+        "n_parts": sum(1 for ln in starter_text.splitlines() if ln.startswith("/PART/")),
+        "n_inter": sum(1 for ln in starter_text.splitlines() if ln.startswith("/INTER/")),
+        # Aynı konumda ayrı düğüm (bağlantısız eleman) sayısı — yalnız veri.
+        "n_coincident_nodes": next(
+            (
+                int(ln.split(":", 1)[1])
+                for ln in starter_text.splitlines()[:5]
+                if ln.startswith("# coincident_nodes:")
+            ),
+            0,
+        ),
     }
     or_ok = resolve_openradioss() is not None
     meta: dict[str, Any] = {
@@ -223,12 +430,31 @@ def crash_solve(
         "barrier": body.barrier.model_dump(),
         "model": body.model.model_dump(),
         "scenario": body.scenario,
+        "parts": [p.model_dump() for p in body.parts],
+        "contacts": [c.model_dump() for c in body.contacts],
+        "use_rigid_wall": body.use_rigid_wall,
+        "engine": body.engine.model_dump(),
+        "th": body.th.model_dump(),
+        "sections": [s.model_dump() for s in body.sections],
+        "added_masses": [m.model_dump() for m in body.added_masses],
+        "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+        "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
+        "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+        "filters": body.filters.model_dump(),
+        "gravity": body.gravity.model_dump() if body.gravity else None,
+        "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
+        "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
+        "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+        "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,
+        "law36_curve_source": law36_curve_source,
+        "materials": materials,
         "scalars": {},
         "curves": {},
     }
     _write_job(meta)
+    run = record_from_meta(db, meta)
     hub = get_hub()
     hub.create(job_id)
 
@@ -242,6 +468,8 @@ def crash_solve(
         "progress_url": f"/crash/jobs/{job_id}",
         "ws_url": f"/crash/jobs/{job_id}/ws",
         "cards": cards,
+        "run_id": run.id if run is not None else None,
+        "law36_curve_source": law36_curve_source,
         "openradioss_available": or_ok,
         "solver_ran": False,
         "scalars": {},
@@ -252,6 +480,7 @@ def crash_solve(
             meta["status"] = "failed"
             meta["message"] = "OpenRadioss bulunamadı"
             _write_job(meta)
+            record_from_meta(db, meta)
             hub.update(job_id, state="failed", message=meta["message"])
             result["status"] = "failed"
             result["message"] = meta["message"]
@@ -260,6 +489,7 @@ def crash_solve(
             meta["status"] = "pending"
             meta["message"] = "OpenRadioss çalışıyor…"
             _write_job(meta)
+            record_from_meta(db, meta)
             hub.update(job_id, state="running", percent=0.0, message=meta["message"])
             background_tasks.add_task(_complete_crash_job, job_id)
             result["status"] = "pending"
@@ -271,6 +501,7 @@ def crash_solve(
             result["message"] = done.get("message")
             result["solver_ran"] = bool(done.get("solver_ran"))
             result["scalars"] = done.get("scalars") or {}
+            result["diagnostics"] = done.get("diagnostics") or {}
 
     else:
         hub.update(job_id, state="done", percent=0.0, message="rad_only")

@@ -3,11 +3,16 @@
 HIC = max ( (1/Δt ∫ a dt )^2.5 · Δt )  for 0 < Δt ≤ window
 a: resultant acceleration in g, Δt in seconds.
 HIC15 window=15 ms, HIC36 window=36 ms.
+
+1.17e: integral birikimli (trapez önek toplamı) — eski üçlü döngü O(n³)
+2000 TH örneğinde dakikalar sürüyor, sunucuyu kilitliyordu; tanım aynı.
 """
 
 from __future__ import annotations
 
 import math
+
+import numpy as np
 
 
 def hic(
@@ -20,23 +25,20 @@ def hic(
     n = min(len(time_s), len(acc_g))
     if n < 2:
         return 0.0
-    t = [float(x) for x in time_s[:n]]
-    a = [float(x) for x in acc_g[:n]]
+    t = np.asarray(time_s[:n], dtype=float)
+    a = np.asarray(acc_g[:n], dtype=float)
+    # C[k] = ∫_{t0}^{tk} a dt (trapez) → ∫_{ti}^{tj} = C[j] − C[i]
+    cum = np.concatenate(([0.0], np.cumsum(0.5 * (a[1:] + a[:-1]) * np.diff(t))))
     best = 0.0
     for i in range(n - 1):
-        for j in range(i + 1, n):
-            dt = t[j] - t[i]
-            if dt <= 1e-9 or dt > window_s + 1e-15:
-                continue
-            integral = 0.0
-            for k in range(i, j):
-                integral += 0.5 * (a[k] + a[k + 1]) * (t[k + 1] - t[k])
-            mean = integral / dt
-            if mean < 0:
-                mean = abs(mean)
-            score = (mean**2.5) * dt
-            if score > best:
-                best = score
+        dt = t[i + 1 :] - t[i]
+        ok = (dt > 1e-9) & (dt <= window_s + 1e-15)
+        if not ok.any():
+            continue
+        mean = np.abs((cum[i + 1 :][ok] - cum[i]) / dt[ok])
+        score = float(np.max(mean**2.5 * dt[ok]))
+        if score > best:
+            best = score
     return best
 
 

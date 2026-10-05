@@ -19,6 +19,7 @@ from app.models import component  # noqa: E402,F401
 from app.models import run  # noqa: E402,F401  (analiz geçmişi)
 from app.models import doe  # noqa: E402,F401  (0.5.4 DOE)
 from app.models import system_check  # noqa: E402,F401
+from app.models import crash_run  # noqa: E402,F401  (1.16a crash geçmişi)
 from app.models import user  # noqa: E402,F401  (API anahtarı)  (metadata'ya kaydolsun diye import)
 
 # this is the Alembic Config object, which provides

@@ -1,0 +1,78 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import CrashHistory from "./CrashHistory";
+
+vi.mock("../api/crash", () => ({
+  fetchCrashRuns: vi.fn(),
+  patchCrashRun: vi.fn(),
+  compareCrashRuns: vi.fn(),
+}));
+
+import { compareCrashRuns, fetchCrashRuns, patchCrashRun, type CrashRunSummary } from "../api/crash";
+
+function run(id: number, extra: Partial<CrashRunSummary> = {}): CrashRunSummary {
+  return {
+    id, job_id: `j${id}`, geometry_id: 3931, name: `koşu ${id}`, created_at: "2026-10-03T12:17:05Z",
+    dimension: 2, t_end_ms: 4, status: "solved", message: null, solver_ran: true,
+    scalars: { rwall_force_max: 100 + id }, excluded: false, exclude_reason: null, ...extra,
+  };
+}
+
+describe("CrashHistory", () => {
+  beforeEach(() => {
+    vi.mocked(fetchCrashRuns).mockReset();
+    vi.mocked(patchCrashRun).mockReset();
+    vi.mocked(compareCrashRuns).mockReset();
+  });
+
+  it("geometri koşularını listeler; dışlananı gizler, istenince gösterir", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2, { excluded: true, status: "failed" })]);
+    render(<CrashHistory geometryId={3931} />);
+    expect(await screen.findByText("koşu 1")).toBeInTheDocument();
+    expect(fetchCrashRuns).toHaveBeenCalledWith(3931);
+    expect(screen.queryByText("koşu 2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Dışlananları göster \(1 gizli\)/));
+    expect(screen.getByText("koşu 2")).toBeInTheDocument();
+    expect(screen.getByText("101.0")).toBeInTheDocument(); // duvar Fmax
+  });
+
+  it("geometri yokken tüm geometriler; dışla PATCH gönderir", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(5)]);
+    vi.mocked(patchCrashRun).mockResolvedValue(run(5, { excluded: true }));
+    render(<CrashHistory geometryId={null} />);
+    expect(await screen.findByText(/tüm geometriler/)).toBeInTheDocument();
+    expect(fetchCrashRuns).toHaveBeenCalledWith(null);
+    expect(screen.getByText(/geo 3931/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "koşu 5 dışla" }));
+    await waitFor(() => expect(patchCrashRun).toHaveBeenCalledWith(5, { excluded: true }));
+    await waitFor(() => expect(screen.queryByText("koşu 5")).not.toBeInTheDocument());
+  });
+
+  it("seçilen koşuları karşılaştırır: eğri seçimi + skaler tablosu", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2)]);
+    vi.mocked(compareCrashRuns).mockResolvedValue([
+      { ...run(1, { scalars: { rwall_force_max: 122.3, section_1_force_max: 120 } }),
+        curves: { time: [0, 0.02, 0.04], rwall_force: [0, 122.3, 0], section_1_force: [0, 120, 0] } },
+      { ...run(2, { scalars: { rwall_force_max: 130.9 } }),
+        curves: { time: [0, 0.002, 0.004, 0.006], rwall_force: [0, 130.9, 50, 0] } },
+    ]);
+    render(<CrashHistory geometryId={3931} />);
+    fireEvent.click(await screen.findByLabelText("koşu 1 seç"));
+    fireEvent.click(screen.getByLabelText("koşu 2 seç"));
+    fireEvent.click(screen.getByRole("button", { name: "Karşılaştır (2/6)" }));
+    await waitFor(() => expect(compareCrashRuns).toHaveBeenCalledWith([1, 2]));
+    const box = await screen.findByTestId("crash-compare");
+    expect(within(box).getByRole("img", { name: "Kuvvet–zaman grafiği" })).toBeInTheDocument();
+    expect(within(box).getByLabelText("Karşılaştırma eğrisi")).toHaveValue("rwall_force");
+    const table = within(box).getByRole("table");
+    expect(table).toHaveTextContent("Duvar Fmax (kN)");
+    expect(table).toHaveTextContent("130.9");
+    expect(table).toHaveTextContent("Kesit 1 Fmax (kN)");
+    // yalnız koşu 1'de olan eğri seçilince tek seri
+    fireEvent.change(within(box).getByLabelText("Karşılaştırma eğrisi"), { target: { value: "section_1_force" } });
+    expect(box.querySelectorAll("polyline")).toHaveLength(1);
+    // zaman üst sınırı yalnız görünümü kırpar: t ≤ 0.02 → iki nokta
+    fireEvent.change(within(box).getByLabelText("Grafik zaman üst sınırı"), { target: { value: "0.02" } });
+    expect(box.querySelector("polyline")?.getAttribute("points")?.split(" ")).toHaveLength(2);
+  });
+});

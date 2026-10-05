@@ -32,6 +32,18 @@ from app.templates.t_bracket import T_BRACKET
 from app.templates.l_bracket_bolted import L_BRACKET_BOLTED
 from app.templates.flange import FLANGE
 from app.templates.stepped_shaft import STEPPED_SHAFT
+from app.templates.crash_box_plate import CRASH_BOX_PLATE
+from app.templates.crash_box_shell import CRASH_BOX_SHELL
+from app.templates.plate_ball_shell import PLATE_BALL_SHELL
+from app.templates.taylor_bar import TAYLOR_BAR
+from app.templates.drop_box_shell import DROP_BOX_SHELL
+from app.templates.pole_beam_shell import POLE_BEAM_SHELL
+from app.templates.rops_frame_shell import ROPS_FRAME_SHELL
+from app.templates.s_rail_shell import S_RAIL_SHELL
+from app.templates.door_beam_shell import DOOR_BEAM_SHELL
+from app.templates.hopkinson_bar import HOPKINSON_BAR
+from app.templates.blast_plate_shell import BLAST_PLATE_SHELL
+from app.templates.bucket_rock_shell import BUCKET_ROCK_SHELL
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -50,6 +62,18 @@ _ALL: tuple[GeometryTemplate, ...] = (
     L_BRACKET_BOLTED,
     FLANGE,
     STEPPED_SHAFT,
+    CRASH_BOX_PLATE,
+    CRASH_BOX_SHELL,
+    PLATE_BALL_SHELL,
+    TAYLOR_BAR,
+    DROP_BOX_SHELL,
+    POLE_BEAM_SHELL,
+    ROPS_FRAME_SHELL,
+    S_RAIL_SHELL,
+    DOOR_BEAM_SHELL,
+    HOPKINSON_BAR,
+    BLAST_PLATE_SHELL,
+    BUCKET_ROCK_SHELL,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}

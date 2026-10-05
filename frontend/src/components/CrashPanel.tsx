@@ -3,24 +3,43 @@ import {
   crashJobWsUrl,
   fetchCrashJob,
   postCrashSolve,
+  type CrashContactSpec,
   type CrashJobSnapshot,
+  type CrashModelPayload,
+  type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
-import ButtonGroup from "./ButtonGroup";
-import CrashSchematic, { type CrashScenarioId } from "./CrashSchematic";
+import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
+import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
+import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
+import CrashHistory from "./CrashHistory";
+import CrashCatalog from "./CrashCatalog";
+import CrashScenarioCard from "./CrashScenarioCard";
+import CrashValidation from "./CrashValidation";
+import CrashSchematic from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
+
+/** Temas satırı: sayısal alanlar ham metin (input), gönderimde sayıya çevrilir. */
+interface ContactRow {
+  id: number;
+  type: 7 | 24;
+  master: number;
+  slave: number;
+  fric: string;
+  stfac: string;
+  gapmin: string;
+  istf: string;
+  inacti: string;
+  iedge: string;
+}
+
+let contactRowSeq = 0;
 
 function num(raw: string): number {
   const v = Number(raw);
   if (!Number.isFinite(v)) throw new Error(`Sayı geçersiz: ${raw}`);
   return v;
-}
-
-function optionalNum(raw: string): number | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  return num(t);
 }
 
 function fmt(v: number | undefined): string {
@@ -33,11 +52,26 @@ function fmt(v: number | undefined): string {
 export default function CrashPanel({
   geometryId,
   meshDimension,
+  partIds = [],
+  materialAssignments = [],
+  componentThickness = {},
 }: {
   geometryId: number | null;
   meshDimension: number | null;
+  /** 3B mesh'teki parça kimlikleri (hacim sırası). Boşsa tek parça varsayılır. */
+  partIds?: number[];
+  /** Parça → malzeme adı (3 · Material adımında atananlar). */
+  materialAssignments?: { part_id: number; material_name: string | null }[];
+  /** 2D: parça → ürün ağacı bileşen kalınlığı (mm). Kabuk kalınlığının tek
+   * kaynağı Malzeme adımıdır; panel yalnız gösterir, backend oradan okur. */
+  componentThickness?: Record<number, number | null>;
 }) {
-  const [scenario, setScenario] = useState<CrashScenarioId>("rigid_wall");
+  // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
+  // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
+  const [partRoles, setPartRoles] = useState<Record<number, "moving" | "fixed">>({});
+  // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [useRigidWall, setUseRigidWall] = useState(true);
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
   const [wx, setWx] = useState("0");
@@ -47,19 +81,35 @@ export default function CrashPanel({
   const [ny, setNy] = useState("0");
   const [nz, setNz] = useState("1");
   const [tEnd, setTEnd] = useState("10");
-  const [law, setLaw] = useState<"elastic" | "plastic">("elastic");
+  // Malzeme kartı (1.14e): global kart + isteğe bağlı parça başına kart (1.14b).
+  // partCards'ta olmayan parça global karta düşer.
+  const [matCard, setMatCard] = useState<MatCardState>(defaultMatCard);
+  const [partCards, setPartCards] = useState<Record<number, MatCardState>>({});
+  // 1.15d — engine / TH / kesit ayarları; boş = backend varsayılanı (eski deck)
+  const [output, setOutput] = useState<OutputState>(defaultOutput);
+  /** 1.17g-7 — hızlı senaryo başlayınca / bitince geçmişi yenile */
+  const [scenarioTick, setScenarioTick] = useState(0);
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("0");
   const [nip, setNip] = useState("1");
-  const [sigmaY, setSigmaY] = useState("");
-  const [hardenB, setHardenB] = useState("0");
-  const [hardenN, setHardenN] = useState("1");
+  // Kabuk (2D mesh) — /PROP/TYPE1. 0 = Radioss /DEF_SHELL varsayılanı; öneri yok.
+  const [ishell, setIshell] = useState("0");
+  const [ish3n, setIsh3n] = useState("0");
+  const [shellIsmstr, setShellIsmstr] = useState("0");
+  const [shellNip, setShellNip] = useState("0");
+  // 1.17h — hourglass kontrolü; 0 = Radioss varsayılanı
+  const [hgHm, setHgHm] = useState("0");
+  const [hgHf, setHgHf] = useState("0");
+  const [hgHr, setHgHr] = useState("0");
+  const [hgSolid, setHgSolid] = useState("0");
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CrashSolveResponse | null>(null);
   const [snapshot, setSnapshot] = useState<CrashJobSnapshot | null>(null);
 
+  // 2D mesh → kabuk parçalar (/SHELL, /SH3N, /PROP/TYPE1); 3D → solid (TYPE14).
+  const isShell = meshDimension === 2;
   const jobId = result?.job_id ?? snapshot?.job_id ?? null;
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
@@ -95,23 +145,44 @@ export default function CrashPanel({
     };
   }, [jobId, polling]);
 
-  function applyScenario(id: CrashScenarioId) {
-    setScenario(id);
-    if (id === "rigid_wall") {
-      setSpeed("10");
-      setAngle("0");
-      setTEnd("10");
-    } else {
-      setSpeed("20");
-      setAngle("0");
-      setTEnd("5");
-    }
-    setWx("0");
-    setWy("0");
-    setWz("0");
-    setNx("0");
-    setNy("0");
-    setNz("1");
+  // Tek parçalı mesh'te partIds boş gelir: parça 0 (self-contact mümkün).
+  const partOptions = partIds.length > 0 ? partIds : [0];
+
+  function addContact() {
+    contactRowSeq += 1;
+    setContacts((rows) => [
+      ...rows,
+      {
+        id: contactRowSeq,
+        type: 7,
+        master: partOptions[partOptions.length - 1],
+        slave: partOptions[0],
+        fric: "0",
+        stfac: "1",
+        gapmin: "0",
+        istf: "0",
+        inacti: "0",
+        iedge: "0",
+      },
+    ]);
+  }
+
+  function updateContact(id: number, patch: Partial<ContactRow>) {
+    setContacts((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function contactPayload(r: ContactRow): CrashContactSpec {
+    return {
+      type: r.type,
+      master_part: r.master,
+      slave_part: r.slave,
+      fric: num(r.fric),
+      stfac: num(r.stfac),
+      gapmin: r.type === 7 ? num(r.gapmin) : 0,
+      istf: num(r.istf),
+      inacti: num(r.inacti),
+      iedge: r.type === 24 ? num(r.iedge) : 0,
+    };
   }
 
   async function handleSubmit() {
@@ -119,10 +190,30 @@ export default function CrashPanel({
     setBusy(true);
     setError(null);
     try {
-      const sy = optionalNum(sigmaY);
+      // Eleman bayrakları (TYPE14 / kabuk TYPE1) global; parça kartı yalnız malzemeyi değiştirir.
+      const elementFlags = {
+        isolid: num(isolid),
+        ismstr: num(ismstr),
+        nip: num(nip),
+        solid_hourglass_h: num(hgSolid),
+        ...(isShell
+          ? {
+              shell: {
+                ishell: num(ishell),
+                ish3n: num(ish3n),
+                ismstr: num(shellIsmstr),
+                nip: num(shellNip),
+                hm: num(hgHm),
+                hf: num(hgHf),
+                hr: num(hgHr),
+              },
+            }
+          : {}),
+      };
+      const modelFor = (card: MatCardState, label: string) =>
+        ({ ...elementFlags, ...matCardPayload(card, label) }) as CrashModelPayload;
       const body = await postCrashSolve({
         geometry_id: geometryId,
-        scenario,
         barrier: {
           speed_m_s: num(speed),
           angle_deg: num(angle),
@@ -131,19 +222,24 @@ export default function CrashPanel({
             normal: [num(nx), num(ny), num(nz)],
           },
         },
-        dimension: 3,
+        dimension: isShell ? 2 : 3,
         run_solver: runSolver,
         wait: false,
         t_end_ms: num(tEnd),
-        model: {
-          law,
-          isolid: num(isolid),
-          ismstr: num(ismstr),
-          nip: num(nip),
-          sigma_y_pa: sy,
-          harden_b_mpa: num(hardenB),
-          harden_n: num(hardenN),
-        },
+        parts:
+          partIds.length > 0
+            ? partIds.map(
+                (pid): CrashPartSpec => ({
+                  part_id: pid,
+                  role: partRoles[pid] ?? "moving",
+                  ...(partCards[pid] ? { model: modelFor(partCards[pid], `Parça #${pid}`) } : {}),
+                }),
+              )
+            : undefined,
+        contacts: contacts.map(contactPayload),
+        use_rigid_wall: useRigidWall,
+        model: modelFor(matCard, "Global"),
+        ...outputPayload(output),
       });
       setResult(body);
       setSnapshot({
@@ -163,46 +259,52 @@ export default function CrashPanel({
 
   const scalars = snapshot?.scalars ?? result?.scalars ?? {};
   const percent = snapshot?.percent ?? 0;
-  const canRun = geometryId != null && meshDimension === 3 && !busy;
-  const wallTitle =
-    scenario === "plate_ball" ? "Rijit plaka nokta (mm) — /RWALL" : "Rigid wall nokta (mm)";
-  const normalTitle =
-    scenario === "plate_ball" ? "Rijit plaka normal" : "Rigid wall normal";
+  const canRun = geometryId != null && (meshDimension === 2 || meshDimension === 3) && !busy;
+  // Duvar kapalıyken nokta/normal yine gönderilir: bariyer ilk hız yönünü
+  // normalden türetir (açı 0° → −normal yönünde).
+  const wallTitle = !useRigidWall ? "Bariyer nokta (mm) — duvar kapalı" : "Rigid wall nokta (mm)";
+  const normalTitle = !useRigidWall
+    ? "Bariyer normal — duvar kapalı, yalnız ilk hız yönü"
+    : "Rigid wall normal";
+  const curves = snapshot?.curves;
+  const forceSeries = forceSeriesFromCurves(curves);
+  const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
+  const msgList = (m: Record<string, number> | undefined) =>
+    Object.entries(m ?? {}).map(([id, n]) => (n > 1 ? `${id} ×${n}` : id));
+  const starterMsgs = {
+    errors: msgList(diagnostics?.starter_errors),
+    warnings: msgList(diagnostics?.starter_warnings),
+  };
+  // 1.17e — CFC süzülmüş tepe değerleri (…_max_cfcN, acc_peak_g_cfcN, hic15_cfcN)
+  const cfcPeaks = Object.keys(scalars)
+    .filter((k) => /_cfc\d+$/.test(k) && !k.startsWith("sample_ratio"))
+    .sort();
+  const sectionPeaks = Object.keys(scalars)
+    .map((k) => /^section_(\d+)_force_max$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  const contactPeaks = Object.keys(scalars)
+    .map((k) => /^contact_(\d+)_force_max$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
 
   return (
     <div className="panel material-panel">
       <span className="eyebrow">Faz 1 · OpenRadioss</span>
       <h1>Crash</h1>
       <p className="lead material-lead">
-        Durability sonuçları bu sekmede değişmez. 3D tet mesh + malzeme ataması
-        gerekir. Hız m/s (mm–ms: 1 m/s = 1 mm/ms). Kartlar: LAW1/LAW2, TYPE14
-        Isolid / Ismstr / NIP.
+        Durability sonuçları bu sekmede değişmez. 3D (solid) ya da 2D (kabuk) mesh + malzeme ataması
+        gerekir. Hız m/s (mm–ms: 1 m/s = 1 mm/ms). Kartlar: LAW1 / LAW2 / LAW36, /FAIL,
+        TYPE14 Isolid / Ismstr / NIP.
       </p>
-      {meshDimension !== 3 && (
-        <p className="material-assign-hint">3D tet mesh yok — crash dimension=3 ister.</p>
+      {meshDimension !== 2 && meshDimension !== 3 && (
+        <p className="material-assign-hint">Mesh yok — crash 3D (solid) ya da 2D (kabuk) mesh ister.</p>
       )}
       {geometryId == null && (
         <p className="material-assign-hint">Önce geometri yükleyin.</p>
       )}
 
-      <ButtonGroup
-        title="Senaryo"
-        items={[
-          {
-            key: "rigid_wall",
-            label: "Rigid wall",
-            active: scenario === "rigid_wall",
-            onClick: () => applyScenario("rigid_wall"),
-          },
-          {
-            key: "plate_ball",
-            label: "Plaka–küre",
-            active: scenario === "plate_ball",
-            onClick: () => applyScenario("plate_ball"),
-          },
-        ]}
-      />
-      <CrashSchematic scenario={scenario} />
+      <CrashSchematic />
 
       <p className="material-assignments-title">Kinematik</p>
       <div className="mesh-grid">
@@ -219,6 +321,15 @@ export default function CrashPanel({
           <input value={tEnd} onChange={(e) => setTEnd(e.target.value)} />
         </label>
       </div>
+      <label className="material-check">
+        <input
+          type="checkbox"
+          checked={useRigidWall}
+          disabled={busy}
+          onChange={(e) => setUseRigidWall(e.target.checked)}
+        />
+        Rijit duvar (/RWALL)
+      </label>
       <p className="material-assignments-title">{wallTitle}</p>
       <div className="mesh-grid">
         <label className="mesh-field">
@@ -250,56 +361,293 @@ export default function CrashPanel({
         </label>
       </div>
 
-      <p className="material-assignments-title">Malzeme kanunu</p>
-      <ButtonGroup
-        title="LAW"
-        items={[
-          {
-            key: "elastic",
-            label: "LAW1 elastik",
-            active: law === "elastic",
-            onClick: () => setLaw("elastic"),
-          },
-          {
-            key: "plastic",
-            label: "LAW2 plastik",
-            active: law === "plastic",
-            onClick: () => setLaw("plastic"),
-          },
-        ]}
-      />
-      {law === "plastic" && (
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>σy (Pa) — boşsa atanan malzeme</span>
-            <input value={sigmaY} onChange={(e) => setSigmaY(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>LAW2 b (MPa)</span>
-            <input value={hardenB} onChange={(e) => setHardenB(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>LAW2 n</span>
-            <input value={hardenN} onChange={(e) => setHardenN(e.target.value)} />
-          </label>
-        </div>
+      {partIds.length > 0 && (
+        <>
+          <p className="material-assignments-title">Parçalar</p>
+          <table className="doe-table crash-parts" data-testid="crash-parts">
+            <thead>
+              <tr>
+                <th>parça</th>
+                <th>malzeme</th>
+                <th>rol</th>
+                <th>kart</th>
+                {isShell && <th>t (mm)</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {partIds.map((pid) => {
+                const mat = materialAssignments.find((a) => a.part_id === pid)?.material_name;
+                const role = partRoles[pid] ?? "moving";
+                return (
+                  <tr key={pid}>
+                    <td>#{pid}</td>
+                    <td className={mat ? undefined : "crash-part-missing"}>{mat ?? "atama yok"}</td>
+                    <td>
+                      <span className="doe-seg" role="group" aria-label={`Parça ${pid} rolü`}>
+                        <button
+                          type="button"
+                          className={role === "moving" ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={role === "moving"}
+                          disabled={busy}
+                          onClick={() => setPartRoles((r) => ({ ...r, [pid]: "moving" }))}
+                        >
+                          Hareketli
+                        </button>
+                        <button
+                          type="button"
+                          className={role === "fixed" ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={role === "fixed"}
+                          disabled={busy}
+                          onClick={() => setPartRoles((r) => ({ ...r, [pid]: "fixed" }))}
+                        >
+                          Sabit
+                        </button>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="doe-seg" role="group" aria-label={`Parça ${pid} kartı`}>
+                        <button
+                          type="button"
+                          className={partCards[pid] ? "doe-seg-opt" : "doe-seg-opt active"}
+                          aria-pressed={!partCards[pid]}
+                          disabled={busy}
+                          onClick={() =>
+                            setPartCards((c) => {
+                              const next = { ...c };
+                              delete next[pid];
+                              return next;
+                            })
+                          }
+                        >
+                          Global
+                        </button>
+                        <button
+                          type="button"
+                          className={partCards[pid] ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={Boolean(partCards[pid])}
+                          disabled={busy}
+                          onClick={() => setPartCards((c) => (c[pid] ? c : { ...c, [pid]: { ...matCard } }))}
+                        >
+                          Ayrı
+                        </button>
+                      </span>
+                    </td>
+                    {isShell && (
+                      <td
+                        data-testid={`crash-part-t-${pid}`}
+                        className={componentThickness[pid] ? undefined : "crash-part-missing"}
+                      >
+                        {componentThickness[pid] ? `${componentThickness[pid]}` : "yok"}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="material-assign-hint">
+            Hareketli parça ilk hızı alır; sabit parça /BCS ile tutulur. Her parçaya malzeme
+            atanmalı (3 · Material). Kart: Global = aşağıdaki ortak kart; Ayrı = parçanın kendi
+            kartı (global kartın o anki kopyasıyla açılır).
+          </p>
+        </>
       )}
 
-      <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>Isolid</span>
-          <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Ismstr</span>
-          <input value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>NIP</span>
-          <input value={nip} onChange={(e) => setNip(e.target.value)} />
-        </label>
-      </div>
+      <p className="material-assignments-title">Temas — /INTER</p>
+      {contacts.length > 0 && (
+        <div className="crash-contacts" data-testid="crash-contacts">
+          {contacts.map((c, i) => {
+            const k = i + 1;
+            const field = (
+              key: "fric" | "stfac" | "gapmin" | "istf" | "inacti" | "iedge",
+              label: string,
+              off = false,
+            ) => (
+              <label className="mesh-field">
+                <span>{label}</span>
+                <input
+                  aria-label={`Temas ${k} ${label.split(" ")[0]}`}
+                  value={off ? "—" : c[key]}
+                  disabled={busy || off}
+                  onChange={(e) => updateContact(c.id, { [key]: e.target.value })}
+                />
+              </label>
+            );
+            const partSelect = (key: "master" | "slave", label: string) => (
+              <label className="mesh-field">
+                <span>{label}</span>
+                <select
+                  aria-label={`Temas ${k} ${key}`}
+                  value={c[key]}
+                  disabled={busy}
+                  onChange={(e) => updateContact(c.id, { [key]: Number(e.target.value) })}
+                >
+                  {partOptions.map((pid) => (
+                    <option key={pid} value={pid}>
+                      parça #{pid}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+            return (
+              <div key={c.id} className="crash-contact-card">
+                <div className="crash-contact-head">
+                  <strong>
+                    Temas {k}
+                    {c.master === c.slave ? " · self" : ""}
+                  </strong>
+                  <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
+                    {([7, 24] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={c.type === t ? "doe-seg-opt active" : "doe-seg-opt"}
+                        aria-pressed={c.type === t}
+                        disabled={busy}
+                        onClick={() => updateContact(c.id, { type: t })}
+                      >
+                        TYPE{t}
+                      </button>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="crash-contact-remove"
+                    aria-label={`Temas ${k} sil`}
+                    disabled={busy}
+                    onClick={() => setContacts((rows) => rows.filter((r) => r.id !== c.id))}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="crash-contact-parts">
+                  {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
+                  <span className="crash-contact-arrow" aria-hidden="true">
+                    {c.type === 7 ? "→" : "↔"}
+                  </span>
+                  {partSelect("master", "master (yüzey)")}
+                </div>
+                <div className="mesh-grid">
+                  {field("fric", "Fric")}
+                  {field("stfac", "Stfac")}
+                  {c.type === 7 ? field("gapmin", "GAPmin (mm)") : field("iedge", "Iedge")}
+                  {field("istf", "Istf")}
+                  {field("inacti", "Inacti")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button
+        type="button"
+        className="doe-btn doe-btn-ghost crash-contact-add"
+        disabled={busy}
+        onClick={addContact}
+      >
+        + Temas ekle
+      </button>
+      <p className="material-assign-hint">
+        TYPE7: slave parçanın düğümleri → master parçanın dış yüzeyi. TYPE24: iki dış yüzey
+        birbirine karşı (simetrik). master = slave → self-contact. Bayraklarda 0 = Radioss
+        varsayılanı.
+      </p>
+
+      <p className="material-assignments-title">
+        {Object.keys(partCards).length > 0 ? "Malzeme kartı — global" : "Malzeme kartı"}
+      </p>
+      <CrashMaterialCard value={matCard} onChange={setMatCard} disabled={busy} testId="crash-mat-global" />
+      {partIds
+        .filter((pid) => partCards[pid])
+        .map((pid) => (
+          <div key={pid} className="crash-contact-card crash-mat-part">
+            <div className="crash-contact-head">
+              <strong>Parça #{pid} — malzeme kartı</strong>
+            </div>
+            <CrashMaterialCard
+              value={partCards[pid]}
+              onChange={(next) => setPartCards((c) => ({ ...c, [pid]: next }))}
+              disabled={busy}
+              testId={`crash-mat-part-${pid}`}
+            />
+          </div>
+        ))}
+
+      {isShell ? (
+        <>
+          <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
+          <div className="mesh-grid">
+            <label className="mesh-field">
+              <span>Ishell</span>
+              <input value={ishell} onChange={(e) => setIshell(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ish3n</span>
+              <input value={ish3n} onChange={(e) => setIsh3n(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Ismstr (kabuk)</span>
+              <input value={shellIsmstr} onChange={(e) => setShellIsmstr(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>N</span>
+              <input value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
+            </label>
+          </div>
+          <p className="material-assignments-title">Hourglass kontrolü — /PROP/TYPE1</p>
+          <div className="mesh-grid">
+            <label className="mesh-field">
+              <span>Hm</span>
+              <input aria-label="Hourglass Hm" value={hgHm} onChange={(e) => setHgHm(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Hf</span>
+              <input aria-label="Hourglass Hf" value={hgHf} onChange={(e) => setHgHf(e.target.value)} />
+            </label>
+            <label className="mesh-field">
+              <span>Hr</span>
+              <input aria-label="Hourglass Hr" value={hgHr} onChange={(e) => setHgHr(e.target.value)} />
+            </label>
+          </div>
+          <p className="material-assign-hint">
+            Hm membran, Hf düzlem dışı, Hr dönme katsayısı; aralık 0…0.05, 0 = Radioss
+            varsayılanı (0.01). Ishell 1–4 hourglass formülasyonlarında etkili.
+          </p>
+          <p className="material-assign-hint">
+            Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı); burada yalnız
+            gösterilir. Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
+          </p>
+        </>
+      ) : (
+        <>
+        <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
+        <div className="mesh-grid">
+          <label className="mesh-field">
+            <span>Isolid</span>
+            <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>Ismstr</span>
+            <input value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>NIP</span>
+            <input value={nip} onChange={(e) => setNip(e.target.value)} />
+          </label>
+          <label className="mesh-field">
+            <span>h (hourglass)</span>
+            <input aria-label="Hourglass h" value={hgSolid} onChange={(e) => setHgSolid(e.target.value)} />
+          </label>
+        </div>
+        <p className="material-assign-hint">
+          h: hourglass viskozite katsayısı, aralık 0…0.15, 0 = Radioss varsayılanı (0.10).
+        </p>
+        </>
+      )}
+
+      <p className="material-assignments-title">Çıktı ve kontrol</p>
+      <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
 
       <label className="material-check">
         <input
@@ -330,7 +678,8 @@ export default function CrashPanel({
               <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
             </div>
           )}
-          {snapshot?.cycle != null && (
+          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
+          {polling && snapshot?.cycle != null && (
             <p className="material-assign-hint">
               cycle {snapshot.cycle}
               {snapshot.time_ms != null ? ` · t=${fmt(snapshot.time_ms)} ms` : ""} · %{fmt(percent)}
@@ -348,11 +697,65 @@ export default function CrashPanel({
               <li>acc_peak_g {fmt(scalars.acc_peak_g)}</li>
               <li>IE_final {fmt(scalars.internal_energy_final)}</li>
               <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
+              {scalars.hourglass_energy_final != null && (
+                <li>
+                  HG_final {fmt(scalars.hourglass_energy_final)} · HG/IE {fmt(scalars.hourglass_ratio)}
+                </li>
+              )}
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
+              {scalars.rwall_impulse_final != null && (
+                <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
+              )}
+              {sectionPeaks.map((m) => (
+                <li key={m[0]}>
+                  Kesit {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`section_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
+              {cfcPeaks.map((k) => (
+                <li key={k} data-testid="crash-cfc-peak">
+                  {k.replace(/_cfc(\d+)$/, "")} CFC{/_cfc(\d+)$/.exec(k)?.[1]} {fmt(scalars[k])}
+                </li>
+              ))}
+              {scalars.timestep_min != null && (
+                <li data-testid="crash-timestep">
+                  Δt_min {fmt(scalars.timestep_min)} ms
+                  {scalars.mass_added_rel ? ` · eklenen kütle %${(scalars.mass_added_rel * 100).toFixed(1)}` : ""}
+                </li>
+              )}
+              {scalars.elements_deleted != null && (
+                <li data-testid="crash-deleted">
+                  Silinen eleman {scalars.elements_deleted}
+                  {scalars.deletion_time_first != null
+                    ? ` · ilk ≤ ${fmt(scalars.deletion_time_first)} ms · son ≤ ${fmt(scalars.deletion_time_last)} ms`
+                    : ""}
+                </li>
+              )}
+              {contactPeaks.map((m) => (
+                <li key={m[0]}>
+                  Temas {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`contact_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
             </ul>
+          )}
+          {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
+            <p className="material-assign-hint" data-testid="crash-starter-msgs">
+              Starter
+              {starterMsgs.errors.length > 0 ? ` · hata ID ${starterMsgs.errors.join(", ")}` : " · 0 hata"}
+              {starterMsgs.warnings.length > 0 ? ` · uyarı ID ${starterMsgs.warnings.join(", ")}` : ""}
+            </p>
+          )}
+          {curves?.time && forceSeries.length > 0 && (
+            <CrashForceChart time={curves.time} series={forceSeries} />
           )}
         </div>
       )}
+
+      <CrashCatalog />
+      <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} />
+      <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`} />
+      <CrashValidation />
     </div>
   );
 }

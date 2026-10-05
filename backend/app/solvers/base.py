@@ -36,6 +36,9 @@ class ResultSet:
     # Frontend'in mesh önizlemesiyle aynı node sırasına hizalı, düğüm bazlı
     # sonuç dizilerini (von Mises, deplasman büyüklüğü) içeren JSON dosyası.
     results_preview_path: Path | None = None
+    # Solver listing'inden okunan sayısal olmayan bilgi (mesaj ID'leri, silinen
+    # eleman listesi…); yorum yok, olduğu gibi veri.
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 class SolverError(Exception):

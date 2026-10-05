@@ -28,6 +28,14 @@ interface TemplatePanelProps {
   /** Seçili şablon değişince haber ver — DOE paneli bunu izliyor, böylece
    * kullanıcı tek yerden şablon seçiyor. */
   onTemplateSelected?: (templateId: string) => void;
+  /** Analiz sekmesi: crash → yalnız `crash` etiketli şablonlar, durability /
+   * modal → crash olmayanlar (kullanıcı 2026-10-04: crash'te durability
+   * şablonları görünüyordu). */
+  kind?: "durability" | "crash";
+}
+
+export function templatesForKind(list: GeometryTemplateInfo[], kind: "durability" | "crash"): GeometryTemplateInfo[] {
+  return list.filter((t) => (t.tags ?? []).includes("crash") === (kind === "crash"));
 }
 
 export default function TemplatePanel({
@@ -36,8 +44,10 @@ export default function TemplatePanel({
   busy,
   onCreated,
   onTemplateSelected,
+  kind = "durability",
 }: TemplatePanelProps) {
-  const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
+  const [allTemplates, setAllTemplates] = useState<GeometryTemplateInfo[]>([]);
+  const templates = useMemo(() => templatesForKind(allTemplates, kind), [allTemplates, kind]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -70,16 +80,18 @@ export default function TemplatePanel({
 
   useEffect(() => {
     fetchTemplates()
-      .then((list) => {
-        setTemplates(list);
-        if (list.length) {
-          setSelectedId(list[0].id);
-          onTemplateSelected?.(list[0].id);
-          fillDefaults(list[0]);
-        }
-      })
+      .then(setAllTemplates)
       .catch((e) => setError(e instanceof Error ? e.message : "Şablonlar alınamadı."));
   }, []);
+
+  // Liste (ya da sekme) değişince seçim listede değilse ilk şablona geç.
+  useEffect(() => {
+    if (!templates.length || templates.some((t) => t.id === selectedId)) return;
+    setSelectedId(templates[0].id);
+    onTemplateSelected?.(templates[0].id);
+    fillDefaults(templates[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates]);
 
   function handleOpenDialog() {
     if (!selected) return;

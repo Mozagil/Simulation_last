@@ -8,13 +8,16 @@ dokunulmaz. `submit` ikili yoksa SolverError.
 
 from __future__ import annotations
 
+import json
+import math
+
 import os
 import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -26,7 +29,24 @@ from app.solvers.base import (
     SolverAdapter,
     SolverError,
 )
-from app.solvers.crash_params import CrashModelParams
+from app.solvers.crash_params import (
+    _th_vars_ok,
+    CrashContactParams,
+    CrashBcParams,
+    CrashBlastLoadParams,
+    CrashEngineParams,
+    CrashFilterParams,
+    CrashGravityParams,
+    CrashImpVelParams,
+    CrashPressureLoadParams,
+    CrashSphProjectileParams,
+    CrashMassParams,
+    CrashModelParams,
+    CrashRigidBodyParams,
+    CrashSectionParams,
+    CrashThParams,
+    parse_tab_curves,
+)
 
 # Codespace Dockerfile bu etiketi indirir (reproducible). Kaynak derlenmez.
 OPENRADIOSS_RELEASE = "latest-20260728"
@@ -56,6 +76,88 @@ class OpenRadiossBins:
     engine: Path
     starter: Path | None
     home: Path | None
+    # Doluysa ikililer bu Docker imajının İÇİNDE çalışır (Windows geliştirme
+    # makinesi: Docker Desktop/WSL2). Yollar imaj içi yollardır.
+    docker_image: str | None = None
+
+
+DOCKER_HOME = Path("/opt/openradioss")
+DOCKER_WORK = "/work"
+
+
+def _docker_home() -> Path:
+    """İmaj içindeki OpenRadioss kökü. Resmi betik /opt/openradioss'a kurar;
+    topluluk imajları (örn. dheiny/openradioss-solver) /opt/OpenRadioss/OpenRadioss
+    kullanır — OPENRADIOSS_DOCKER_HOME ile verilir."""
+    raw = (os.environ.get("OPENRADIOSS_DOCKER_HOME") or "").strip()
+    return Path(raw) if raw else DOCKER_HOME
+
+
+def _docker_bins(image: str) -> OpenRadiossBins:
+    home = _docker_home()
+    return OpenRadiossBins(
+        engine=home / "exec" / "engine_linux64_gf",
+        starter=home / "exec" / "starter_linux64_gf",
+        home=home,
+        docker_image=image,
+    )
+
+
+def docker_env_args(home: Path) -> list[str]:
+    """Resmi INSTALL.md ortamı, imajın ENV'inden bağımsız olarak verilir:
+    hm_reader/h3d kütüphaneleri yoksa starter 'libhm_reader_linux64.so'
+    diye düşer (topluluk imajında görüldü)."""
+    h = home.as_posix()
+    return [
+        "-e", f"RAD_CFG_PATH={h}/hm_cfg_files",
+        "-e", f"RAD_H3D_PATH={h}/extlib/h3d/lib/linux64",
+        "-e", f"LD_LIBRARY_PATH={h}/extlib/hm_reader/linux64:{h}/extlib/h3d/lib/linux64",
+        "-e", "OMP_STACKSIZE=400m",
+        "-e", f"OMP_NUM_THREADS={os.environ.get('OPENRADIOSS_THREADS', '4')}",
+    ]
+
+
+def _docker_cli() -> str:
+    """docker CLI: DOCKER_CLI env → PATH → Docker Desktop'ın bilinen yolları.
+
+    Backend, geliştirme ortamında PATH'inde docker olmayan bir süreçten
+    başlatılabiliyor (WinError 2 görüldü); tam yol bulunursa o kullanılır.
+    """
+    explicit = (os.environ.get("DOCKER_CLI") or "").strip()
+    if explicit:
+        return explicit
+    found = shutil.which("docker")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA") or ""
+    for cand in (
+        Path(local) / "Programs" / "DockerDesktop" / "resources" / "bin" / "docker.exe",
+        Path(r"C:/Program Files/Docker/Docker/resources/bin/docker.exe"),
+        Path("/usr/local/bin/docker"),
+        Path("/usr/bin/docker"),
+    ):
+        if cand.is_file():
+            return str(cand)
+    return "docker"
+
+
+def launch_command(bins: OpenRadiossBins, exe: Path, args: list[str], work_dir: Path) -> list[str]:
+    """Çalıştırılacak komut: doğrudan ikili ya da `docker run` sarmalı.
+
+    Docker'da iş klasörü /work olarak bağlanır; ikili zaten cwd=/work ile
+    koşar, dosya adları göreli verildiği için iki yolda da aynı deck çalışır.
+    Ortam (RAD_CFG_PATH, LD_LIBRARY_PATH) imajın ENV'inde.
+    """
+    if bins.docker_image is None:
+        return [str(exe), *args]
+    return [
+        _docker_cli(), "run", "--rm",
+        "-v", f"{work_dir.resolve()}:{DOCKER_WORK}",
+        "-w", DOCKER_WORK,
+        *docker_env_args(bins.home or DOCKER_HOME),
+        bins.docker_image,
+        exe.as_posix(), *args,
+    ]
 
 
 def _install_roots() -> list[Path]:
@@ -97,7 +199,14 @@ def _home_from_engine(engine: Path) -> Path | None:
 
 
 def resolve_openradioss() -> OpenRadiossBins | None:
-    """OPENRADIOSS_PATH dosya veya kök dizin olabilir (resmi değişken = kök)."""
+    """OPENRADIOSS_PATH dosya veya kök dizin olabilir (resmi değişken = kök).
+
+    OPENRADIOSS_DOCKER_IMAGE doluysa yerel ikili aranmaz: starter/engine o
+    imajda koşar (Windows geliştirme makinesi; bkz. backend/docker/openradioss).
+    """
+    image = (os.environ.get("OPENRADIOSS_DOCKER_IMAGE") or "").strip()
+    if image:
+        return _docker_bins(image)
     explicit = os.environ.get("OPENRADIOSS_PATH")
     engine: Path | None = None
     if explicit:
@@ -188,10 +297,25 @@ def _crash_model(params: dict[str, Any]) -> CrashModelParams:
         raise SolverError(f"OpenRadioss model geçersiz: {exc}") from exc
 
 
-def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
-    # mm–ms–ton: rho [kg/m³] → ton/mm³ = kg/m³ * 1e-12
-    rho = float(mat.get("density") or 7850.0) * 1e-12
-    e_mpa = float(mat.get("youngs_modulus") or 210e9) / 1e6
+# Birim sistemi kg–mm–ms (/BEGIN'de bildirilir): yoğunluk kg/mm³, gerilme ve
+# E GPa (= kg/(mm·ms²)), hız mm/ms (sayısal olarak m/s), kuvvet kN, enerji J,
+# ivme mm/ms². Post-process (openradioss_th) zamanı ms, ivmeyi mm/ms² sayar.
+PA_TO_GPA = 1e-9
+KGM3_TO_KGMM3 = 1e-9
+MPA_TO_GPA = 1e-3
+# Frekans / hız: 1/s → 1/ms. ρCp J/(m³·K) → J/(mm³·K) aynı 1e-9 (KGM3_TO_KGMM3).
+PER_S_TO_PER_MS = 1e-3
+
+
+def _mat_prop_cards(
+    mat: dict[str, Any],
+    model: CrashModelParams,
+    card_id: int = 1,
+    shell_thickness: float | None = None,
+) -> list[str]:
+    """/MAT + /PROP. `shell_thickness` verilirse parça kabuk: /PROP/TYPE1."""
+    rho = float(mat.get("density") or 7850.0) * KGM3_TO_KGMM3
+    e_gpa = float(mat.get("youngs_modulus") or 210e9) * PA_TO_GPA
     nu = float(mat.get("poisson_ratio") or 0.3)
     title = str(mat.get("name") or "STEEL")[:80]
     if model.law == "plastic":
@@ -203,27 +327,230 @@ def _mat_prop_cards(mat: dict[str, Any], model: CrashModelParams) -> list[str]:
             raise SolverError(
                 "LAW2 için σy gerekli: malzeme yield_strength veya model.sigma_y_pa."
             )
-        a_mpa = float(sy) / 1e6
+        a_gpa = float(sy) * PA_TO_GPA
+        b_gpa = float(model.harden_b_mpa) * MPA_TO_GPA
+        # Radioss 2022 /MAT/LAW2 (Johnson–Cook), Iflag=0 — hm_cfg radioss140
+        # matl2_plas_johns: ρ; E ν Iflag; a b n EPS_p_max SIG_max0; c ε̇₀ ICC
+        # Fsmooth F_cut Chard; m T_melt ρCp T_r. Sıfır = Radioss varsayılanı
+        # (EPS_p_max, SIG_max0, T_melt → 1e30; c, m → terim kapalı).
+        # Birim: ε̇₀, F_cut 1/s → 1/ms; SIG_max0 MPa → GPa; ρCp J/(m³K) → J/(mm³K).
         mat_lines = [
-            "/MAT/LAW2/1",
+            f"/MAT/LAW2/{card_id}",
             title,
             _f(rho),
-            f"{_f(e_mpa)}{_f(nu)}",
-            f"{_f(a_mpa)}{_f(model.harden_b_mpa)}{_f(model.harden_n)}",
+            f"{_f(e_gpa)}{_f(nu)}{_i(0)}",
+            f"{_f(a_gpa)}{_f(b_gpa)}{_f(model.harden_n)}{_f(model.eps_p_max)}"
+            f"{_f(model.sig_max0_mpa * MPA_TO_GPA)}",
+            f"{_f(model.jc_c)}{_f(model.jc_eps_dot0_per_s * PER_S_TO_PER_MS)}"
+            f"{_i(model.jc_icc)}{_i(model.jc_fsmooth)}"
+            f"{_f(model.jc_fcut_hz * PER_S_TO_PER_MS)}{_f(model.jc_chard)}",
+            f"{_f(model.jc_m)}{_f(model.jc_t_melt_k)}{_f(model.jc_rho_cp * KGM3_TO_KGMM3)}"
+            f"{_f(model.jc_t_r_k)}",
         ]
+    elif model.law == "tabulated":
+        # Radioss 2022 /MAT/LAW36 — hm_cfg radioss2017 matl36_plas_tab: ρ; E ν
+        # Eps_p_max Eps_t Eps_m; N_funct F_smooth C_hard F_cut Eps_f · VP;
+        # fct_IDp Fscale Fct_IDE EInf CE; sonra eğri kimlikleri / ölçekleri /
+        # hızları beşer beşer. Eğriler /FUNCT (ε_p, σ): σ MPa → GPa, ε̇ 1/s → 1/ms.
+        # fct_IDp, Fct_IDE 0 (basınç / E değişimi yok); eğri ölçeği 1.
+        curves = model.tab_curves
+        if not curves:
+            try:
+                curves = parse_tab_curves(mat.get("crash_curves"))
+            except ValueError as exc:
+                raise SolverError(f"Malzeme '{title}' crash_curves geçersiz: {exc}") from exc
+        if not curves:
+            raise SolverError(
+                f"LAW36 için akma eğrisi yok: istekte tab_curves boş, malzeme '{title}' "
+                "kütüphanesinde crash_curves yok."
+            )
+        fids = [card_id * 100 + k for k in range(1, len(curves) + 1)]
+        mat_lines = [
+            f"/MAT/LAW36/{card_id}",
+            title,
+            _f(rho),
+            f"{_f(e_gpa)}{_f(nu)}{_f(model.eps_p_max)}{_f(model.tab_eps_t)}{_f(model.tab_eps_m)}",
+            f"{_i(len(curves))}{_i(model.jc_fsmooth)}{_f(model.jc_chard)}"
+            f"{_f(model.jc_fcut_hz * PER_S_TO_PER_MS)}{_f(model.tab_eps_f)}{' ' * 10}{_i(model.tab_vp)}",
+            f"{_i(0)}{_f(0.0)}{_i(0)}{_f(0.0)}{_f(0.0)}",
+        ]
+        for i in range(0, len(curves), 5):
+            mat_lines.append("".join(_i(f) for f in fids[i : i + 5]))
+        for i in range(0, len(curves), 5):
+            mat_lines.append("".join(_f(1.0) for _ in curves[i : i + 5]))
+        for i in range(0, len(curves), 5):
+            mat_lines.append(
+                "".join(_f(c.eps_dot_per_s * PER_S_TO_PER_MS) for c in curves[i : i + 5])
+            )
+        for fid, c in zip(fids, curves):
+            mat_lines += [f"/FUNCT/{fid}", f"yield_{card_id}_{c.eps_dot_per_s:g}_per_s"]
+            mat_lines += [f"{_f(x)}{_f(y * MPA_TO_GPA)}" for x, y in c.points]
     else:
         mat_lines = [
-            "/MAT/LAW1/1",
+            f"/MAT/LAW1/{card_id}",
             title,
             _f(rho),
-            f"{_f(e_mpa)}{_f(nu)}",
+            f"{_f(e_gpa)}{_f(nu)}",
         ]
+    mat_lines += _fail_cards(model, card_id)
+    if shell_thickness is not None:
+        sh = model.shell
+        # /PROP/TYPE1 (SHELL), hm_cfg radioss2020 düzeni: Ishell Ismstr Ish3n
+        # Idrill Ipinch · P_Thick_Fail; Hm Hf Hr Dm Dn; N Istrain Thick Ashear ·
+        # Ithick Iplas. Sıfırlar /DEF_SHELL varsayılanı.
+        prop_lines = [
+            f"/PROP/TYPE1/{card_id}",
+            "shell",
+            f"{_i(sh.ishell)}{_i(sh.ismstr)}{_i(sh.ish3n)}{_i(0)}{_i(0)}{' ' * 10}{_f(0.0)}",
+            f"{_f(sh.hm)}{_f(sh.hf)}{_f(sh.hr)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(sh.nip)}{_i(0)}{_f(shell_thickness)}{_f(0.0)}{' ' * 10}{_i(0)}{_i(0)}",
+        ]
+        return mat_lines + prop_lines
+    # /PROP/TYPE14 (solid), Radioss 2022: Isolid Ismstr Iale Icpre Itetra10
+    # Inpts Itetra4 Iframe Dn · qa qb h Lambda Mu · dT_min Istrain Ihkt.
+    # Sıfırlar varsayılan (qa=1.1, qb=0.05, h=0 …).
     prop_lines = [
-        "/PROP/TYPE14/1",
+        f"/PROP/TYPE14/{card_id}",
         "solid",
-        f"{_i(model.isolid)}{_i(model.ismstr)}{_i(0)}{_i(0)}{_i(model.nip)}",
+        f"{_i(model.isolid)}{_i(model.ismstr)}{_i(0)}{_i(0)}{_i(0)}{_i(model.nip)}{_i(0)}{_i(0)}{_f(0.0)}",
+        f"{_f(0.0)}{_f(0.0)}{_f(model.solid_hourglass_h)}{_f(0.0)}{_f(0.0)}",
+        f"{_f(0.0)}{_i(0)}{_i(0)}",
     ]
     return mat_lines + prop_lines
+
+
+def _fail_cards(model: CrashModelParams, mat_id: int) -> list[str]:
+    """/FAIL kartları (1.14d) — başlıkta malzeme kimliği; başlık satırı yok.
+
+    JOHNSON (hm_cfg radioss2017): D1…D5; ε̇₀ Ifail_sh Ifail_so · Dadv · Ixfem.
+    TENSSTRAIN (radioss2021): ε_t1 ε_t2 fct_ID ε_f1 ε_f2 S_Flag. ε̇₀ 1/s → 1/ms.
+    """
+    lines: list[str] = []
+    j = model.fail.johnson
+    if j is not None:
+        lines += [
+            f"/FAIL/JOHNSON/{mat_id}",
+            f"{_f(j.d1)}{_f(j.d2)}{_f(j.d3)}{_f(j.d4)}{_f(j.d5)}",
+            f"{_f(j.eps_dot0_per_s * PER_S_TO_PER_MS)}{_i(j.ifail_sh)}{_i(j.ifail_so)}"
+            f"{' ' * 20}{_f(j.dadv)}{' ' * 10}{_i(0)}",
+        ]
+    t = model.fail.tensstrain
+    if t is not None:
+        lines += [
+            f"/FAIL/TENSSTRAIN/{mat_id}",
+            f"{_f(t.eps_t1)}{_f(t.eps_t2)}{_i(0)}{_f(t.eps_f1)}{_f(t.eps_f2)}{_i(t.s_flag)}",
+        ]
+    return lines
+
+
+def _contacts(params: dict[str, Any]) -> list[CrashContactParams]:
+    out: list[CrashContactParams] = []
+    for raw in params.get("contacts") or []:
+        if isinstance(raw, CrashContactParams):
+            out.append(raw)
+            continue
+        try:
+            out.append(CrashContactParams.model_validate(raw))
+        except ValidationError as exc:
+            raise SolverError(f"OpenRadioss temas geçersiz: {exc}") from exc
+    return out
+
+
+# Temas için yüzey/düğüm grubu kimlikleri parça başına: 1000 + Radioss part_ID
+# (GRNOD 1/2 hareketli/sabit gruplarıyla çakışmaz). Aynı parça birden çok
+# temasta geçerse kart bir kez yazılır.
+_CONTACT_SET_BASE = 1000
+
+
+def _contact_cards(
+    contacts: list[CrashContactParams],
+    rid: Callable[[int], int],
+    shell_parts: set[int] | None = None,
+) -> list[str]:
+    if not contacts:
+        return []
+    set_id = lambda pid: _CONTACT_SET_BASE + rid(pid)  # noqa: E731
+    surf_parts: list[int] = []
+    grnod_parts: list[int] = []
+    for c in contacts:
+        for pid in (c.master_part, c.slave_part) if c.type == 24 else (c.master_part,):
+            if pid not in surf_parts:
+                surf_parts.append(pid)
+        if c.type == 7 and c.slave_part not in grnod_parts:
+            grnod_parts.append(c.slave_part)
+
+    lines: list[str] = []
+    # Solid: /SURF/PART/EXT (dış yüzler). Kabuk: /SURF/PART (kabuk elemanları;
+    # EXT solid içindir).
+    shell_parts = shell_parts or set()
+    for pid in surf_parts:
+        card = "/SURF/PART" if pid in shell_parts else "/SURF/PART/EXT"
+        lines.extend([f"{card}/{set_id(pid)}", f"skin_part_{pid}", _i(rid(pid))])
+    for pid in grnod_parts:
+        lines.extend([f"/GRNOD/PART/{set_id(pid)}", f"nodes_part_{pid}", _i(rid(pid))])
+
+    blank = lambda n: " " * n  # noqa: E731
+    # IBC alanı: %7s + üç %1d bayrağı (sınır koşulu devre dışı bırakma kapalı).
+    ibc = f"{blank(7)}000"
+    for k, c in enumerate(contacts, start=1):
+        title = f"contact_{k}_p{c.slave_part}_on_p{c.master_part}"
+        if c.type == 7:
+            # Radioss 2020+ /INTER/TYPE7 (hm_cfg radioss2020): grnod_id surf_id
+            # Istf Ithe Igap · Ibag Idel Icurv Iadm; Fscalegap Gap_max Fpenmax
+            # Itied; Stmin Stmax %mesh dtmin Irem_gap Irem_i2; Stfac Fric GAPmin
+            # Tstart Tstop; IBC Inacti VIS_S VIS_F Bumult; Ifric … fric_ID.
+            lines.extend(
+                [
+                    f"/INTER/TYPE7/{k}",
+                    title,
+                    f"{_i(set_id(c.slave_part))}{_i(set_id(c.master_part))}{_i(c.istf)}"
+                    f"{_i(0)}{_i(0)}{blank(10)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{blank(20)}{_i(0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}",
+                    f"{_f(c.stfac)}{_f(c.fric)}{_f(c.gapmin)}{_f(0.0)}{_f(0.0)}",
+                    f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+                    f"{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}",
+                ]
+            )
+        else:
+            # Radioss 2021+ /INTER/TYPE24 (hm_cfg radioss2021): surf_ID1 (slave)
+            # surf_ID2 (master; self-contact'ta 0) Istf · Irem_i2 · Idel;
+            # grnd_IDs · Iedge Edge_angle Gap_max_s Gap_max_m; Stmin Stmax Igap0
+            # Ipen0 Ipen_max; Stfac Fric · Tstart Tstop; IBC Inacti VISs ·
+            # Tpressfit; Ifric Ifiltr Xfreq · sens_ID · fric_ID.
+            surf2 = 0 if c.master_part == c.slave_part else set_id(c.master_part)
+            lines.extend(
+                [
+                    f"/INTER/TYPE24/{k}",
+                    title,
+                    f"{_i(set_id(c.slave_part))}{_i(surf2)}{_i(c.istf)}"
+                    f"{blank(20)}{_i(0)}{blank(10)}{_i(0)}",
+                    f"{_i(0)}{blank(20)}{_i(c.iedge)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+                    f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}",
+                    f"{_f(c.stfac)}{_f(c.fric)}{blank(20)}{_f(0.0)}{_f(0.0)}",
+                    f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{blank(20)}{_f(0.0)}",
+                    f"{_i(0)}{_i(0)}{_f(0.0)}{blank(10)}{_i(0)}{blank(30)}{_i(0)}",
+                ]
+            )
+    return lines
+
+
+_SECT_GR_BASE = 8000
+_MASS_GR_BASE = 8500
+_RBODY_GR_BASE = 8700
+_BC_GR_BASE = 8800
+_BC_ID_BASE = 10  # /BCS/1 = sabit parçalar (1.11b)
+_IMPVEL_GR_BASE = 8900
+_IMPVEL_FUNCT_BASE = 9900
+_GRAV_GR_BASE = 8950
+_GRAV_FUNCT_ID = 9950
+_PLOAD_SURF_BASE = 9960
+_PLOAD_FUNCT_BASE = 9970
+_SPH_GR_BASE = 9980
+_SPH_SURF_BASE = 9990
+_SPH_INTER_BASE = 50
+_SPH_INIVEL_BASE = 20
+_PBLAST_SURF_BASE = 9995
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -231,6 +558,8 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     nodes = params.get("nodes") or []
     tets = params.get("tets") or []
     bricks = params.get("bricks") or []
+    shells = params.get("shells") or []
+    sh3n = params.get("sh3n") or []
     mats = params.get("materials") or [
         {
             "name": "STEEL",
@@ -244,21 +573,162 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         "point": [0.0, 0.0, 0.0],
         "normal": [0.0, 0.0, 1.0],
     }
-    mat = mats[0]
     model = _crash_model(params)
+    # Parçalar: eleman → parça haritası (export) yoksa her şey parça 0.
+    element_parts: dict[int, int] = {
+        int(k): int(v) for k, v in (params.get("element_parts") or {}).items()
+    }
+    part_ids = sorted(set(element_parts.values())) or [0]
+    # Rol: hareketli (ilk hız alır) / sabit (/BCS ile tutulur) / serbest. Verilmeyen
+    # parça hareketli — tek parçalı eski davranışla aynı.
+    roles: dict[int, str] = {0: "moving"} if part_ids == [0] else {}
+    # 1.14b — parça başına malzeme kartı: parts[].model verilen parça kendi
+    # kanun/JC/eleman kartını alır; verilmeyen global `model`'e düşer.
+    part_models: dict[int, CrashModelParams] = {}
+    for spec in params.get("parts") or []:
+        roles[int(spec["part_id"])] = str(spec.get("role") or "moving")
+        if spec.get("model") is not None:
+            part_models[int(spec["part_id"])] = _crash_model({"model": spec["model"]})
+    for pid in part_ids:
+        roles.setdefault(pid, "moving")
+    bad_roles = sorted({r for r in roles.values() if r not in ("moving", "fixed", "free")})
+    if bad_roles:
+        raise SolverError(f"Crash: bilinmeyen parça rolü {bad_roles} (moving | fixed | free).")
+    # 1.18b — "free": ilk hız almaz, /BCS'siz (ör. kenarından bölge BC ile
+    # tutulan plaka); grup 1'de olmadığı için rijit duvarın ikincil düğümü değil.
+    moving = [p for p in part_ids if roles[p] == "moving"]
+    fixed = [p for p in part_ids if roles[p] == "fixed"]
+    if (not moving and not (params.get("imposed_velocities") or []) and not (params.get("pressure_loads") or [])
+            and not (params.get("sph_projectiles") or []) and not (params.get("blast_loads") or [])):
+        # K4 / K10 — hareketli parça yoksa yük zorlanmış hızdan ya da basınçtan gelmeli.
+        raise SolverError("Crash: en az bir hareketli parça, zorlanmış hız ya da basınç yükü gerekli.")
+    # Parça başına malzeme: atama part_id ile; yoksa ilk malzemeye düşülmez,
+    # açık hata (yanlış malzemeyle sessizce çözmek daha kötü).
+    mat_by_part: dict[int, dict[str, Any]] = {}
+    for m in mats:
+        pid = m.get("part_id")
+        mat_by_part[int(pid) if pid is not None else 0] = m
+    missing = [p for p in part_ids if p not in mat_by_part]
+    if missing and len(mats) == 1 and part_ids == [0]:
+        mat_by_part[0] = mats[0]
+        missing = []
+    if missing:
+        raise SolverError(
+            "Crash: malzeme atanmamış parça(lar): "
+            + ", ".join(f"#{p}" for p in missing)
+            + " — 3 · Material adımından her parçaya malzeme atayın."
+        )
 
-    lines: list[str] = [
-        "#RADIOSS STARTER",
+    # Parça tipi: kabuk elemanı olan parça kabuk (/PROP/TYPE1); aynı parçada
+    # solid + kabuk desteklenmez (karma model ayrı adım).
+    solid_eids = {int(el[0]) for el in [*tets, *bricks]}
+    shell_eids = {int(el[0]) for el in [*shells, *sh3n]}
+    solid_parts = {element_parts.get(e, 0) for e in solid_eids}
+    shell_parts = {element_parts.get(e, 0) for e in shell_eids}
+    both = sorted(solid_parts & shell_parts)
+    if both:
+        raise SolverError(
+            "Crash: aynı parçada solid ve kabuk eleman: " + ", ".join(f"#{p}" for p in both)
+        )
+    # Kalınlık önceliği: parts[].thickness_mm (açık) > ürün ağacı bileşeni
+    # (`component_thickness`, API doldurur) > model.shell.thickness_mm; yoksa hata.
+    thickness: dict[int, float] = {
+        int(k): float(v) for k, v in (params.get("component_thickness") or {}).items()
+    }
+    for spec in params.get("parts") or []:
+        t = spec.get("thickness_mm")
+        if t is not None:
+            thickness[int(spec["part_id"])] = float(t)
+    for pid in sorted(shell_parts):
+        shell_t = part_models.get(pid, model).shell.thickness_mm
+        if pid not in thickness and shell_t is not None:
+            thickness[pid] = float(shell_t)
+    no_t = [p for p in sorted(shell_parts) if p not in thickness]
+    if no_t:
+        raise SolverError(
+            "Crash: kalınlığı verilmemiş kabuk parça(lar): "
+            + ", ".join(f"#{p}" for p in no_t)
+            + " — Malzeme adımında ürün ağacından (bileşen kalınlığı) girin."
+        )
+
+    # /BEGIN (2022): başlık · Invers Irun · girdi birimleri · çalışma birimleri.
+    # Ayrı /UNIT/* kartı yok; starter "Unexpected card" diye atlıyordu.
+    # 1.17b — ek kütle / rijit gövde: düğüm kümeleri (bölge ya da parça). Rijit
+    # gövde ana düğümü seçimin ağırlık merkezinde yeni düğüm (en büyük id + k).
+    try:
+        masses = [CrashMassParams.model_validate(r) for r in params.get("added_masses") or []]
+        rbodies = [CrashRigidBodyParams.model_validate(r) for r in params.get("rigid_bodies") or []]
+        bcs = [CrashBcParams.model_validate(r) for r in params.get("boundary_conditions") or []]
+        impvels = [CrashImpVelParams.model_validate(r) for r in params.get("imposed_velocities") or []]
+        gravity = CrashGravityParams.model_validate(params["gravity"]) if params.get("gravity") else None
+        ploads = [CrashPressureLoadParams.model_validate(r) for r in params.get("pressure_loads") or []]
+        sphs = [CrashSphProjectileParams.model_validate(r) for r in params.get("sph_projectiles") or []]
+        blasts = [CrashBlastLoadParams.model_validate(r) for r in params.get("blast_loads") or []]
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz ek kütle / rijit gövde: {exc}") from exc
+    region_nodes: dict[str, list[int]] = {
+        str(k): [int(v) for v in vs] for k, vs in (params.get("region_nodes") or {}).items()
+    }
+    part_nodes: dict[int, set[int]] = {}
+    for el in [*tets, *bricks, *shells, *sh3n]:
+        part_nodes.setdefault(element_parts.get(int(el[0]), 0), set()).update(int(v) for v in el[1:])
+
+    def _selected(sel: Any) -> list[int]:
+        if sel.region is not None:
+            if sel.region not in region_nodes:
+                raise SolverError(f"'{sel.name}': bölge '{sel.region}' bu geometride yok.")
+            ids = region_nodes[sel.region]
+        else:
+            if sel.part_id not in part_nodes:
+                raise SolverError(f"'{sel.name}': parça #{sel.part_id} mesh'te yok.")
+            ids = sorted(part_nodes[sel.part_id])
+        if not ids:
+            raise SolverError(f"'{sel.name}': seçimde düğüm yok.")
+        return ids
+
+    xyz_of = {
+        int(n["id"] if isinstance(n, dict) else n[0]): (
+            (float(n["x"]), float(n["y"]), float(n["z"]))
+            if isinstance(n, dict)
+            else (float(n[1]), float(n[2]), float(n[3]))
+        )
+        for n in nodes
+    }
+    next_node = max(xyz_of) + 1 if xyz_of else 1
+    mass_sets = [(m, _selected(m)) for m in masses]
+    rbody_sets: list[tuple[CrashRigidBodyParams, list[int], int]] = []
+    extra_nodes: list[tuple[int, float, float, float]] = []
+    for rb in rbodies:
+        ids = _selected(rb)
+        cx = sum(xyz_of[i][0] for i in ids) / len(ids)
+        cy = sum(xyz_of[i][1] for i in ids) / len(ids)
+        cz = sum(xyz_of[i][2] for i in ids) / len(ids)
+        extra_nodes.append((next_node, cx, cy, cz))
+        rbody_sets.append((rb, ids, next_node))
+        next_node += 1
+    # K12 — SPH mermi parçacıkları: yeni düğümler (rijit gövde ana düğümlerinden sonra).
+    sph_sets: list[tuple[CrashSphProjectileParams, list[int]]] = []
+    for sp in sphs:
+        ids = []
+        for x, y, z in sp.particles():
+            extra_nodes.append((next_node, x, y, z))
+            ids.append(next_node)
+            next_node += 1
+        if not ids:
+            raise SolverError(f"SPH '{sp.name}': parçacık yok (çap / aralık).")
+        sph_sets.append((sp, ids))
+
+    units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
+    lines: list[str] = ["#RADIOSS STARTER"]
+    if params.get("coincident_nodes") is not None:
+        # Export ölçümü: aynı koordinatta ayrı düğüm sayısı (bağlantısızlık verisi).
+        lines.append(f"# coincident_nodes: {int(params['coincident_nodes'])}")
+    lines += [
         "/BEGIN",
         title,
         f"{_i(2022)}{_i(0)}",
-        f"{_i(0)}{_i(0)}",
-        "/UNIT/LENGTH",
-        "mm",
-        "/UNIT/MASS",
-        "kg",
-        "/UNIT/TIME",
-        "ms",
+        units,
+        units,
         "/NODE",
     ]
     for n in nodes:
@@ -269,101 +739,543 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             else (float(n[1]), float(n[2]), float(n[3]))
         )
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
+    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri + SPH parçacıkları
+        lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
 
-    if tets:
-        lines.append("/TETRA4/1/1")
-        for el in tets:
-            eid, n1, n2, n3, n4 = (int(v) for v in el)
-            lines.append(f"{_i(eid)}{_i(n1)}{_i(n2)}{_i(n3)}{_i(n4)}")
-    if bricks:
-        lines.append("/BRICK/1/1")
-        for el in bricks:
-            vals = [int(v) for v in el]
-            lines.append("".join(_i(v) for v in vals))
+    # Radioss parça/kart kimlikleri 1 tabanlı: part_ID = mesh part_id + 1.
+    def _rid(pid: int) -> int:
+        return pid + 1
 
-    lines.extend(_mat_prop_cards(mat, model))
-    lines.extend(
-        [
-            "/PART/1",
-            "part",
-            f"{_i(1)}{_i(1)}",
-            "/GRNOD/NODE/1",
-            "all_nodes",
+    for pid in part_ids:
+        part_tets = [el for el in tets if element_parts.get(int(el[0]), 0) == pid]
+        part_bricks = [el for el in bricks if element_parts.get(int(el[0]), 0) == pid]
+        if part_tets:
+            lines.append(f"/TETRA4/{_rid(pid)}")
+            for el in part_tets:
+                eid, n1, n2, n3, n4 = (int(v) for v in el)
+                lines.append(f"{_i(eid)}{_i(n1)}{_i(n2)}{_i(n3)}{_i(n4)}")
+        if part_bricks:
+            lines.append(f"/BRICK/{_rid(pid)}")
+            for el in part_bricks:
+                vals = [int(v) for v in el]
+                lines.append("".join(_i(v) for v in vals))
+        # /SHELL: shell_ID n1..n4; /SH3N: tria_ID n1..n3. PHI ve Thick boş —
+        # kalınlık /PROP/TYPE1'den.
+        part_shells = [el for el in shells if element_parts.get(int(el[0]), 0) == pid]
+        part_sh3n = [el for el in sh3n if element_parts.get(int(el[0]), 0) == pid]
+        if part_shells:
+            lines.append(f"/SHELL/{_rid(pid)}")
+            lines.extend("".join(_i(int(v)) for v in el) for el in part_shells)
+        if part_sh3n:
+            lines.append(f"/SH3N/{_rid(pid)}")
+            lines.extend("".join(_i(int(v)) for v in el) for el in part_sh3n)
+
+    for pid in part_ids:
+        lines.extend(
+            _mat_prop_cards(
+                mat_by_part[pid],
+                part_models.get(pid, model),
+                card_id=_rid(pid),
+                shell_thickness=thickness.get(pid),
+            )
+        )
+        lines.extend(
+            [
+                f"/PART/{_rid(pid)}",
+                f"part_{pid}_{roles[pid]}"[:100],
+                f"{_i(_rid(pid))}{_i(_rid(pid))}",
+            ]
+        )
+
+    def _grnod_part(gid: int, title: str, pids: list[int]) -> list[str]:
+        out = [f"/GRNOD/PART/{gid}", title]
+        rids = [_rid(p) for p in pids]
+        for i in range(0, len(rids), 10):
+            out.append("".join(_i(v) for v in rids[i : i + 10]))
+        return out
+
+    # Grup 1: hareketli parçaların düğümleri (ilk hız, duvar); grup 2: sabit.
+    if moving:
+        lines.extend(_grnod_part(1, "moving_parts", moving))
+    if fixed:
+        lines.extend(_grnod_part(2, "fixed_parts", fixed))
+        # /BCS: üç öteleme + üç dönme serbestliği kilitli.
+        lines.extend(["/BCS/1", "fixed_parts", f"   111 111{_i(0)}{_i(2)}"])
+
+    contacts = _contacts(params)
+    for c in contacts:
+        for pid in (c.master_part, c.slave_part):
+            if pid not in part_ids:
+                raise SolverError(f"Crash: temas parçası #{pid} mesh'te yok.")
+    inter_ids = list(range(1, len(contacts) + 1))
+    lines.extend(_contact_cards(contacts, _rid, shell_parts))
+    # K12 — SPH: /MAT/HYDRO (r2020) + /PROP/SPH (r2019) + /PART + /SPHCEL + düğüm
+    # grubu + ilk hız + hedef yüzeye TYPE7 (SPH düğümleri slave). Kimlikler mesh
+    # parçalarından sonra.
+    sph_rid0 = (max(_rid(p) for p in part_ids) if part_ids else 0) + 1
+    for k, (sp, ids) in enumerate(sph_sets, start=1):
+        if sp.target_part not in part_ids:
+            raise SolverError(f"SPH '{sp.name}': hedef parça #{sp.target_part} mesh'te yok.")
+        rid, gid, sid = sph_rid0 + k - 1, _SPH_GR_BASE + k, _SPH_SURF_BASE + k
+        mp = sp.particle_mass_kg()
+        lines += [
+            f"/MAT/HYDRO/{rid}",
+            f"sph_{sp.name}"[:100],
+            _f(sp.density_kg_m3 * 1e-9),
+            _f(0.0),
+            f"{_f(0.0)}{_f(sp.bulk_gpa)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(sp.pmin_gpa)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"/PROP/SPH/{rid}",
+            f"sph_{sp.name}"[:100],
+            f"{_f(mp)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_i(0)}",
+            f"{_i(0)}{_f(sp.spacing_mm)}{_f(0.0)}",
+            f"/PART/{rid}",
+            f"sph_{sp.name}"[:100],
+            f"{_i(rid)}{_i(rid)}",
+            f"/SPHCEL/{rid}",
+            *[f"{_i(n)}{_i(0)}{_f(mp)}" for n in ids],
         ]
-    )
-    ids = [int(n["id"] if isinstance(n, dict) else n[0]) for n in nodes]
-    for i in range(0, max(len(ids), 1), 10):
-        chunk = ids[i : i + 10]
-        row = "".join(_i(v) for v in chunk)
-        if len(chunk) < 10:
-            row += _i(0)  # liste sonu
-        lines.append(row)
+        lines += [f"/GRNOD/NODE/{gid}", f"sph_{sp.name}"[:100]]
+        lines += ["".join(_i(v) for v in ids[i : i + 10]) for i in range(0, len(ids), 10)]
+        vx_s, vy_s, vz_s = sp.velocity_m_s
+        lines += [f"/INIVEL/TRA/{_SPH_INIVEL_BASE + k}", f"sph_{sp.name}"[:100],
+                  f"{_f(vx_s)}{_f(vy_s)}{_f(vz_s)}{_i(gid)}{_i(0)}"]
+        surf_card = "/SURF/PART" if sp.target_part in shell_parts else "/SURF/PART/EXT"
+        lines += [f"{surf_card}/{sid}", f"sph_target_{sp.target_part}", _i(_rid(sp.target_part))]
+        iid = _SPH_INTER_BASE + k
+        lines += [
+            f"/INTER/TYPE7/{iid}",
+            f"contact_sph_{sp.name}_on_p{sp.target_part}"[:100],
+            f"{_i(gid)}{_i(sid)}{_i(0)}{_i(0)}{_i(0)}{' ' * 10}{_i(0)}{_i(0)}{_i(0)}{_i(0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{' ' * 20}{_i(0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}",
+            f"{_f(1.0)}{_f(0.0)}{_f(sp.gapmin_mm)}{_f(0.0)}{_f(0.0)}",
+            f"{' ' * 7}000{' ' * 20}{_i(0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}",
+        ]
+        inter_ids.append(iid)
 
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
     vz = float(vel.get("vz") or 0.0)
-    lines.extend(
-        [
-            "/INIVEL/TRA/1",
-            "impact_vel",
-            f"{_f(vx)}{_f(vy)}{_f(vz)}",
-            f"{_i(1)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}",
+    # /INIVEL/TRA: Vx Vy Vz grnd_ID skew_ID tek satırda (mm/ms). Hareketli
+    # parça yoksa (K4) grup 1 yok — ilk hız kartı da yazılmaz.
+    if moving:
+        lines.extend(
+            [
+                "/INIVEL/TRA/1",
+                "impact_vel",
+                f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(1)}{_i(0)}",
+            ]
+        )
+
+    def _grnod_nodes(gid: int, title: str, ids: list[int]) -> list[str]:
+        out = [f"/GRNOD/NODE/{gid}", title]
+        for i in range(0, len(ids), 10):
+            out.append("".join(_i(v) for v in ids[i : i + 10]))
+        return out
+
+    # 1.17b — /ADMAS (hm_cfg radioss110: MASS grnd_ID) ve /RBODY (radioss2021:
+    # node_ID sens skew Ispher Mass grnd Ikrem ICoG surf · J · Ioptoff).
+    for k, (m, ids) in enumerate(mass_sets, start=1):
+        gid = _MASS_GR_BASE + k
+        lines += _grnod_nodes(gid, f"admas_{m.name}"[:100], ids)
+        lines += [
+            f"/ADMAS/{1 if m.distribution == 'total' else 0}/{k}",
+            m.name[:100],
+            f"{_f(m.mass_kg)}{_i(gid)}",
         ]
-    )
+    moving_nodes: set[int] = set().union(*(part_nodes.get(p, set()) for p in moving)) if moving else set()
+    moving_masters: list[int] = []
+    for k, (rb, ids, master) in enumerate(rbody_sets, start=1):
+        gid = _RBODY_GR_BASE + k
+        lines += _grnod_nodes(gid, f"rbody_{rb.name}"[:100], ids)
+        lines += [
+            f"/RBODY/{k}",
+            rb.name[:100],
+            f"{_i(master)}{_i(0)}{_i(0)}{_i(0)}{_f(rb.mass_kg)}{_i(gid)}{_i(rb.ikrem)}{_i(rb.icog)}{_i(0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_i(0)}",
+        ]
+        if set(ids) & moving_nodes:
+            moving_masters.append(master)
+    if moving_masters:
+        # Hareketli parçaya bağlı rijit gövde ana düğümü de ilk hızı alır
+        # (ek kütle ancak böyle momentuma girer).
+        lines += _grnod_nodes(_RBODY_GR_BASE, "rbody_masters_moving", moving_masters)
+        lines += ["/INIVEL/TRA/2", "impact_vel_rbody", f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(_RBODY_GR_BASE)}{_i(0)}"]
+
+    # 1.17c — bölge / parça sınır koşulu (/BCS, hm_cfg r51: "   111 111" skew grnod)
+    # ve zorlanmış hız (/IMPVEL r120 + sabit /FUNCT; v(t) = Scale_y · f(t), f = v, Scale_y = 1).
+    master_of_bc = {rb.name: master for rb, _ids, master in rbody_sets}
+    for k, bc in enumerate(bcs, start=1):
+        gid = _BC_GR_BASE + k
+        if bc.rigid_body is not None:
+            if bc.rigid_body not in master_of_bc:
+                raise SolverError(f"'{bc.name}': rijit gövde '{bc.rigid_body}' tanımlı değil.")
+            bc_ids = [master_of_bc[bc.rigid_body]]
+        else:
+            bc_ids = _selected(bc)
+        lines += _grnod_nodes(gid, f"bcs_{bc.name}"[:100], bc_ids)
+        d = bc.dofs
+        lines += [f"/BCS/{_BC_ID_BASE + k}", bc.name[:100], f"   {d[:3]} {d[3:]}{_i(0)}{_i(gid)}"]
+    master_of = {rb.name: master for rb, _ids, master in rbody_sets}
+    for k, iv in enumerate(impvels, start=1):
+        gid = _IMPVEL_GR_BASE + k
+        if iv.rigid_body is not None:
+            if iv.rigid_body not in master_of:
+                raise SolverError(f"'{iv.name}': rijit gövde '{iv.rigid_body}' tanımlı değil.")
+            ids = [master_of[iv.rigid_body]]
+        else:
+            ids = _selected(iv)
+        fid = _IMPVEL_FUNCT_BASE + k
+        lines += _grnod_nodes(gid, f"impvel_{iv.name}"[:100], ids)
+        lines += [
+            f"/FUNCT/{fid}",
+            f"impvel_{iv.name}_sabit"[:100],
+            # Hız fonksiyonun değeri, ölçek 1: Radioss Scale_y = 0'ı varsayılan 1
+            # sayar — sıfır hız ölçekle yazılınca 1 mm/ms uygulanıyordu (1.17c).
+            f"{_f(0.0)}{_f(iv.velocity_m_s)}",
+            f"{_f(1.0e30)}{_f(iv.velocity_m_s)}",
+            f"/IMPVEL/{k}",
+            iv.name[:100],
+            f"{_i(fid)}{iv.direction:>10}{_i(0)}{_i(0)}{_i(gid)}{'':10}{_i(0)}",
+            f"{_f(1.0)}{_f(1.0)}{_f(iv.t_start_ms)}{_f(iv.t_stop_ms)}",
+        ]
+    # K2 — /GRAV (hm_cfg radioss51): a(t) = Fscale_Y · f(t / Ascale_x), f ≡ 1.
+    # Tüm parça düğümleri + rijit gövde ana düğümleri (ek kütle de düşsün).
+    # Fscale_Y = ivme (mm/ms²); sıfır olamaz (Radioss 0'ı 1 sayar).
+    if gravity is not None:
+        g_mm_ms2 = gravity.accel_m_s2 * 1.0e-3
+        lines += _grnod_part(_GRAV_GR_BASE, "grav_parts", part_ids)
+        lines += [
+            f"/FUNCT/{_GRAV_FUNCT_ID}",
+            "grav_sabit",
+            f"{_f(0.0)}{_f(1.0)}",
+            f"{_f(1.0e30)}{_f(1.0)}",
+        ]
+
+        def _grav_card(k: int, gid: int, title: str) -> list[str]:
+            return [
+                f"/GRAV/{k}",
+                title,
+                f"{_i(_GRAV_FUNCT_ID)}{gravity.direction:>10}{_i(0)}{_i(0)}{_i(gid)}{'':10}{_f(1.0)}{_f(g_mm_ms2)}",
+            ]
+
+        lines += _grav_card(1, _GRAV_GR_BASE, "gravity_parts")
+        masters = [master for _rb, _ids, master in rbody_sets]
+        if masters:
+            lines += _grnod_nodes(_GRAV_GR_BASE + 1, "grav_rbody_masters", masters)
+            lines += _grav_card(2, _GRAV_GR_BASE + 1, "gravity_rbody_masters")
+    # K10 — /PLOAD (hm_cfg radioss2021): parça kabuk yüzeyi + Friedlander /FUNCT
+    # (değer MPa → GPa ölçekle Fscale_Y; zaman ms, Ascale_x = 1).
+    for k, pl in enumerate(ploads, start=1):
+        if pl.part_id not in part_ids:
+            raise SolverError(f"'{pl.name}': parça #{pl.part_id} mesh'te yok.")
+        if pl.part_id not in shell_parts:
+            raise SolverError(f"'{pl.name}': basınç yükü yalnız kabuk parçaya (#{pl.part_id} solid).")
+        sid, fid = _PLOAD_SURF_BASE + k, _PLOAD_FUNCT_BASE + k
+        n = pl.samples
+        ts = [pl.t_start_ms + pl.duration_ms * i / (n - 1) for i in range(n)]
+        pts = [(0.0, 0.0)] if pl.t_start_ms > 0 else []
+        pts += [(ti, pl.pressure_mpa(ti) / pl.peak_mpa) for ti in ts]
+        pts += [(ts[-1] + 1e-6 * pl.duration_ms, 0.0), (1.0e30, 0.0)]
+        lines += [f"/SURF/PART/{sid}", f"pload_{pl.name}"[:100], _i(_rid(pl.part_id))]
+        lines += [f"/FUNCT/{fid}", f"friedlander_{pl.name}"[:100], *[f"{_f(a)}{_f(b)}" for a, b in pts]]
+        lines += [
+            f"/PLOAD/{k}",
+            pl.name[:100],
+            f"{_i(sid)}{_i(fid)}{_i(0)}{_i(0)}{_i(0)}{'':10}{_f(1.0)}{_f(pl.peak_mpa * 1e-3)}",
+        ]
+    # K13 — /LOAD/PBLAST (hm_cfg radioss2022): yüzey · Exp_data · I_tshift 1 · Ndt 0 ·
+    # IZ 0 (varsayılan 2) · Imodel 0 · Node_id 0; Xdet Ydet Zdet Tdet WTNT; Pmin Tstop;
+    # Ground_ID 0. TNT kg, mm, ms (kg–mm–ms birimleri).
+    for k, bl in enumerate(blasts, start=1):
+        if bl.part_id not in part_ids:
+            raise SolverError(f"'{bl.name}': parça #{bl.part_id} mesh'te yok.")
+        sid = _PBLAST_SURF_BASE + k
+        xd, yd, zd = bl.point
+        if bl.part_id not in shell_parts:
+            raise SolverError(f"'{bl.name}': PBLAST yalnız kabuk parçaya (#{bl.part_id} solid).")
+        # Kabuk segmentleri patlama noktasına bakacak şekilde (/SURF/SEG): PBLAST basıncı
+        # segment normaline göre uygular; ilk koşuda (#106) normal yükten uzağa baktığı
+        # için plaka yüke doğru itildi. Eleman bağlantısı değişmez, yalnız yüzey tanımı.
+        seg_lines = []
+        for el in [*shells, *sh3n]:
+            if element_parts.get(int(el[0]), 0) != bl.part_id:
+                continue
+            ns = [int(v) for v in el[1:]]
+            pts = [xyz_of[n] for n in ns]
+            ux, uy, uz = (pts[1][i] - pts[0][i] for i in range(3))
+            vx_, vy_, vz_ = (pts[2][i] - pts[0][i] for i in range(3))
+            nx_, ny_, nz_ = uy * vz_ - uz * vy_, uz * vx_ - ux * vz_, ux * vy_ - uy * vx_
+            cx_ = sum(q[0] for q in pts) / len(pts)
+            cy_ = sum(q[1] for q in pts) / len(pts)
+            cz_ = sum(q[2] for q in pts) / len(pts)
+            if nx_ * (xd - cx_) + ny_ * (yd - cy_) + nz_ * (zd - cz_) < 0:
+                ns = ns[::-1]
+            if len(ns) == 3:
+                ns = [*ns, ns[2]]
+            seg_lines.append(f"{_i(int(el[0]))}" + "".join(_i(n) for n in ns))
+        lines += [f"/SURF/SEG/{sid}", f"pblast_{bl.name}"[:100], *seg_lines]
+        lines += [
+            f"/LOAD/PBLAST/{k}",
+            bl.name[:100],
+            f"{_i(sid)}{_i(bl.exp_data)}{_i(1)}{_i(0)}{_i(0)}{_i(0)}{'':30}{_i(0)}",
+            f"{_f(xd)}{_f(yd)}{_f(zd)}{_f(bl.t_det_ms)}{_f(bl.tnt_kg)}",
+            f"{_f(0.0)}{_f(0.0)}",
+            _i(0),
+        ]
+    # /RWALL/PLANE: node_ID=0 sabit duvar; Slide=0 kayan; grnd_ID1 = tüm
+    # düğümler. Düzlem M noktası ve M1 = M + n (normal, ikincil düğümlerin
+    # bulunduğu tarafa bakar). d = 0, sürtünme yok (Slide=0).
     px, py, pz = (float(v) for v in wall["point"])
     nx, ny, nz = (float(v) for v in wall["normal"])
-    lines.extend(
-        [
-            "/RWALL/PLANE/1",
-            "barrier",
-            f"{_i(1)}{_i(0)}{_i(0)}{_i(0)}",
-            f"{_f(px)}{_f(py)}{_f(pz)}",
-            f"{_f(nx)}{_f(ny)}{_f(nz)}",
-            "/TH/RWALL/1",
-            "barrier_th",
-            "FNX FNY FNZ",
-            _i(1),
-            "/TH/PART/1",
-            "part_energy",
-            "IE KE",
-            _i(1),
+    norm = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    nx, ny, nz = nx / norm, ny / norm, nz / norm
+    try:
+        th = CrashThParams.model_validate(params.get("th") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz /TH seçimi: {exc}") from exc
+    # Eski `th_nodes` (yalnız ivme) yeni düğüm listesine eklenir.
+    th_node_ids = list(th.node_ids) + [
+        int(n) for n in (params.get("th_nodes") or []) if int(n) not in th.node_ids
+    ]
+    # K5 — ivmesi istenen rijit gövde ana düğümleri ilk sırada (post-process ilk
+    # düğümün AX AY AZ'sinden acc_g / HIC hesaplar); deck'te yeni düğüm, mesh'te yok.
+    accel_masters = [master for rb, _ids, master in rbody_sets if rb.th_accel]
+    th_node_ids = accel_masters + [n for n in th_node_ids if n not in accel_masters]
+    if accel_masters and not {"AX", "AY", "AZ"} <= set(th.node_vars):
+        th.node_vars = _th_vars_ok("node", sorted({*th.node_vars, "AX", "AY", "AZ"}))
+    th_spec: list[dict[str, Any]] = []
+
+    def th_vars(names: list[str]) -> list[str]:
+        # hm_cfg FREE_CELL_LIST %-10s, satır 100 karakter → satır başına 10
+        return ["".join(f"{n:<10}" for n in names[i : i + 10]) for i in range(0, len(names), 10)]
+
+    # Duvar kapatılabilir (1.12: temasla parça–parça çarpışma). Varsayılan açık.
+    if params.get("use_rigid_wall", True):
+        if wall.get("kind") == "cyl":
+            # K3 — /RWALL/CYL (hm_cfg radioss110 r51, PLANE ile aynı düzen): M eksen
+            # üzerinde, M1 = M + eksen; satır 2 "d · (boş) · Diameter".
+            ax, ay, az = (float(v) for v in wall["axis"])
+            lines.extend(
+                [
+                    "/RWALL/CYL/1",
+                    "barrier",
+                    f"{_i(0)}{_i(0)}{_i(1)}{_i(0)}",
+                    f"{_f(0.0)}{'':>20}{_f(float(wall['diameter_mm']))}",
+                    f"{_f(px)}{_f(py)}{_f(pz)}",
+                    f"{_f(px + ax)}{_f(py + ay)}{_f(pz + az)}",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "/RWALL/PLANE/1",
+                    "barrier",
+                    f"{_i(0)}{_i(0)}{_i(1)}{_i(0)}",
+                    f"{_f(0.0)}{'':>20}{_f(0.0)}",
+                    f"{_f(px)}{_f(py)}{_f(pz)}",
+                    f"{_f(px + nx)}{_f(py + ny)}{_f(pz + nz)}",
+                ]
+            )
+        if th.rwall.enabled:
+            lines += ["/TH/RWALL/1", "barrier_th", *th_vars(th.rwall.vars), _i(1)]
+            th_spec.append({"kind": "rwall", "title": "barrier_th", "objects": [1], "vars": th.rwall.vars})
+    if inter_ids and th.inter.enabled:
+        # Post-process grup başlığı "contact_th" ile arayüz başına len(vars) sütun okur.
+        lines += ["/TH/INTER/2", "contact_th", *th_vars(th.inter.vars)]
+        for i in range(0, len(inter_ids), 10):
+            lines.append("".join(_i(v) for v in inter_ids[i : i + 10]))
+        th_spec.append({"kind": "inter", "title": "contact_th", "objects": inter_ids, "vars": th.inter.vars})
+    if th.part.enabled:
+        lines += ["/TH/PART/3", "part_energy", *th_vars(th.part.vars)]
+        for i in range(0, len(part_ids), 10):
+            lines.append("".join(_i(_rid(p)) for p in part_ids[i : i + 10]))
+        th_spec.append(
+            {
+                "kind": "part",
+                "title": "part_energy",
+                "objects": [_rid(p) for p in part_ids],
+                "names": [f"part_{p}_{roles[p]}"[:100] for p in part_ids],
+                "mesh_ids": list(part_ids),
+                "vars": th.part.vars,
+            }
+        )
+    if th_node_ids:
+        node_set = {int(n["id"]) for n in nodes} | set(accel_masters)
+        missing = [n for n in th_node_ids if n not in node_set]
+        if missing:
+            raise SolverError(f"/TH/NODE: düğüm mesh'te yok: {missing[:10]}")
+        # hm_cfg th_node r110: satır başına bir düğüm — node_ID skew_ID ad (%10d%10d%-80s)
+        lines += ["/TH/NODE/4", "th_nodes", *th_vars(th.node_vars)]
+        lines += [f"{_i(n)}{_i(0)}n{n}" for n in th_node_ids]
+        th_spec.append({"kind": "node", "title": "th_nodes", "objects": th_node_ids, "vars": th.node_vars})
+
+    # 1.15c — /SECT/PARAL kesitleri + eleman grupları (/GRSHEL, /GRSH3N, /GRBRIC
+    # PART); grup kimlikleri _SECT_GR_BASE + 10·k + tür, diğer gruplarla çakışmaz.
+    try:
+        sections = [CrashSectionParams.model_validate(r) for r in params.get("sections") or []]
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz kesit: {exc}") from exc
+    shell_pids = {element_parts.get(int(el[0]), 0) for el in shells}
+    sh3n_pids = {element_parts.get(int(el[0]), 0) for el in sh3n}
+    solid_pids = {element_parts.get(int(el[0]), 0) for el in list(tets) + list(bricks)}
+    for k, sec in enumerate(sections, start=1):
+        pids = sec.parts or list(part_ids)
+        unknown = [p for p in pids if p not in part_ids]
+        if unknown:
+            raise SolverError(f"Kesit '{sec.name}': parça mesh'te yok: {unknown}")
+        gids = {}
+        for kind, card, have in (
+            ("bric", "/GRBRIC/PART", solid_pids),
+            ("shel", "/GRSHEL/PART", shell_pids),
+            ("sh3n", "/GRSH3N/PART", sh3n_pids),
+        ):
+            sel = [p for p in pids if p in have]
+            if not sel:
+                gids[kind] = 0
+                continue
+            gid = _SECT_GR_BASE + 10 * k + len(gids)
+            gids[kind] = gid
+            lines += [f"{card}/{gid}", f"sect{k}_{kind}"]
+            rids = [_rid(p) for p in sel]
+            for i in range(0, len(rids), 10):
+                lines.append("".join(_i(v) for v in rids[i : i + 10]))
+        # hm_cfg sect_paral r110: N1 N2 N3 · ISAVE · Δt α; dosya adı; grbric _
+        # grshel grtrus grbeam grsprg grtria Niter _ Iframe; M; M1; M2.
+        lines += [
+            f"/SECT/PARAL/{k}",
+            sec.name,
+            f"{_i(0)}{_i(0)}{_i(0)}{'':10}{_i(0)}{'':10}{_f(0.0)}{_f(0.0)}",
+            "",
+            f"{_i(gids['bric'])}{'':10}{_i(gids['shel'])}{_i(0)}{_i(0)}{_i(0)}{_i(gids['sh3n'])}"
+            f"{_i(0)}{'':10}{_i(sec.iframe)}",
+            "".join(_f(v) for v in sec.origin),
+            "".join(_f(v) for v in sec.corner1),
+            "".join(_f(v) for v in sec.corner2),
         ]
-    )
-    th_nodes = params.get("th_nodes") or []
-    if th_nodes:
-        lines.extend(["/TH/NODE/1", "hic_nodes", "ACCX ACCY ACCZ"])
-        ids_th = [int(n) for n in th_nodes]
-        for i in range(0, len(ids_th), 10):
-            chunk = ids_th[i : i + 10]
-            row = "".join(_i(v) for v in chunk)
-            if len(chunk) < 10:
-                row += _i(0)
-            lines.append(row)
+    if sections and th.sect.enabled:
+        lines += ["/TH/SECTIO/5", "sect_th", *th_vars(th.sect.vars)]
+        ids = list(range(1, len(sections) + 1))
+        for i in range(0, len(ids), 10):
+            lines.append("".join(_i(v) for v in ids[i : i + 10]))
+        th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
+                        "names": [s.name for s in sections], "vars": th.sect.vars})
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
+    # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
+    # değişkeni adsız "var N" yazar).
+    (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
+    # 1.17e — post-process seçimleri (CFC sınıfları) deck yanında, th_spec gibi.
+    try:
+        filters = CrashFilterParams.model_validate(params.get("filters") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz filtre: {exc}") from exc
+    (path.parent / "postprocess.json").write_text(
+        json.dumps({"filters": filters.model_dump()}, indent=1), encoding="utf-8"
+    )
 
 
 def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
     t_end = float(params.get("t_end_ms") or 10.0)
-    dt_anim = float(params.get("dt_anim_ms") or max(t_end / 20.0, 0.1))
+    try:
+        eng = CrashEngineParams.model_validate(params.get("engine") or {})
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz engine parametresi: {exc}") from exc
+    dt_anim = float(
+        eng.anim_dt_ms or params.get("dt_anim_ms") or max(t_end / 20.0, 0.1)
+    )
+    # /RUN veri satırı = Tstop (ms). /TFILE: zaman geçmişi yazma aralığı.
+    dt_th = float(eng.th_dt_ms or max(t_end / 200.0, 1e-3))
     lines = [
         "#RADIOSS ENGINE",
         f"/RUN/{run_name}/1",
-        _i(10000),
+        _f(t_end),
         "/TFILE",
-        _f(dt_anim),
+        _f(dt_th),
         "/ANIM/DT",
         f"{_f(0.0)}{_f(dt_anim)}",
         "/ANIM/VECT/DISP",
         "/ANIM/VECT/VEL",
         "/ANIM/ELEM/ENER",
-        "/TH/TITLE",
-        "/STOP",
-        f"{_f(t_end)}{_f(0.0)}{_f(0.0)}",
-        "/END",
-        "",
+        "/ANIM/ELEM/EPSP",  # 1.17d — plastik şekil değiştirme (deforme şekil rengi)
     ]
+    # Zaman adımı: /DT (eleman) ya da /DT/NODA/… (düğüm); Δt_sca Δt_min, ms.
+    if eng.dt_kind:
+        header = "/DT" if eng.dt_kind == "DT" else f"/DT/{eng.dt_kind}"
+        lines += [header, f"{_f(eng.dt_scale)}{_f(eng.dt_min_ms)}"]
+    lines += ["/END", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _convert_time_history(bins: OpenRadiossBins, work_dir: Path, starter_name: str) -> str:
+    """`<job>T01` ikilisini th_to_csv ile CSV'ye çevirir (en iyi çaba).
+
+    Post-process (`openradioss_th.parse_openradioss_dir`) duvar kuvvetini,
+    parça enerjilerini ve HIC için düğüm ivmelerini `*T01*.csv`'den okur; .out
+    yalnız toplam enerjileri verir. Converter yoksa ya da patlarsa çözüm
+    yine "bitti" sayılır, log'a not düşülür.
+    """
+    job = starter_name.replace("_0000.rad", "")
+    t01 = work_dir / f"{job}T01"
+    if not t01.is_file():
+        return "=== th_to_csv === T01 yok, atlandı"
+    conv = bins.engine.with_name("th_to_csv_linux64_gf")
+    if bins.docker_image is None and not conv.is_file():
+        return f"=== th_to_csv === converter yok ({conv}), atlandı"
+    try:
+        proc = subprocess.run(
+            launch_command(bins, conv, [t01.name], work_dir),
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+            env=runtime_env(bins),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:  # pragma: no cover — ortam
+        return f"=== th_to_csv === çalıştırılamadı: {exc}"
+    return "=== th_to_csv ===\n" + (proc.stdout or "") + (proc.stderr or "")
+
+
+def convert_animation(bins: OpenRadiossBins, work_dir: Path, job: str = "crash") -> list[str]:
+    """`<job>A001…` → anim_to_vtk ASCII metinleri, kare sırasıyla (1.17d).
+
+    Docker'da tek `sh -c` döngüsü (kare başına konteyner açmamak için); yerel
+    ikilide kare başına çağrı. Ara .vtk dosyaları okunduktan sonra silinir.
+    """
+    work_dir = Path(work_dir)
+    anims = sorted(p for p in work_dir.glob(f"{job}A[0-9][0-9][0-9]") if p.is_file())
+    if not anims:
+        return []
+    conv = bins.engine.with_name("anim_to_vtk_linux64_gf")
+    if bins.docker_image is not None:
+        script = f'for f in {job}A[0-9][0-9][0-9]; do "{conv.as_posix()}" "$f" > "$f.vtk"; done'
+        subprocess.run(
+            launch_command(bins, Path("/bin/sh"), ["-c", script], work_dir),
+            cwd=str(work_dir), capture_output=True, text=True, timeout=600, check=False,
+            env=runtime_env(bins),
+        )
+    else:
+        if not conv.is_file():
+            raise SolverError(f"anim_to_vtk bulunamadı ({conv}).")
+        for a in anims:
+            proc = subprocess.run(
+                [str(conv), a.name], cwd=str(work_dir), capture_output=True, text=True,
+                timeout=120, check=False, env=runtime_env(bins),
+            )
+            (work_dir / f"{a.name}.vtk").write_text(proc.stdout, encoding="utf-8")
+    texts = []
+    for a in anims:
+        v = work_dir / f"{a.name}.vtk"
+        if v.is_file():
+            texts.append(v.read_text(encoding="utf-8", errors="replace"))
+            v.unlink()
+    return texts
 
 
 class OpenRadiossAdapter(SolverAdapter):
@@ -396,6 +1308,12 @@ class OpenRadiossAdapter(SolverAdapter):
                 params["tets"] = exported.tets
                 if exported.bricks:
                     params["bricks"] = exported.bricks
+                if exported.shells:
+                    params["shells"] = exported.shells
+                if exported.sh3n:
+                    params["sh3n"] = exported.sh3n
+                params["element_parts"] = exported.element_parts
+                params["coincident_nodes"] = exported.coincident_nodes
             else:
                 raise SolverError("OpenRadioss: nodes listesi boş.")
         _write_starter(starter, params)
@@ -433,7 +1351,7 @@ class OpenRadiossAdapter(SolverAdapter):
         chunks: list[str] = []
         try:
             starter_proc = subprocess.run(
-                [str(bins.starter), "-i", artifact.path.name, "-np", "1"],
+                launch_command(bins, bins.starter, ["-i", artifact.path.name, "-np", "1"], work_dir),
                 cwd=str(work_dir),
                 capture_output=True,
                 text=True,
@@ -451,7 +1369,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 )
             if progress_cb is None:
                 proc = subprocess.run(
-                    [str(bins.engine), "-i", engine_input.name],
+                    launch_command(bins, bins.engine, ["-i", engine_input.name], work_dir),
                     cwd=str(work_dir),
                     capture_output=True,
                     text=True,
@@ -467,7 +1385,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 from app.solvers.openradioss_progress import parse_progress_line
 
                 proc = subprocess.Popen(
-                    [str(bins.engine), "-i", engine_input.name],
+                    launch_command(bins, bins.engine, ["-i", engine_input.name], work_dir),
                     cwd=str(work_dir),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -489,6 +1407,8 @@ class OpenRadiossAdapter(SolverAdapter):
                 chunks.append("=== engine ===\n" + "".join(engine_out))
         except subprocess.TimeoutExpired as exc:
             raise SolverError("OpenRadioss zaman aşımı (600s).") from exc
+        if exit_code == 0:
+            chunks.append(_convert_time_history(bins, work_dir, artifact.path.name))
         log_path.write_text("\n".join(chunks), encoding="utf-8")
         handle = JobHandle(job_id=job_id, work_dir=work_dir, artifact=artifact)
         handle._exit_code = exit_code  # type: ignore[attr-defined]
@@ -497,7 +1417,7 @@ class OpenRadiossAdapter(SolverAdapter):
             raise SolverError(f"OpenRadioss hata (exit={exit_code}). Log: {log_path}")
         return handle
 
-    def poll_status(self, job: JobHandle) -> JobStatus:
+    def poll_status(self, job: JobHandle) -> JobStatus:  # noqa: D102 — arayüz
         exit_code = getattr(job, "_exit_code", None)
         if exit_code is None:
             return JobStatus(state="pending")

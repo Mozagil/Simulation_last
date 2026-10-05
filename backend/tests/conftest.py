@@ -105,3 +105,12 @@ def _test_schema():
     except Exception as exc:  # noqa: BLE001
         print(f"[conftest] sayaç ofseti uygulanamadı: {exc}", file=sys.stderr)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_openradioss_docker_env(monkeypatch):
+    """Geliştirici .env'i OPENRADIOSS_DOCKER_IMAGE tanımlar (app.main yükler);
+    crash testleri 'ikili yok' / yerel yol senaryolarını sınar. Docker'ı
+    isteyen test kendi monkeypatch'iyle açar."""
+    monkeypatch.delenv("OPENRADIOSS_DOCKER_IMAGE", raising=False)
+    monkeypatch.delenv("OPENRADIOSS_DOCKER_HOME", raising=False)

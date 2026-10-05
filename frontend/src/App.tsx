@@ -69,6 +69,7 @@ import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
+import MaterialCrashCurves from "./components/MaterialCrashCurves";
 import {
   fetchCorpusMembership,
   type SurrogatePredictResult,
@@ -3113,7 +3114,10 @@ function App() {
         {physicalGroups.map((g) => (
           <div className="model-tree-row model-tree-depth-2" key={g.id}>
             <span className="model-tree-leaf">{g.name}</span>
-            <span className="model-tree-value">yüzey</span>
+            {/* 1.17g — bölge türü boyuttan (kenar bölgeleri "yüzey" görünüyordu) */}
+            <span className="model-tree-value">
+              {g.entity_tags.length} {["nokta", "kenar", "yüzey", "hacim"][g.dim] ?? "varlık"}
+            </span>
           </div>
         ))}
         <div className="model-tree-row model-tree-depth-1">
@@ -3687,6 +3691,7 @@ function App() {
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
+          kind={analysisTab === "crash" ? "crash" : "durability"}
         />
         </div>
           </div>
@@ -4097,6 +4102,12 @@ function App() {
                     : "yok"}
                 </p>
               </div>
+            )}
+            {selectedMaterial && (
+              <MaterialCrashCurves
+                material={selectedMaterial}
+                onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
+              />
             )}
             <div className="material-action-row">
               <button
@@ -4779,6 +4790,18 @@ function App() {
         <CrashPanel
           geometryId={geometryId}
           meshDimension={meshResult?.dimension ?? null}
+          // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
+          // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
+          // numarası (surfacePartIds) solid + orta yüzey dosyasında farklıdır.
+          partIds={
+            meshResult?.dimension === 2 ? uniquePartIdsFromPreview(meshPreview) : volumePartIds
+          }
+          materialAssignments={materialAssignments}
+          componentThickness={Object.fromEntries(
+            (productTree?.items ?? [])
+              .filter((it) => it.property_kind === "shell")
+              .map((it) => [it.part_id, it.thickness]),
+          )}
         />
       )}
       </>

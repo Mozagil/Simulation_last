@@ -568,18 +568,814 @@ bölüm/sekmedir, mevcut Results/surrogate görünümünün üzerine yazılmaz.
 Regresyon: mevcut `test_reference_validation`, `test_templates*`,
 `test_doe`, `test_surrogate` yeşil kalmak zorundadır.
 
-- [ ] `OpenRadiossAdapter` implementasyonu (Radioss block format `.rad`/`.inc` üretimi)
-- [ ] Gmsh mesh export'unun OpenRadioss formatına uyarlanması (Faz 0'da kullanılan aynı
-      mesh modülü, farklı export fonksiyonu)
-- [ ] Barrier geometrisinin/parametrelerinin (hız, açı, rigid wall pozisyonu) girdi
-      dosyasına yazılması
-- [ ] OpenRadioss'un sunucuya kurulumu (derleme ya da hazır binary — lisans sunucusu
-      GEREKMEZ, bkz. `LICENSING.md`)
-- [ ] Post-process: OpenRadioss çıktı dosyalarından (time-history, animasyon) enerji,
-      reaksiyon kuvveti, ivme, HIC gibi metriklerin çıkarılması
-- [ ] Job süresi uzun olduğu için websocket tabanlı ilerleme takibi
-- [ ] Aynı frontend/backend/db şeması Faz 0'dan yeniden kullanılır — sadece solver
-      adaptörü, mesh export fonksiyonu ve post-process modülü eklenir
+**Solver kaynağı (2026-10-02):** OpenRadioss'un resmi GitHub deposu ve sürüm
+paketleri 29 Eyl – 1 Eki 2026 arasında yayından kalktı; Siemens projeyi
+başvuruyla girilen "Simcenter Radioss R&D Program" (shared source) altına aldı.
+Elimizdeki çözücü, Docker Hub'daki `dheiny/openradioss-solver:1.0.37` imajındaki
+son AGPL ikilileri (Copyright 1986-2026 Altair, AGPL v3; `latest-20260728`
+derlemesi). AGPL geri alınamaz → kullanım meşru; yama/yeni sürüm GELMEYECEK.
+Yerel geliştirme: Docker Desktop (WSL2) imajı `simsurrogate-openradioss:1.0.37`,
+`OPENRADIOSS_DOCKER_IMAGE` ile çağrılır (bkz. `backend/docker/openradioss/`).
+Codespace kurulum betiği artık çalışmaz; imaj Docker Hub'dan kalkarsa diye
+`docker save` yedeği alınmalı (vendor/, git dışı). Ayrıntı: `LICENSING.md`.
+
+**1.1–1.9 (2026-09-14, tek PR):** adaptör, mesh export, bariyer, post-process
+(enerji, duvar kuvveti, HIC), websocket ilerleme, Crash sekmesi — hepsi
+solver'sız (mock) yazıldı.
+- [x] `OpenRadiossAdapter` (Radioss block format `.rad` starter + engine)
+- [x] Gmsh mesh export → `/NODE`, `/TETRA4`
+- [x] Bariyer parametreleri (hız, açı, rijit duvar) → `/INIVEL`, `/RWALL/PLANE`
+- [x] OpenRadioss kurulumu — Docker imajı (yukarıdaki not)
+- [x] Post-process: time-history → enerji, duvar kuvveti, ivme/HIC
+- [x] Websocket ilerleme takibi
+- [x] Frontend/backend ortak; crash ayrı sekme, ayrı iş klasörü (`uploads/crash/<uuid>`)
+
+**1.10 — İlk gerçek çözüm: kutu profil + rijit duvar** — ✅ 2026-10-02
+Kutu profil 300×50×40, t = 3 mm, S235 (LAW2, Isolid 1), 3 mm tet (80 686
+düğüm), 10 m/s, 4 ms. Starter 0 hata / 0 uyarı; engine normal bitiş,
+79 825 çevrim, 333 s (4 iş parçacığı). Enerji dengesi hatası %0.4;
+KE_max 59.3 J = ½·1.187 kg·(10 m/s)²; IE_son 55.4 J; duvar impulsu
+14.5 N·s, tepe kuvvet 125.6 kN (ilk TH aralığı, kutu duvara değerek
+başlıyor; 2026-10-02 düzeltmesi — önce impuls "14.5 kN" diye raporlanmıştı,
+bkz. 1.12 fix). İş: `uploads/crash/d4980c0e…`. İlk starter listing'i 10 hata
+veriyordu — deck 2022 kart düzenine çekildi (birimler /BEGIN'de, LAW2 beş
+satır, TYPE14 üç satır, INIVEL tek satır, RWALL M/M1, TH alanları 10 kar.);
+birim sistemi kg–mm–ms (GPa, kN, J, mm/ms). `th_to_csv` engine sonrası
+çağrılıyor; TH/RWALL sütunları adsız ("var 25…") geldiği için grup
+başlığından sırayla eşleniyor.
+- [ ] Crash sekmesinden aynı koşu (UI doğrulaması), çıktı dosyası temizliği
+      (A001…A021 + .rst ≈ 95 MB/iş; anim sayısı/rst saklama ayarı)
+- [x] Zaman adımı / kütle ölçekleme kartı (`/DT/NODA/CST`) — 80k düğüm
+      tet'te 5e-5 ms adım, 4 ms için 5.5 dk; kabukla (1.13) düşer → 1.15a
+
+**1.11a — Crash box + çarpma plakası şablonu** — ✅ 2026-10-02
+`crash_box_plate`: iki ayrı katı (part 0 kutu, part 1 plaka), dört isimli
+bölge (`plaka_arka`, `plaka_on`, `kutu_on`, `kutu_arka`), aralık g > 0.
+Analitik yok. 4 test + yeniden-okuma regresyonu.
+
+**1.11b — Çok parçalı deck** — ✅ 2026-10-02
+Export eleman → parça (hacim sırası); deck parça başına `/TETRA4`, `/MAT`,
+`/PROP/TYPE14`, `/PART`; `/GRNOD/PART/1` hareketli (ilk hız, duvar),
+`/GRNOD/PART/2` + `/BCS` sabit; `/TH/PART` tüm parçalar. API `parts`
+[{part_id, role}], Crash sekmesinde Parçalar tablosu (malzeme + rol).
+Gerçek koşu: kutu (hareketli, S235 LAW2) + plaka (sabit), duvar x = −1,
+10 m/s, 3 ms, 4 mm tet: starter 0 hata / 0 uyarı, 28 226 çevrim, 71 s;
+KE_max 27.0 J (= ½·0.54 kg·10²), IE_son 24.8 J, denge %0.9, duvar tepe
+kuvvet 82.9 kN @ 0.135 ms, impuls 6.70 N·s (düzeltilmiş; önce "6.7 kN"). İş `uploads/crash/81921bfe…`. Temas henüz yok: kutu plakayı değil
+duvarı görüyor; plaka /BCS ile duruyor (1.12'de duvar yerine temas).
+
+**1.12a — Temas: deck + API + post-process** — ✅ 2026-10-02
+API `contacts` [{type 7|24, master_part, slave_part, fric, stfac, gapmin,
+istf, inacti, iedge}] + `use_rigid_wall` (varsayılan true). Yüzey
+`/SURF/PART/EXT` (solid dış deri; düz `/SURF/PART` yalnız kabuk alır), set
+kimliği 1000 + part_ID. TYPE7: slave `/GRNOD/PART` → master yüzey (hm_cfg
+radioss2020 düzeni); TYPE24: iki yüzey, self-contact'ta surf_ID2 = 0
+(radioss2021 düzeni). İzinli Istf/Inacti/Iedge değerleri hm_cfg'den.
+`/TH/INTER` FNX…FTZ → `contact_k_force` + `_max` skaleri; duvar
+FN okuyucusu `contact_th` sütunlarını dışlar. 9 deck/post-process + 2 API
+testi. Gerçek koşu (1.11b geometrisi, duvar kapalı, TYPE7 kutu düğümleri →
+plaka derisi, bayraklar varsayılan): starter 0 hata / 0 uyarı, 28 225
+çevrim, 100 s; KE_max 27.0 J, IE_son 25.0 J, denge %0.13, temas tepe kuvvet
+86.4 kN @ 0.090 ms, impuls 6.74 N·s (1.11b duvar 82.9 kN / 6.70 N·s;
+düzeltilmiş — önce impuls "6.74 kN" diye raporlanmıştı). Radioss GAPmin 0.263 mm → ilk temas 0.075 ms
+(= (1 − 0.263) mm / 10 mm/ms), temas enerjisi tepe 0.235 J. İş
+`uploads/crash/a7bbb6c3…`.
+- [x] Çok arayüzde th_to_csv sütun sırası (arayüz-majör varsayıldı) gerçek
+      koşuyla doğrulanacak — tek arayüzde 6 sütun beklenen sırada → 1.17g-6
+
+**1.12b — Crash sekmesi: temas kartları + kuvvet grafiği** — ✅ 2026-10-02
+"Temas — /INTER" bölümü: "+ Temas ekle" ile temas başına kart (TYPE7 |
+TYPE24, slave → / ↔ master parça seçimi, Fric, Stfac, GAPmin yalnız TYPE7,
+Iedge yalnız TYPE24, Istf, Inacti, sil). Varsayılan temas yok; master =
+slave → "self" etiketi. "Rijit duvar (/RWALL)" kutusu; kapalıyken nokta/normal
+"yalnız ilk hız yönü" başlığıyla görünür kalır. Job sonucunda
+`CrashForceChart` (SVG, yeni bağımlılık yok): contact_k_force + rwall_force,
+kN–ms, seri başına tepe ve zamanı; skaler listesinde "Temas k Fmax". İlk
+tablo denemesi 340 px panelde 712 px'e taşıyordu → kart düzeni (taşma yok,
+kart 208 px). 6 yeni vitest (panel 3, grafik 3); frontend 130/130, tsc temiz.
+- [x] UI'dan uçtan uca koşu ve ekran görüntüsü (headless Chrome, geçici
+      sayfada gerçek CrashPanel + backend, 340 px): form düzgün; grafik
+      aşağıdaki impuls hatasını ortaya çıkardı
+
+**1.12 fix — TH kuvvetleri impulstu** — ✅ 2026-10-02
+Radioss `/TH/RWALL` ve `/TH/INTER` FN* sütunları birikimli impuls
+(kN·ms = N·s); post-process 1.10'dan beri bunları kuvvet diye raporluyordu
+(UI grafiğinde temas bitince düz plato). Kanıt: son impuls = m·(v₀+v_son)
+(%1.6–2.2 içinde), düz değeri kuvvet saymak toplam momentumdan büyük impuls
+gerektirir. Düzeltme: kuvvet = bileşen bileşen dI/dt, sonra bileşke
+(`impulse_components_to_force`); `rwall_impulse` / `contact_k_impulse`
+eğrileri + `_impulse_final` skalerleri eklendi. Düzeltilmiş tepe kuvvetler:
+1.10 125.6 kN, 1.11b 82.9 kN, 1.12a 86.4 kN. Filtre yok (ham türev; CFC
+mühendis kararı).
+- [x] Tepe kuvvet TH örnekleme aralığına duyarlı: `/TFILE` = t_end/200
+      (3 ms → 0.015 ms) ~0.1 ms'lik darbeyi kaba çözüyor — 1.15a'da
+      `engine.th_dt_ms` parametresi
+
+**1.13a — Kabuk: export + /SHELL·/SH3N + /PROP/TYPE1** — ✅ 2026-10-02
+Hacimsiz (2D) mesh kabuk okunur: tri3/tri6 → `/SH3N`, quad4/8/9 → `/SHELL`
+(köşe düğümleri); parça = kenar paylaşan kabuk bileşeni (CalculiX 2D ile
+aynı). Kabuk parçaya `/PROP/TYPE1` (hm_cfg radioss2020: Ishell Ismstr Ish3n
+Idrill Ipinch · Hm…Dn · N Istrain Thick Ashear Ithick Iplas); izinli
+değerler kart tanımından (N ∈ {0,1,3…10}). `model.shell` bayrakları (0 =
+/DEF_SHELL); kalınlık `parts[].thickness_mm` > `model.shell.thickness_mm`,
+yoksa açık hata. Aynı parçada solid + kabuk hata. Temas yüzeyi kabukta
+`/SURF/PART`, solidde `/SURF/PART/EXT`. API `dimension` 2 | 3 (`_d2.msh`).
+12 deck/export + 2 API testi; crash testleri 95/95. Gerçek koşu (1.10'un
+kabuk eşleniği): orta yüzey tüp 300 × (47×37), t = 3, ~5 mm quad (1 996
+düğüm, 1 960 /SHELL), S235 LAW2, Ishell 24, N 5 (bu koşu için seçildi,
+varsayılan değil), 10 m/s, duvar x = 0, 4 ms. Starter 0 hata / 0 uyarı;
+7 577 çevrim, Δt 5.3e-4 ms (solid 5.1e-5), 7.7 s (1.10 solid 333 s). Kütle
+1.187 kg (aynı); IE_son 55.9 J (solid 55.4), KE_son 2.93 J, denge %0.93;
+duvar impulsu 14.41 N·s (solid 14.50; m·(v₀+v_son) = 14.51), tepe 123.1 kN
+(solid 125.6). İş `uploads/crash/20b1e7b5…` (betikle, API dışı).
+- [x] Katlanma modu görsel olarak karşılaştırılmadı (animasyon görüntüleyici
+      yok); 4 ms / 10 m/s'de ezilme kısa → 1.17d görüntüleyici
+
+**1.13b — Kabuk crash box şablonu + yüzey-only dikiş** — ✅ 2026-10-02
+`crash_box_shell` (`surface_only=True`): `crash_box_plate` kutusuyla aynı L,
+h, b, t; geometri orta yüzey — kesit (h−t)×(b−t) çevresi x boyunca ekstrüde,
+4 yüz, açık uçlar (ilk sürümde OCC sınır kutusu toleransı yüzünden uç
+kapakları silinmiyordu → kapalı kutu; test yakaladı). Kütle solid kutuyla
+birebir: L·t·2(h+b−2t). Bölgeler kenar halkası `kutu_on` / `kutu_arka`
+(4'er kenar). `GeometryTemplate.surface_only` bayrağı (varsayılan False).
+**Bulgu:** Gmsh STEP yazıcısı serbest yüzeylerin ortak kenarlarını ikizliyor
+(12 → 16); geri okununca kabuk duvarları bağlantısızdı (2D mesh'te köşe
+boyunca 124 çakışık ayrı düğüm) ama parça gruplaması (çakışan düğüm) yine
+tek parça sayıyordu — solver sessizce serbest levhalar ezerdi. Düzeltme:
+`import_geometry` hacimsiz dosyayı `Geometry.OCCSewFaces=1` ile açar
+(önizleme/BC/mesh hep oradan → etiketler tutarlı); `build_template` yüzey-only
+şablonu aynı şekilde yeniden okur. Hacimli dosyaya dokunulmaz (kayıtlı BC
+etiketleri kaymasın): midsurface akışı (solid dosyada kalıyor) değişmedi,
+orada birleştirme hâlâ elle. Veri sayacı: export aynı koordinatta ayrı
+düğüm sayısını ölçer → deck başlığı `# coincident_nodes: N`, /crash/solve
+`cards.n_coincident_nodes`. 8 şablon + 1 sayaç testi; tüm backend 931/931
+(1 atlandı). Gerçek koşu tam API yolu (şablon → 2D quad 5 mm → S235 →
+/crash/solve dim 2, t 3, Ishell 24, N 5, 10 m/s, 4 ms): 1 961 quad,
+çakışık düğüm 0, starter 0 hata / 0 uyarı, 7 397 çevrim, 9.2 s; IE_son
+55.8 J, denge %0.96, impuls 14.41 N·s, tepe 123.1 kN — 1.13a betik koşusuyla
+aynı. İş `uploads/crash/9f96356c…`, geometri 3931.
+- [ ] Midsurface akışındaki (hacimli dosya) kenar ikizlenmesi hâlâ elle
+      birleştiriliyor; otomatik dikiş için etiket kayması analizi gerekir
+
+**1.13c — Crash sekmesi: kabuk kartı** — ✅ 2026-10-02
+2D mesh'te panel kabuk moduna geçer: "Kabuk — /PROP/TYPE1" (ortak t, Ishell,
+Ish3n, Ismstr, N; 0 = /DEF_SHELL) solid TYPE14 kartının yerine; Parçalar
+tablosuna parça başına t sütunu (boş → ortak t); `dimension` mesh'ten (2|3).
+App 2D mesh'te panele yüzey parça kimliklerini verir (`surfacePartIds`).
+3 yeni vitest; frontend 132/132, tsc temiz. Uçtan uca GERÇEK uygulamada
+(headless Chrome, CDP): Crash → şablondan kabuk kutu (12 kenar — dikişli
+import) → 2D quad 5 mm (1 997 düğüm / 1 961 quad) → S235 → kabuk kartı
+(t 3, Ishell 24, N 5, LAW2, duvar x = 0, 4 ms) → çözüm: IE_son 55.81 J,
+KE_son 2.97 J, duvar tepe 123.1 kN, impuls 14.409 N·s (API koşusuyla aynı);
+kuvvet–zaman grafiği çizildi. Geometri 3932, iş `uploads/crash/c9cfdef3…`.
+Gözlemler (mevcut davranış, bu adımda değiştirilmedi):
+- [x] Kalınlık iki yerde → aşağıda "1.13 — kabuk kalınlığı tek kaynak"
+      (bileşen otomatik t = 3 ve seçili malzemeyle oluşmaya devam ediyor —
+      durability davranışı, dokunulmadı)
+- [x] Ağaçta kenar bölgeleri (kutu_on/kutu_arka) "yüzey" etiketiyle görünüyor → 1.17g-1
+- [x] Crash şeması altyazısı "yüklenen 3D mesh" diyor (2D'de de) → 1.17g-1
+- [x] İş bitince ilerleme satırı "cycle 1" gösteriyor (hub değeri) → 1.17g-1
+- [x] Hacimli (midsurface) dosyada 2D parça numarası → aşağıda "1.13 düzeltme
+      — Crash paneli 2D parça listesi"
+
+**1.13 düzeltme — Crash paneli 2D parça listesi mesh numarasıyla** — ✅ 2026-10-02
+Uygulama 2D'de mesh sonrası her şeyi MESH parça numarasıyla (0'dan, kenar
+paylaşan kabuk) kaydeder: malzeme "ATA" (mesh seçimi), ürün ağacı bileşeni
+(kalınlık + malzeme), CalculiX 2D `PART_n`, crash 2D export. 1.13c'de Crash
+paneli 2D parça listesini CAD yüzey numarasıyla (`surfacePartIds`) alıyordu;
+solid + orta yüzey dosyasında panel #1 gösterirken malzeme/bileşen #0'daydı.
+Düzeltme: 2D'de liste `uniquePartIdsFromPreview(meshPreview)`. Arada denenen
+"crash'i CAD numarasına çevir" düzeltmesi (f9321b2) yanlış varsayıma
+dayanıyordu (ölçümde malzeme elle CAD numarasıyla atanmıştı) ve revert
+edildi (7c7e3ca).
+- [ ] Midsurface dosyasında CAD ağacındaki "Parça #0" (solid) ile ürün ağacı
+      COMP_PART_0 (orta yüzey) aynı numarayı farklı şey için kullanıyor —
+      durability genel parça kimliği konusu
+
+**1.13 — kabuk kalınlığı tek kaynak: ürün ağacı bileşeni** — ✅ 2026-10-02
+/crash/solve dim 2 kalınlığı `components` tablosundan okur (aynı mesh parça
+numarası); öncelik: istekte açık `parts[].thickness_mm` > bileşen >
+`model.shell.thickness_mm`; eksikse hata mesajı Malzeme adımını gösterir.
+DB şeması değişmedi. Crash kartındaki t girişleri kaldırıldı; Parçalar
+tablosu bileşen kalınlığını salt-okunur gösterir ("yok" ise uyarı rengi).
+Testler: deck öncelik + API (bileşen 1.8 mm, S355 → deck Thick 1.8, S355);
+frontend 132/132. Gerçek uygulamada uçtan uca (hatanın çıktığı akış):
+thin_plate yükle → 3B'de parça seç → MİD (solid + orta yüzey, 7 yüz) → 2D
+quad 5 mm (231 düğüm / 200 quad) → ürün ağacında COMP_PART_0 t 2, S355 →
+Crash: #0 S355 t 2 → deck `/SHELL/1`, `/MAT/LAW2/1` S355, `/PROP/TYPE1/1`
+Thick 2, Ishell 24, N 5, çakışık düğüm 0 (yalnız deck; çözüm koşulmadı).
+İş `uploads/crash/c3f70c6f…`.
+
+**1.14a — LAW2 Johnson-Cook: hız / sıcaklık terimleri ve sınırlar** — ✅ 2026-10-02
+`model`: `eps_p_max`, `sig_max0_mpa`, `jc_c`, `jc_eps_dot0_per_s`, `jc_icc`,
+`jc_fsmooth`, `jc_fcut_hz`, `jc_chard`, `jc_m`, `jc_t_melt_k`, `jc_rho_cp`
+(J/(m³K)), `jc_t_r_k`; 0 = terim kapalı / Radioss varsayılanı. Kart düzeni hm_cfg
+radioss140 `matl2_plas_johns` (ρ · E ν Iflag · a b n EPS_p_max SIG_max0 · c ε̇₀
+ICC Fsmooth F_cut Chard · m T_melt ρCp T_r); `E ν Iflag` satırındaki fazladan
+alan ve son satırın 5. alanı kaldırıldı. Birim: ε̇₀, F_cut ×1e-3 (1/ms),
+SIG_max0 MPa→GPa, ρCp ×1e-9. Tutarlılık kontrolü: c > 0 ⇒ ε̇₀ > 0; m > 0 ⇒
+T_melt > T_r; ICC ∈ {0,1,2}, Fsmooth ∈ {0,1}. 10 test. DB/UI yok (UI 1.14e).
+Gerçek koşu (kabuk crash box 3931, t 3, LAW2 a = 235 MPa, 10 m/s, duvar, 4 ms;
+yalnız c farklı): c = 0 → tepe 123.1 kN, IE_son 55.81 J, KE_son 2.97 J, impuls
+14.41 N·s; c = 0.014, ε̇₀ = 1/s (test için seçildi) → tepe 131.2 kN (+%6.6),
+IE_son 54.01 J, KE_son 4.76 J (daha çok geri sekme), impuls 15.15 N·s
+(m·(v₀+v_son) = 15.23); denge %0.96 / %0.97. Starter CC ve ε̇₀'ı doğru yankıladı.
+Radioss starter uyarısı 1220: hız etkisi açık ama filtre (Fsmooth) kapalı —
+çözücünün kendi notu; seçim mühendisin. İşler `0f78a91d…`, `083db7cd…`.
+- [x] Starter uyarı/hata ID'leri iş sonucunda veri olarak gösterilmiyor (1.14f)
+
+**1.14b — Parça başına malzeme kartı** — ✅ 2026-10-02
+API `parts[].model` (CrashModelParams: kanun, LAW2/JC, Isolid/NIP, kabuk
+bayrakları + kabuk kalınlık yedeği); verilmeyen parça global `model`'e düşer
+(eski davranış). Deck `/MAT` + `/PROP` parça parça; geçersiz parça modeli 422.
+4 deck + 1 API testi; crash testleri 122/122. Gerçek koşular (crash box +
+plaka, TYPE7, duvar kapalı, 10 m/s, 3 ms; taban 1.12a: ikisi de LAW2):
+(1) plaka LAW1 elastik → sonuç 1.12a ile basamak basamak aynı (IE_son
+25.016 J, temas tepe 86.35 kN, impuls 6.743 N·s) — beklenen: plakanın tüm
+düğümleri /BCS'te, deforme olamıyor; E iki kanunda da 210 GPa → temas
+rijitliği aynı. (2) yalnız kutuya JC c = 0.014, ε̇₀ = 1/s → temas tepe
+92.11 kN (+%6.7, 1.14a kabukta +%6.6), IE_son 24.17 J, KE_son 2.80 J, impuls
+7.05 N·s (m·(v₀+v_son) = 7.14); deck'te c yalnız `/MAT/LAW2/1`'de; Radioss
+uyarısı 1220 yalnız malzeme 1 için. İşler `43eade78…`, `baa65293…`.
+
+**1.14c — LAW36 tablo plastisite + /FUNCT** — ✅ 2026-10-03
+`model.law = "tabulated"`, `tab_curves` [{`eps_dot_per_s`, `points` [(ε_p, σ
+MPa)…]}] (hız artan; ε_p kesin artan; σ ≥ 0), `tab_eps_t` / `tab_eps_m` /
+`tab_eps_f`, `tab_vp` (0/1); `eps_p_max`, `jc_fsmooth`, `jc_fcut_hz`,
+`jc_chard` LAW36'da aynı anlamla. Eğriler istekte gelir, job.json'da kalır —
+DB şeması değişmedi. Kart düzeni hm_cfg radioss2017 `matl36_plas_tab` (ρ · E ν
+Eps_p_max Eps_t Eps_m · N_funct F_smooth C_hard F_cut Eps_f · VP · fct_IDp
+Fscale Fct_IDE EInf CE · eğri id / ölçek / hız beşer); `/FUNCT` radioss90 (X Y).
+Eğri kimliği = card_id·100 + k (parça başına ayrık). σ MPa → GPa, ε̇ 1/s → 1/ms.
+Parça başına LAW36 / LAW2 karışık çalışır (1.14b). 9 test; crash 131/131.
+Gerçek koşu — eşdeğerlik: kabuk crash box, LAW36 tek düz eğri σ = 235 MPa ≡
+1.14a LAW2 (a = 235, b = 0, c = 0): IE_son 55.818 / 55.806 J (%0.02), tepe
+123.05 / 123.14 kN (%0.07), impuls 14.409 / 14.409 N·s; starter 0 hata / 0
+uyarı, "TABULATED ELASTIC PLASTIC LAW 36", fonksiyon 101. İş `d21ab83f…`.
+
+**1.14d — `/FAIL/JOHNSON` + `/FAIL/TENSSTRAIN`, eleman silme** — ✅ 2026-10-03
+`model.fail` = {`johnson`?, `tensstrain`?}; ikisi aynı malzemede birlikte
+olabilir, boş = kopma yok (eski davranış). Parça başına (`parts[].model.fail`,
+1.14b). Kartlar `/MAT` hemen ardından, başlıkta malzeme kimliği, title satırı
+yok. JOHNSON hm_cfg radioss2017: D1…D5 · ε̇₀ (1/s → 1/ms) Ifail_sh Ifail_so ·
+Dadv · Ixfem = 0. TENSSTRAIN radioss2021: ε_t1 ε_t2 fct_ID = 0 ε_f1 ε_f2 S_Flag
+(yalnız ek kart istemeyen 0/1/11/21; ölçek fonksiyonu yok). Tutarlılık:
+Ifail ∈ {0,1,2}; d4 ≠ 0 ⇒ ε̇₀ > 0; ε_t2 > ε_t1; TENSSTRAIN'de en az bir sınır.
+API `cards.n_fail`. 9 test; tüm backend 968/968 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, t 3, LAW2 σ_y 235 MPa, 10 m/s, duvar,
+4 ms): starter iki kriteri de yankıladı ("FAILURE MODEL TYPE = TENSSTRAIN /
+JOHNSON", D1…D5, ε_t1/ε_t2), 0 hata, tek uyarı 1912 (kabuk ek kütle; FAIL'den
+bağımsız). (1) TENSSTRAIN 0.05/0.10 ve JOHNSON D1-D3 = 0.05/3.44/−2.12 →
+hiç eleman silinmedi, iki koşu birebir aynı (IE_son 55.41 J, tepe 122.3 kN,
+impuls 14.39 N·s) — bu darbede gerinim eşiklere ulaşmıyor. (2) Silme kanıtı
+(eşikler bilerek düşük): TENSSTRAIN 0.002/0.004 → 133 kabuk "RUPTURE
+(TENS_STRAIN)", IE_son 50.31 J, impuls 9.05 N·s, denge %6.5; JOHNSON D1 =
+0.003 (D2…D5 = 0), Ifail_sh 1 → 259 kabuk "RUPTURE (JOHNSON-COOK)", IE_son
+15.19 J, KE_son 34.94 J, tepe 27.0 kN, denge %15.5. Denge sapması silmeyle
+birlikte artıyor (silmesiz %1.1); bileşenlerine ayrıştırılmadı. İşler `7fd1cb11…`, `4b64725c…`, `21f7c6a2…`, `c3d79087…`.
+- [x] Silinen eleman sayısı / zamanı iş sonucunda veri olarak (1.14f)
+
+**1.14f — Kopma listesi + starter mesaj ID'leri iş sonucunda** — ✅ 2026-10-03
+`ResultSet.diagnostics` (yeni alan, varsayılan boş; diğer adaptörler etkilenmez)
+→ job.json / `/crash/jobs/{id}` `diagnostics`: `starter_errors`,
+`starter_warnings` ({ID: adet}; özet tablo satırları sayılmaz),
+`deleted_elements` [{criterion, kind, element, time}]. Skalerler:
+`starter_error_count`, `starter_warning_count`, `elements_deleted` (tekil
+eleman), `deletion_time_first` / `_last`. Listing kopma anını yazmaz; `time` =
+kopmadan sonra basılan ilk cycle satırı (üst sınır, çözünürlük = basma aralığı,
+bu kutuda ~0.054 ms). 4 test; backend 972/972. Gerçek işlerde: `21f7c6a2…` 133
+silme, ilk 0.054 / son 3.78 ms; `c3d79087…` 259, 0.054 / 3.996 ms; `7fd1cb11…`
+0 silme, uyarı {1912: 1}; eski hatalı iş `f3d5116a…` 10 hata (573, 574, 668,
+53, 260, 1109) / 5 uyarı.
+
+**1.14e — Crash sekmesinde malzeme kartı editörü (parça başına)** — ✅ 2026-10-03
+`CrashMaterialCard` (frontend): LAW1 / LAW2 / LAW36 seçimi; LAW2'de σy, b, n,
+EPS_p_max, SIG_max0 + açılır "Johnson-Cook hız / sıcaklık" (c, ε̇₀, ICC,
+Fsmooth, F_cut, Chard, m, T_melt, ρCp, T_r); LAW36'da eğri kartları (ε̇ +
+"ε_p σ" satırları — Excel'den iki sütun yapıştırılır; sekmeyle gelen ondalık
+virgül nokta olur), Eps_t/m/f, VP, EPS_p_max, Fsmooth, F_cut, Chard; açılır
+"Kopma — /FAIL" (JOHNSON ve/veya TENSSTRAIN onay kutusuyla). Parçalar
+tablosunda "kart" sütunu: Global | Ayrı — Ayrı, global kartın o anki
+kopyasıyla parçaya kendi kartını açar (`parts[].model`); eleman bayrakları
+(TYPE14 / kabuk TYPE1) globalden gelir. Geçersiz sayı / eğri satırı gönderimi
+durdurur, hata alan adıyla gösterilir ("Parça #1 c: …"). Öneri yok, 0 =
+Radioss varsayılanı. 1.14f sonuçları panelde: "Silinen eleman N · ilk ≤ … ms
+· son ≤ … ms" ve "Starter · hata ID … · uyarı ID …". Testler: kart 5, panel
++3; frontend 140/140, tsc temiz. 340 px panelde DOM ölçümü: taşma yok, alanlar
+108 px (3 sütun), eğri alanı tam genişlik. Ekran görüntüsünde (geometrisiz)
+LAW36 eğri kartı ve /FAIL bölümü kontrol edildi; parça "Ayrı" kartı yalnız
+testlerle (geometri yüklü değildi).
+
+**1.14c2 — LAW36 eğrileri malzeme kütüphanesinde** — ✅ 2026-10-03 (şema onayı 2026-10-03)
+DB: `materials.crash_curves` JSON nullable; migration `e2f3a4b5c6d7` yalnız
+kolon ekler (downgrade siler; dev DB'de yukarı/aşağı/yukarı denendi). İçerik
+tab_curves formatı, doğrulama crash ile ortak (`parse_tab_curves`: ε_p kesin
+artan, σ ≥ 0, ε̇ kesin artan). API: `POST /materials` `crash_curves` alır,
+`PUT /materials/{id}/crash-curves` {curves | null} — kütüphane malzemesi
+(is_editable = false) 403, geçersiz eğri 422; listeleme alanı döndürür.
+Crash: law = tabulated ve istekte eğri varsa istek; yoksa parçaya atanan
+malzemenin eğrileri; ikisi de yoksa 422 ("akma eğrisi yok"). Boş `tab_curves`
+artık parametre hatası değil, kontrol deck kurulurken. job.json + yanıt
+`law36_curve_source` {part_id: {source: "istek" | "malzeme #id", curves}} —
+malzeme sonradan değişse de işin kopyası kalır. Dataset arşivi kolonu taşır
+(eski arşivde None). 4 adaptör + 1 malzeme API + 1 crash API testi; backend
+977/977 (+1 skip). Çözücü koşusu yok: deck aynı /MAT/LAW36 + /FUNCT kartları
+(LAW36 ≡ LAW2 eşdeğerliği 1.14c'de koşuldu).
+
+**1.15a — Engine çıktı aralıkları + zaman adımı kontrolü** — ✅ 2026-10-03
+API `engine`: `th_dt_ms` (/TFILE; boş = t_end/200), `anim_dt_ms` (/ANIM/DT;
+boş = max(t_end/20, 0.1)), `dt_kind` ∈ {"" (kart yok), DT, NODA/0, NODA/STOP,
+NODA/CST/0} + `dt_scale` (Δt_sca, 0 = Radioss 0.9) + `dt_min_ms`. Kart
+düzenleri hm_cfg eng_tfile / eng_anim_dt r51, eng_dt r110, eng_dt_noda r2017.
+Grup gerektiren /DT/NODA/…/1 ve CST1/CST2 yok. Tutarlılık: STOP ve CST/0
+Δt_min > 0 ister; tür seçilmeden Δt_sca/Δt_min verilemez. Boş `engine` = eski
+deck (birebir). Listing'den (basılan cycle'lar): `timestep_min`,
+`timestep_final`, `mass_model` (TOTAL MASS − ilk MASS ADDED),
+`mass_added_final`, `mass_added_rel`. 14 test; backend 991/991 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, t 3, LAW2 σ_y 235 MPa, 10 m/s, duvar,
+4 ms): (1) TH 0.002 ms (2000 örnek; eski 0.02 ms, 200 örnek): duvar tepe
+kuvveti 130.9 kN (eski örneklemede 122.3, +%7), impuls 14.387 N·s aynı —
+tepe değer örneklemeye duyarlı, impuls değil. (2) /DT/NODA/CST/0 Δt_sca 0.9,
+Δt_min 0.001 ms (doğal Δt 0.00054 ms): Δt 0.001'e sabitlendi, eklenen kütle
+0.671 kg = modelin %56.5'i; ilk KE 91.9 J (eklenen kütle de ilk hızı alıyor;
+kütle eklemesiz 59.3), IE_son 90.2 J, impuls 20.78 N·s. Starter "NODAL MINIMUM TIME
+STEP 0.1E-02" yankıladı. (3) /DT 0 0 → starter "TIME STEP SCALE FACTOR 0.9",
+/ANIM/DT 1 ms → 5 animasyon dosyası. İşler `3565bff7…`, `35ad798a…`,
+`06c5e223…`.
+
+**1.15b — `/TH` seçimi (gruplar, değişkenler, düğümler)** — ✅ 2026-10-03
+API `th`: `rwall` / `inter` / `part` {enabled, vars}, `node_ids` + `node_vars`.
+Değişkenler hm_cfg OUTPUTBLOCK listelerinden (th_node r110, th_part r2025,
+th_rwall / th_inter r110), yalnız tekil olanlar (DEF ve D/V/A/XYZ kısa yolları
+sütun sayısını belirsiz bırakır). Radioss sütunları kendi (hm_cfg liste)
+sırasıyla yazar → istek o sıraya dizilir. Boş `th` = eski grup seti.
+Düzeltmeler (gerçek koşu kanıtlı): (1) TH grup kimlikleri tekil olmalı —
+/TH/RWALL/1 + /TH/PART/1 + /TH/NODE/1 starter hata 79 "DUPLICATE ID IN TH
+GROUP"; yeni kimlikler RWALL 1, INTER 2, PART 3, NODE 4. (2) /TH/NODE hm_cfg'ye
+göre satır başına bir düğüm (`node_ID skew_ID ad`) ve ivme AX/AY/AZ — eski
+`th_nodes` yolu on düğümü tek satıra ve ACCX yazıyordu (hiç gerçek koşuda
+kullanılmamıştı); `th_nodes` artık düğüm grubuna AX AY AZ ile eklenir.
+(3) RWALL FN / FT bileşkeleri bu ikilide sütun yazmıyor (FNX FNY FNZ FN → 3
+sütun) → RWALL/INTER yalnız FN*/FT* bileşenleri. Post-process: deck yanına
+`th_spec.json`; th_to_csv adsız "var N" sütunları spec sırasıyla
+`th_rwall_<V>`, `th_inter_<k>_<V>`, `th_node_<id>_<V>`, `th_part_<mesh id>_<V>`
+eğrileri olur (PART adlı sütundan). Sütun sayısı tutmazsa grup adlandırılmaz,
+`diagnostics.th_unmapped_groups`'a yazılır. Duvar / temas kuvveti ve HIC
+ivmesi spec varken adla seçilir. 13 test; backend 1004/1004 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, 10 m/s, TH 0.002 ms): varsayılan `th`
+→ sonuç 1.15a ile aynı (IE_son 55.614 J, tepe 130.943 kN, impuls 14.387 N·s);
+RWALL 6 bileşen + PART IE KE XMOM MASS HE + düğüm 1, 2 (DX, AX AY AZ / DX DY
+DZ VX AX) → hepsi adlandı; arka düğüm 2: VX₀ = −10 mm/ms, geri sekme, DX_son
+7.70 mm. HIC ilk düğümden (eski davranış): düğüm 1 duvardaki ön kenarda, ham
+ivme (filtre yok) → acc_peak 120 464 g — veri; düğüm/filtre seçimi mühendisin.
+İşler `ddc643c5…`, `b1b05ef6…`, `819c80a1…`.
+
+**1.15c — `/SECT/PARAL` kesit kuvveti** — ✅ 2026-10-03
+API `sections`: [{name, origin M, corner1 M1, corner2 M2 (mm), parts (boş =
+tümü), iframe ∈ {10 global C0, 11 kesit geometrik merkezi, 12 kesit ağırlık
+merkezi, 13 (0,0,0)}}]. Kart hm_cfg radioss110 sect_paral (N1–N3 = 0, ISAVE 0,
+dosya yok); eleman grupları /GRBRIC|GRSHEL|GRSH3N/PART (kimlik 8000 + 10·k +
+tür). TH: `th.sect` (FNX…FTZ, MX MY MZ) → /TH/SECTIO/5; varsayılan FN* + FT*.
+Bulgu (tek değişkenli koşularla doğrulandı): x = sabit kesitte x yönlü kuvvet
+FTX'te, FN* sıfır — Radioss'un FN/FT ayrımındaki normal (M1−M)×(M2−M) değil
+(N1–N3 = 0 iken; kural belirlenmedi). Global bileşen ayrımdan bağımsız:
+F = FN + FT → `section_<k>_force` (bileşen dI/dt, bileşke) ve
+`section_<k>_impulse`; skaler `section_<k>_force_max`, `_impulse_final`.
+Kesit TH'si RWALL gibi birikimli impuls. 8 test; backend 1012/1012 (+1 skip).
+Gerçek koşular (kabuk crash box 3931, 10 m/s, TH 0.002 ms; kesitler x = 20 ve
+x = 150): starter 0 hata, kesit 1'de 38 düğüm / 40 kabuk; impuls x = 20: 13.42
+N·s (kesit arkasındaki kütle 280/300 · duvar impulsu 14.39 = 13.43), x = 150:
+7.48 N·s (150/300 · 14.39 = 7.19, %4); tepe kesit kuvveti 123.9 / 117.5 kN
+(duvar 130.9). Varsayılan TH (FN*+FT*) ile 9 değişkenli koşu aynı sonuç.
+İşler `ffeda999…`, `3a08ae25…` (yalnız FTX), `9bae2dbe…` (yalnız FNX),
+`905f7376…`.
+- [ ] Kesit normali / yerel eksen (N1–N3 düğümleri) — FN/FT ayrımı gerekiyorsa
+
+**1.15d — Crash sekmesinde çıktı ve kontrol UI'ı** — ✅ 2026-10-03
+`CrashOutputCard` (frontend), "Çıktı ve kontrol" başlığı altında üç açılır
+bölüm: (1) Çıktı ve zaman adımı — TH / animasyon aralığı (boş = varsayılan,
+placeholder t_end/200, t_end/20), zaman adımı kartı (Yok | /DT | NODA/0 |
+NODA/STOP | NODA/CST/0), Δt_sca / Δt_min (tür seçilmeden kapalı); (2) Zaman
+geçmişi — RWALL / INTER / PART / SECTIO aç-kapa + değişken çipleri (backend
+TH_VARS ile aynı liste), düğüm kimlikleri + değişken çipleri; (3) Kesitler —
+kart başına ad, M / M1 / M2 (x y z), parça çipleri (seçim yok = tümü), Iframe
+seçimi. Varsayılan durum backend varsayılanını gönderir (eski deck). Sonuç
+panelinde kesit Fmax + impuls, Δt_min + eklenen kütle %; kuvvet grafiğinde
+"Kesit k" serileri. Geçersiz sayı / düğüm kimliği gönderimi durdurur, hata alan
+adıyla. Testler: kart 4, panel +1; frontend 145/145, tsc temiz. Ekran
+görüntüsü geometrisiz (UI'da mevcut geometriyi açma yolu yok): üç bölüm 340 px
+panelde.
+
+**1.16a — `crash_runs` tablosu, geçmiş ve karşılaştırma API'si** — ✅ 2026-10-03 (şema + içe aktarma onayı 2026-10-03)
+DB: yeni `crash_runs` (job_id tekil, geometry_id FK, name, created_at,
+dimension, t_end_ms, status, message, solver_ran, request JSON — bariyer /
+model / parçalar / temas / engine / th / kesitler / law36 eğri kaynağı,
+materials_snapshot JSON, scalars JSON, diagnostics JSON, excluded +
+exclude_reason); migration `f3a4b5c6d7e8` yalnız tablo ekler (dev DB'de
+yukarı / aşağı / yukarı denendi); analysis_runs değişmedi. Eğriler DB'de yok,
+job.json'da. `/crash/solve` kayıt açar (`run_id` yanıtta), arka plan işi
+bitince kendi oturumuyla günceller (başarısız da). API: `GET /crash/runs`
+(?geometry_id, include_excluded), `GET /crash/runs/{id}` (girdi + skaler +
+eğriler), `PATCH /crash/runs/{id}` (ad, excluded, exclude_reason — girdi /
+sonuç değişmez), `GET /crash/runs/compare?ids=…&curves=…` (boş = *_force
+eğrileri + time; her koşu kendi zaman ekseniyle). İçe aktarma
+`scripts/import_crash_jobs.py` (job_id ile tekrarsız; created_at = job.json
+zamanı): dev'de 37 iş aktarıldı (29 solved, 4 rad_only, 4 failed; 23'ü crash
+box 3931), 293 iş atlandı — geometrisi dev DB'de yok (test koşularının
+uploads'a bıraktığı işler, test geometri kimlikleri); ikinci çalıştırma 37
+güncelleme, çoğaltma yok. Eski işlerde materials_snapshot boş. 4 test;
+backend 1016/1016 (+1 skip). Gerçek koşu `wait=false`: kayıt pending →
+solved, section_1_impulse_final 13.42 N·s; compare 38 ↔ 17 iki koşunun duvar
++ kesit kuvvetlerini döndürdü.
+
+**1.16b — Crash sekmesinde koşu geçmişi + karşılaştırma** — ✅ 2026-10-03
+`CrashHistory` (frontend), Crash panelinin altında: koşu listesi (seç | ad +
+#id · tarih · durum | duvar Fmax | dışla/geri al), geometri yoksa tüm
+geometriler (satırda geo id); dışlananlar varsayılan gizli, "Dışlananları
+göster" ile görünür; liste yeni iş / iş bitince yenilenir. En çok 6 koşu
+seçilip "Karşılaştır": eğri seçimi (*_force), "t üst (ms)" yalnız görünüm
+kırpma (boş = tümü), kuvvet grafiği her koşunun kendi zaman ekseniyle
+(`CrashForceChart` seri başına `time`), skaler tablosu (duvar Fmax / impuls,
+IE / KE son, enerji dengesi, Δt_min, eklenen kütle oranı, silinen eleman,
+kesit / temas Fmax; sütun başlığı #id). Dar panel (340 px): ilk tablo
+denemesi yatay taştı → satır listesi (grid) + 300 px dikey kaydırma.
+Dışlama gerekçesi UI'dan girilmiyor (API alanı var). Testler: geçmiş 3, panel
+mock'u güncellendi; frontend 148/148, tsc temiz. Ekran görüntüleri gerçek
+veriyle (38 koşu): #14 TH 0.02, #6 TH 0.002, #7 NODA/CST/0, #4 TENSSTRAIN
+silme; t ≤ 0.3 ms. Bulgu: #7'nin eklenen kütle oranı DB'de 0.362 idi —
+1.15a'daki oran hatası düzeltilmeden önce job.json'a yazılmış; o iş ham
+çıktılardan yeniden işlendi → 0.565. 1.14f / 1.15a öncesi çözülen işlerde
+yeni skalerler (silinen eleman, Δt_min) yok, tabloda "—".
+- [x] Eski işleri ham çıktılardan yeniden işleme (yeni skalerler için) —
+  istenirse ayrı adım → 1.17g-5
+
+**1.17a — Crash senaryo şablonu `POST /crash/scenario`** — ✅ 2026-10-03
+Tek çağrıda: geometri şablonu (`crash_box_shell`; liste `CRASH_TEMPLATES`) →
+2D mesh (varsayılan quad 5 mm) → malzeme ataması (material_id ya da adı,
+varsayılan S235) → /crash/solve (parça 0 hareketli, kabuk kalınlığı = istek ya
+da şablonun wall'u; bariyer hız / açı; duvar istek ya da şablondan: ön uç x = 0
+kesit merkezi, normal +x; model varsayılan LAW2 σy malzemeden; engine / th /
+kesit / temas olduğu gibi). Yeni çözücü mantığı yok — mevcut uç fonksiyonları
+sırayla (DOE runner deseni); kayıt crash_runs'a /crash/solve'dan. Yanıtta
+çözülmüş senaryo (şablon parametreleri varsayılanlarla birleşik). Hangi
+parametrenin değişeceği DOE'de (1.17b) mühendisin. 3 test; backend 1019/1019
+(+1 skip). Gerçek koşular: (1) varsayılan senaryo + TH 0.002 + kesit x=20 /
+x=150 → yeni geometri 3934, sonuç elle kurulan 3931 koşusuyla (905f7376)
+BİREBİR aynı: IE_son 55.61423 J, duvar tepe 130.9434 kN, impuls 14.38706 N·s,
+kesit impulsu 13.4208 / 7.4786 N·s. (2) L 250, t 2, 15 m/s, eleman 4 mm →
+kütle 0.675 kg (elle: çevre 172 × 250 × 2 mm × 7.85e-6 = 0.675), KE 75.95 J
+(½·0.675·15²), deck Thick 2, /INIVEL −15; Δt_min 0.00061 ms (3931'in 5 mm
+mesh'i 0.00054 — o mesh'te x = 4.828 / 4.829 gibi kısa kenarlar var).
+Bariyer modelleri (Ansys/LSTC IIHS MDB) araştırıldı: ftp.lstc.com 401 (kimlik
+ister), lisans belirtilmemiş, proje kuralı (Ansys/LS-DYNA yok) → kullanılmadı.
+
+**1.17b — Ek kütle `/ADMAS` + rijit gövde `/RBODY`** — ✅ 2026-10-03
+API (`/crash/solve` ve `/crash/scenario`): `added_masses` [{name, region |
+part_id, mass_kg, distribution total (type 1) | per_node (type 0)}],
+`rigid_bodies` [{name, region | part_id, mass_kg (ana düğüme), ikrem, icog}].
+Bölge = PhysicalGroup (şablon bölgesi, ör. `kutu_arka`, ya da kullanıcı yüzey
+grubu) → CAD varlıkları → mesh düğümleri (`region_node_ids`; crash deck düğüm
+kimliği = gmsh etiketi, sınır düğümleri dahil). Kartlar hm_cfg: admas r110
+(MASS grnd_ID), rbody r2021; düğüm grupları /GRNOD/NODE (8500+k kütle,
+8700+k rijit gövde). Rijit gövde ana düğümü seçimin ağırlık merkezinde yeni
+düğüm; seçim hareketli parçadaysa ana düğüm `/INIVEL/TRA/2` ile ilk hızı alır
+(yoksa ek kütle momentuma girmez). Enerji düzeltmesi: post-process global
+enerji sütunlarını (INTERNAL / KINETIC / HOURGLASS / ROTATION ENERGY, EXTERNAL
+WORK) tercih eder — parça TH'si rijit gövde ana düğümünü içermiyordu (kızaklı
+koşuda KE 71 J okunuyordu, global 2559 J); `energy_balance_rel` artık IE + KE
++ dönme + hourglass − dış iş; yeni `hourglass_energy_final`, `hourglass_ratio`
+(HE / IE_son). 12 test; backend 1031/1031 (+1 skip). Gerçek koşular (crash
+box senaryosu, 10 m/s; kütleler TEST değeri, mühendis seçimi değil):
+(1) `/RBODY` kutu_arka + 50 kg, 20 ms: starter 36 bağımlı düğüm, ana düğüm
+(300, 25, 20), kütle 50.0097 (bağımlılar 0.0097); KE₀ 2558.9 J (½·51.187·10²
+= 2559.4), IE_son 2441.3 + KE 4.7 + hourglass 112.8 = 2558.8 J → denge %0.04,
+hourglass / IE %4.6; duvar impulsu 533.6 N·s = 51.19 · (10 + 0.42) — küçük
+geri sekme; Δt_min 0.0002 ms (katlanma eleman bozulması). Uyarı 446: rijit
+gövde bağımlı 36 düğüm duvardan çıkarıldı (Ikrem 0; arka uç duvara değmez).
+48 s. (2) `/ADMAS` kutu_arka toplam 1 kg, 4 ms: starter "TOTAL ADDED MASS =
+1.0", KE₀ 108.86 J (beklenen 109.35), denge %0.13. Gözlem: global KE ilk
+örnekte ½mv²'den 0.49 J düşük — ön halka (36 düğüm, 0.0097 kg) duvara t = 0'da
+değiyor, ½·0.0097·10² = 0.486 J hemen duruyor. Eski işlerin job.json
+skalerleri değişmedi (yeniden işlenirse yeni tanım). İşler `eb971f21…`,
+`bb3fe909…`.
+
+**1.17c — Bölge / parça sınır koşulu `/BCS` + zorlanmış hız `/IMPVEL`** — ✅ 2026-10-03
+API (`/crash/solve`, `/crash/scenario`): `boundary_conditions` [{name, region
+| part_id, dofs "Tx Ty Tz Rx Ry Rz" 6 hane}], `imposed_velocities` [{name,
+region | part_id | rigid_body, direction X Y Z XX YY ZZ, velocity_m_s,
+t_start_ms, t_stop_ms (0 = sonsuz)}]. Kartlar hm_cfg: bcs r51 (`/BCS/10+k`;
+/BCS/1 sabit parçalar), impvel r120 + /FUNCT 9900+k; düğüm grupları
+8800+k (BC), 8900+k (hız); rijit gövde hedefi = ana düğüm. Hata (gerçek
+koşuda bulundu): sıfır hız Scale_y = 0 olarak yazılınca Radioss varsayılan
+1'i kullandı — Y, Z ve dönmelere 1 mm/ms · 1 rad/ms uygulandı, model patladı
+(IE −18 kJ, 3.68 ms'de durdu). Düzeltme: hız fonksiyon değerinde, Scale_y = 1.
+10 test; backend 1041/1041 (+1 skip). Gerçek koşular (crash box senaryosu):
+(1) BCS kutu_arka 011000, 4 ms: arka düğüm 2 DY = DZ = 0, DX serbest
+(7.68 mm geri sekme) ✓. (2) Rijit gövde kutu_arka + IMPVEL X −10 m/s, yalnız
+X: arka köşe VX −10.2 → −12.2 mm/ms — rijit uç katlanma sırasında dönüyor
+(kılavuzsuz itici; köşe hızı = V + ω×r). (3) Aynı + Y, Z, XX, YY, ZZ = 0
+(kılavuzlu itici), 10 ms: arka düğüm VX −10.000, DX −25.00 / −50.00 /
+−99.90 mm (= −10·t), DY = DZ = 0 ✓; enerji dengesi %2.6, hourglass / IE %7.4;
+ortalama duvar kuvveti (1–10 ms) 53.7 kN, IE / ezilme 5094 J / 100 mm =
+50.9 kN — 1.17f ortalama ezilme kuvveti için ilk veri. İşler `cdc5aa61…`,
+`2d5d4ed6…`, `cded46ab…` (patlayan `9169dc48…`).
+
+**1.17d — Deforme şekil görüntüleme (zaman kaydırıcılı 3B)** — ✅ 2026-10-03
+Backend: `convert_animation` — imajdaki `anim_to_vtk` ile A001… → ASCII VTK
+(Docker'da tek `sh -c` döngüsü, kare başına konteyner yok; ara .vtk silinir);
+`openradioss_anim.build_animation` — yüzey (kabuk tri/quad; solid tet/hex dış
+yüzleri), kare başına deforme koordinat, düğüm |u|, eleman skalerleri
+(plastik şekil değiştirme, özgül enerji), EROSION_STATUS (silinen yüz); hep
+sıfır skaler atlanır; >60 kare seyreltilir (son kare korunur). Rijit duvar
+(NODE_ID 0 sentetik noktalar) ve rijit gövde ana düğümündeki dejenere dörtgen
+atlanır (ilk görüntüde duvar kutuyu örtüyordu). `GET /crash/runs/{id}/animation`
+ilk istekte üretir, `anim.json` önbelleği. Engine deck'e `/ANIM/ELEM/EPSP`
+eklendi (VTK adı `2DELEM_Plastic_Strain`). Frontend `CrashAnimationViewer`
+(three.js, OrbitControls): kare kaydırıcı, oynat, renk skaleri seçimi, jet
+renk ölçeği (proje görüntüleyicileriyle aynı formül; çubuk birebir duraklar),
+silinen eleman sayısı; geçmiş listesinde çözülmüş koşuya ▶. Testler: backend
+4, frontend 3 (WebGL jsdom'da yok — yardımcılar + açılma bağlantısı); backend
+1045/1045 (+1 skip), frontend 151/151. Gerçek koşu: kızak 50 kg (test değeri),
+20 ms, anim 0.5 ms → 41 kare, 1961 kabuk, 4.7 MB, ilk açılış 20 s; |u|max
+41.4 mm, plastik şekil değiştirme max 1.294 ön uçta (katlanma), son karede
+silinen yok. İş `b6374029…` (koşu #47).
+- [x] Görüntüleyicide hazır görünüm (yan / üst / ön) → 1.17g-2 (impact
+  bölgesine otomatik yakınlaştırma yok — fare ile)
+
+**1.17e — SAE J211 CFC kanal filtresi** — ✅ 2026-10-03
+`app/postprocess/cfc.py`: 4 kutuplu fazsız Butterworth (2 kutuplu ileri +
+geri, J211-1 Ek C), sınıflar 60 / 180 / 600 / 1000; TH tam eşit aralıklı
+olmadığından eşit ızgarada süzülür, özgün zamanlara aradeğerle döner;
+başlangıç koşulu y₀ = x₀. Frekans yanıtı (test): CFC'de −0.45 dB (geçiş
+bandı +0.5 / −1 dB), 1.65·CFC'de −2.9 dB, 10·CFC'de < −50 dB. API `filters`
+{force_cfc, acc_cfc} → deck yanına `postprocess.json`; ham eğriler korunur,
+süzülmüşler `*_force_cfcN`, `th_node_*_A*_cfcN`, `acc_g_cfcN` eğrileri ve
+`*_max_cfcN`, `acc_peak_g_cfcN`, `hic15/36_cfcN`, `sample_ratio_cfcN` (fs/CFC,
+veri; eşik mühendisin) skalerleri. İvme bileşen bazında süzülür, bileşke
+sonra. Kuvvet: yalnız bileşke kaydedildiği için bileşke süzülüyor (not).
+UI: Çıktı kartında "Kuvvet CFC" / "İvme CFC" seçimi, sonuçta süzülmüş tepe
+değerler, grafikte "… CFCn" serileri. Hata (gerçek koşuda bulundu): HIC
+O(n³) idi (her pencere çiftinde integral yeniden) — 2000 TH örneğinde
+dakikalar, sunucu kilitlendi (iş #48 dışlandı); önek toplamı + numpy ile
+O(n²), eski tanımla birebir (test), 2000 örnek 0.05 s. Testler: backend 7,
+frontend 2; backend 1052/1052 (+1 skip), frontend 153/153. Gerçek koşular:
+(1) kızaksız kutu 4 ms, TH 0.002: ön düğüm ivmesi ham 120 464 g → CFC1000
+8 037 g, HIC15 1.43e9 → 2.57e6; duvar tepe 130.9 → CFC600 101.2 kN — AMA bu
+olay ~0.12 ms (≈ dikdörtgen darbe), CFC600 bunu tümüyle yayıyor; süzülmüş
+"tepe" filtre yanıtı, anlamlı değil (sınıf olay süresine uygun seçilmeli;
+öneri değil, veri). (2) kızak 50 kg (test) 20 ms, TH 0.01: duvar tepe 126.7
+→ 125.5 kN, 1–10 ms ortalama ham 52.0 / CFC 51.9 kN — klasik ezilme eğrisi
+(ilk tepe, katlanma salınımları 25–90 kN, ~50 kN plato, kızak ~9.5 ms'de
+duruyor). İşler `262d471a…` (#49), `3530b829…` (#50).
+
+**1.17e2 — Koşu detay grafikleri (kuvvet, ivme, enerji; ham + CFC)** — ✅ 2026-10-04
+Kullanıcı isteği ("grafikler frontendde mutlaka olmalı"): 1.17e'de ham–CFC
+karşılaştırma görüntüleri uygulama dışında çizilmişti. `CrashRunCharts`:
+geçmişte çözülmüş koşuya 📈 → o koşunun job.json eğrilerinden kuvvet (duvar,
+temas, kesit; ham + CFC), ivme bileşkesi (ham + CFC, g), enerji (IE, KE, J)
+grafikleri + IE / enerji dengesi / hourglass / impuls / HIC (ham + CFC);
+"t üst (ms)" görünüm kırpma. `CrashForceChart`: birim / aria parametresi;
+CFC serisi ham eşiyle aynı renk ve kalın, eşi olan ham ince ve soluk (renk
+sırası taban anahtara göre — ilk denemede 4 renk döngüsü eşleri ayırıyordu;
+yamada `\d` kaçışı düşmüştü, testle yakalanacak hale getirildi).
+Karşılaştırma: varsayılan eğriler kuvvetler + CFC + acc_g (+ CFC); eğri
+listesi tüm eğriler, ivmede eksen "İvme · g". Testler: frontend +3, backend
++1; frontend 156/156. Ekran: koşu #50 (kızak 50 kg test, CFC600) kuvvet —
+kesit x=150 kuvveti duvar kuvvetini izliyor (kızak yavaşlama kuvveti); #49
+ivme ham 120 464 g / CFC1000 1 931 g (ilk 0.3 ms).
+
+**1.17f — Validasyon seti (veri; kabul kriteri yok)** — ✅ 2026-10-04
+Rapor `docs/validation/crash_validation.md` (+ `.json`), üretici
+`backend/scripts/crash_validation.py` (çalışan backend'e senaryo koşuları),
+saf hesaplar `app/postprocess/crash_validation.py` (dalga hızı, ρcvA, 2L/c,
+kare tüp Pm formülleri, temas penceresi, plato, kızak ezilmesi δ = ∫(v0 −
+I/M) dt — mesh'ten bağımsız). `GET /crash/validation` + Crash panelinde
+"Validasyon (1.17f)" kartı (oranlar 3 hane; geçti/kaldı yok). Sonuçlar
+(crash_box_shell 300×50×40, t 3, S235, 10 m/s): V1 elastik — plato 204.54
+/ ρ·c₀·v·A 204.63 kN (0.9995; levha hızıyla 0.954), temas 0.1182 / 2L/c₀
+0.1160 ms (1.019), impuls / 2Mv0 0.966. V2 elasto-plastik — plato 118.89 /
+σy·A 118.44 kN (1.004), impuls 0.974. V3 kızak 50 kg (test) — Pm = IE/δ
+5 / 4 / 3 / 2.5 mm: 59.53 / 59.01 / 56.36 / 55.97 kN (3→2.5 mm %0.7), W&A
+1983 48.73 kN (oran 1.15–1.22), A&J 1984 66.57 kN (0.84–0.89); enerji dengesi
+≤ %0.51 (V1), ≤ %0.18 (V3); 2.5 mm koşusu 228 s. Testler: backend +5,
+frontend +1. Koşular #51–#56.
+- [ ] Kabul kriterleri (oran bantları, enerji / hourglass eşikleri) — mühendis
+- [ ] Dikdörtgen kesitte C = (b+d)/2 ve formül geçerliliği — mühendis değerlendirmesi
+
+**1.17g — Temizlik + frontend eksikleri** — ✅ 2026-10-04 (kullanıcı gece
+"1.17'yi tamamen bitir, frontend eksiklerini tamamla" — alt adımlar ayrı commit)
+- g1 UI küçükleri: ağaçta bölge türü boyuttan (kenar / yüzey / nokta + adet),
+  iş bitince hub'ın eski "cycle 1" satırı gösterilmez, şema altyazısı 2D / 3D.
+- g2 Deforme şekil görüntüleyicide hazır görünümler +X −X +Y +Z İzo.
+- g3 Material adımında crash LAW36 eğri düzenleyici (kullanıcı malzemesi;
+  kütüphane salt okunur; PUT /materials/{id}/crash-curves) + Crash kartında
+  "eğriler malzemeden" (tab_curves boş → 1.14c2 malzeme eğrisi).
+- g4 Çözüm sonrası Radioss restart (*.rst) silinir — crash klasörünün ~%49'u
+  (847 MB'ın 414 MB'ı), restart desteği yok; `CRASH_KEEP_RST=1` korur. Eski
+  işler için kuru-koşulu `scripts/cleanup_crash_rst.py` (çalıştırılmadı: 97
+  dosya / 433 MB — karar kullanıcının).
+- g5 `scripts/reprocess_crash_jobs.py`: eski işler ham çıktıdan güncel
+  post-process ile; ilk seferde `scalars_prev` saklanır; dev'de 48 kaydın 33'ü
+  güncellendi (226 yeni skaler), ikinci koşu 0 değişiklik.
+- g6 Çok arayüzde TH sütun sırası doğrulandı (geometri 3928, kutu + plaka,
+  solid, 3 ms): A [kutu→plaka TYPE7, kutu self] → contact_1 86.349 kN /
+  6.743 N·s (1.12a tek temasla birebir), contact_2 0; B sıra ters → contact_2
+  86.349 / 6.743, contact_1 0. Başlıklar arayüz numarası + adıyla
+  ("contact_1_p0_on_p1"), arayüz-majör. İşler `7d9bd501…`, `d38d5df6…`.
+- g7 Crash panelinde "Hızlı senaryo" kartı: 1.17a `/crash/scenario` arayüzü
+  (L h b t, eleman, v0, süre, kızak kg → rijit gövde kutu_arka, CFC, malzeme)
+  — geometri yüklemeden koşu, ilerleme, bitince geçmiş yenilenir. Tarayıcıda
+  uçtan uca: koşu #60 (kızak 50 kg, 12 ms, CFC600) solved → geçmiş üstte →
+  grafikler. Gözlem: bu koşuda CFC600 tepe (122 kN) ham tepeden (120 kN)
+  büyük — varsayılan TH aralığı t_end/200 = 0.06 ms ham tepeyi kaba
+  örnekliyor (#50'de 0.01 ms ile 126.7) + Butterworth basamak aşımı; veri.
+Testler: backend 1059/1059 (+1 skip), frontend 164/164.
+
+**1.17h — Hourglass kontrolü** — ✅ 2026-10-04 (kullanıcı: "hourglass kart
+kontrolü olsun, grafikte de görelim")
+- Kabuk /PROP/TYPE1 Hm Hf Hr, solid /PROP/TYPE14 h; 0 = Radioss varsayılanı.
+  Aralıklar hm_cfg'den (prop_p1_shell 0…0.05, varsayılan 0.01;
+  prop_p14_solid h 0…0.15, varsayılan 0.10) — dışı 422. Dm Dn qa qb sıfır.
+- Global HOURGLASS ENERGY eğri olarak (`hourglass_energy`) saklanır; Enerji
+  grafiğinde İç / Kinetik yanında; panelde HG_final · HG/IE.
+- Gerçek koşu (kutu kabuk, Ishell 1, kızak 50 kg, 8 ms): Hm=Hf=Hr 0.001 →
+  HG 41 J, HG/IE 0.017 (#61); 0.05 → 191 J, 0.081 (#62). Duvar tepe 120.7 /
+  120.8 kN. Veri; seçim mühendisin.
+
+**Sonraki mikro-adımlar (her biri ayrı onay)** — sıralama 2026-10-03, kullanıcı
+kararı: **önce standart explicit ortam tamamlanır ve valide edilir, ML (DOE +
+öğrenme + tahmin) en sonda ve ML tezgahında** (durability'deki gibi; değişken
+parametreler ve aralıklar tezgahta mühendisin seçimi). 1.17 bitmeden ML'ye
+geçilmez.
+
+*1.17 — Standart explicit ortam* — ✅ tamam 2026-10-04 (b–g)
+*1.18 — Plaka–küre delinme örneği* (kullanıcı isteği 2026-10-03; 1.17b/c
+üzerine): iki parçalı plaka + küre şablonu, rijit küre, plaka köşe / kenar
+sabit, küreye sabit hız; cam ≈ LAW1 + /FAIL. Hız ve boşluk mühendisin
+(explicit süre maliyeti).
+- 1.18a ✅ 2026-10-04 `plate_ball_shell` şablonu: kare plaka orta yüzeyi
+  (z = 0, a × a) + üstünde g boşlukla küre yüzeyi; iki parça (0 plaka, 1
+  küre); bölgeler plaka_kenar (4 kenar), plaka, kure (6 yüz). Tek parça OCC
+  küresi mesh katmanının dikişli açılışında meshlenmiyor ("Impossible to mesh
+  periodic surface"; dilimli küre kutup kenarı yüzünden kapalı döngü
+  kuramıyor) → küre 6 yamalı küp-küre: kenarlar büyük çember yayı, yama iç
+  yüzeyi küre üstündeki 7×7 eş-açılı noktaya oturtulmuş dolgu. Ölçülen:
+  düğüm yarıçap sapması < %0.2, alan %99.9. Tarayıcıda: 2 parça, 7 yüzey,
+  4263 düğüm / 4140 quad (5 mm). Ek: seçili bölge çipinde hover yazıyı
+  görünmez yapıyordu (CSS).
+- 1.18b ✅ 2026-10-04 `/crash/scenario` plate_ball_shell: yeni parça rolü
+  `free` (ilk hız yok, /BCS yok; grup 1 dışında → rijit duvar ikincili
+  değil); plaka free + kalınlık t, küre moving + `ball_thickness_mm`;
+  `template_defaults` açıkken boş listeler: /RBODY kure (`ball_mass_kg` ana
+  düğüme), /BCS plaka_kenar 111111, TYPE7 master küre / slave plaka; duvar
+  yok, ilk hız −z. Küre malzemesi `ball_material_id` (boş = plaka). Gerçek
+  koşu #63 (S235 300×300×5, D50 + 1 kg, 10 m/s, 4 ms, 5 mm): KE₀ 53.06 J =
+  ½·1.062·10²; temas Fmax 12.9 kN (t 1.66 ms); impuls 15.01 N·s ≈ küre Δp
+  1.062·(10 + 4.16) = 15.03 (geri sekme); plaka IE 42.1 J; denge %0.91;
+  HG/IE 0.006. Düzeltmeler: rijit gövde elemanları anim'de ilk karede
+  EROSION_STATUS 0 → "silinmiş" sayılıp küre çizilmiyordu (t = 0'da kapalı =
+  silinme değil); görüntüleyici +Y görünümünde yukarı −Z idi → +Z.
+- 1.18c ✅ 2026-10-04 Hızlı senaryo kartında şablon seçimi: crash box (rijit
+  duvar) | plaka–küre (a, t, D, g, küre kabuk t, küre ek kütle; kızak alanı
+  yok; kurulum backend `template_defaults`). Malzeme plaka ve küreye aynı.
+  API tipi: rol `free`, `ball_*` alanları.
+- 1.18d ✅ 2026-10-04 Hız taraması `scripts/plate_ball_sweep.py` →
+  `docs/validation/plate_ball_sweep.{json,md}`; küre kütlesi 2·KE₀/v0², son hız
+  impulstan (işaretli) ve enerjiden (kontrol) — `app/postprocess/plate_ball.py`.
+  TEST değerleri (mühendis değer vermeden "devam"): S235 LAW2, plaka 300×300×2,
+  TENSSTRAIN ε_t1 0.15 ε_t2 0.25, küre D50 + 1 kg, 5 mm, 2 ms. Sonuç (veri):
+  25 m/s geri sekme +2.26 m/s, silinen 0 (#66); 50 → −37.5 m/s, 25 silinen
+  (#67); 100 → −95.3, 28 (#68); 150 → −146.4, 56 (#69); 200 → −195.1, 82
+  (#70). İki yöntem ≤ 0.03 m/s örtüşüyor. HG/IE 150–200 m/s'de 0.13–0.17
+  (5 mm eleman, kaba). Delinme eşiği hükmü yok; deneme koşusu #65 (100 m/s).
+- 1.18e ✅ 2026-10-04 Doğrulama (kullanıcı: "doğruluğu nasıl ispatlayacağım"):
+  validasyon setine V4 elastik yarı-statik plaka–küre (ankastre kare plaka
+  k = D/(0.0056·a²), kütle–yay) ve V5 Recht–Ipson uydurması; `--only` ile
+  tek vaka; arayüzde formül + uydurma satırı. V4 #72: CFC60 tepe 0.977,
+  ilerleme 1.006, süre 1.009, impuls 0.989 (ham tepe 1.346 — plaka modları);
+  HG/IE 0.222 (Ishell 0; #73 Ishell 24 → 0). V5: v_bl 28.75 m/s (25–50
+  aralığında), a 0.988, R² 0.9998. Ayrıntı `docs/validation/crash_validation.md`.
+- Açık (mühendis): gerçek malzeme / FAIL değerleri, eleman boyu, kabul
+
+*Explicit şablon kataloğu — 1.18 sonrası, 1.19'dan (ML) ÖNCE* (kullanıcı
+kararı 2026-10-03: "durability ile aynı mantık"). Her örnek durability
+şablonları gibi: parametrik `GeometryTemplate` (parametreler, bölgeler,
+karakteristik uzunluk) + crash senaryo varsayılanları (duvar / impaktör,
+kütle, bölge BC, hız, çıktılar — 1.17a deseni) + kendi doğrulama referansı
+(analitik ya da literatür; durability'deki `analytic` karşılığı) + daha sonra
+ML tezgahında şablon başına DOE / model. Problem tanımları açık literatür ve
+Altair Radioss Example Guide'dan (RD-E; Radioss ailesi) referans alınır, dosya
+kopyalanmaz. Durum: ✓ hazır · ◐ küçük ek altyapı · ✗ büyük yeni kabiliyet.
+- Otomotiv: (1) crash box eksenel ezilme ✓ [RD-E 1700]; (2) S-kiriş / ön kiriş
+  eğilmeli çarpma ◐ [RD-E 0300]; (3) direk (pole) yan çarpması ◐
+  (`/RWALL/CYL`); (4) tampon / kaput impaktörü (HIC) ◐ (rijit küre + CFC);
+  (5) düşme testi ◐ (`/GRAV` + zemin) [RD-E 0600]; (6) kapı intrüzyonu ◐
+  (zorlanmış hız, 1.17c)
+- Savunma: (7) plaka delinme ◐ (= 1.18) [RD-E 2600]; (8) Taylor çubuğu ◐;
+  (9) Hopkinson çubuğu ◐ [RD-E 0800]; (10) patlama yüklü plaka ◐ (zamana bağlı
+  basınç yükü); (11) kuş / yumuşak cisim ✗ (SPH) [RD-E 4900]; (12) mayın /
+  araç altı patlama ✗ (ALE, Faz 1 dışı)
+- İş makineleri: (13) ROPS (ISO 3471) ◐ kabin çerçevesi + yavaş itme + enerji;
+  (14) FOPS (ISO 3449) ◐ rijit cisim düşürme; (15) kepçe / bıçak taş darbesi ◐
+- Verifikasyon tabanı (1.17f ile ortak): dalga yayılımı [RD-E 1900], çekme
+  testi [RD-E 1100], kare plaka [RD-E 1800]
+- Ortak altyapı (katalogdan önce): silindirik / küresel rijit duvar, yerçekimi,
+  zamana bağlı basınç yükü, zorlanmış hız (1.17c), CFC (1.17e). Önerilen ilk
+  set (en az yeni altyapı): crash box, direk, düşme testi, plaka delinme,
+  Taylor çubuğu, ROPS. Öncelik ve sıra kullanıcının; ✗ olanlar ayrı faz.
+
+**Katalog adımları (kullanıcı 2026-10-04: "senaryolar hazır olsun, DOE'ler
+sonra")**
+- K0 ✅ 2026-10-04 Katalog altyapısı: `app/api/crash_catalog.py` 15 madde
+  (sektör, durum ready / planned / major, şablon, referans, doğrulama, eksik
+  altyapı, adım); GET /crash/catalog; `/crash/scenario` şablon listesi
+  katalogdan (ready). Arayüz: Crash panelinde katalog listesi (2/15 hazır),
+  Hızlı senaryo kartı genel — örnek listesi katalogdan, geometri alanları
+  şablon şemasından (sembol, birim, varsayılan), şablona özgü ek alanlar tek
+  kayıt (EXTRAS).
+- K0 ek: ana sayfa "Şablondan üret" listesi sekmeye göre (crash → `crash`
+  etiketli, durability / modal → diğerleri) + crash şablon şemaları; eski
+  "Senaryo: Rigid wall / Plaka–küre" ön ayarı kaldırıldı (yalnız duvar yönünü
+  z'ye çeviriyordu, 1.18 şablonuyla karışıyordu).
+- K1 ✅ 2026-10-04 Taylor çubuğu: `taylor_bar` (dolu silindir, solid), katalog
+  ready, `/crash/scenario` 3D yolu (tet; kabuk kalınlığı yok; duvar x = 0 +x).
+  V6: L1/L0 100 m/s 0.8675 / WG 0.8462 (1.025), 150 m/s 0.7356 / 0.6867
+  (1.071); 1.0 mm mesh 0.8678 (yakınsamış); impuls 0.996–0.999. Görüntüleyici
+  hatası düzeltildi: sınır küresi sıfır konumdan kalıyordu → orijin görünmeyen
+  bakışlarda (+Y / +Z) model kırpılıyordu.
+- K2 ✅ 2026-10-04 Düşme testi: /GRAV kartı (`CrashGravityParams`, hm_cfg r51;
+  tüm parça düğümleri + rijit gövde ana düğümleri; 0 ivme yasak — Radioss 0'ı
+  1 sayar); `drop_box_shell` (kapalı kabuk kutu, rx / ry ile yüzey / kenar /
+  köşe, en alt nokta g'de); senaryo: zemin z = 0, H → v0 = √(2·g·H),
+  varsayılan /GRAV −9.81 Z. V7: KE₀/mgH 1.001, temas anı 1.000, zemin
+  impulsu (yerçekimi dahil) 0.9997 / 1.0003; yüzey düşmesinde denge %7.1
+  (HG 0.17), köşede %0.5. Kartta H ve g alanları, ana sayfada şema.
+- K3 ✅ 2026-10-04 Direk yan çarpması: rijit duvar türü `cyl` (/RWALL/CYL,
+  hm_cfg r51; eksen noktası + yön + çap; `normal` yalnız ilk hız yönü);
+  `pole_beam_shell` (kabuk dikdörtgen tüp, y ekseni; uç halkaları rijit gövde +
+  `end_mass_kg`); direk Ø `pole_diameter_mm` (varsayılan 254), kiriş ortasında.
+  V8: impuls 0.999; Pm / (4·Mp/L) 0.805 (10 mm), 0.755 (7.5 mm) — kesit
+  yerel çökmesi, mesh'le düşüyor (yakınsamadı). Kartta direk Ø ve uç kütlesi.
+- K4 ✅ 2026-10-04 ROPS: `rops_frame_shell` tek parça bükülmüş dikdörtgen tüp
+  portal (T-birleşimli tüpler dikişli STEP'te ikiz düğüm bırakıyordu → süpürme);
+  senaryo: hareketli parçasız koşu (yük zorlanmış hızdan; grup 1 / ilk hız
+  yazılmaz), tabanlar /BCS, yük köşesi RBODY + IMPVEL +y (`push_speed_m_s`),
+  /SECT z = H/2. V9: plato / 4·Mp/(H − R) 0.996 (15 mm), 0.980 (10 mm);
+  ∫F dδ / IE 1.005. Enerji dengesi paydası düzeltildi (sürülen koşuda hep 1
+  çıkıyordu). Katalog 6/15 hazır; planlı 7, ayrı faz 2.
+- K5 ✅ 2026-10-04 Kafa impaktörü (HIC): katalog örneği `head_impactor` →
+  `plate_ball_shell` (aynı şablon, örnek başına kart başlangıç değerleri
+  `defaults`); rijit gövde `th_accel` (ana düğüm ivmesi /TH/NODE ilk sırada →
+  acc_g / HIC / CFC); `ball_total_mass_kg` (ek = toplam − kabuk). V10: ∫|a|dt /
+  (I/m) 0.9995; HIC15 CFC1000 4782 (düz sac, veri). Katalog 7/15.
+- K6 ✅ 2026-10-04 FOPS: katalog örneği `fops` → `plate_ball_shell` + düşme
+  (H → v0, /GRAV) + toplam kütle; kartta örneğe özgü ek alan kaydı (EXTRAS
+  örnek id'si > şablon). V11: KE₀ / mgH 1.0003; ilerleme 97 mm (veri); temas
+  kabuk orta yüzeyi + TYPE7 boşluğuyla başlıyor (geometrik g değil). Katalog 8/15.
+- K7 ✅ 2026-10-04 S-kiriş: `s_rail_shell` (süpürülmüş S tüp, tek parça);
+  /BCS rijit gövde ana düğümüne (`rigid_body`), S-kiriş senaryosunda kızak
+  kılavuzu 011111 (yönlendirmesiz koşu dönerek duvardan ayrıldı). V12: impuls
+  1.001; ortalama kuvvet / düz tüp W&A 0.234 (eğilmeli çökme, veri). Katalog 9/15.
+- K8 ✅ 2026-10-04 Kapı intrüzyonu: `door_beam_shell` (kiriş + yarım silindir
+  impaktör, iki parça); senaryo: impaktör rijit gövde + IMPVEL +x + kılavuz
+  011111, uçlar /BCS, TYPE7. V13: plato / 8·Mp/L 1.054; ∫F dδ / IE 0.998;
+  120 mm'de 25 kN (membran). Kılavuzsuz impaktör kayıp ayrılıyordu. Katalog 10/15.
+- K9 ✅ 2026-10-05 Hopkinson çubuğu: `hopkinson_bar` (iki solid silindir);
+  senaryo: giriş free + çarpıcı moving, TYPE7, x = Li/4 kesiti. V14: plato /
+  ρcvA/2 0.983, süre / 2Ls/c 0.972, dalga yolu 1.051. Katalog 11/15.
+- K10 ✅ 2026-10-05 Patlama yüklü plaka: zamana bağlı basınç /PLOAD
+  (`CrashPressureLoadParams`, Friedlander, hm_cfg r2021; parça kabuk yüzeyi,
+  normal yönü); `blast_plate_shell`; hareketli parçasız koşu basınçla da. V15:
+  serbest plaka momentumu / impuls 1.0003; ankastrede 0.65 (mesnet, veri).
+  Katalog 12/15.
+- K11 ✅ 2026-10-05 Kepçe / taş: `bucket_rock_shell` (kavisli taban + küp-küre
+  taş; `add_cube_sphere` ortak); senaryo plaka–küre kurulumu (bölge adları
+  parametreli). V16: ∫|a|dt / (I/m) 1.013; denge %3.7 (sert temas, veri).
+  Katalog 13/15 — planlı madde kalmadı; kuş (SPH) ve mayın (ALE) ayrı faz kararı.
+- K12 ✅ 2026-10-05 Kuş çarpması (kullanıcı: "diğer şablonlara devam et"): SPH
+  mermi (`CrashSphProjectileParams`; kapsül kübik kafes, /SPHCEL + /PROP/SPH +
+  /MAT/HYDRO, TYPE7 → hedef), katalog `bird_strike` → `blast_plate_shell` +
+  kuş kütlesi. V17 rijit hedef: ρAv² 0.945, L/v 0.924, impuls 1.047; ankastre
+  plaka veri. SPH parçacıkları animasyonda görünmez (yüzey yok). Katalog 14/15.
+- K13 ✅ 2026-10-05 Mayın / araç altı patlama: /LOAD/PBLAST
+  (`CrashBlastLoadParams`, zemin yansımalı), yük yüzeyi /SURF/SEG patlamaya
+  yönlü; katalog `underbody_blast` → `blast_plate_shell` + TNT / mesafe. V18:
+  Hopkinson–Cranz impuls 8.000 / varış 2.000; ankastre taban çökme 183 mm.
+  Tam ALE kapsam dışı (ayrı faz). **Katalog 15/15.**
+
+*1.19 — ML tezgahı entegrasyonu* (1.17 + 1.18 bittikten sonra): crash
+senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params →
+girdi × hedef), vekil model (`ml/crash/`, durability kodundan bağımsız), CV
+metrikleri, tahmin; DOE şeması ayrı onay; hedef tanımları (ezilme mesafesi,
+ortalama kuvvet …) mühendisten.
+
+*Ertelenen (Faz 1 dışı / ayrı karar)*
+- Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
+- Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
+- Midsurface kenar ikizlenmesi, parça numarası tutarlılığı (durability ile ortak)
+- Araç (NHTSA) ve IIHS bariyer modelleri — lisans (LSTC ftp kimlik istiyor),
+  proje kuralı (Ansys / LS-DYNA yok) ve hesap gücü (MPI yok; Camry 8 MPI ile
+  ~15 sa)
 
 ## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 

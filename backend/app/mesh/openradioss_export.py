@@ -3,6 +3,10 @@
 Faz 1.2: CalculiX `generate_mesh` çıktısını (.msh, tet10) değiştirmez. Explicit
 crash /TETRA4 ister — tet10'un ilk 4 köşesi alınır, kenar-ortası düğümler
 yazılmaz. Hex8/hex20 köşeleri /BRICK olur.
+
+1.13: hacim elemanı olmayan (2D) mesh kabuk olarak okunur — tri3/tri6 → /SH3N,
+quad4/quad8/quad9 → /SHELL (köşe düğümleri). Parça = kenar paylaşan kabuk
+bileşeni (CalculiX 2D yolu ve önizleme ile aynı eşleme).
 """
 
 from __future__ import annotations
@@ -20,6 +24,12 @@ _TET4 = 4
 _TET10 = 11
 _HEX8 = 5
 _HEX20 = 17
+# Gmsh eleman tipleri (yüzey / kabuk).
+_TRI3 = 2
+_TRI6 = 9
+_QUAD4 = 3
+_QUAD8 = 16
+_QUAD9 = 10
 
 
 @dataclass
@@ -29,6 +39,16 @@ class RadiossMesh:
     nodes: list[dict[str, float | int]]
     tets: list[tuple[int, int, int, int, int]] = field(default_factory=list)
     bricks: list[tuple[int, ...]] = field(default_factory=list)
+    # 1.13 kabuk: (eid, n1..n4) /SHELL ve (eid, n1..n3) /SH3N.
+    shells: list[tuple[int, int, int, int, int]] = field(default_factory=list)
+    sh3n: list[tuple[int, int, int, int]] = field(default_factory=list)
+    # eleman id → parça (0 tabanlı; mesh katmanının part_id'si = hacim sırası,
+    # bkz. gmsh_adapter._compute_face_to_part). Deck parça başına /PART yazar.
+    element_parts: dict[int, int] = field(default_factory=dict)
+    # Aynı koordinatta (1e-6 mm) duran ama AYRI düğüm sayısı (fazlalık).
+    # > 0: o konumda elemanlar birbirine bağlı değil (ör. ikizlenmiş kenar).
+    # Yalnız veri; deck bunu düzeltmez.
+    coincident_nodes: int = 0
 
 
 def _tet_signed_volume(
@@ -73,13 +93,14 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
 
         tets: list[tuple[int, int, int, int, int]] = []
         bricks: list[tuple[int, ...]] = []
+        element_parts: dict[int, int] = {}
         eid = 1
 
         entities = gmsh.model.getEntities(dim=3)
         if not entities:
             entities = [(-1, -1)]
 
-        for edim, etag in entities:
+        for part_index, (edim, etag) in enumerate(entities):
             kwargs: dict = {"dim": 3}
             if etag != -1:
                 kwargs["tag"] = etag
@@ -97,18 +118,45 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                         if vol < 0:
                             n3, n4 = n4, n3
                         tets.append((eid, n1, n2, n3, n4))
+                        element_parts[eid] = part_index
                         eid += 1
                     elif gtype in (_HEX8, _HEX20) and len(conn) >= 8:
                         bricks.append((eid, *conn[:8]))
+                        element_parts[eid] = part_index
+                        eid += 1
+
+        shells: list[tuple[int, int, int, int, int]] = []
+        sh3n: list[tuple[int, int, int, int]] = []
+        if not tets and not bricks:
+            from app.mesh.gmsh_adapter import _surface_parts_by_coincident_nodes
+
+            face_to_part = _surface_parts_by_coincident_nodes()
+            for _edim, ftag in gmsh.model.getEntities(dim=2):
+                pid = face_to_part.get(int(ftag), 0)
+                etypes, tag_lists, node_lists = gmsh.model.mesh.getElements(dim=2, tag=ftag)
+                for etype, tags, enodes in zip(etypes, tag_lists, node_lists):
+                    if len(tags) == 0:
+                        continue
+                    n_per = len(enodes) // len(tags)
+                    gtype = int(etype)
+                    for ei in range(len(tags)):
+                        conn = [int(enodes[ei * n_per + k]) for k in range(n_per)]
+                        if gtype in (_TRI3, _TRI6):
+                            sh3n.append((eid, conn[0], conn[1], conn[2]))
+                        elif gtype in (_QUAD4, _QUAD8, _QUAD9):
+                            shells.append((eid, conn[0], conn[1], conn[2], conn[3]))
+                        else:
+                            continue
+                        element_parts[eid] = pid
                         eid += 1
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
 
-    if not tets and not bricks:
+    if not tets and not bricks and not shells and not sh3n:
         raise MeshError(
-            f"OpenRadioss export için 3D tet/hex yok ({mesh_path.name}). "
-            "Crash yolu solid mesh ister; 2D shell CalculiX'te kalır."
+            f"OpenRadioss export için solid (tet/hex) ya da kabuk (tri/quad) eleman yok "
+            f"({mesh_path.name})."
         )
 
     used: set[int] = set()
@@ -116,10 +164,49 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         used.update((n1, n2, n3, n4))
     for brick in bricks:
         used.update(brick[1:])
+    for el in [*shells, *sh3n]:
+        used.update(el[1:])
 
     nodes = [
         {"id": nid, "x": xyz[nid][0], "y": xyz[nid][1], "z": xyz[nid][2]}
         for nid in sorted(used)
         if nid in xyz
     ]
-    return RadiossMesh(nodes=nodes, tets=tets, bricks=bricks)
+    coords = {(round(n["x"], 6), round(n["y"], 6), round(n["z"], 6)) for n in nodes}
+    return RadiossMesh(
+        coincident_nodes=len(nodes) - len(coords),
+        nodes=nodes,
+        tets=tets,
+        bricks=bricks,
+        shells=shells,
+        sh3n=sh3n,
+        element_parts=element_parts,
+    )
+
+
+def region_node_ids(mesh_path: Path, groups: dict[str, tuple[int, list[int]]]) -> dict[str, list[int]]:
+    """Bölge (CAD varlıkları: boyut + etiketler) → mesh düğüm kimlikleri (1.17b).
+
+    Crash deck'inde düğüm kimliği = gmsh düğüm etiketi (`gmsh_msh_to_radioss`),
+    bu yüzden eşleme doğrudan. Varlığın sınırındaki düğümler dahil (kenarın uç
+    noktaları, yüzeyin kenarları).
+    """
+    mesh_path = Path(mesh_path)
+    if not mesh_path.exists():
+        raise MeshError(f"Mesh dosyası yok: {mesh_path.name}")
+    out: dict[str, list[int]] = {}
+    _gmsh_lock.acquire()
+    gmsh.initialize(interruptible=False)
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(mesh_path))
+        for name, (dim, tags) in groups.items():
+            ids: set[int] = set()
+            for tag in tags:
+                nt, _c, _p = gmsh.model.mesh.getNodes(int(dim), int(tag), includeBoundary=True)
+                ids.update(int(t) for t in nt)
+            out[name] = sorted(ids)
+    finally:
+        gmsh.finalize()
+        _gmsh_lock.release()
+    return out
