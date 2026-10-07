@@ -6833,3 +6833,89 @@ p {
 .model-tree-row-pickable:hover {
   background: var(--surface-2);
 }
+
+/* TODO 11.9 — kart tabanlı yükleme / tutma + kapsama özeti */
+.crash-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.crash-cards-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crash-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crash-card-head select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.crash-card-kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.crash-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.crash-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-card-field input,
+.crash-card-field select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.crash-coverage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--ink);
+}
+
+.crash-coverage-row.warn {
+  color: var(--danger);
+}

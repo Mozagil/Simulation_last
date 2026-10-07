@@ -616,6 +616,29 @@ class _NodeSelection(BaseModel):
         return self
 
 
+class CrashInitVelParams(_NodeSelection):
+    """/INIVEL/TRA kartı (TODO 11.9): bölge ya da parça düğümlerine ilk hız.
+
+    Kart tabanlı yükleme: `initial_velocities` boş değilse bariyer hızı
+    parçalara otomatik verilmez, ilk hız yalnız bu kartlardan gelir. Seçime
+    bağlı rijit gövde ana düğümü de aynı hızı alır (ek kütle momentuma girsin).
+    """
+
+    speed_m_s: float = Field(..., ge=0, description="Hız büyüklüğü (m/s = mm/ms)")
+    direction: tuple[float, float, float] = Field(..., description="Yön (normalize edilir)")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashInitVelParams":
+        _finite(self.speed_m_s, "speed_m_s")
+        for i, c in enumerate(self.direction):
+            _finite(c, f"direction[{i}]")
+        _unit(self.direction, f"'{self.name}' direction")
+        return self
+
+    def velocity_mm_per_ms(self) -> tuple[float, float, float]:
+        return _scale(self.speed_m_s, _unit(self.direction, "direction"))
+
+
 class CrashMassParams(_NodeSelection):
     """/ADMAS (1.17b, hm_cfg radioss110): Iflag 1 = toplam kütle düğümlere
     eşit dağıtılır, 0 = her düğüme bu kütle. kg (kg–mm–ms)."""

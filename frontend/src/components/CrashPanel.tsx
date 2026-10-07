@@ -16,6 +16,7 @@ import CrashHistory from "./CrashHistory";
 import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
 import CrashValidation from "./CrashValidation";
+import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import CrashSchematic from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
@@ -59,6 +60,7 @@ export default function CrashPanel({
   selectedPartIds = [],
   onPartSelect,
   onPartHover,
+  regions = [],
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -75,10 +77,14 @@ export default function CrashPanel({
   selectedPartIds?: number[];
   onPartSelect?: (partId: number) => void;
   onPartHover?: (partId: number | null) => void;
+  /** Physical Group adları (şablon bölgeleri + kullanıcı grupları) — kart hedefi (11.3/11.9). */
+  regions?: string[];
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
-  const [partRoles, setPartRoles] = useState<Record<number, "moving" | "fixed">>({});
+  const [partRoles, setPartRoles] = useState<Record<number, PartRole>>({});
+  // TODO 11.9 — kart tabanlı yükleme / tutma
+  const [loadCards, setLoadCards] = useState<LoadCard[]>([]);
   // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [useRigidWall, setUseRigidWall] = useState(true);
@@ -248,6 +254,7 @@ export default function CrashPanel({
             : undefined,
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
+        ...cardsPayload(loadCards),
         model: modelFor(matCard, "Global"),
         ...outputPayload(output),
       });
@@ -413,6 +420,7 @@ export default function CrashPanel({
                           type="button"
                           className={role === "moving" ? "doe-seg-opt active" : "doe-seg-opt"}
                           aria-pressed={role === "moving"}
+                          title="İlk hızı alır (ilk hız kartı yoksa bariyer hızı); rijit duvarla temas eder"
                           disabled={busy}
                           onClick={() => setPartRoles((r) => ({ ...r, [pid]: "moving" }))}
                         >
@@ -422,10 +430,21 @@ export default function CrashPanel({
                           type="button"
                           className={role === "fixed" ? "doe-seg-opt active" : "doe-seg-opt"}
                           aria-pressed={role === "fixed"}
+                          title="Tüm düğümleri /BCS ile kilitli; ilk hız almaz"
                           disabled={busy}
                           onClick={() => setPartRoles((r) => ({ ...r, [pid]: "fixed" }))}
                         >
                           Sabit
+                        </button>
+                        <button
+                          type="button"
+                          className={role === "free" ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={role === "free"}
+                          title="İlk hız almaz, kilitlenmez — yalnız temasla hareket eder"
+                          disabled={busy}
+                          onClick={() => setPartRoles((r) => ({ ...r, [pid]: "free" }))}
+                        >
+                          Serbest
                         </button>
                       </span>
                     </td>
@@ -471,12 +490,21 @@ export default function CrashPanel({
             </tbody>
           </table>
           <p className="material-assign-hint">
-            Hareketli parça ilk hızı alır; sabit parça /BCS ile tutulur. Her parçaya malzeme
-            atanmalı (3 · Material). Kart: Global = aşağıdaki ortak kart; Ayrı = parçanın kendi
-            kartı (global kartın o anki kopyasıyla açılır).
+            Rol açıklamaları düğme ipucunda. Her parçaya malzeme atanmalı (3 · Material).
+            Kart: Global = aşağıdaki ortak kart; Ayrı = parçanın kendi kartı (global kartın o
+            anki kopyasıyla açılır).
           </p>
         </>
       )}
+
+      <CrashLoadCards
+        cards={loadCards}
+        onChange={setLoadCards}
+        partIds={partIds}
+        regions={regions}
+        roles={partRoles}
+        disabled={busy}
+      />
 
       <p className="material-assignments-title">Temas — /INTER</p>
       {contacts.length > 0 && (

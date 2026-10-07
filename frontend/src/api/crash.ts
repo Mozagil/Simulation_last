@@ -159,6 +159,11 @@ export interface CrashSolveRequest {
   th?: CrashThPayload;
   sections?: CrashSectionPayload[];
   filters?: CrashFilterPayload;
+  /** TODO 11.9 — kart tabanlı yükleme / tutma (bölge ya da parça hedefli). */
+  initial_velocities?: Record<string, unknown>[];
+  boundary_conditions?: Record<string, unknown>[];
+  imposed_velocities?: Record<string, unknown>[];
+  rigid_bodies?: Record<string, unknown>[];
 }
 
 export interface CrashSolveResponse {

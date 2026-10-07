@@ -4920,6 +4920,7 @@ function App() {
           selectedPartIds={selectedPartIds}
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}
+          regions={physicalGroups.map((g) => g.name)}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey

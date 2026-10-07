@@ -1061,7 +1061,7 @@ mevcut (Faz 0, "Montaj/parça ayrımı"), `GeometryViewer` parça
 gizleme/gösterme zaten yapıyor (`hiddenParts`). Vurgulama aynı
 mekanizmanın üstüne kurulabilir.
 
-### 11.8 `free` rolü arayüzde yok
+### 11.8 `free` rolü arayüzde yok — ✅ kod (2026-10-07)
 
 **Sorun:** Backend üç rol destekliyor:
 
@@ -1078,11 +1078,11 @@ vermek ne kilitlemek doğru. Şu an kullanıcı ikisinden birini seçmek
 zorunda ve ikisi de yanlış fizik.
 
 **Yapılacak:**
-- [ ] Üçüncü düğme: **Serbest**
-- [ ] İpucu metni: "ilk hız almaz, kilitlenmez — yalnız temasla hareket eder"
-- [ ] Mevcut iki rolün açıklaması da satır altına değil, düğme ipucuna
+- [x] Üçüncü düğme: **Serbest**
+- [x] İpucu metni: "ilk hız almaz, kilitlenmez — yalnız temasla hareket eder"
+- [x] Mevcut iki rolün açıklaması da satır altına değil, düğme ipucuna
 
-### 11.9 Rol tablosu yerine kart tabanlı yükleme/tutma
+### 11.9 Rol tablosu yerine kart tabanlı yükleme/tutma — ✅ kod (2026-10-07)
 
 **Öneri (kullanıcıdan):** PARÇALAR tablosundaki Hareketli/Sabit
 düğmeleri yerine, kart ekleyip hedefi (parça ya da bölge) kendin seç.
@@ -1121,14 +1121,21 @@ YÜKLEME / TUTMA
 ```
 
 **Yapılacak:**
-- [ ] `/INIVEL` grubunu Physical Group'tan kurabilme (backend; grup
+- [x] `/INIVEL` grubunu Physical Group'tan kurabilme (backend; grup
       mantığı hazır, kaynak seçimi eklenecek)
-- [ ] Kart listesi + "+ ekle" düğmeleri
-- [ ] **Kapsama özeti**: hangi parça hiçbir kartta geçmiyor, uyarı
-- [ ] Geriye uyumluluk: `parts[].role` alanı kalsın, kart yoksa eski
+- [x] Kart listesi + "+ ekle" düğmeleri
+- [x] **Kapsama özeti**: hangi parça hiçbir kartta geçmiyor, uyarı
+- [x] Geriye uyumluluk: `parts[].role` alanı kalsın, kart yoksa eski
       davranış (mevcut koşular ve DOE bozulmasın)
-- [ ] `free` rolü (11.8) bu düzende "hiç kart yok" demek olur — ayrı
+- [x] `free` rolü (11.8) bu düzende "hiç kart yok" demek olur — ayrı
       düğmeye gerek kalmayabilir, 11.8 ile birlikte değerlendir
+
+**Yapıldı:** backend `initial_velocities` (/INIVEL kartı, bölge/parça; doluysa
+bariyer hızı parçalara verilmez), UI `CrashLoadCards` (+ İlk hız / Sabitle /
+Dayatılmış hız / Rijit gövde, hedef parça ya da Physical Group) + kapsama
+özeti. Rol tablosu bütünlük için kaldı, `Serbest` eklendi (11.8 ayrı düğme).
+Not: elle kurulan panelde /BCS /RBODY /IMPVEL kartları önceden YOKTU (yalnız
+senaryo yolunda) — bu adımla geldi. Gerçek koşu: kartla 10 m/s, solved.
 
 **Sıra notu:** 11.2'nin (üç soru) TUTMA bölümünü de etkiliyor ama
 ondan bağımsız yapılabilir. 11.8 ile birlikte ele alınırsa `free`
