@@ -305,8 +305,8 @@ Faz 1/2/3 solverları eklendikçe aynı altyapı yeniden kullanılır.
 
 ### Mimari kararlar (değiştirilmeden önce tartışılmalı)
 
-**Eleman tipi SABİT, eleman boyutu PARAMETRE.** 3D'de tet10, 2D'de quad — ANSYS'in
-varsayılanlarıyla aynı (SOLID187 / shell). Eleman boyutu bilinçli olarak taranır, çünkü
+**Eleman tipi SABİT, eleman boyutu PARAMETRE.** 3D'de tet10, 2D'de quad — yapısal
+analizde yaygın varsayılan. Eleman boyutu bilinçli olarak taranır, çünkü
 mesh etkisini çalışmak bu projenin hedeflerinden biri. Sonuç: düğüm sayısı run'dan
 run'a DEĞİŞİR.
 
@@ -1368,20 +1368,39 @@ senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params �
 girdi × hedef), vekil model (`ml/crash/`, durability kodundan bağımsız), CV
 metrikleri, tahmin; DOE şeması ayrı onay; hedef tanımları (ezilme mesafesi,
 ortalama kuvvet …) mühendisten.
-- 1.19a ⏳ Hedef tanımları: crash_runs sonuçlarından skaler hedef çıkarımı
+- 1.19a ✅ Hedef tanımları: crash_runs sonuçlarından skaler hedef çıkarımı
   (liste mühendisten — örn. ezilme mesafesi, ortalama / tepe kuvvet, yutulan
   enerji); yalnız postprocess fonksiyonları + test.
-- 1.19b ⏳ Korpus okuyucu `ml/crash/corpus.py`: crash_runs + geometri
+- 1.19b ✅ Korpus okuyucu `ml/crash/corpus.py`: crash_runs + geometri
   template_params → girdi × hedef tablosu; durability `ml/corpus.py`'den
   bağımsız; test.
-- 1.19c ⏳ DOE şeması (ayrı onay): senaryo, parametre adları + aralıklar,
+- 1.19c ✅ DOE şeması (ayrı onay): senaryo, parametre adları + aralıklar,
   örnekleme; sunucu tarafında toplu koşu → crash_runs.
-- 1.19d ⏳ Vekil model `ml/crash/`: eğitim + K-fold CV metrikleri (R², MAE
+- 1.19d ✅ Vekil model `ml/crash/`: eğitim + K-fold CV metrikleri (R², MAE
   hedef başına); model kaydı; test.
-- 1.19e ⏳ Tahmin endpoint'i: parametre → hedef tahmini + CV metrikleri
+- 1.19e ✅ Tahmin endpoint'i: parametre → hedef tahmini + CV metrikleri
   (yeni crash yolu, `/solve`'a dokunmadan); test.
-- 1.19f ⏳ ML tezgahında crash sekmesi: korpus özeti, CV metrikleri, tahmin
+- 1.19f ✅ ML tezgahında crash sekmesi: korpus özeti, CV metrikleri, tahmin
   formu (UI, işlevle birlikte sunulabilir kalitede).
+- 1.19 notu (2026-10-07): hedefler peak/mean force, yutulan enerji, ezilme;
+  RF + K-fold CV; DOE LHS + noktalı yol aralıkları (`/crash/doe/studies`).
+  200 koşuluk crash DOE sunucuda (Codespace) koşulacak — operasyonel borç.
+
+*1.20 — Crash arayüz düzeni (2026-10-07) ✅* (Claude Design "Crash BC Sidebar"
++ tasarım adım 3, kullanıcı geri bildirimiyle):
+- Crash paneli akordeon: Çarpma / Parçalar / Temaslar; parça başına tek rol
+  (hareketli / sabit / serbest); eksik bilgi listesi, eksikte koşu pasif.
+- Viewport: rijit duvar düzlemi, hız oku, parça rol etiketleri + rol renkleri
+  (hareketli altın, sabit kırmızı, serbest mor), "Modelden seç" duvar noktası,
+  üst barda SINIR KOŞ. göster/gizle.
+- Adım 5 · Sonuçlar (iş sonucu + çıktı ayarları); crash geçmişi alt dock'ta
+  (boyutlanır, yükseklik hatırlanır); "+ Yeni crash vakası" penceresi
+  (katalog + hızlı senaryo) — senaryonun sunucu mesh'i, kurulumu ve rolleri
+  arayüze yüklenir, koşu 5 · Sonuçlar'da izlenir.
+- Malzeme kanunu ve /FAIL açıklamaları 3 · Malzeme adımında.
+- Mesh: eğri yüzeylerde quad kalitesi (yüzey başına Algorithm 6), yerel
+  remesh (mesh üzerinden yüzey seçimi), "Mesh'i sil"; mesh sonrası CAD gizli.
+- 2D mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir (solid + orta yüzey).
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
@@ -1391,9 +1410,64 @@ ortalama kuvvet …) mühendisten.
   proje kuralı (Ansys / LS-DYNA yok) ve hesap gücü (MPI yok; Camry 8 MPI ile
   ~15 sa)
 
-## Faz 2 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
+## Faz 2 — CFD / akış (OpenFOAM)
 
-Ön koşul: Faz 0 ve Faz 1 tamamlanmış olmalı. **Bu faz yeni bir solver eklemez** —
+**Sıra değişikliği (kullanıcı, 2026-10-07):** Faz 2 artık OpenFOAM ile akış;
+kompozit Faz 3'e kaydı. **Durum: PLAN — başlamak için kullanıcı onayı
+bekleniyor.** Faz 0 (CalculiX `/solve`) ve Faz 1 (crash) yollarına dokunulmaz;
+yeni CFD yolu eklenir. Solver/mesh çağrıları yalnız sunucuda (Docker imajı).
+ML en sonda (2.9), crash'teki sırayla aynı.
+
+Mimari: `OpenFoamAdapter(SolverAdapter)` — `InputArtifact` bir **case klasörü**
+(`0/`, `constant/`, `system/`); üst katmanlar farkı bilmez. CFD mesh'i
+`MesherAdapter`'ın CFD implementasyonu (`mesh/cfd_mesher.py`): basit
+geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
+İlerleme: solver log'undan iterasyon / residual (crash'teki websocket deseni).
+
+**Kullanıcıya açık sorular (başlamadan önce):**
+1. OpenFOAM dağıtımı + Docker imajı: ESI (openfoam.com, v2406/v2412 —
+   resmi Docker imajı var) mı, Foundation (openfoam.org v12) mı?
+2. İlk hedef vaka: iç akış (boru/kanal — basınç düşümü) mı, dış akış
+   (silindir/küre/araç — Cd/Cl) mı?
+3. Akış tipi ilk adımda: daimi sıkıştırılamaz (`simpleFoam`; laminer +
+   RANS k-ω SST) — zamana bağlı (`pimpleFoam`) sonra mı?
+4. Yeni bağımlılık: alan sonuçları için PyVista (VTK okuma) — 2.5'te mi,
+   yoksa önce bağımlılıksız (function object metin çıktıları) mı?
+5. DB şeması: `cfd_runs` tablosu (crash_runs deseni) — Alembic migration.
+
+**Mikro-adımlar (her biri ayrı onay; bir adım bitince dur):**
+- 2.0 ⏳ Altyapı: OpenFOAM Docker imajı (`.env`: `OPENFOAM_DOCKER_IMAGE`),
+  Codespace devcontainer'a ekleme; duman testi (resmi `pitzDaily`
+  öğretici vakası `simpleFoam` ile koşar, log okunur). Lisans notu
+  `LICENSING.md` (GPL, sunucu tarafı).
+- 2.1 ⏳ Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
+  `0/U`, `0/p`, (`k`, `omega`, `nut`), `constant/transportProperties` /
+  `momentumTransport`, `system/controlDict|fvSchemes|fvSolution` üretimi;
+  Docker'sız birim testi (dosya içerikleri).
+- 2.2 ⏳ Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
+  + başlangıç residual'ları; `/cfd/solve` + `/cfd/jobs/{id}` (+ ws); test.
+- 2.3 ⏳ İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
+  basınç düşümü analitik değerle karşılaştırılır (V-C1, veri olarak).
+- 2.4 ⏳ Sonuç okuma (`parse_results`): function object çıktıları (forces /
+  forceCoeffs, patch ortalama basınç / debi), residual geçmişi →
+  `ResultSet`; `cfd_runs` kaydı (şema ayrı onay).
+- 2.5 ⏳ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
+  blockMesh kutusu, yüzey/bölge inceltme, sınır tabakası katmanları —
+  değerler mühendisten); `checkMesh` çıktısı veri olarak.
+- 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
+  `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3).
+- 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
+  1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·
+  4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,
+  türbülans modeli) · 5 Sonuçlar (residual grafiği, Cd/Cl, Δp). İşlevle
+  birlikte sunulabilir kalitede; öneri/uyarı mekanizması yok.
+- 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
+  (mesh önizleme JSON deseni; gerekirse PyVista — onay).
+- 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
+
+## Faz 3 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
+
+Ön koşul: Faz 0 ve Faz 1 tamamlanmış olmalı (sıra değişikliği 2026-10-07: CFD önce). **Bu faz yeni bir solver eklemez** —
 mevcut iki adaptörü genişletir.
 
 - [ ] CLT (klasik laminasyon teorisi) modülü: katman dizilimi → ABD matrisi (saf Python/numpy)
@@ -1404,21 +1478,6 @@ mevcut iki adaptörü genişletir.
 - [ ] Frontend: katman dizilimi girişi (açı/kalınlık/malzeme tablosu) + katman bazlı
       güvenlik faktörü görselleştirmesi
 - [ ] Hem durability (statik/yorulma) hem crash senaryosunda kompozit parça testi
-
-## Faz 3 — CFD (OpenFOAM)
-
-Ön koşul: Faz 0 tamamlanmış olmalı (Faz 1/2'den bağımsız paralel geliştirilebilir çünkü
-farklı solver ailesi). Kullanıcı onayı ile başlanır.
-
-- [ ] `OpenFoamAdapter` implementasyonu — `InputArtifact` olarak case klasörü üretimi
-- [ ] Mesh: Gmsh ile STL yüzey mesh'i → OpenFOAM `snappyHexMesh` ile sınır tabakalı hacim
-      mesh'i (basit geometrilerde `blockMesh` alternatifi)
-- [ ] Dictionary parametrizasyonu: giriş hızı, basınç, türbülans modeli, sınır koşulları
-- [ ] Solver çalıştırma (subprocess, uzun sürebilir — websocket ile residual/iterasyon takibi)
-- [ ] Post-process: PyVista ile VTK/alan verisi okuma → kuvvet katsayıları (Cd/Cl), basınç
-      dağılımı, akış görselleştirmesi → `ResultSet` şemasına dönüştürme
-- [ ] Frontend: akış alanı görselleştirmesi (kontur/streamline — statik görsel ya da
-      three.js ile renklendirilmiş yüzey mesh'i olarak)
 
 ## Faz 4 — Surrogate modelin diğer analiz tiplerine yayılması
 

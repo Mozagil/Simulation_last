@@ -994,9 +994,9 @@ değiştirilmesi gerekiyor (~3 dosya, 40 satır).
 
 ### 11.5 Başvuru dokümanı — ✅ yazıldı
 
-`docs/CRASH_BC_GUIDE.md`: her ayarın anlamı, OpenRadioss kartı,
-**LS-DYNA keyword karşılığı**, hangi analizde kullanıldığı, tipik
-senaryo kurulumları.
+`docs/CRASH_BC_GUIDE.md`: her ayarın anlamı, OpenRadioss kartı, hangi
+analizde kullanıldığı, tipik senaryo kurulumları. (2026-10-07: ticari
+solver keyword sütunu proje kuralı gereği çıkarıldı.)
 
 Test sırasında en çok yanıltan noktalar orada: `role=fixed` ile `/BCS`
 farkı, `/INIVEL` ile `/IMPVEL` farkı, `law=elastic`'in crash'te neden
