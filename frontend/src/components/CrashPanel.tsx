@@ -285,6 +285,9 @@ export default function CrashPanel({
     if (su.speed_m_s != null) setSpeed(String(su.speed_m_s));
     if (su.t_end_ms != null) setTEnd(String(su.t_end_ms));
     if (su.wall?.point) setWallPoint(su.wall.point.join(", "));
+    if (su.part_roles) {
+      setPartRoles(Object.fromEntries(Object.entries(su.part_roles).map(([k, r]) => [Number(k), r])));
+    }
     // Duvar modunda düğme = duvar normali; duvarsızda doğrudan hız yönü.
     const n = su.wall?.normal;
     const v = wallMode

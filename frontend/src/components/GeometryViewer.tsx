@@ -37,9 +37,21 @@ export interface CrashMarkers {
   velocity: { dir: [number, number, number]; label: string } | null;
   /** Parça id → etiket ("#0 hareketli"). */
   partLabels: Record<number, string>;
-  /** Parça id → rol (etiket rengi: hareketli turuncu, sabit kırmızı, serbest yeşil). */
-  partRoles?: Record<number, "moving" | "fixed" | "free">;
+  /** CAD parça id → rol: etiket rengi + CAD parça tonu. */
+  partRoles?: Record<number, CrashRole>;
+  /** Mesh parça id → rol: mesh eleman tonu (2D'de mesh numarası CAD'den farklı olabilir). */
+  meshPartRoles?: Record<number, CrashRole>;
 }
+
+export type CrashRole = "moving" | "fixed" | "free";
+/** Rol tonları — seçim vurgusu (turuncu) ve duvar (mavi) ile karışmaz. */
+export const ROLE_TINT: Record<CrashRole, string> = { moving: "#d9a62e", fixed: "#c94a4a", free: "#8a6fd1" };
+export const ROLE_LABEL_COLOR: Record<CrashRole, string> = { moving: "#a16207", fixed: "#b91c1c", free: "#6d28d9" };
+const ROLE_TINT_THREE: Record<CrashRole, THREE.Color> = {
+  moving: new THREE.Color(ROLE_TINT.moving),
+  fixed: new THREE.Color(ROLE_TINT.fixed),
+  free: new THREE.Color(ROLE_TINT.free),
+};
 
 function makeTextSprite(text: string, color: string, worldHeight: number): THREE.Sprite {
   const c = document.createElement("canvas");
@@ -595,6 +607,12 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   }));
 
   /** Crash işaretlerini sahneye (model-merkezli koordinat) çizer; eskisini atar. */
+  /** CAD parça taban rengi: crash rolü varsa rol tonu, yoksa standart yeşil. */
+  function cadPartBaseColor(partId: number): THREE.Color {
+    const role = crashMarkersRef.current?.partRoles?.[partId];
+    return role ? ROLE_TINT_THREE[role] : BASE_COLOR;
+  }
+
   function applyCrashMarkers() {
     const refs = sceneRefs.current;
     const old = crashMarkerGroupRef.current;
@@ -669,7 +687,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       bb.getCenter(c);
       c.add(entry.mesh.position);
       const role = m.partRoles?.[Number(pidRaw)];
-      const color = role === "fixed" ? "#b91c1c" : role === "free" ? "#15803d" : role === "moving" ? "#c2410c" : "#0f172a";
+      const color = role ? ROLE_LABEL_COLOR[role] : "#0f172a";
       const tag = makeTextSprite(label, color, L * 0.065);
       tag.position.set(c.x, bb.max.y + entry.mesh.position.y + L * 0.06, c.z);
       group.add(tag);
@@ -965,10 +983,14 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     const invert = meshQualityInvertRef.current;
     const tElem = refs.triangleToElement;
     if (!values || values.length === 0 || !tElem) {
+      const roles = crashMarkersRef.current?.meshPartRoles;
+      const tPart = refs.triangleToPart;
       for (let i = 0; i < arr.length; i += 3) {
-        arr[i] = MESH_FACE_THREE.r;
-        arr[i + 1] = MESH_FACE_THREE.g;
-        arr[i + 2] = MESH_FACE_THREE.b;
+        const role = roles ? roles[tPart[Math.floor(i / 9)]] : undefined;
+        const c = role ? ROLE_TINT_THREE[role] : MESH_FACE_THREE;
+        arr[i] = c.r;
+        arr[i + 1] = c.g;
+        arr[i + 2] = c.b;
       }
       return;
     }
@@ -1383,10 +1405,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
     function resetPartColor(entry: PartMeshEntry) {
       const colors = entry.colorAttribute.array as Float32Array;
+      const base = cadPartBaseColor(entry.partId);
       for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = BASE_COLOR.r;
-        colors[i + 1] = BASE_COLOR.g;
-        colors[i + 2] = BASE_COLOR.b;
+        colors[i] = base.r;
+        colors[i + 1] = base.g;
+        colors[i + 2] = base.b;
       }
       entry.colorAttribute.needsUpdate = true;
     }
@@ -2106,10 +2129,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
     for (const entry of refs.partMeshes) {
       const colors = entry.colorAttribute.array as Float32Array;
+      const base = cadPartBaseColor(entry.partId);
       for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = BASE_COLOR.r;
-        colors[i + 1] = BASE_COLOR.g;
-        colors[i + 2] = BASE_COLOR.b;
+        colors[i] = base.r;
+        colors[i + 1] = base.g;
+        colors[i + 2] = base.b;
       }
       entry.colorAttribute.needsUpdate = true;
     }
@@ -2198,6 +2222,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshNodePicks,
     meshSelectMode,
     showMidsideNodes,
+    crashMarkersKey,
   ]);
 
   return (

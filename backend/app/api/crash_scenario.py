@@ -469,6 +469,7 @@ def crash_scenario(
             "thickness_mm": thickness,
             "wall": wall,
             "use_rigid_wall": bool(setup.get("use_rigid_wall", True)),
+            "part_roles": {int(p["part_id"]): p["role"] for p in setup.get("parts", [])},
             "direction": list(req.direction) if req.direction is not None else None,
             "t_end_ms": req.t_end_ms,
             "speed_m_s": speed,

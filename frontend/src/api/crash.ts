@@ -301,6 +301,8 @@ export interface CrashScenarioSetup {
   template_id?: string;
   wall?: { point: number[]; normal: number[] };
   use_rigid_wall?: boolean;
+  /** parça id → rol (JSON anahtarı string). */
+  part_roles?: Record<string, "moving" | "fixed" | "free">;
   direction?: number[] | null;
   speed_m_s?: number;
   t_end_ms?: number;

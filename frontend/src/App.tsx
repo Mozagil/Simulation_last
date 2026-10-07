@@ -1911,6 +1911,23 @@ function App() {
       : meshToCad
         ? meshPartsForCadSelection(meshToCad, selection.ids)
         : selection.ids;
+  // Crash işaretleri: panel parça numarası (2D: mesh) → etiket/CAD tonu için CAD
+  // numarasına çevrilir; mesh tonu mesh numarasıyla kalır.
+  const viewerCrashMarkers = useMemo((): CrashMarkers | null => {
+    if (!crashMarkers) return null;
+    const meshPartRoles = crashMarkers.partRoles;
+    if (!meshToCad) return { ...crashMarkers, meshPartRoles };
+    const partLabels: Record<number, string> = {};
+    const partRoles: NonNullable<CrashMarkers["partRoles"]> = {};
+    for (const [mp, label] of Object.entries(crashMarkers.partLabels)) {
+      for (const cad of meshToCad.get(Number(mp)) ?? []) {
+        partLabels[cad] = label;
+        const role = crashMarkers.partRoles?.[Number(mp)];
+        if (role) partRoles[cad] = role;
+      }
+    }
+    return { ...crashMarkers, partLabels, partRoles, meshPartRoles };
+  }, [crashMarkers, meshToCad]);
   const hoverFaceIds = useMemo(() => {
     if (hoverPartId === null) return null;
     if (meshToCad && meshPreview?.triangle_to_face) {
@@ -3837,7 +3854,7 @@ function App() {
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
                   onSelectionChange={handleSelectionChange}
-                  crashMarkers={analysisTab === "crash" && showBcMarkers ? crashMarkers : null}
+                  crashMarkers={analysisTab === "crash" && showBcMarkers ? viewerCrashMarkers : null}
                   pickPointMode={analysisTab === "crash" && pickingPoint}
                   onPointPick={(p) => {
                     pointPickDoneRef.current?.(p);

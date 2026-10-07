@@ -28,6 +28,7 @@ def test_default_scenario_builds_deck_like_manual_setup():
     assert sc["material_name"] == "S235" and sc["thickness_mm"] == 3.0
     assert sc["wall"] == {"point": [0.0, 25.0, 20.0], "normal": [1.0, 0.0, 0.0]}
     assert sc["use_rigid_wall"] is True and sc["direction"] is None and sc["t_end_ms"] > 0
+    assert sc["part_roles"] == {"0": "moving"}
     # Sunucu mesh'i arayüze döner (viewport'a yüklenir)
     assert d["mesh"]["dimension"] == 2 and d["mesh"]["preview_url"].endswith(".preview.json")
     crash = d["crash"]
