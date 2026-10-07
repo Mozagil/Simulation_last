@@ -2,11 +2,12 @@
  * ML Stüdyo / Crash aşama çubuğu (1.19f) — durability `MlStudioNav` ile aynı
  * görünüm (`ml-stage-*` sınıfları), crash'in kendi aşamaları.
  */
-export type CrashMlStage = "doe" | "model";
+export type CrashMlStage = "doe" | "model" | "pred";
 
 export const CRASH_ML_STAGES: { id: CrashMlStage; phase: string; name: string }[] = [
   { id: "doe", phase: "1.19c", name: "DOE" },
   { id: "model", phase: "1.19d", name: "Model" },
+  { id: "pred", phase: "1.19e", name: "Tahmin" },
 ];
 
 export default function CrashMlNav({

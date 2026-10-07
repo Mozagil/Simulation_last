@@ -67,6 +67,7 @@ import DoePanel from "./components/DoePanel";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
+import CrashPredictPanel from "./components/CrashPredictPanel";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
@@ -2648,6 +2649,7 @@ function App() {
             <div className="ml-studio-body">
               {crashMlStage === "doe" && <CrashDoePanel />}
               {crashMlStage === "model" && <CrashModelPanel />}
+              {crashMlStage === "pred" && <CrashPredictPanel />}
             </div>
           </>
         ) : (

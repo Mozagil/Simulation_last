@@ -6678,3 +6678,73 @@ p {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- Crash tahmin (1.19f-3) ---- */
+.crash-pred-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.crash-pred-row {
+  display: contents;
+}
+
+.crash-pred-row code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crash-pred-row .doe-num {
+  width: 100%;
+}
+
+.crash-pred-row.ood code,
+.crash-pred-row.ood .crash-doe-sub {
+  color: var(--danger);
+}
+
+.crash-pred-row.ood .doe-num {
+  border-color: var(--danger);
+}
+
+.crash-pred-ood {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}
+
+.crash-pred-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.crash-pred-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.crash-pred-value {
+  font-family: var(--font-head);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.crash-pred-unit {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
