@@ -6990,3 +6990,27 @@ p {
 .crash-parts td {
   padding: 4px 4px;
 }
+
+/* TODO 11.4 — deforme şekil ana viewport'ta */
+.crash-anim-viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  background: var(--surface);
+}
+
+.crash-anim-docked {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 12px;
+}
+
+.crash-anim-docked .crash-anim-canvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}

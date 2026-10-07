@@ -84,6 +84,8 @@ export default function CrashPanel({
   onPartSelect,
   onPartHover,
   regions = [],
+  animRunId = null,
+  onAnimateRun,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -102,6 +104,9 @@ export default function CrashPanel({
   onPartHover?: (partId: number | null) => void;
   /** Physical Group adları (şablon bölgeleri + kullanıcı grupları) — kart hedefi (11.3/11.9). */
   regions?: string[];
+  /** TODO 11.4 — deforme şekil ana viewport'ta (App). */
+  animRunId?: number | null;
+  onAnimateRun?: (run: { id: number; title: string } | null) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -949,7 +954,12 @@ export default function CrashPanel({
 
       <CrashCatalog />
       <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} onGeometry={onScenarioGeometry} />
-      <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`} />
+      <CrashHistory
+        geometryId={geometryId}
+        refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`}
+        activeAnimId={animRunId}
+        onAnimate={onAnimateRun}
+      />
       <CrashValidation />
     </div>
   );

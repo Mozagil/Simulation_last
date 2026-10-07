@@ -75,4 +75,18 @@ describe("CrashHistory", () => {
     fireEvent.change(within(box).getByLabelText("Grafik zaman üst sınırı"), { target: { value: "0.02" } });
     expect(box.querySelector("polyline")?.getAttribute("points")?.split(" ")).toHaveLength(2);
   });
+
+  it("11.4: onAnimate verilince deforme şekil App'e bildirilir, yan panelde açılmaz", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(7)]);
+    const onAnimate = vi.fn();
+    const { rerender } = render(<CrashHistory geometryId={3931} onAnimate={onAnimate} activeAnimId={null} />);
+    const btn = await screen.findByLabelText("koşu 7 deforme şekil");
+    fireEvent.click(btn);
+    expect(onAnimate).toHaveBeenCalledWith({ id: 7, title: "#7 koşu 7" });
+    expect(screen.queryByTestId("crash-anim")).not.toBeInTheDocument();
+    rerender(<CrashHistory geometryId={3931} onAnimate={onAnimate} activeAnimId={7} />);
+    expect(screen.getByLabelText("koşu 7 deforme şekil")).toHaveTextContent("■");
+    fireEvent.click(screen.getByLabelText("koşu 7 deforme şekil"));
+    expect(onAnimate).toHaveBeenLastCalledWith(null);
+  });
 });

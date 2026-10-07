@@ -65,6 +65,7 @@ import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
+import CrashAnimationViewer from "./components/CrashAnimationViewer";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
@@ -358,6 +359,8 @@ function App() {
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<MultiSelectionInfo>(EMPTY_SELECTION);
   const [hoverPartId, setHoverPartId] = useState<number | null>(null);
+  // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
+  const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -3413,6 +3416,17 @@ function App() {
             </div>
             <div className="viewer-body">
               <div className="viewer-stage">
+                {analysisTab === "crash" && crashAnim && (
+                  <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
+                    <CrashAnimationViewer
+                      key={crashAnim.id}
+                      runId={crashAnim.id}
+                      title={crashAnim.title}
+                      docked
+                      onClose={() => setCrashAnim(null)}
+                    />
+                  </div>
+                )}
                 {showMesh && meshPreview !== null && meshPicks.length > 0 && (
                   <div className="mesh-grow-bar">
                     <ButtonGroup
@@ -4921,6 +4935,8 @@ function App() {
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}
           regions={physicalGroups.map((g) => g.name)}
+          animRunId={crashAnim?.id ?? null}
+          onAnimateRun={setCrashAnim}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey

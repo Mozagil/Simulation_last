@@ -978,7 +978,7 @@ adımındaki bölge oluşturma akışına metinle yönlendiriyor).
 zihinsel model. Fizik aynıyken ikiye bölmek bakım maliyetini ikiye
 katlar.
 
-### 11.4 Deforme şekil ana viewport'a — opsiyonel
+### 11.4 Deforme şekil ana viewport'a — opsiyonel — ✅ kod (2026-10-07)
 
 Şu an sidebar'da 260px kutu; tam ekran düğmesi eklendi (⤢, ESC ile
 çıkış) ve `ResizeObserver` ile renderer kutuyu takip ediyor.
@@ -987,7 +987,9 @@ Durability gibi **ana viewport**'ta göstermek için `animRun` durumunun
 `CrashHistory`'den `App`'e çıkarılması, viewport'un koşullu
 değiştirilmesi gerekiyor (~3 dosya, 40 satır).
 
-- [ ] Crash akışı durulduktan sonra değerlendir — kaplama şimdilik
+- [x] Kullanıcı isteğiyle yapıldı (2026-10-07): koşu geçmişi ▶ → `crashAnim` App'te,
+      viewport üstünde kaplama (`crash-anim-viewport`, GeometryViewer arkada kalır), × ile
+      dönüş, ⤢ tam ekran duruyor. Önceki: crash akışı durulduktan sonra değerlendir — kaplama şimdilik
       yeterli, hatta viewport'tan geniş (ribbon yok)
 
 ### 11.5 Başvuru dokümanı — ✅ yazıldı

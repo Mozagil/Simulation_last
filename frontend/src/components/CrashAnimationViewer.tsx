@@ -57,7 +57,18 @@ export function triangulate(faces: number[][]): { vtx: Int32Array; tri_face: Int
   return { vtx: Int32Array.from(vtx), tri_face: Int32Array.from(tf) };
 }
 
-export default function CrashAnimationViewer({ runId, title }: { runId: number; title?: string }) {
+export default function CrashAnimationViewer({
+  runId,
+  title,
+  docked = false,
+  onClose,
+}: {
+  runId: number;
+  title?: string;
+  /** TODO 11.4 — ana viewport'un üstünde, alanı kaplar (sidebar kutusu yerine). */
+  docked?: boolean;
+  onClose?: () => void;
+}) {
   const [data, setData] = useState<CrashAnimation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frame, setFrame] = useState(0);
@@ -230,7 +241,13 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
 
   return (
     <figure
-      className={expanded ? "cv-card crash-anim crash-anim-expanded" : "cv-card crash-anim"}
+      className={
+        expanded
+          ? "cv-card crash-anim crash-anim-expanded"
+          : docked
+            ? "cv-card crash-anim crash-anim-docked"
+            : "cv-card crash-anim"
+      }
       data-testid="crash-anim"
     >
       <span className="cv-card-head">
@@ -251,6 +268,18 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
         >
           {expanded ? "⤡" : "⤢"}
         </button>
+        {onClose && (
+          <button
+            type="button"
+            className="crash-anim-expand"
+            data-testid="crash-anim-close"
+            onClick={onClose}
+            title="Geometriye dön"
+            aria-label="Deforme şekli kapat"
+          >
+            ×
+          </button>
+        )}
       </span>
       {error && <p className="material-assign-hint">{error}</p>}
       {!data && !error && <p className="doe-empty">Animasyon hazırlanıyor… (ilk açılışta dönüştürülür)</p>}
