@@ -50,6 +50,29 @@ function fmt(v: number | undefined): string {
   return v.toExponential(3);
 }
 
+type LoadingKind = "inivel" | "impvel" | "gravity";
+type ObstacleKind = "wall" | "part" | "none";
+
+const LOADING_OPTIONS: { id: string; label: string; title: string; disabled?: boolean }[] = [
+  { id: "inivel", label: "İlk hız", title: "/INIVEL — hareketli parçalar (ya da İlk hız kartları)" },
+  { id: "impvel", label: "Dayatılmış hız", title: "/IMPVEL — Tutma altındaki kartlardan" },
+  { id: "gravity", label: "Yerçekimi", title: "/GRAV — tüm düğümlere sabit ivme" },
+  { id: "pressure", label: "Basınç/patlama", title: "Yalnız Hızlı senaryo (K10/K12)", disabled: true },
+  { id: "sph", label: "SPH mermi", title: "Yalnız Hızlı senaryo (K12)", disabled: true },
+];
+
+const OBSTACLE_OPTIONS: { id: ObstacleKind; label: string; title: string }[] = [
+  { id: "wall", label: "Rijit duvar", title: "/RWALL — sonsuz rijit düzlem" },
+  { id: "part", label: "Başka parça (temas)", title: "/INTER — parçalar arası temas" },
+  { id: "none", label: "Yok", title: "Duvar yok; ilk hız yönü vektörle" },
+];
+
+export const CRASH_PRESETS: { id: string; label: string; loading: LoadingKind; obstacle: ObstacleKind }[] = [
+  { id: "box_wall", label: "Crash box → rijit duvar", loading: "inivel", obstacle: "wall" },
+  { id: "part_part", label: "Çarpan parça → hedef parça (temas)", loading: "inivel", obstacle: "part" },
+  { id: "impvel_free", label: "Dayatılmış hız, engelsiz (kartlarla)", loading: "impvel", obstacle: "none" },
+];
+
 export default function CrashPanel({
   geometryId,
   meshDimension,
@@ -87,7 +110,16 @@ export default function CrashPanel({
   const [loadCards, setLoadCards] = useState<LoadCard[]>([]);
   // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
   const [contacts, setContacts] = useState<ContactRow[]>([]);
-  const [useRigidWall, setUseRigidWall] = useState(true);
+  // TODO 11.2 — üç soru: yükleme kaynağı, engel, tutma (kartlar 11.9).
+  const [loading, setLoading] = useState<LoadingKind>("inivel");
+  const [obstacle, setObstacle] = useState<ObstacleKind>("wall");
+  const useRigidWall = obstacle === "wall";
+  // 11.1 — duvar yokken ilk hız yönü (duvar varken normal + açıdan)
+  const [dx, setDx] = useState("-1");
+  const [dy, setDy] = useState("0");
+  const [dz, setDz] = useState("0");
+  const [gravAccel, setGravAccel] = useState("-9.81");
+  const [gravDir, setGravDir] = useState<"X" | "Y" | "Z">("Z");
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
   const [wx, setWx] = useState("0");
@@ -201,6 +233,19 @@ export default function CrashPanel({
     };
   }
 
+  function chooseObstacle(next: ObstacleKind) {
+    setObstacle(next);
+    // "Başka parça": temas tanımı yoksa bir TYPE7 satırı aç (mühendis düzenler).
+    if (next === "part" && contacts.length === 0) addContact();
+  }
+
+  function applyPreset(id: string) {
+    const preset = CRASH_PRESETS.find((x) => x.id === id);
+    if (!preset) return;
+    setLoading(preset.loading);
+    chooseObstacle(preset.obstacle);
+  }
+
   async function handleSubmit() {
     if (geometryId == null) return;
     setBusy(true);
@@ -231,13 +276,16 @@ export default function CrashPanel({
       const body = await postCrashSolve({
         geometry_id: geometryId,
         barrier: {
-          speed_m_s: num(speed),
-          angle_deg: num(angle),
+          // Yükleme ilk hız değilse bariyer hızı 0 (yük kartlardan / yerçekiminden).
+          speed_m_s: loading === "inivel" ? num(speed) : 0,
+          angle_deg: obstacle === "wall" ? num(angle) : 0,
           wall: {
             point: [num(wx), num(wy), num(wz)],
             normal: [num(nx), num(ny), num(nz)],
           },
+          ...(obstacle !== "wall" ? { direction: [num(dx), num(dy), num(dz)] as [number, number, number] } : {}),
         },
+        ...(loading === "gravity" ? { gravity: { accel_m_s2: num(gravAccel), direction: gravDir } } : {}),
         dimension: isShell ? 2 : 3,
         run_solver: runSolver,
         wait: false,
@@ -277,12 +325,6 @@ export default function CrashPanel({
   const scalars = snapshot?.scalars ?? result?.scalars ?? {};
   const percent = snapshot?.percent ?? 0;
   const canRun = geometryId != null && (meshDimension === 2 || meshDimension === 3) && !busy;
-  // Duvar kapalıyken nokta/normal yine gönderilir: bariyer ilk hız yönünü
-  // normalden türetir (açı 0° → −normal yönünde).
-  const wallTitle = !useRigidWall ? "Bariyer nokta (mm) — duvar kapalı" : "Rigid wall nokta (mm)";
-  const normalTitle = !useRigidWall
-    ? "Bariyer normal — duvar kapalı, yalnız ilk hız yönü"
-    : "Rigid wall normal";
   const curves = snapshot?.curves;
   const forceSeries = forceSeriesFromCurves(curves);
   const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
@@ -323,61 +365,258 @@ export default function CrashPanel({
 
       <CrashSchematic />
 
-      <p className="material-assignments-title">Kinematik</p>
-      <div className="mesh-grid">
+      <div className="crash-q-preset">
         <label className="mesh-field">
-          <span>Hız (m/s)</span>
-          <input value={speed} onChange={(e) => setSpeed(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>Açı (°)</span>
-          <input value={angle} onChange={(e) => setAngle(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>t_end (ms)</span>
-          <input value={tEnd} onChange={(e) => setTEnd(e.target.value)} />
-        </label>
-      </div>
-      <label className="material-check">
-        <input
-          type="checkbox"
-          checked={useRigidWall}
-          disabled={busy}
-          onChange={(e) => setUseRigidWall(e.target.checked)}
-        />
-        Rijit duvar (/RWALL)
-      </label>
-      <p className="material-assignments-title">{wallTitle}</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>x</span>
-          <input value={wx} onChange={(e) => setWx(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>y</span>
-          <input value={wy} onChange={(e) => setWy(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>z</span>
-          <input value={wz} onChange={(e) => setWz(e.target.value)} />
-        </label>
-      </div>
-      <p className="material-assignments-title">{normalTitle}</p>
-      <div className="mesh-grid">
-        <label className="mesh-field">
-          <span>nx</span>
-          <input value={nx} onChange={(e) => setNx(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>ny</span>
-          <input value={ny} onChange={(e) => setNy(e.target.value)} />
-        </label>
-        <label className="mesh-field">
-          <span>nz</span>
-          <input value={nz} onChange={(e) => setNz(e.target.value)} />
+          <span>Hazır senaryo</span>
+          <select aria-label="Hazır senaryo" value="" disabled={busy} onChange={(e) => applyPreset(e.target.value)}>
+            <option value="">— seç (üç soruyu doldurur) —</option>
+            {CRASH_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 
+      <section className="crash-q" aria-label="1 · Yükleme">
+        <p className="crash-q-title">1 · Yükleme</p>
+        <div className="doe-seg crash-q-options" role="radiogroup" aria-label="Yükleme kaynağı">
+          {LOADING_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={loading === o.id}
+              className={loading === o.id ? "doe-seg-opt active" : "doe-seg-opt"}
+              disabled={busy || o.disabled}
+              title={o.title}
+              onClick={() => setLoading(o.id as LoadingKind)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <div className="mesh-grid">
+          {loading === "inivel" && (
+            <label className="mesh-field">
+              <span>Hız (m/s)</span>
+              <input value={speed} disabled={busy} onChange={(e) => setSpeed(e.target.value)} />
+            </label>
+          )}
+          {loading === "inivel" && obstacle === "wall" && (
+            <label className="mesh-field">
+              <span>Açı (°)</span>
+              <input value={angle} disabled={busy} onChange={(e) => setAngle(e.target.value)} />
+            </label>
+          )}
+          {loading === "gravity" && (
+            <>
+              <label className="mesh-field">
+                <span>g (m/s², işaretli)</span>
+                <input aria-label="Yerçekimi ivmesi" value={gravAccel} disabled={busy} onChange={(e) => setGravAccel(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>eksen</span>
+                <select aria-label="Yerçekimi ekseni" value={gravDir} disabled={busy} onChange={(e) => setGravDir(e.target.value as "X" | "Y" | "Z")}>
+                  <option>X</option>
+                  <option>Y</option>
+                  <option>Z</option>
+                </select>
+              </label>
+            </>
+          )}
+          <label className="mesh-field">
+            <span>t_end (ms)</span>
+            <input value={tEnd} disabled={busy} onChange={(e) => setTEnd(e.target.value)} />
+          </label>
+        </div>
+        {loading === "inivel" && obstacle !== "wall" && (
+          <>
+            <p className="material-assignments-title">İlk hız yönü (duvar yok — vektör)</p>
+            <div className="mesh-grid">
+              <label className="mesh-field">
+                <span>x</span>
+                <input aria-label="Hız yönü x" value={dx} disabled={busy} onChange={(e) => setDx(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>y</span>
+                <input aria-label="Hız yönü y" value={dy} disabled={busy} onChange={(e) => setDy(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>z</span>
+                <input aria-label="Hız yönü z" value={dz} disabled={busy} onChange={(e) => setDz(e.target.value)} />
+              </label>
+            </div>
+          </>
+        )}
+        {loading === "impvel" && (
+          <p className="material-assign-hint">
+            Dayatılmış hız 3 · Tutma altındaki kartlardan gelir (+ Dayatılmış hız). Bariyer ilk hızı gönderilmez.
+          </p>
+        )}
+        {loading === "inivel" && loadCards.some((c) => c.kind === "inivel") && (
+          <p className="material-assign-hint">
+            İlk hız kartı tanımlı — parçalara bariyer hızı verilmez, hız kartlardan gelir (kapsama özeti).
+          </p>
+        )}
+      </section>
+
+      <section className="crash-q" aria-label="2 · Engel">
+        <p className="crash-q-title">2 · Engel</p>
+        <div className="doe-seg crash-q-options" role="radiogroup" aria-label="Engel">
+          {OBSTACLE_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={obstacle === o.id}
+              className={obstacle === o.id ? "doe-seg-opt active" : "doe-seg-opt"}
+              disabled={busy}
+              title={o.title}
+              onClick={() => chooseObstacle(o.id)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {obstacle === "wall" && (
+          <>
+            <p className="material-assignments-title">Rigid wall nokta (mm)</p>
+            <div className="mesh-grid">
+              <label className="mesh-field">
+                <span>x</span>
+                <input aria-label="Duvar nokta x" value={wx} disabled={busy} onChange={(e) => setWx(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>y</span>
+                <input aria-label="Duvar nokta y" value={wy} disabled={busy} onChange={(e) => setWy(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>z</span>
+                <input aria-label="Duvar nokta z" value={wz} disabled={busy} onChange={(e) => setWz(e.target.value)} />
+              </label>
+            </div>
+            <p className="material-assignments-title">Rigid wall normal</p>
+            <div className="mesh-grid">
+              <label className="mesh-field">
+                <span>nx</span>
+                <input aria-label="Duvar normal nx" value={nx} disabled={busy} onChange={(e) => setNx(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>ny</span>
+                <input aria-label="Duvar normal ny" value={ny} disabled={busy} onChange={(e) => setNy(e.target.value)} />
+              </label>
+              <label className="mesh-field">
+                <span>nz</span>
+                <input aria-label="Duvar normal nz" value={nz} disabled={busy} onChange={(e) => setNz(e.target.value)} />
+              </label>
+            </div>
+          </>
+        )}
+        <p className="material-assignments-title">Temas — /INTER</p>
+        {contacts.length > 0 && (
+          <div className="crash-contacts" data-testid="crash-contacts">
+            {contacts.map((c, i) => {
+              const k = i + 1;
+              const field = (
+                key: "fric" | "stfac" | "gapmin" | "istf" | "inacti" | "iedge",
+                label: string,
+                off = false,
+              ) => (
+                <label className="mesh-field">
+                  <span>{label}</span>
+                  <input
+                    aria-label={`Temas ${k} ${label.split(" ")[0]}`}
+                    value={off ? "—" : c[key]}
+                    disabled={busy || off}
+                    onChange={(e) => updateContact(c.id, { [key]: e.target.value })}
+                  />
+                </label>
+              );
+              const partSelect = (key: "master" | "slave", label: string) => (
+                <label className="mesh-field">
+                  <span>{label}</span>
+                  <select
+                    aria-label={`Temas ${k} ${key}`}
+                    value={c[key]}
+                    disabled={busy}
+                    onChange={(e) => updateContact(c.id, { [key]: Number(e.target.value) })}
+                  >
+                    {partOptions.map((pid) => (
+                      <option key={pid} value={pid}>
+                        parça #{pid}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+              return (
+                <div key={c.id} className="crash-contact-card">
+                  <div className="crash-contact-head">
+                    <strong>
+                      Temas {k}
+                      {c.master === c.slave ? " · self" : ""}
+                    </strong>
+                    <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
+                      {([7, 24] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          className={c.type === t ? "doe-seg-opt active" : "doe-seg-opt"}
+                          aria-pressed={c.type === t}
+                          disabled={busy}
+                          onClick={() => updateContact(c.id, { type: t })}
+                        >
+                          TYPE{t}
+                        </button>
+                      ))}
+                    </span>
+                    <button
+                      type="button"
+                      className="crash-contact-remove"
+                      aria-label={`Temas ${k} sil`}
+                      disabled={busy}
+                      onClick={() => setContacts((rows) => rows.filter((r) => r.id !== c.id))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="crash-contact-parts">
+                    {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
+                    <span className="crash-contact-arrow" aria-hidden="true">
+                      {c.type === 7 ? "→" : "↔"}
+                    </span>
+                    {partSelect("master", "master (yüzey)")}
+                  </div>
+                  <div className="mesh-grid">
+                    {field("fric", "Fric")}
+                    {field("stfac", "Stfac")}
+                    {c.type === 7 ? field("gapmin", "GAPmin (mm)") : field("iedge", "Iedge")}
+                    {field("istf", "Istf")}
+                    {field("inacti", "Inacti")}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          className="doe-btn doe-btn-ghost crash-contact-add"
+          disabled={busy}
+          onClick={addContact}
+        >
+          + Temas ekle
+        </button>
+        <p className="material-assign-hint">
+          TYPE7: slave parçanın düğümleri → master parçanın dış yüzeyi. TYPE24: iki dış yüzey
+          birbirine karşı (simetrik). master = slave → self-contact. Bayraklarda 0 = Radioss
+          varsayılanı.
+        </p>
+      </section>
+
+      <p className="crash-q-title">3 · Tutma</p>
       {partIds.length > 0 && (
         <>
           <p className="material-assignments-title">Parçalar</p>
@@ -506,106 +745,6 @@ export default function CrashPanel({
         disabled={busy}
       />
 
-      <p className="material-assignments-title">Temas — /INTER</p>
-      {contacts.length > 0 && (
-        <div className="crash-contacts" data-testid="crash-contacts">
-          {contacts.map((c, i) => {
-            const k = i + 1;
-            const field = (
-              key: "fric" | "stfac" | "gapmin" | "istf" | "inacti" | "iedge",
-              label: string,
-              off = false,
-            ) => (
-              <label className="mesh-field">
-                <span>{label}</span>
-                <input
-                  aria-label={`Temas ${k} ${label.split(" ")[0]}`}
-                  value={off ? "—" : c[key]}
-                  disabled={busy || off}
-                  onChange={(e) => updateContact(c.id, { [key]: e.target.value })}
-                />
-              </label>
-            );
-            const partSelect = (key: "master" | "slave", label: string) => (
-              <label className="mesh-field">
-                <span>{label}</span>
-                <select
-                  aria-label={`Temas ${k} ${key}`}
-                  value={c[key]}
-                  disabled={busy}
-                  onChange={(e) => updateContact(c.id, { [key]: Number(e.target.value) })}
-                >
-                  {partOptions.map((pid) => (
-                    <option key={pid} value={pid}>
-                      parça #{pid}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            );
-            return (
-              <div key={c.id} className="crash-contact-card">
-                <div className="crash-contact-head">
-                  <strong>
-                    Temas {k}
-                    {c.master === c.slave ? " · self" : ""}
-                  </strong>
-                  <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
-                    {([7, 24] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={c.type === t ? "doe-seg-opt active" : "doe-seg-opt"}
-                        aria-pressed={c.type === t}
-                        disabled={busy}
-                        onClick={() => updateContact(c.id, { type: t })}
-                      >
-                        TYPE{t}
-                      </button>
-                    ))}
-                  </span>
-                  <button
-                    type="button"
-                    className="crash-contact-remove"
-                    aria-label={`Temas ${k} sil`}
-                    disabled={busy}
-                    onClick={() => setContacts((rows) => rows.filter((r) => r.id !== c.id))}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="crash-contact-parts">
-                  {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
-                  <span className="crash-contact-arrow" aria-hidden="true">
-                    {c.type === 7 ? "→" : "↔"}
-                  </span>
-                  {partSelect("master", "master (yüzey)")}
-                </div>
-                <div className="mesh-grid">
-                  {field("fric", "Fric")}
-                  {field("stfac", "Stfac")}
-                  {c.type === 7 ? field("gapmin", "GAPmin (mm)") : field("iedge", "Iedge")}
-                  {field("istf", "Istf")}
-                  {field("inacti", "Inacti")}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <button
-        type="button"
-        className="doe-btn doe-btn-ghost crash-contact-add"
-        disabled={busy}
-        onClick={addContact}
-      >
-        + Temas ekle
-      </button>
-      <p className="material-assign-hint">
-        TYPE7: slave parçanın düğümleri → master parçanın dış yüzeyi. TYPE24: iki dış yüzey
-        birbirine karşı (simetrik). master = slave → self-contact. Bayraklarda 0 = Radioss
-        varsayılanı.
-      </p>
 
       <p className="material-assignments-title">
         {Object.keys(partCards).length > 0 ? "Malzeme kartı — global" : "Malzeme kartı"}
@@ -627,6 +766,8 @@ export default function CrashPanel({
           </div>
         ))}
 
+      <details className="crash-advanced">
+        <summary>İleri ayarlar — eleman formülasyonu, hourglass</summary>
       {isShell ? (
         <>
           <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
@@ -698,6 +839,7 @@ export default function CrashPanel({
         </p>
         </>
       )}
+      </details>
 
       <p className="material-assignments-title">Çıktı ve kontrol</p>
       <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />

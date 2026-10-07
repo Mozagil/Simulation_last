@@ -164,6 +164,8 @@ export interface CrashSolveRequest {
   boundary_conditions?: Record<string, unknown>[];
   imposed_velocities?: Record<string, unknown>[];
   rigid_bodies?: Record<string, unknown>[];
+  /** 11.2 — Yükleme: Yerçekimi */
+  gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
 }
 
 export interface CrashSolveResponse {

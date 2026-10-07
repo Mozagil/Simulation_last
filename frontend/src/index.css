@@ -6919,3 +6919,74 @@ p {
 .crash-coverage-row.warn {
   color: var(--danger);
 }
+
+/* TODO 11.2 — crash paneli üç soru */
+.crash-q {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-q-title {
+  margin: 4px 0 0;
+  font-family: var(--font-head);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.crash-q-options {
+  flex-wrap: wrap;
+}
+
+.crash-q-preset {
+  margin: 6px 0;
+}
+
+.crash-q-preset select {
+  width: 100%;
+}
+
+.crash-advanced {
+  margin: 10px 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-advanced > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.crash-q {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.crash-q .crash-q-options {
+  display: flex;
+  flex-wrap: wrap;
+  width: auto;
+}
+
+/* 11.8 — üç rol düğmesi dar yan panele sığsın */
+.crash-parts .doe-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+
+.crash-parts .doe-seg-opt {
+  padding: 2px 6px;
+}
+
+.crash-parts th,
+.crash-parts td {
+  padding: 4px 4px;
+}

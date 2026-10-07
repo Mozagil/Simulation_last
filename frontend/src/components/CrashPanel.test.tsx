@@ -227,8 +227,10 @@ describe("CrashPanel", () => {
     expect(screen.queryByLabelText("Temas 1 Iedge")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Temas 2 Iedge"), { target: { value: "1" } });
     expect(screen.getByTestId("crash-contacts")).toHaveTextContent("2 · self");
-    fireEvent.click(screen.getByLabelText("Rijit duvar (/RWALL)"));
-    expect(screen.getByText(/duvar kapalı, yalnız ilk hız yönü/)).toBeInTheDocument();
+    // 11.2 — engel sorusu: Yok → duvar alanları gizlenir, ilk hız yönü vektörle
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Engel" })).getByRole("radio", { name: "Yok" }));
+    expect(screen.queryByText("Rigid wall normal")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Hız yönü x")).toHaveValue("-1");
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
@@ -419,5 +421,30 @@ describe("CrashPanel", () => {
     expect(onPartHover).toHaveBeenLastCalledWith(1);
     fireEvent.mouseLeave(pick1.closest("tr")!);
     expect(onPartHover).toHaveBeenLastCalledWith(null);
+  });
+
+  it("11.2: üç soru — yerçekimi + başka parça; hazır senaryo; ileri ayarlar katlı", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j11", geometry_id: 1, status: "rad_only", message: "",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    const { container } = render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    expect(container.querySelector("details.crash-advanced")).not.toHaveAttribute("open");
+    expect(screen.getByRole("radio", { name: "SPH mermi" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Hazır senaryo"), { target: { value: "part_part" } });
+    // Başka parça → TYPE7 temas satırı açılır, duvar alanı yok
+    expect(screen.getByTestId("crash-contacts")).toBeInTheDocument();
+    expect(screen.queryByText("Rigid wall nokta (mm)")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Yerçekimi" }));
+    fireEvent.change(screen.getByLabelText("Yerçekimi ivmesi"), { target: { value: "-9.81" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.use_rigid_wall).toBe(false);
+    expect(body.barrier.speed_m_s).toBe(0);
+    expect(body.barrier.direction).toEqual([-1, 0, 0]);
+    expect(body.gravity).toEqual({ accel_m_s2: -9.81, direction: "Z" });
+    expect(body.contacts).toHaveLength(1);
   });
 });

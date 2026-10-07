@@ -905,7 +905,7 @@ crash testleri 267/267.
 `wall` alanı hiç doldurulmadan çözülebilmeli. Mevcut testler
 değişmeden geçmeli.
 
-### 11.2 Panel üç soruya indirgensin — FRONTEND
+### 11.2 Panel üç soruya indirgensin — FRONTEND — ✅ kod (2026-10-07)
 
 **Sorun:** `CrashPanel.tsx` (761 satır) 15 kartı aynı düzeyde gösteriyor.
 Sıklık farkı görünmüyor: her koşuda değişenler (hız, süre, roller) ile
@@ -924,10 +924,16 @@ Hazır senaryo: [Crash box → rijit duvar ▾]   ← üçünü birden doldurur
 ▸ İleri ayarlar (hourglass, icog, istf, inacti)
 ```
 
-- [ ] "Engel: Yok" → duvar alanları tamamen gizlenir (11.1 bunu mümkün kılar)
-- [ ] "Engel: Başka parça" → temas kartı açılır
-- [ ] Sorular **her zaman görünür** — kullanıcı neyi seçmediğini de bilsin
-- [ ] İleri ayarlar katlanmış
+- [x] "Engel: Yok" → duvar alanları tamamen gizlenir (11.1 bunu mümkün kılar)
+- [x] "Engel: Başka parça" → temas kartı açılır
+- [x] Sorular **her zaman görünür** — kullanıcı neyi seçmediğini de bilsin
+- [x] İleri ayarlar katlanmış
+
+**Yapıldı:** Hazır senaryo (3 ön ayar) → 1·Yükleme (İlk hız / Dayatılmış hız /
+Yerçekimi; Basınç ve SPH yalnız Hızlı senaryoda → pasif, ipucu) → 2·Engel (Rijit
+duvar / Başka parça — TYPE7 satırı açar / Yok — duvar alanları gizli, ilk hız yönü
+vektör) → 3·Tutma (rol tablosu + kartlar) → Malzeme → İleri ayarlar (`<details>`,
+katlı) → Çıktı. Yükleme ilk hız değilse bariyer hızı 0 gider.
 
 **Neden pop-up DEĞİL:** Crash kurulumunda hatalar sessizdir — yanlış
 kurulmuş model hata vermez, saçma sonuç verir. "Duvar var ama temas da
@@ -939,7 +945,7 @@ akışında işe yaramaz.
 `/SECT`) sayıca değişken, birden fazla eklenebiliyor → "+ ekle" doğru.
 Yükleme ve engel tekil seçim → soru olarak kalmalı.
 
-### 11.3 Şablon / içe aktarılan geometri ayrımı — TEK PANEL
+### 11.3 Şablon / içe aktarılan geometri ayrımı — TEK PANEL — ✅ kod (2026-10-07)
 
 **Karar: panel ikiye BÖLÜNMESİN.**
 
@@ -958,10 +964,15 @@ Altyapı **zaten var**: crash BC'leri Physical Group üzerinden çözülüyor
 (`app/api/crash.py:343`), ve içe aktarılan geometride yüzey seçip isim
 verme (Physical Group) Faz 0'da tamamlandı.
 
-- [ ] Bölge seçici, geometri şablondan mı geldi diye bakıp listeyi
+- [x] Bölge seçici, geometri şablondan mı geldi diye bakıp listeyi
       doğru kaynaktan doldursun
-- [ ] İçe aktarılan geometride grup yoksa boş bırakma — yönlendirici
+- [x] İçe aktarılan geometride grup yoksa boş bırakma — yönlendirici
       metin + grup oluşturma kısayolu
+
+**Yapıldı:** şablon bölgeleri de Physical Group olarak kaydedildiği için tek kaynak
+`physicalGroups` (App) → kart hedef listesi; ayrım gerekmedi. Grup yoksa kartlar
+yalnız parçaya uygulanır ve yönlendirici metin çıkar (kısayol düğmesi YOK — Geometri
+adımındaki bölge oluşturma akışına metinle yönlendiriyor).
 
 **Neden tek panel:** İki ayrı UI = iki kod yolu, iki test seti, iki
 zihinsel model. Fizik aynıyken ikiye bölmek bakım maliyetini ikiye
