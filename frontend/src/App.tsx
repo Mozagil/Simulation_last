@@ -357,6 +357,7 @@ function App() {
   const [points, setPoints] = useState<PointInfo[]>([]);
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<MultiSelectionInfo>(EMPTY_SELECTION);
+  const [hoverPartId, setHoverPartId] = useState<number | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -1789,7 +1790,25 @@ function App() {
   }
 
   const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
-  const externalHighlight = activeGroup
+  // TODO 11.7 — parça seçimi tek kaynak: viewport "parça" modu seçimi.
+  // Crash parça tablosu ve ürün ağacı bunu okur / yazar; üzerine gelme
+  // (hover) o parçanın yüzeylerini dış vurguyla gösterir.
+  const selectedPartIds = selection.mode === "part" ? selection.ids : [];
+  const hoverFaceIds = useMemo(() => {
+    if (hoverPartId === null) return null;
+    const faces = new Set<number>();
+    triangleToPart.forEach((p, i) => {
+      if (p === hoverPartId) faces.add(triangleToFace[i]);
+    });
+    return [...faces];
+  }, [hoverPartId, triangleToPart, triangleToFace]);
+  function selectPart(partId: number) {
+    setMode("part");
+    setSelection({ mode: "part", ids: [partId] });
+  }
+  const externalHighlight = hoverFaceIds
+    ? { faceIds: hoverFaceIds }
+    : activeGroup
     ? activeGroup.dim === 1
       ? { edgeIds: activeGroup.entity_tags }
       : { faceIds: activeGroup.entity_tags }
@@ -3215,7 +3234,21 @@ function App() {
         {uniquePartIdsFromPreview(meshPreview).map((partId) => {
           const assignment = materialAssignments.find((a) => a.part_id === partId);
           return (
-            <div className="model-tree-row model-tree-depth-2" key={partId}>
+            <div
+              className={
+                selectedPartIds.includes(partId)
+                  ? "model-tree-row model-tree-depth-2 model-tree-row-pickable model-tree-row-selected"
+                  : "model-tree-row model-tree-depth-2 model-tree-row-pickable"
+              }
+              key={partId}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedPartIds.includes(partId)}
+              onClick={() => selectPart(partId)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && selectPart(partId)}
+              onMouseEnter={() => setHoverPartId(partId)}
+              onMouseLeave={() => setHoverPartId(null)}
+            >
               <span className="model-tree-leaf">Parça #{partId}</span>
               {assignment?.material_name ? (
                 <span className="model-tree-value">{assignment.material_name}</span>
@@ -4884,6 +4917,9 @@ function App() {
         <CrashPanel
           geometryId={geometryId}
           onScenarioGeometry={(id, name) => void loadGeometryById(id, name)}
+          selectedPartIds={selectedPartIds}
+          onPartSelect={selectPart}
+          onPartHover={setHoverPartId}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey

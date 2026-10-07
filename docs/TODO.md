@@ -1038,7 +1038,7 @@ API'sini çağırır" testini içeriyor ve geçiyor — yani bileşen doğru
 çalışıyor, ona **doğru prop gelmiyor**. Test bileşeni izole ettiği için
 App entegrasyonundaki boşluğu yakalamıyor.
 
-### 11.7 Parça satırları seçilebilir olsun + ürün ağacı vurgulama
+### 11.7 Parça satırları seçilebilir olsun + ürün ağacı vurgulama — ✅ kod (2026-10-07)
 
 **Sorun:** PARÇALAR tablosunda `#0`, `#1` yazıyor ama hangisinin
 viewport'ta hangi katı olduğu görünmüyor. Kullanıcı rolleri (hareketli/
@@ -1046,10 +1046,15 @@ sabit) doğru parçaya atadığından emin olamıyor — yanlış atama hata
 vermez, sessizce saçma sonuç verir.
 
 **Yapılacak:**
-- [ ] Parça satırına tıklayınca viewport'ta o parça vurgulansın
-- [ ] Ürün ağacında (Model Ağacı) tıklayınca da aynı vurgulama
-- [ ] İki yön senkron: viewport'ta parça seçilince tablo satırı da işaretlensin
-- [ ] Üzerine gelince (hover) hafif vurgulama — tıklamadan önce görülsün
+- [x] Parça satırına tıklayınca viewport'ta o parça vurgulansın
+- [x] Ürün ağacında (Model Ağacı) tıklayınca da aynı vurgulama
+- [x] İki yön senkron: viewport'ta parça seçilince tablo satırı da işaretlensin
+- [x] Üzerine gelince (hover) hafif vurgulama — tıklamadan önce görülsün
+
+**Yapıldı:** tek kaynak viewport "parça" modu seçimi (`selection.mode === "part"`);
+tablo `#n` / ağaç satırı tıklanınca `selectPart`, hover → o parçanın yüzeyleri
+`externalHighlight`. Not: ağaç mesh parça numarasını, viewport CAD parça
+numarasını kullanır — çok parçalı 2D midsurface'te ayrışabilir (elle doğrula).
 
 **Altyapı var:** `triangle_to_part` eşlemesi tessellation çıktısında
 mevcut (Faz 0, "Montaj/parça ayrımı"), `GeometryViewer` parça

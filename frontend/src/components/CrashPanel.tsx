@@ -56,6 +56,9 @@ export default function CrashPanel({
   materialAssignments = [],
   componentThickness = {},
   onScenarioGeometry,
+  selectedPartIds = [],
+  onPartSelect,
+  onPartHover,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -68,6 +71,10 @@ export default function CrashPanel({
   componentThickness?: Record<number, number | null>;
   /** Hızlı senaryonun ürettiği geometri (App viewport'a yükler, TODO 11.6). */
   onScenarioGeometry?: (geometryId: number, name: string) => void;
+  /** TODO 11.7 — viewport / ürün ağacı ile ortak parça seçimi. */
+  selectedPartIds?: number[];
+  onPartSelect?: (partId: number) => void;
+  onPartHover?: (partId: number | null) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -382,8 +389,23 @@ export default function CrashPanel({
                 const mat = materialAssignments.find((a) => a.part_id === pid)?.material_name;
                 const role = partRoles[pid] ?? "moving";
                 return (
-                  <tr key={pid}>
-                    <td>#{pid}</td>
+                  <tr
+                    key={pid}
+                    className={selectedPartIds.includes(pid) ? "crash-part-selected" : undefined}
+                    onMouseEnter={() => onPartHover?.(pid)}
+                    onMouseLeave={() => onPartHover?.(null)}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        className="crash-part-pick"
+                        aria-pressed={selectedPartIds.includes(pid)}
+                        title="Viewport'ta göster"
+                        onClick={() => onPartSelect?.(pid)}
+                      >
+                        #{pid}
+                      </button>
+                    </td>
                     <td className={mat ? undefined : "crash-part-missing"}>{mat ?? "atama yok"}</td>
                     <td>
                       <span className="doe-seg" role="group" aria-label={`Parça ${pid} rolü`}>

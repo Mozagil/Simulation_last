@@ -6804,3 +6804,32 @@ p {
 .geometry-step-download button {
   align-self: flex-start;
 }
+
+/* TODO 11.7 — parça seçimi: crash tablosu ↔ viewport ↔ ürün ağacı */
+.crash-part-pick {
+  padding: 1px 6px;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.crash-part-pick:hover {
+  border-color: var(--accent);
+}
+
+.crash-parts tr.crash-part-selected td,
+.model-tree-row-selected {
+  background: var(--accent-soft);
+}
+
+.model-tree-row-pickable {
+  cursor: pointer;
+}
+
+.model-tree-row-pickable:hover {
+  background: var(--surface-2);
+}

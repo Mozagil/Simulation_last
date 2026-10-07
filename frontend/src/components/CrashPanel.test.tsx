@@ -394,4 +394,30 @@ describe("CrashPanel", () => {
     expect(await screen.findByText(/solved · bitti/)).toBeInTheDocument();
     expect(screen.queryByText(/cycle 1/)).not.toBeInTheDocument();
   });
+
+  it("11.7: parça satırı seçimi / hover App'e bildirilir; seçili satır işaretli", () => {
+    const onPartSelect = vi.fn();
+    const onPartHover = vi.fn();
+    render(
+      <CrashPanel
+        geometryId={1}
+        meshDimension={3}
+        partIds={[0, 1]}
+        selectedPartIds={[1]}
+        onPartSelect={onPartSelect}
+        onPartHover={onPartHover}
+      />,
+    );
+    const table = screen.getByTestId("crash-parts");
+    const pick1 = within(table).getByRole("button", { name: "#1" });
+    expect(pick1).toHaveAttribute("aria-pressed", "true");
+    expect(pick1.closest("tr")).toHaveClass("crash-part-selected");
+    expect(within(table).getByRole("button", { name: "#0" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(within(table).getByRole("button", { name: "#0" }));
+    expect(onPartSelect).toHaveBeenCalledWith(0);
+    fireEvent.mouseEnter(pick1.closest("tr")!);
+    expect(onPartHover).toHaveBeenLastCalledWith(1);
+    fireEvent.mouseLeave(pick1.closest("tr")!);
+    expect(onPartHover).toHaveBeenLastCalledWith(null);
+  });
 });
