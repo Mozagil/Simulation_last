@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   createGeometryFromTemplate,
-  downloadGeometryStep,
   fetchTemplates,
   TemplateApiError,
   type CreateFromTemplateResponse,
@@ -21,8 +20,6 @@ import TemplateLoadDialog, {
 import TemplateSchematic from "./TemplateSchematic";
 
 interface TemplatePanelProps {
-  geometryId: number | null;
-  geometryFilename: string | null;
   busy: boolean;
   onCreated: (result: CreateFromTemplateResponse) => Promise<void> | void;
   /** Seçili şablon değişince haber ver — DOE paneli bunu izliyor, böylece
@@ -39,8 +36,6 @@ export function templatesForKind(list: GeometryTemplateInfo[], kind: "durability
 }
 
 export default function TemplatePanel({
-  geometryId,
-  geometryFilename,
   busy,
   onCreated,
   onTemplateSelected,
@@ -52,7 +47,6 @@ export default function TemplatePanel({
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   // Onay penceresi: parametreler doğrulandıktan sonra açılır, kullanıcı yük
   // değerlerini girer. Geometri ancak onaydan sonra üretilir.
   const [pending, setPending] = useState<{ params: Record<string, number | string> } | null>(null);
@@ -132,19 +126,6 @@ export default function TemplatePanel({
     }
   }
 
-  async function handleDownload() {
-    if (geometryId == null) return;
-    setDownloading(true);
-    setError(null);
-    try {
-      await downloadGeometryStep(geometryId, geometryFilename ?? `geometry-${geometryId}.step`);
-    } catch (e) {
-      setError(e instanceof TemplateApiError ? e.message : "STEP indirilemedi.");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   const disabled = busy || creating;
 
   return (
@@ -217,13 +198,6 @@ export default function TemplatePanel({
       <div className="template-panel-actions">
         <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
           Model üret
-        </button>
-        <button
-          type="button"
-          disabled={geometryId == null || busy || downloading}
-          onClick={() => void handleDownload()}
-        >
-          {downloading ? "İndiriliyor…" : "STEP indir"}
         </button>
       </div>
       {error && !pending && (

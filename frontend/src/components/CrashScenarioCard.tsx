@@ -222,7 +222,14 @@ const ISHELL_OPTIONS: [string, string][] = [
   ["24", "24 · QEPH"],
 ];
 
-export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
+export default function CrashScenarioCard({
+  onDone,
+  onGeometry,
+}: {
+  onDone?: () => void;
+  /** Senaryonun sunucuda ürettiği geometri — App viewport'a yükler (TODO 11.6). */
+  onGeometry?: (geometryId: number, name: string) => void;
+}) {
   const [entries, setEntries] = useState<CrashCatalogEntry[]>([]);
   const [templates, setTemplates] = useState<Record<string, GeometryTemplateInfo>>({});
   const [entryId, setEntryId] = useState<string | null>(null);
@@ -317,6 +324,7 @@ export default function CrashScenarioCard({ onDone }: { onDone?: () => void }) {
       setRes(r);
       setStatus(r.crash.status);
       setPercent(0);
+      onGeometry?.(r.geometry_id, `${entry.template_id}.step`);
       onDone?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Senaryo başlatılamadı.");

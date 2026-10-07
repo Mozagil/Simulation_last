@@ -107,4 +107,14 @@ describe("CrashScenarioCard", () => {
     expect(body.speed_m_s).toBe(30);
     expect(body.rigid_bodies).toBeUndefined();
   });
+
+  it("senaryonun ürettiği geometriyi App'e bildirir (TODO 11.6: viewport boş kalmasın)", async () => {
+    vi.mocked(postCrashScenario).mockClear();
+    const onGeometry = vi.fn();
+    render(<CrashScenarioCard onGeometry={onGeometry} />);
+    await waitFor(() => expect(screen.getByLabelText("Senaryo malzemesi")).toHaveValue("1"));
+    await waitFor(() => expect(screen.getByLabelText("L (mm)")).toHaveValue("300"));
+    fireEvent.click(screen.getByRole("button", { name: "Senaryoyu koş" }));
+    await waitFor(() => expect(onGeometry).toHaveBeenCalledWith(4000, "crash_box_shell.step"));
+  });
 });

@@ -6792,3 +6792,15 @@ p {
   color: var(--accent);
 }
 >>>>>>> Stashed changes
+
+/* TODO 11.6 — STEP indir Geometri adımında */
+.geometry-step-download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.geometry-step-download button {
+  align-self: flex-start;
+}

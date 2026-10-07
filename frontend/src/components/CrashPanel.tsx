@@ -55,6 +55,7 @@ export default function CrashPanel({
   partIds = [],
   materialAssignments = [],
   componentThickness = {},
+  onScenarioGeometry,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -65,6 +66,8 @@ export default function CrashPanel({
   /** 2D: parça → ürün ağacı bileşen kalınlığı (mm). Kabuk kalınlığının tek
    * kaynağı Malzeme adımıdır; panel yalnız gösterir, backend oradan okur. */
   componentThickness?: Record<number, number | null>;
+  /** Hızlı senaryonun ürettiği geometri (App viewport'a yükler, TODO 11.6). */
+  onScenarioGeometry?: (geometryId: number, name: string) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -753,7 +756,7 @@ export default function CrashPanel({
       )}
 
       <CrashCatalog />
-      <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} />
+      <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} onGeometry={onScenarioGeometry} />
       <CrashHistory geometryId={geometryId} refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`} />
       <CrashValidation />
     </div>

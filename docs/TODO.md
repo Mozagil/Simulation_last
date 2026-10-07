@@ -986,7 +986,18 @@ farkı, `/INIVEL` ile `/IMPVEL` farkı, `law=elastic`'in crash'te neden
 yanlış olduğu, CFC filtresi olmadan tepe kuvveti okumanın neden
 anlamsız olduğu, hourglass enerjisinin %5 eşiği.
 
-### 11.6 "STEP indir" düğmesi çalışmıyor (durability + crash)
+### 11.6 "STEP indir" düğmesi çalışmıyor (durability + crash) — ✅ kod (2026-10-07)
+
+**Gerçek kök sebep (2026-10-07):** `geometryId` doğru güncelleniyordu
+(Model üret → kiriş yüklendi, tarayıcıda doğrulandı). `TemplatePanel`
+yalnız "GEOMETRİ YÜKLE" boş ekranının içinde render ediliyor; geometri
+yüklenince panel kalkıyor → düğme yalnız `geometryId == null` iken
+görünüyordu, yani hiçbir koşulda tıklanamıyordu. Düzeltme: düğme
+`GeometryStepDownload` olarak Geometri adımına (geometri yüklüyken)
+taşındı, şablon panelindeki ölü düğme kaldırıldı. Viewport'un boş
+kalması AYRI kök: crash "Hızlı senaryo" geometriyi sunucuda üretip App'e
+bildirmiyordu → `onGeometry` → `loadGeometryById` (birim testli; tarayıcıda
+senaryo yolu henüz elle doğrulanmadı). Aşağıdaki ilk teşhis tarihsel.
 
 **Teşhis yapıldı — backend sağlam, sorun frontend'de.**
 

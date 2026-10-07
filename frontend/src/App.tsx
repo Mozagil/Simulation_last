@@ -64,6 +64,7 @@ import ComparisonView from "./components/ComparisonView";
 import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
+import GeometryStepDownload from "./components/GeometryStepDownload";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
@@ -1093,6 +1094,55 @@ function App() {
     if (defaults.length > 0) {
       setInfoMessage(
         `Şablonun ${defaults.length} varsayılan sınır koşulu yüklendi — BC listesinden düzenleyebilirsiniz.`,
+      );
+    }
+  }
+
+  /** Sunucuda üretilmiş bir geometriyi (crash hızlı senaryo, TODO 11.6)
+   * aktif geometri yapar: viewport, ürün ağacı ve STEP indir buna bağlanır.
+   * Önceki geometrinin seçim / mesh / sonuç durumu temizlenir. */
+  async function loadGeometryById(geoId: number, displayName: string) {
+    activeGeometryIdRef.current = geoId;
+    setErrorMessage(null);
+    setSelection(EMPTY_SELECTION);
+    setMode("surface");
+    setHiddenParts(new Set());
+    setActiveGroupId(null);
+    setCanUndo(false);
+    setMeshResult(null);
+    setMeshPreview(null);
+    setMeshQuality(null);
+    setMeshPicks([]);
+    setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
+    setProductTree(null);
+    try {
+      const maps = await fetchTessellationMaps(geoId);
+      const [edgeList, pointList, groupList, assignments] = await Promise.all([
+        fetchEdges(geoId),
+        fetchPoints(geoId),
+        fetchPhysicalGroups(geoId),
+        fetchMaterialAssignments(geoId),
+      ]);
+      if (activeGeometryIdRef.current !== geoId) return;
+      setGeometryId(geoId);
+      setFileName(displayName);
+      setStlUrl(resolveTessellationUrl(`/files/tessellations/${geoId}.stl`));
+      setTriangleToFace(maps.triangle_to_face);
+      setTriangleToPart(maps.triangle_to_part);
+      setVolumePartIds([...new Set(maps.triangle_to_part)].sort((a, b) => a - b));
+      setFaceCount(new Set(maps.triangle_to_face).size || null);
+      setPartCount(new Set(maps.triangle_to_part).size || null);
+      setEdges(edgeList);
+      setPoints(pointList);
+      setPhysicalGroups(groupList);
+      setMaterialAssignments(assignments);
+      setStatus("success");
+    } catch (err) {
+      if (activeGeometryIdRef.current !== geoId) return;
+      setErrorMessage(
+        err instanceof GeometryUploadError ? err.message : "Senaryo geometrisi yüklenemedi.",
       );
     }
   }
@@ -3724,8 +3774,6 @@ function App() {
         </div>
 
         <TemplatePanel
-          geometryId={geometryId}
-          geometryFilename={fileName}
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
@@ -3766,6 +3814,14 @@ function App() {
             {fileName}
             {status === "success" && " — yüklendi"}
           </p>
+        )}
+
+        {geometryId !== null && (
+          <GeometryStepDownload
+            geometryId={geometryId}
+            filename={fileName}
+            disabled={status === "uploading" || busyAction !== null}
+          />
         )}
 
         {errorMessage && (
@@ -4827,6 +4883,7 @@ function App() {
       {expandedSteps.has("bc") && (
         <CrashPanel
           geometryId={geometryId}
+          onScenarioGeometry={(id, name) => void loadGeometryById(id, name)}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
