@@ -388,6 +388,7 @@ export default function CrashPanel({
     partLabels: Object.fromEntries(
       partOptions.map((pid) => [pid, `#${pid} ${ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short}`]),
     ),
+    partRoles: Object.fromEntries(partOptions.map((pid) => [pid, roleOfPart(pid)])),
   };
   const markersKey = JSON.stringify(markers);
   useEffect(() => {

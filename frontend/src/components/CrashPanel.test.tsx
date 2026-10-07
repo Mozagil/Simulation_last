@@ -513,6 +513,7 @@ describe("CrashPanel", () => {
         wall: { point: [0, 0, 0], normal: [0, 0, 1] },
         velocity: { dir: [0, 0, -1], label: "10 m/s" },
         partLabels: { 0: "#0 hareketli", 1: "#1 hareketli" },
+        partRoles: { 0: "moving", 1: "moving" },
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "⌖ Modelden seç" }));

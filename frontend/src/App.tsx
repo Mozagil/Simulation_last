@@ -370,6 +370,7 @@ function App() {
   // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
   const [pickingPoint, setPickingPoint] = useState(false);
+  const [showBcMarkers, setShowBcMarkers] = useState(true);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
@@ -3171,6 +3172,22 @@ function App() {
                     </svg>
                     <span className="selection-mode-label">KENARLAR</span>
                   </button>
+                  {analysisTab === "crash" && (
+                    <button
+                      type="button"
+                      className={showBcMarkers ? "active bc-toggle" : "bc-toggle"}
+                      aria-pressed={showBcMarkers}
+                      onClick={() => setShowBcMarkers((prev) => !prev)}
+                      title={showBcMarkers ? "Sınır koşulu işaretleri (açık)" : "Sınır koşulu işaretleri (kapalı)"}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                        <path d="M10 2v12" />
+                        <path d="M2 8h6" />
+                        <path d="M5.5 5.5L8 8l-2.5 2.5" />
+                      </svg>
+                      <span className="selection-mode-label">SINIR KOŞ.</span>
+                    </button>
+                  )}
 
                   <span className="viewer-ribbon-sep" />
                   <span className="toolbar-groups-inline">
@@ -3690,7 +3707,7 @@ function App() {
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
                   onSelectionChange={handleSelectionChange}
-                  crashMarkers={analysisTab === "crash" ? crashMarkers : null}
+                  crashMarkers={analysisTab === "crash" && showBcMarkers ? crashMarkers : null}
                   pickPointMode={analysisTab === "crash" && pickingPoint}
                   onPointPick={(p) => {
                     pointPickDoneRef.current?.(p);

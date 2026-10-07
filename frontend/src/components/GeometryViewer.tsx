@@ -37,6 +37,8 @@ export interface CrashMarkers {
   velocity: { dir: [number, number, number]; label: string } | null;
   /** Parça id → etiket ("#0 hareketli"). */
   partLabels: Record<number, string>;
+  /** Parça id → rol (etiket rengi: hareketli turuncu, sabit kırmızı, serbest yeşil). */
+  partRoles?: Record<number, "moving" | "fixed" | "free">;
 }
 
 function makeTextSprite(text: string, color: string, worldHeight: number): THREE.Sprite {
@@ -666,7 +668,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       const c = new THREE.Vector3();
       bb.getCenter(c);
       c.add(entry.mesh.position);
-      const tag = makeTextSprite(label, "#0f172a", L * 0.065);
+      const role = m.partRoles?.[Number(pidRaw)];
+      const color = role === "fixed" ? "#b91c1c" : role === "free" ? "#15803d" : role === "moving" ? "#c2410c" : "#0f172a";
+      const tag = makeTextSprite(label, color, L * 0.065);
       tag.position.set(c.x, bb.max.y + entry.mesh.position.y + L * 0.06, c.z);
       group.add(tag);
     }
