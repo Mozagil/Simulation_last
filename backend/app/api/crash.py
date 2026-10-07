@@ -78,7 +78,9 @@ class CrashPartSpec(BaseModel):
 
 class CrashSolveRequest(BaseModel):
     geometry_id: int
-    barrier: CrashBarrierParams
+    #: TODO 11.1 — varsayılan: hız 0 (yükleme başka mekanizmadan: /GRAV,
+    #: /IMPVEL, SPH, patlama). Hız yönü `barrier.direction` ile duvardan bağımsız.
+    barrier: CrashBarrierParams = Field(default_factory=lambda: CrashBarrierParams(speed_m_s=0.0))
     parts: list[CrashPartSpec] = Field(
         default_factory=list,
         description="Parça rolleri; verilmeyen parça hareketli sayılır.",

@@ -113,6 +113,8 @@ class CrashScenarioRequest(BaseModel):
     )
     speed_m_s: float = Field(default=10.0)
     angle_deg: float = Field(default=0.0)
+    #: TODO 11.1 — ilk hız yönü duvardan bağımsız (boş = duvar normali + açı).
+    direction: tuple[float, float, float] | None = Field(default=None)
     wall: CrashWall | None = Field(
         default=None,
         description="Rijit duvar; boş = şablondan: ön uç (x = 0) kesit merkezi, normal +x",
@@ -441,7 +443,7 @@ def crash_scenario(
         wait=req.wait,
         t_end_ms=req.t_end_ms,
         name=req.name,
-        barrier={"speed_m_s": speed, "angle_deg": req.angle_deg, "wall": wall},
+        barrier={"speed_m_s": speed, "angle_deg": req.angle_deg, "wall": wall, "direction": req.direction},
         gravity=gravity,
         model=req.model,
         engine=req.engine,

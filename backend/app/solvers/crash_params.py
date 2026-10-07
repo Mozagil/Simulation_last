@@ -108,15 +108,33 @@ class CrashBarrierParams(BaseModel):
     )
     angle_deg: float = Field(
         0.0,
-        description="0 = duvara dik (-normal). Pozitif: (-normal, +X) düzleminde sapma",
+        description="Yalnız `direction` verilmemişse: 0 = duvara dik (-normal), pozitif "
+        "(-normal, +X) düzleminde sapma. Duvar yoksa referansı yok — `direction` kullan.",
         json_schema_extra={"unit": "deg"},
     )
     wall: RigidWallParams = Field(default_factory=RigidWallParams)
+    #: TODO 11.1 — hız yönü duvardan bağımsız. Verilirse ilk hız bu yönde
+    #: (normalize edilir, `angle_deg` yok sayılır); verilmezse eski davranış
+    #: (duvar normali + açı) — mevcut koşular ve testler değişmez.
+    direction: tuple[float, float, float] | None = Field(
+        default=None,
+        description="İlk hız yönü (normalize edilir); boş = duvar normalinden",
+    )
 
     @field_validator("speed_m_s", "angle_deg")
     @classmethod
     def _finite_scalar(cls, value: float, info) -> float:
         return _finite(value, info.field_name)
+
+    @field_validator("direction")
+    @classmethod
+    def _direction_ok(cls, value):
+        if value is None:
+            return None
+        for i, c in enumerate(value):
+            _finite(c, f"direction[{i}]")
+        _unit(value, "direction")
+        return value
 
     def approach_and_sweep(
         self,
@@ -132,6 +150,8 @@ class CrashBarrierParams(BaseModel):
         return approach, sweep
 
     def velocity_mm_per_ms(self) -> tuple[float, float, float]:
+        if self.direction is not None:
+            return _scale(self.speed_m_s, _unit(self.direction, "direction"))
         theta = math.radians(self.angle_deg)
         approach, sweep = self.approach_and_sweep()
         direction = _add(_scale(math.cos(theta), approach), _scale(math.sin(theta), sweep))
