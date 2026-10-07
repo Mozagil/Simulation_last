@@ -7468,3 +7468,67 @@ p {
   background: var(--accent);
   border-color: var(--accent);
 }
+
+/* Tasarım adım 3 — crash geçmişi dock + yeni vaka penceresi */
+.crash-history-dock {
+  height: 340px;
+}
+
+.crash-history-dock-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 12px;
+  overflow: auto;
+}
+
+.crash-newcase-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.crash-newcase-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 94vw);
+  max-height: 88vh;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.crash-newcase-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.crash-newcase-head .crash-doe-x {
+  margin-left: auto;
+}
+
+.crash-newcase-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 16px 16px;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .crash-newcase-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.crash-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

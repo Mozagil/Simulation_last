@@ -67,6 +67,8 @@ import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
+import CrashHistoryDock from "./components/CrashHistoryDock";
+import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
@@ -74,6 +76,7 @@ import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
 import CrashPredictPanel from "./components/CrashPredictPanel";
+import CrashValidation from "./components/CrashValidation";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
@@ -337,7 +340,7 @@ function App() {
     analysisTab === "modal"
       ? ["geometry", "mesh", "material", "modal", "results"]
       : analysisTab === "crash"
-        ? ["geometry", "mesh", "material", "bc"]
+        ? ["geometry", "mesh", "material", "bc", "results"]
         : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
@@ -371,6 +374,9 @@ function App() {
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
+  // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
+  const [crashJobKey, setCrashJobKey] = useState("");
+  const [showNewCrashCase, setShowNewCrashCase] = useState(false);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
@@ -2742,6 +2748,13 @@ function App() {
               {crashMlStage === "doe" && <CrashDoePanel />}
               {crashMlStage === "model" && <CrashModelPanel />}
               {crashMlStage === "pred" && <CrashPredictPanel />}
+              {crashMlStage === "valid" && (
+                <div className="crash-ml-stage crash-ml-valid">
+                  <section className="crash-ml-card">
+                    <CrashValidation />
+                  </section>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -2978,6 +2991,15 @@ function App() {
         onClick={() => toggleStep("bc")}
       >
         4 · CRASH
+      </button>
+      )}
+      {analysisTab === "crash" && (
+      <button
+        type="button"
+        className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("results")}
+      >
+        5 · SONUÇLAR
       </button>
       )}
       {analysisTab !== "crash" && (
@@ -3373,6 +3395,14 @@ function App() {
         </div>
       </div>
       </>
+      )}
+      {analysisTab === "crash" && (
+        <div className="new-case-row">
+          <button type="button" className="reset-button" onClick={() => setShowNewCrashCase(true)}>
+            + Yeni crash vakası
+          </button>
+          <p className="new-case-hint">Hazır örnekten (katalog / hızlı senaryo) geometri + kurulum.</p>
+        </div>
       )}
       {status !== "idle" && (
         <div className="new-case-row">
@@ -4996,16 +5026,16 @@ function App() {
 
       {analysisTab === "crash" && (
       <>
-      {expandedSteps.has("bc") && (
+      {(expandedSteps.has("bc") || expandedSteps.has("results")) && (
         <CrashPanel
           geometryId={geometryId}
-          onScenarioGeometry={(id, name) => void loadGeometryById(id, name)}
+          view={expandedSteps.has("results") ? "results" : "setup"}
+          onRunStarted={() => setExpandedSteps(new Set(["results"]))}
+          onJobKey={setCrashJobKey}
           selectedPartIds={selectedPartIds}
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}
           regions={physicalGroups.map((g) => g.name)}
-          animRunId={crashAnim?.id ?? null}
-          onAnimateRun={setCrashAnim}
           onMarkersChange={setCrashMarkers}
           pickingPoint={pickingPoint}
           onRequestPointPick={(done) => {
@@ -5147,6 +5177,25 @@ function App() {
         </div>
       </aside>
 
+      {analysisTab === "crash" && (
+        <CrashHistoryDock
+          geometryId={geometryId}
+          refreshKey={crashJobKey}
+          activeAnimId={crashAnim?.id ?? null}
+          onAnimate={setCrashAnim}
+        />
+      )}
+      {showNewCrashCase && (
+        <CrashNewCaseDialog
+          onClose={() => setShowNewCrashCase(false)}
+          onGeometry={(id, name) => {
+            void loadGeometryById(id, name);
+            setShowNewCrashCase(false);
+          }}
+          onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
+        />
+      )}
+      {analysisTab !== "crash" && (
       <HistoryFooter
         runs={runsHistory}
         compareSelection={compareSelection}
@@ -5193,6 +5242,7 @@ function App() {
           })();
         }}
       />
+      )}
 
       <div className="status-bar">
         <span className="status-bar-group">

@@ -487,11 +487,26 @@ describe("CrashPanel", () => {
     expect(screen.getByLabelText("Ishell")).toHaveAttribute("placeholder", "varsayılan");
   });
 
-  it("sekmeler: hızlı senaryo / geçmiş / katalog ayrı", () => {
-    render(<CrashPanel geometryId={1} meshDimension={3} />);
-    expect(screen.getByRole("tab", { name: "Model kur" })).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("tab", { name: "Geçmiş" }));
-    expect(screen.queryByTestId("crash-parts")).not.toBeInTheDocument();
+  it("adım 3: view=setup kurulum + çalıştır; view=results sonuçlar + çıktı ayarları", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j20", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    const onRunStarted = vi.fn();
+    const onJobKey = vi.fn();
+    const { rerender } = render(
+      <CrashPanel geometryId={1} meshDimension={3} view="setup" onRunStarted={onRunStarted} onJobKey={onJobKey} />,
+    );
+    expect(screen.queryByLabelText("Sonuçlar")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Çıktı — kayıt aralığı/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(onRunStarted).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onJobKey).toHaveBeenCalledWith("j20:rad_only"));
+    rerender(<CrashPanel geometryId={1} meshDimension={3} view="results" onRunStarted={onRunStarted} onJobKey={onJobKey} />);
+    expect(screen.getByLabelText("Sonuçlar")).toHaveTextContent("j20");
+    expect(screen.getByText(/Çıktı — kayıt aralığı/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ".rad üret / çöz" })).not.toBeInTheDocument();
   });
 
   it("tasarım 2: viewport işaretleri bildirilir; Modelden seç duvar konumunu doldurur", async () => {

@@ -14,12 +14,7 @@ import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
-import CrashHistory from "./CrashHistory";
-import CrashCatalog from "./CrashCatalog";
-import CrashScenarioCard from "./CrashScenarioCard";
-import CrashValidation from "./CrashValidation";
 import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
-import CrashSchematic from "./CrashSchematic";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -52,16 +47,9 @@ function fmt(v: number | undefined): string {
   return v.toExponential(3);
 }
 
-type PanelTab = "setup" | "scenario" | "history" | "catalog";
 type DirPreset = "+X" | "-X" | "+Y" | "-Y" | "+Z" | "-Z" | "custom";
 type GroupState = string;
 
-const PANEL_TABS: { id: PanelTab; label: string }[] = [
-  { id: "setup", label: "Model kur" },
-  { id: "scenario", label: "Hızlı senaryo" },
-  { id: "history", label: "Geçmiş" },
-  { id: "catalog", label: "Katalog & validasyon" },
-];
 
 const DIR_PRESETS: { id: DirPreset; v: number[] }[] = [
   { id: "+X", v: [1, 0, 0] },
@@ -165,17 +153,17 @@ export default function CrashPanel({
   partIds = [],
   materialAssignments = [],
   componentThickness = {},
-  onScenarioGeometry,
   selectedPartIds = [],
   onPartSelect,
   onPartHover,
   regions = [],
-  animRunId = null,
-  onAnimateRun,
   material,
   onMarkersChange,
   onRequestPointPick,
   pickingPoint = false,
+  view = "both",
+  onRunStarted,
+  onJobKey,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -186,17 +174,12 @@ export default function CrashPanel({
   /** 2D: parça → ürün ağacı bileşen kalınlığı (mm). Kabuk kalınlığının tek
    * kaynağı Malzeme adımıdır; panel yalnız gösterir, backend oradan okur. */
   componentThickness?: Record<number, number | null>;
-  /** Hızlı senaryonun ürettiği geometri (App viewport'a yükler, TODO 11.6). */
-  onScenarioGeometry?: (geometryId: number, name: string) => void;
   /** TODO 11.7 — viewport / ürün ağacı ile ortak parça seçimi. */
   selectedPartIds?: number[];
   onPartSelect?: (partId: number) => void;
   onPartHover?: (partId: number | null) => void;
   /** Physical Group adları (şablon bölgeleri + kullanıcı grupları) — kart hedefi (11.3/11.9). */
   regions?: string[];
-  /** TODO 11.4 — deforme şekil ana viewport'ta (App). */
-  animRunId?: number | null;
-  onAnimateRun?: (run: { id: number; title: string } | null) => void;
   /** Kullanıcı 2026-10-07: malzeme modeli 3 · Material adımında (state App'te).
    * Verilirse panel yalnız özet gösterir; verilmezse kart burada (bağımsız kullanım). */
   material?: {
@@ -210,6 +193,12 @@ export default function CrashPanel({
   /** "Modelden seç": viewport'ta tıklanan nokta geri verilir. */
   onRequestPointPick?: (done: (p: [number, number, number]) => void) => void;
   pickingPoint?: boolean;
+  /** "setup" = 4 · Crash (kurulum + çalıştır), "results" = 5 · Sonuçlar, "both" = ikisi (bağımsız kullanım). */
+  view?: "setup" | "results" | "both";
+  /** İş başlatılınca (App Sonuçlar adımına geçer). */
+  onRunStarted?: () => void;
+  /** Koşu geçmişini yenilemek için iş anahtarı (job/status). */
+  onJobKey?: (key: string) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -231,7 +220,8 @@ export default function CrashPanel({
   const useRigidWall = impactMode === "wall";
   const [gravOn, setGravOn] = useState(false);
   const [gravAccel, setGravAccel] = useState("-9.81");
-  const [tab, setTab] = useState<PanelTab>("setup");
+  const showSetup = view !== "results";
+  const showResults = view !== "setup";
   const [gravDir, setGravDir] = useState<"X" | "Y" | "Z">("Z");
   const [tEnd, setTEnd] = useState("10");
   // Malzeme kartı (1.14e): global kart + isteğe bağlı parça başına kart (1.14b).
@@ -244,8 +234,6 @@ export default function CrashPanel({
   const setPartCards = material?.setPartCards ?? setOwnPartCards;
   // 1.15d — engine / TH / kesit ayarları; boş = backend varsayılanı (eski deck)
   const [output, setOutput] = useState<OutputState>(defaultOutput);
-  /** 1.17g-7 — hızlı senaryo başlayınca / bitince geçmişi yenile */
-  const [scenarioTick, setScenarioTick] = useState(0);
   const [isolid, setIsolid] = useState("1");
   const [ismstr, setIsmstr] = useState("");
   const [nip, setNip] = useState("1");
@@ -301,6 +289,11 @@ export default function CrashPanel({
       ws?.close();
     };
   }, [jobId, polling]);
+
+  useEffect(() => {
+    if (jobId) onJobKey?.(`${jobId}:${status ?? ""}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, status]);
 
   // Tek parçalı mesh'te partIds boş gelir: parça 0 (self-contact mümkün).
   const partOptions = partIds.length > 0 ? partIds : [0];
@@ -462,6 +455,7 @@ export default function CrashPanel({
         ...outputPayload(output),
       });
       setResult(body);
+      onRunStarted?.();
       setSnapshot({
         job_id: body.job_id,
         geometry_id: body.geometry_id,
@@ -517,22 +511,7 @@ export default function CrashPanel({
         <p className="material-assign-hint">Önce geometri yükleyin.</p>
       )}
 
-      <div className="crash-tabs doe-seg" role="tablist" aria-label="Crash paneli">
-        {PANEL_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={tab === t.id ? "doe-seg-opt active" : "doe-seg-opt"}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "setup" && (
+      {showSetup && (
       <>
       <div className="crash-acc-head">
         <span className="crash-q-title">Sınır koşulları</span>
@@ -824,90 +803,7 @@ export default function CrashPanel({
       </button>
       {error && <p className="material-assign-hint">{error}</p>}
 
-      {(result || snapshot) && (
-        <div className="material-assignments">
-          <p className="material-assignments-title">Job</p>
-          <p className="material-assign-hint">
-            {snapshot?.job_id ?? result?.job_id} · {status} · {snapshot?.message ?? result?.message}
-          </p>
-          {polling && (
-            <div className="crash-progress-track" role="progressbar" aria-valuenow={percent}>
-              <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
-            </div>
-          )}
-          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
-          {polling && snapshot?.cycle != null && (
-            <p className="material-assign-hint">
-              cycle {snapshot.cycle}
-              {snapshot.time_ms != null ? ` · t=${fmt(snapshot.time_ms)} ms` : ""} · %{fmt(percent)}
-            </p>
-          )}
-          {result?.starter_url && (
-            <a className="material-inp-link" href={result.starter_url} target="_blank" rel="noreferrer">
-              starter .rad
-            </a>
-          )}
-          {Object.keys(scalars).length > 0 && (
-            <ul className="crash-scalar-list">
-              <li>HIC15 {fmt(scalars.hic15)}</li>
-              <li>HIC36 {fmt(scalars.hic36)}</li>
-              <li>acc_peak_g {fmt(scalars.acc_peak_g)}</li>
-              <li>IE_final {fmt(scalars.internal_energy_final)}</li>
-              <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
-              {scalars.hourglass_energy_final != null && (
-                <li>
-                  HG_final {fmt(scalars.hourglass_energy_final)} · HG/IE {fmt(scalars.hourglass_ratio)}
-                </li>
-              )}
-              <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
-              {scalars.rwall_impulse_final != null && (
-                <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
-              )}
-              {sectionPeaks.map((m) => (
-                <li key={m[0]}>
-                  Kesit {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
-                  {fmt(scalars[`section_${m[1]}_impulse_final`])} N·s
-                </li>
-              ))}
-              {cfcPeaks.map((k) => (
-                <li key={k} data-testid="crash-cfc-peak">
-                  {k.replace(/_cfc(\d+)$/, "")} CFC{/_cfc(\d+)$/.exec(k)?.[1]} {fmt(scalars[k])}
-                </li>
-              ))}
-              {scalars.timestep_min != null && (
-                <li data-testid="crash-timestep">
-                  Δt_min {fmt(scalars.timestep_min)} ms
-                  {scalars.mass_added_rel ? ` · eklenen kütle %${(scalars.mass_added_rel * 100).toFixed(1)}` : ""}
-                </li>
-              )}
-              {scalars.elements_deleted != null && (
-                <li data-testid="crash-deleted">
-                  Silinen eleman {scalars.elements_deleted}
-                  {scalars.deletion_time_first != null
-                    ? ` · ilk ≤ ${fmt(scalars.deletion_time_first)} ms · son ≤ ${fmt(scalars.deletion_time_last)} ms`
-                    : ""}
-                </li>
-              )}
-              {contactPeaks.map((m) => (
-                <li key={m[0]}>
-                  Temas {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
-                  {fmt(scalars[`contact_${m[1]}_impulse_final`])} N·s
-                </li>
-              ))}
-            </ul>
-          )}
-          {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
-            <p className="material-assign-hint" data-testid="crash-starter-msgs">
-              Starter
-              {starterMsgs.errors.length > 0 ? ` · hata ID ${starterMsgs.errors.join(", ")}` : " · 0 hata"}
-              {starterMsgs.warnings.length > 0 ? ` · uyarı ID ${starterMsgs.warnings.join(", ")}` : ""}
-            </p>
-          )}
-          {curves?.time && forceSeries.length > 0 && (
-            <CrashForceChart time={curves.time} series={forceSeries} />
-          )}
-        </div>
-      )}
+
 
 
       <p className="crash-q-title crash-other-title">Diğer ayarlar</p>
@@ -1029,37 +925,108 @@ export default function CrashPanel({
       )}
       </details>
 
+      </>
+      )}
+
+      {showResults && (
+        <section className="crash-results" aria-label="Sonuçlar">
+          {!result && !snapshot && (
+            <p className="doe-empty">Henüz koşu yok — 4 · Crash'te kurup "Çalıştır"a bas. Geçmiş koşular alttaki dock'ta.</p>
+          )}
+      {(result || snapshot) && (
+        <div className="material-assignments">
+          <p className="material-assignments-title">Job</p>
+          <p className="material-assign-hint">
+            {snapshot?.job_id ?? result?.job_id} · {status} · {snapshot?.message ?? result?.message}
+          </p>
+          {polling && (
+            <div className="crash-progress-track" role="progressbar" aria-valuenow={percent}>
+              <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
+            </div>
+          )}
+          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
+          {polling && snapshot?.cycle != null && (
+            <p className="material-assign-hint">
+              cycle {snapshot.cycle}
+              {snapshot.time_ms != null ? ` · t=${fmt(snapshot.time_ms)} ms` : ""} · %{fmt(percent)}
+            </p>
+          )}
+          {result?.starter_url && (
+            <a className="material-inp-link" href={result.starter_url} target="_blank" rel="noreferrer">
+              starter .rad
+            </a>
+          )}
+          {Object.keys(scalars).length > 0 && (
+            <ul className="crash-scalar-list">
+              <li>HIC15 {fmt(scalars.hic15)}</li>
+              <li>HIC36 {fmt(scalars.hic36)}</li>
+              <li>acc_peak_g {fmt(scalars.acc_peak_g)}</li>
+              <li>IE_final {fmt(scalars.internal_energy_final)}</li>
+              <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
+              {scalars.hourglass_energy_final != null && (
+                <li>
+                  HG_final {fmt(scalars.hourglass_energy_final)} · HG/IE {fmt(scalars.hourglass_ratio)}
+                </li>
+              )}
+              <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
+              {scalars.rwall_impulse_final != null && (
+                <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
+              )}
+              {sectionPeaks.map((m) => (
+                <li key={m[0]}>
+                  Kesit {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`section_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
+              {cfcPeaks.map((k) => (
+                <li key={k} data-testid="crash-cfc-peak">
+                  {k.replace(/_cfc(\d+)$/, "")} CFC{/_cfc(\d+)$/.exec(k)?.[1]} {fmt(scalars[k])}
+                </li>
+              ))}
+              {scalars.timestep_min != null && (
+                <li data-testid="crash-timestep">
+                  Δt_min {fmt(scalars.timestep_min)} ms
+                  {scalars.mass_added_rel ? ` · eklenen kütle %${(scalars.mass_added_rel * 100).toFixed(1)}` : ""}
+                </li>
+              )}
+              {scalars.elements_deleted != null && (
+                <li data-testid="crash-deleted">
+                  Silinen eleman {scalars.elements_deleted}
+                  {scalars.deletion_time_first != null
+                    ? ` · ilk ≤ ${fmt(scalars.deletion_time_first)} ms · son ≤ ${fmt(scalars.deletion_time_last)} ms`
+                    : ""}
+                </li>
+              )}
+              {contactPeaks.map((m) => (
+                <li key={m[0]}>
+                  Temas {m[1]} Fmax {fmt(scalars[m[0]])} kN · impuls{" "}
+                  {fmt(scalars[`contact_${m[1]}_impulse_final`])} N·s
+                </li>
+              ))}
+            </ul>
+          )}
+          {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
+            <p className="material-assign-hint" data-testid="crash-starter-msgs">
+              Starter
+              {starterMsgs.errors.length > 0 ? ` · hata ID ${starterMsgs.errors.join(", ")}` : " · 0 hata"}
+              {starterMsgs.warnings.length > 0 ? ` · uyarı ID ${starterMsgs.warnings.join(", ")}` : ""}
+            </p>
+          )}
+          {curves?.time && forceSeries.length > 0 && (
+            <CrashForceChart time={curves.time} series={forceSeries} />
+          )}
+        </div>
+      )}
       <details className="crash-advanced">
         <summary>Çıktı — kayıt aralığı, kesit kuvvetleri, filtre (CFC), zaman adımı</summary>
         <p className="crash-behavior-hint">
           Hangi eğrilerin ne sıklıkla kaydedileceği ve kuvvet / ivme sinyallerinin filtresi. Boş = varsayılan
-          (süre/200 aralık).
+          (süre/200 aralık). Sonraki koşuya uygulanır.
         </p>
         <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
       </details>
 
-      </>
-      )}
-
-      {tab === "scenario" && (
-        <>
-          <CrashSchematic />
-          <CrashScenarioCard onDone={() => setScenarioTick((t) => t + 1)} onGeometry={onScenarioGeometry} />
-        </>
-      )}
-      {tab === "history" && (
-        <CrashHistory
-          geometryId={geometryId}
-          refreshKey={`${jobId ?? ""}:${status ?? ""}:${scenarioTick}`}
-          activeAnimId={animRunId}
-          onAnimate={onAnimateRun}
-        />
-      )}
-      {tab === "catalog" && (
-        <>
-          <CrashCatalog />
-          <CrashValidation />
-        </>
+        </section>
       )}
     </div>
   );
