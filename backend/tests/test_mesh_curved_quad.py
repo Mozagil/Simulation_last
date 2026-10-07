@@ -46,3 +46,38 @@ def test_door_beam_impactor_quad_mesh_quality():
         assert n > 300, curved
         assert quads / n > 0.95, curved
         assert med > 0.8, curved
+
+
+def _face_counts(mesh_path: Path) -> dict[int, int]:
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(mesh_path))
+        out = {}
+        for _d, tag in gmsh.model.getEntities(2):
+            _types, tags, _ = gmsh.model.mesh.getElements(2, tag)
+            out[tag] = int(sum(len(e) for e in tags))
+        return out
+    finally:
+        gmsh.finalize()
+
+
+@requires_db
+def test_remesh_face_sizes_refines_only_selected_face():
+    """Remesh (kullanıcı 2026-10-07): seçili yüzey yerel boyutla, diğerleri değişmez."""
+    gid = client.post("/templates/crash_box_shell/create", json={}).json()["geometry_id"]
+    base = client.post(f"/geometry/{gid}/mesh", json={"dimension": 2, "element_size": 8, "element_scheme": "quad"})
+    assert base.status_code == 200, base.text
+    before = _face_counts(Path(base.json()["mesh_path"]))
+    face = max(before, key=before.get)
+    r = client.post(
+        f"/geometry/{gid}/mesh",
+        json={"dimension": 2, "element_size": 8, "element_scheme": "quad", "face_sizes": {str(face): 4}},
+    )
+    assert r.status_code == 200, r.text
+    after = _face_counts(Path(r.json()["mesh_path"]))
+    # boyut yarıya → eleman sayısı ~4 kat (kenar geçişleri payı)
+    assert after[face] > 3 * before[face], (before, after)
+    for f, n in before.items():
+        if f != face:
+            assert abs(after[f] - n) <= 0.35 * n, (f, before, after)

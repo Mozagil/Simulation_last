@@ -65,6 +65,7 @@ import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
+import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
 import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
@@ -361,6 +362,8 @@ function App() {
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<MultiSelectionInfo>(EMPTY_SELECTION);
   const [hoverPartId, setHoverPartId] = useState<number | null>(null);
+  // Remesh (kullanıcı 2026-10-07): CAD yüzey id → yerel eleman boyutu (mm)
+  const [faceSizes, setFaceSizes] = useState<Record<number, number>>({});
   // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
   const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
@@ -1028,6 +1031,7 @@ function App() {
   }
 
   async function handleFileSelected(file: File) {
+    setFaceSizes({});
     setStatus("uploading");
     setErrorMessage(null);
     setInfoMessage(null);
@@ -1068,6 +1072,7 @@ function App() {
   }
 
   async function handleTemplateCreated(result: CreateFromTemplateResponse) {
+    setFaceSizes({});
     setStatus("uploading");
     setErrorMessage(null);
     setInfoMessage(null);
@@ -1112,6 +1117,7 @@ function App() {
    * Önceki geometrinin seçim / mesh / sonuç durumu temizlenir. */
   async function loadGeometryById(geoId: number, displayName: string) {
     activeGeometryIdRef.current = geoId;
+    setFaceSizes({});
     setErrorMessage(null);
     setSelection(EMPTY_SELECTION);
     setMode("surface");
@@ -1528,8 +1534,9 @@ function App() {
     }
   }
 
-  async function handleGenerateMesh() {
+  async function handleGenerateMesh(sizesOverride?: Record<number, number>) {
     if (!geometryId) return;
+    const localSizes = sizesOverride ?? faceSizes;
     invalidateStaleResults();
     const size = parseFloat(meshElementSize);
     if (!Number.isFinite(size) || size <= 0) {
@@ -1554,9 +1561,11 @@ function App() {
         meshScheme,
         {},
         highOrderOptimize,
+        localSizes,
       );
       setMeshResult(result);
-      ensureStepExpanded("material");
+      // Remesh (yerel boyut) Mesh adımında kalır; ilk mesh Malzeme'ye geçer.
+      if (!sizesOverride) ensureStepExpanded("material");
       setMeshDimension(result.dimension === 3 ? 3 : 2);
       if (result.element_scheme === "tet" || result.element_scheme === "quad" || result.element_scheme === "mix") {
         setMeshScheme(result.element_scheme);
@@ -4043,6 +4052,15 @@ function App() {
         >
           {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
         </button>
+        <MeshRemeshPanel
+          selectedFaceIds={selection.mode === "surface" ? selection.ids : []}
+          faceSizes={faceSizes}
+          onChange={setFaceSizes}
+          onRemesh={(sizes) => void handleGenerateMesh(sizes)}
+          globalSize={meshElementSize}
+          disabled={busyAction !== null}
+          hasMesh={meshResult !== null}
+        />
         <div className="mesh-tools" role="group" aria-label="Mesh araçları">
           <button
             type="button"

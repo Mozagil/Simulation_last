@@ -138,6 +138,9 @@ class MeshParams:
     #: çıktı, optimizasyonla düzeldi. Varsayılan KAPALI: mesh ayarı,
     #: kararı mühendis verir.
     high_order_optimize: bool = False
+    #: Yerel eleman boyutu (remesh, kullanıcı 2026-10-07): CAD yüzey id → boyut.
+    #: Verilmeyen yüzeyler `element_size`. Gmsh "Constant" alanları + Min.
+    face_sizes: dict[int, float] = field(default_factory=dict)
 
 
 @dataclass

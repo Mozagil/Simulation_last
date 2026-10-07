@@ -422,6 +422,7 @@ export async function generateMesh(
   elementScheme: MeshElementScheme = "tet",
   curveNodes: Record<number, number> = {},
   highOrderOptimize = false,
+  faceSizes: Record<number, number> = {},
 ): Promise<MeshGenerateResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
     method: "POST",
@@ -432,6 +433,7 @@ export async function generateMesh(
       element_scheme: elementScheme,
       curve_nodes: curveNodes,
       ...(highOrderOptimize ? { high_order_optimize: true } : {}),
+      ...(Object.keys(faceSizes).length ? { face_sizes: faceSizes } : {}),
     }),
   });
   if (!response.ok) {

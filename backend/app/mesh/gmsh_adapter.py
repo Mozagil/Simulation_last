@@ -1458,6 +1458,42 @@ def _apply_curve_node_seeds(
             gmsh.model.mesh.setTransfiniteSurface(int(ftag))
 
 
+def _apply_face_sizes(face_sizes: dict[int, float], global_size: float) -> None:
+    """Yüzey başına sabit eleman boyutu (remesh). Seçili yüzeylere kendi boyutu,
+    diğer tüm yüzey / hacimlere `global_size`; ortak kenarda küçük olan geçerli
+    (Min alanı). Boyut sınırları alanların aralığına açılır."""
+    existing = {int(t) for _d, t in gmsh.model.getEntities(dim=2)}
+    local = {int(f): float(s) for f, s in face_sizes.items() if int(f) in existing and float(s) > 0}
+    if not local:
+        return
+    sizes = [*local.values(), float(global_size)]
+    gmsh.option.setNumber("Mesh.MeshSizeMin", min(sizes))
+    gmsh.option.setNumber("Mesh.MeshSizeMax", max(sizes))
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    fields: list[int] = []
+    others = sorted(existing - set(local))
+    volumes = [int(t) for _d, t in gmsh.model.getEntities(dim=3)]
+    if others or volumes:
+        g = gmsh.model.mesh.field.add("Constant")
+        gmsh.model.mesh.field.setNumber(g, "VIn", float(global_size))
+        gmsh.model.mesh.field.setNumber(g, "IncludeBoundary", 1)
+        if others:
+            gmsh.model.mesh.field.setNumbers(g, "SurfacesList", others)
+        if volumes:
+            gmsh.model.mesh.field.setNumbers(g, "VolumesList", volumes)
+        fields.append(g)
+    for f, s in local.items():
+        c = gmsh.model.mesh.field.add("Constant")
+        gmsh.model.mesh.field.setNumber(c, "VIn", s)
+        gmsh.model.mesh.field.setNumber(c, "IncludeBoundary", 1)
+        gmsh.model.mesh.field.setNumbers(c, "SurfacesList", [f])
+        fields.append(c)
+    m = gmsh.model.mesh.field.add("Min")
+    gmsh.model.mesh.field.setNumbers(m, "FieldsList", fields)
+    gmsh.model.mesh.field.setAsBackgroundMesh(m)
+
+
 class GmshMesherAdapter(MesherAdapter):
     def import_geometry(self, cad_file: Path) -> GeometryHandle:
         model_name = cad_file.stem
@@ -2172,6 +2208,8 @@ class GmshMesherAdapter(MesherAdapter):
             gmsh.option.setNumber("Mesh.RecombineAll", 0)
             gmsh.option.setNumber("Mesh.Recombine3DAll", 0)
             gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 0)
+
+            _apply_face_sizes(params.face_sizes or {}, params.element_size)
 
             _apply_curve_node_seeds(
                 params.curve_nodes or {},

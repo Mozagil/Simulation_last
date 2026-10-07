@@ -829,6 +829,10 @@ class GenerateMeshRequest(BaseModel):
         default=False,
         description="2. mertebe düğümler için gmsh HighOrder optimizasyonu (eğri yüzeylerde ters jacobian'a karşı)",
     )
+    face_sizes: dict[int, float] = Field(
+        default_factory=dict,
+        description="Yerel eleman boyutu (remesh): CAD yüzey id → boyut (mm); diğerleri element_size",
+    )
 
 
 @router.post("/{geometry_id}/mesh")
@@ -868,6 +872,7 @@ def generate_mesh(
                     if int(v) >= 2
                 },
                 high_order_optimize=bool(body.high_order_optimize),
+                face_sizes={int(k): float(v) for k, v in (body.face_sizes or {}).items() if float(v) > 0},
             ),
         )
     except GmshImportError as exc:
