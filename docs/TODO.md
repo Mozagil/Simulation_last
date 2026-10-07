@@ -868,7 +868,7 @@ akışındaki eski çözümleri (varsa) geçersiz; kiriş/plaka DOE'leri etkilen
 > üstüne kurulu, ama şablon + içe aktarılan geometri birlikte
 > yaşayacak. Her madde tek başına uygulanabilir; sıra önerilidir.
 
-### 11.1 Hız yönü duvardan bağımsızlaşsın — BACKEND, önce bu
+### 11.1 Hız yönü duvardan bağımsızlaşsın — BACKEND, önce bu — ✅ (2026-10-07)
 
 **Sorun:** `CrashBarrierParams.velocity_mm_per_ms()` hız yönünü
 `wall.unit_normal()`'dan türetiyor:
@@ -889,13 +889,17 @@ her crash koşusunda doldurulmak zorunda, SPH / patlama / düşme
 senaryolarında bile.
 
 **Yapılacak:**
-- [ ] `CrashBarrierParams`'a opsiyonel `direction: tuple[float,float,float] | None`
-- [ ] Verilmişse hız yönü ondan; verilmemişse **eski davranış** (duvar
+- [x] `CrashBarrierParams`'a opsiyonel `direction: tuple[float,float,float] | None`
+- [x] Verilmişse hız yönü ondan; verilmemişse **eski davranış** (duvar
       normali) — mevcut koşular ve testler bozulmasın
-- [ ] `angle_deg`'in yalnız duvar varken anlamlı olduğu docstring'e yazılsın
+- [x] `angle_deg`'in yalnız duvar varken anlamlı olduğu docstring'e yazılsın
       (tanımı "0 = duvara dik", duvar yoksa referans yok)
-- [ ] `barrier`'ı opsiyonel yapmayı değerlendir (`None` = yükleme başka
+- [x] `barrier`'ı opsiyonel yapmayı değerlendir (`None` = yükleme başka
       mekanizmadan: `/GRAV`, `/IMPVEL`, SPH, patlama)
+
+**Yapıldı:** `barrier` varsayılanı hız 0 (yükleme /GRAV, /IMPVEL, SPH, patlamadan);
+`direction` `/crash/scenario`'ya da geçer. Test: `tests/test_crash_direction.py` (6),
+crash testleri 267/267.
 
 **Kabul:** `use_rigid_wall: false` + `direction` verilen bir istek,
 `wall` alanı hiç doldurulmadan çözülebilmeli. Mevcut testler
