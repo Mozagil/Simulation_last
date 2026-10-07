@@ -909,6 +909,26 @@ def generate_mesh(
     }
 
 
+@router.delete("/{geometry_id}/mesh")
+def delete_mesh(
+    geometry_id: int, dimension: int | None = None, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Mesh'i sil (kullanıcı 2026-10-07): `uploads/meshes/{stem}_d{n}.*` (msh +
+    önizleme vb.). `dimension` verilmezse 2D ve 3D ikisi. Geometri değişmez."""
+    if dimension is not None and dimension not in (2, 3):
+        raise HTTPException(status_code=400, detail="dimension 2 veya 3 olmalı.")
+    geo = _get_geometry_or_404(db, geometry_id)
+    stem = Path(geo.current_filename).stem
+    removed: list[str] = []
+    for dim in ([dimension] if dimension else [2, 3]):
+        for f in MESH_DIR.glob(f"{stem}_d{dim}.*"):
+            if f.is_file():
+                f.unlink()
+                removed.append(f.name)
+    logger.info("Mesh silindi: geometry_id=%d, dosyalar=%s", geometry_id, removed)
+    return {"geometry_id": geometry_id, "removed": sorted(removed)}
+
+
 def _mesh_path_for_geometry(geo: Geometry, dimension: int) -> Path:
     """uploads/meshes/{stem}_d{2|3}.msh — stem = geometry id dosya adı kökü."""
     stem = Path(geo.current_filename).stem

@@ -13,6 +13,7 @@ export default function MeshRemeshPanel({
   globalSize,
   disabled = false,
   hasMesh,
+  onDelete,
 }: {
   selectedFaceIds: number[];
   faceSizes: Record<number, number>;
@@ -22,6 +23,8 @@ export default function MeshRemeshPanel({
   globalSize: string;
   disabled?: boolean;
   hasMesh: boolean;
+  /** Mevcut mesh'i sil (dosya + önizleme); CAD geri gelir. */
+  onDelete?: () => void;
 }) {
   const [size, setSize] = useState("");
   const value = Number(size);
@@ -46,9 +49,9 @@ export default function MeshRemeshPanel({
     <section className="remesh-panel" aria-label="Yerel boyut / remesh" data-testid="remesh-panel">
       <p className="material-assignments-title">Yerel boyut / remesh</p>
       <p className="crash-behavior-hint">
-        Viewport'ta YÜZEY modunda yüzey(ler) seç, boyutu yaz, uygula: yalnız o yüzeyler bu boyutla
-        yeniden mesh'lenir, diğerleri {globalSize || "global"} mm kalır. Liste sonraki mesh'lerde de geçerli.
-        Yüzey seçmek için mesh görünümünü kapat ve Solid düğmesiyle CAD'i göster (mesh sonrası CAD gizli gelir).
+        Mesh üzerinde elemana tıkla (Ctrl ile çoklu): tıklanan elemanın yüzeyi seçilir. Boyutu yaz, uygula —
+        yalnız o yüzeyler bu boyutla yeniden mesh'lenir, diğerleri {globalSize || "global"} mm kalır. Liste
+        sonraki mesh'lerde de geçerli.
       </p>
       <div className="remesh-row">
         <span className="remesh-sel">
@@ -95,6 +98,16 @@ export default function MeshRemeshPanel({
       >
         Tümünü yeniden mesh'le
       </button>
+      {onDelete && (
+        <button
+          type="button"
+          className="material-secondary-button remesh-delete"
+          disabled={disabled || !hasMesh}
+          onClick={onDelete}
+        >
+          Mesh'i sil
+        </button>
+      )}
     </section>
   );
 }

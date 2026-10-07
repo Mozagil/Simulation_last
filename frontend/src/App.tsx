@@ -16,6 +16,7 @@ import {
   fetchPoints,
   applyDefeature,
   generateMesh,
+  deleteMesh,
   fetchMeshPreview,
   fetchMeshQuality,
   fetchMeshFreeEdges,
@@ -1541,6 +1542,30 @@ function App() {
     } catch (err) {
       const message = err instanceof GeometryUploadError ? err.message : "Defeature başarısız.";
       setErrorMessage(message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /** Mesh'i sil (kullanıcı 2026-10-07): dosya + önizleme; hiç mesh kalmayınca CAD görünür. */
+  async function handleDeleteMesh() {
+    if (!geometryId) return;
+    setBusyAction("mesh");
+    setErrorMessage(null);
+    try {
+      await deleteMesh(geometryId, meshDimension);
+      invalidateStaleResults();
+      setMeshResult(null);
+      setMeshPreview(null);
+      setMeshQuality(null);
+      setFreeEdges([]);
+      setNsetReport(null);
+      setMeshPicks([]);
+      setFaceSizes({});
+      setHiddenParts(new Set());
+      setInfoMessage("Mesh silindi — CAD görünür.");
+    } catch (err) {
+      setErrorMessage(err instanceof GeometryUploadError ? err.message : "Mesh silinemedi.");
     } finally {
       setBusyAction(null);
     }
@@ -4117,7 +4142,12 @@ function App() {
           {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
         </button>
         <MeshRemeshPanel
-          selectedFaceIds={selection.mode === "surface" ? selection.ids : []}
+          selectedFaceIds={
+            selection.mode === "surface" && selection.ids.length
+              ? selection.ids
+              : [...new Set(meshPicks.map((pk) => pk.faceId))]
+          }
+          onDelete={() => void handleDeleteMesh()}
           faceSizes={faceSizes}
           onChange={setFaceSizes}
           onRemesh={(sizes) => void handleGenerateMesh(sizes)}

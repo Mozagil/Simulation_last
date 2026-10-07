@@ -81,3 +81,31 @@ def test_remesh_face_sizes_refines_only_selected_face():
     for f, n in before.items():
         if f != face:
             assert abs(after[f] - n) <= 0.35 * n, (f, before, after)
+
+
+@requires_db
+def test_delete_mesh_removes_files():
+    """Mesh'i sil: msh + önizleme gider, geometri kalır; yoksa boş liste."""
+    gid = client.post("/templates/crash_box_shell/create", json={}).json()["geometry_id"]
+    r = client.post(f"/geometry/{gid}/mesh", json={"dimension": 2, "element_size": 10, "element_scheme": "quad"})
+    mesh_path = Path(r.json()["mesh_path"])
+    assert mesh_path.exists()
+    d = client.delete(f"/geometry/{gid}/mesh", params={"dimension": 2})
+    assert d.status_code == 200, d.text
+    assert mesh_path.name in d.json()["removed"]
+    assert not mesh_path.exists()
+    assert client.delete(f"/geometry/{gid}/mesh").json()["removed"] == []
+    assert client.get(f"/geometry/{gid}/mesh/quality", params={"dimension": 2}).status_code in (404, 422)
+
+
+@requires_db
+def test_3d_preview_maps_boundary_triangles_to_cad_faces():
+    """Remesh / Face grow 3D'de: dış yüzey üçgenleri CAD yüzey tag'i taşır (önceden hep 0)."""
+    import json
+
+    gid = client.post("/templates/crash_box_plate/create", json={}).json()["geometry_id"]
+    r = client.post(f"/geometry/{gid}/mesh", json={"dimension": 3, "element_size": 8, "element_scheme": "tet"})
+    assert r.status_code == 200, r.text
+    preview = json.loads((Path(r.json()["mesh_path"]).with_suffix(".preview.json")).read_text(encoding="utf-8"))
+    faces = set(preview["triangle_to_face"])
+    assert 0 not in faces and len(faces) >= 12

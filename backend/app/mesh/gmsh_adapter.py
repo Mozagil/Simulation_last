@@ -1391,12 +1391,28 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 if key not in face_part:
                     face_part[key] = part_id
                     face_tet[key] = tet_index
+        # Dış yüzey üçgeni → CAD yüzey tag'i (remesh / Face grow 3D'de de çalışsın;
+        # önceden hep 0 yazılıyordu). Gmsh 3D mesh'te sınır yüzeylerinin 2D
+        # üçgenleri de vardır (tri3 = 2, tri6 = 9; ilk 3 düğüm köşe).
+        surf_of: dict[tuple[int, int, int], int] = {}
+        for _d, ftag in gmsh.model.getEntities(2):
+            etypes, _etags, enodes_list = gmsh.model.mesh.getElements(dim=2, tag=ftag)
+            for etype, enodes in zip(etypes, enodes_list):
+                n_per = {2: 3, 9: 6}.get(int(etype))
+                if n_per is None:
+                    continue
+                for e in range(len(enodes) // n_per):
+                    try:
+                        tri_key = tuple(sorted(tag_to_idx[int(enodes[e * n_per + k])] for k in range(3)))
+                    except KeyError:
+                        continue
+                    surf_of[tri_key] = int(ftag)
         for key, count in face_count.items():
             if count != 1:
                 continue
             i0, i1, i2 = face_orient[key]
             tet_id = face_tet.get(key, 0)
-            _add_tri_face(i0, i1, i2, face_part.get(key, 0), 0, tet_id)
+            _add_tri_face(i0, i1, i2, face_part.get(key, 0), surf_of.get(key, 0), tet_id)
             _add_edge(i0, i1)
             _add_edge(i1, i2)
             _add_edge(i2, i0)

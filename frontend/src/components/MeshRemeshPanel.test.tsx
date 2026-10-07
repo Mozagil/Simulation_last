@@ -41,3 +41,18 @@ describe("MeshRemeshPanel", () => {
     expect(screen.getByText("yüzey seçilmedi")).toBeInTheDocument();
   });
 });
+
+describe("MeshRemeshPanel — mesh sil", () => {
+  it("mesh varken sil çağrılır; mesh yoksa pasif", () => {
+    const onDelete = vi.fn();
+    const { rerender } = render(
+      <MeshRemeshPanel selectedFaceIds={[]} faceSizes={{}} onChange={() => undefined} onRemesh={() => undefined} globalSize="5" hasMesh onDelete={onDelete} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mesh'i sil" }));
+    expect(onDelete).toHaveBeenCalled();
+    rerender(
+      <MeshRemeshPanel selectedFaceIds={[]} faceSizes={{}} onChange={() => undefined} onRemesh={() => undefined} globalSize="5" hasMesh={false} onDelete={onDelete} />,
+    );
+    expect(screen.getByRole("button", { name: "Mesh'i sil" })).toBeDisabled();
+  });
+});
