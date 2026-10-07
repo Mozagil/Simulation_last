@@ -45,10 +45,8 @@ describe("CrashPanel", () => {
     const table = screen.getByTestId("crash-parts");
     expect(table).toHaveTextContent("#0");
     expect(table).toHaveTextContent("S235");
-    expect(table).toHaveTextContent("atama yok");
-    fireEvent.click(
-      within(screen.getByRole("group", { name: "Parça 1 rolü" })).getByRole("button", { name: "Sabit" }),
-    );
+    expect(table).toHaveTextContent("malzeme yok");
+    fireEvent.change(screen.getByLabelText("Parça 1 davranışı"), { target: { value: "fixed" } });
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
@@ -79,8 +77,8 @@ describe("CrashPanel", () => {
     expect(screen.getByText("Kabuk — /PROP/TYPE1")).toBeInTheDocument();
     expect(screen.queryByText("Eleman — /PROP/TYPE14")).not.toBeInTheDocument();
     // kalınlık yalnız gösterilir (tek kaynak: ürün ağacı); girdi yok
-    expect(screen.getByTestId("crash-part-t-0")).toHaveTextContent("3");
-    expect(screen.getByTestId("crash-part-t-1")).toHaveTextContent("yok");
+    expect(screen.getByTestId("crash-parts")).toHaveTextContent("t 3 mm");
+    expect(screen.getByTestId("crash-parts")).toHaveTextContent("t yok mm");
     expect(screen.queryByLabelText(/t (mm) — ortak/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Ishell"), { target: { value: "24" } });
     fireEvent.change(screen.getByLabelText("N"), { target: { value: "5" } });
@@ -130,14 +128,14 @@ describe("CrashPanel", () => {
       scalars: {},
     });
     render(<CrashPanel geometryId={1} meshDimension={3} />);
-    fireEvent.change(screen.getByLabelText("Hız (m/s)"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("Parça 0 hız"), { target: { value: "15" } });
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
       expect.objectContaining({
         geometry_id: 1,
         run_solver: false,
-        barrier: expect.objectContaining({ speed_m_s: 15 }),
+        initial_velocities: [{ name: "parca_0", part_id: 0, speed_m_s: 15, direction: [0, 0, -1] }],
         model: expect.objectContaining({
           law: "elastic",
           isolid: 1,
@@ -196,7 +194,7 @@ describe("CrashPanel", () => {
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
       expect.objectContaining({
-        barrier: expect.objectContaining({ speed_m_s: 10 }),
+        initial_velocities: [expect.objectContaining({ part_id: 0, speed_m_s: 10 })],
         model: expect.objectContaining({
           law: "plastic",
           isolid: 14,
@@ -228,9 +226,9 @@ describe("CrashPanel", () => {
     fireEvent.change(screen.getByLabelText("Temas 2 Iedge"), { target: { value: "1" } });
     expect(screen.getByTestId("crash-contacts")).toHaveTextContent("2 · self");
     // 11.2 — engel sorusu: Yok → duvar alanları gizlenir, ilk hız yönü vektörle
-    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Engel" })).getByRole("radio", { name: "Yok" }));
-    expect(screen.queryByText("Rigid wall normal")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Hız yönü x")).toHaveValue("-1");
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Engel" })).getByRole("radio", { name: "Hiçbiri" }));
+    expect(screen.queryByLabelText("Duvar normal z")).not.toBeInTheDocument();
+    expect(screen.getByTestId("crash-summary")).toHaveTextContent("Engel yok.");
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     expect(postCrashSolve).toHaveBeenCalledWith(
@@ -413,38 +411,63 @@ describe("CrashPanel", () => {
     const table = screen.getByTestId("crash-parts");
     const pick1 = within(table).getByRole("button", { name: "#1" });
     expect(pick1).toHaveAttribute("aria-pressed", "true");
-    expect(pick1.closest("tr")).toHaveClass("crash-part-selected");
+    expect(pick1.closest(".crash-behavior")).toHaveClass("crash-part-selected");
     expect(within(table).getByRole("button", { name: "#0" })).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(within(table).getByRole("button", { name: "#0" }));
     expect(onPartSelect).toHaveBeenCalledWith(0);
-    fireEvent.mouseEnter(pick1.closest("tr")!);
+    fireEvent.mouseEnter(pick1.closest(".crash-behavior")!);
     expect(onPartHover).toHaveBeenLastCalledWith(1);
-    fireEvent.mouseLeave(pick1.closest("tr")!);
+    fireEvent.mouseLeave(pick1.closest(".crash-behavior")!);
     expect(onPartHover).toHaveBeenLastCalledWith(null);
   });
 
-  it("11.2: üç soru — yerçekimi + başka parça; hazır senaryo; ileri ayarlar katlı", async () => {
+  it("sade panel: parça davranışları → ilk hız / sürme / sabit; özet; diğer parça → temas", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j11", geometry_id: 1, status: "rad_only", message: "",
       starter_url: "", engine_url: "", progress_url: "", ws_url: "",
       cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
     });
-    const { container } = render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    const { container } = render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1, 2]} />);
     expect(container.querySelector("details.crash-advanced")).not.toHaveAttribute("open");
-    expect(screen.getByRole("radio", { name: "SPH mermi" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Hazır senaryo"), { target: { value: "part_part" } });
-    // Başka parça → TYPE7 temas satırı açılır, duvar alanı yok
+    fireEvent.change(screen.getByLabelText("Parça 1 davranışı"), { target: { value: "driven" } });
+    fireEvent.change(screen.getByLabelText("Parça 1 sürme hızı"), { target: { value: "-2" } });
+    fireEvent.change(screen.getByLabelText("Parça 2 davranışı"), { target: { value: "fixed" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Diğer parça" }));
     expect(screen.getByTestId("crash-contacts")).toBeInTheDocument();
-    expect(screen.queryByText("Rigid wall nokta (mm)")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "Yerçekimi" }));
-    fireEvent.change(screen.getByLabelText("Yerçekimi ivmesi"), { target: { value: "-9.81" } });
+    fireEvent.click(screen.getByLabelText("yerçekimi"));
+    const summary = screen.getByTestId("crash-summary");
+    expect(summary).toHaveTextContent("Parça #0: t = 0'da 10 m/s ile (0, 0, -1) yönünde başlıyor");
+    expect(summary).toHaveTextContent("Parça #1: süre boyunca Z ekseninde -2 m/s ile sürülüyor");
+    expect(summary).toHaveTextContent("Parça #2: kilitli");
+    expect(summary).toHaveTextContent("Engel: diğer parça — 1 temas tanımı");
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
     const body = vi.mocked(postCrashSolve).mock.calls[0][0];
     expect(body.use_rigid_wall).toBe(false);
     expect(body.barrier.speed_m_s).toBe(0);
-    expect(body.barrier.direction).toEqual([-1, 0, 0]);
+    expect(body.parts).toEqual([
+      { part_id: 0, role: "moving" },
+      { part_id: 1, role: "moving" },
+      { part_id: 2, role: "fixed" },
+    ]);
+    expect(body.initial_velocities).toEqual([{ name: "parca_0", part_id: 0, speed_m_s: 10, direction: [0, 0, -1] }]);
+    expect(body.imposed_velocities).toEqual([
+      { name: "parca_1", part_id: 1, direction: "Z", velocity_m_s: -2, t_start_ms: 0, t_stop_ms: 0 },
+    ]);
     expect(body.gravity).toEqual({ accel_m_s2: -9.81, direction: "Z" });
     expect(body.contacts).toHaveLength(1);
+  });
+
+  it("özet tutarsızlığı gösterir: duvara gitmeyen parça", () => {
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} />);
+    fireEvent.change(screen.getByLabelText("Parça 0 yön z"), { target: { value: "1" } });
+    expect(screen.getByTestId("crash-summary")).toHaveTextContent("⚠ Parça #0 duvara doğru gitmiyor");
+  });
+
+  it("sekmeler: hızlı senaryo / geçmiş / katalog ayrı", () => {
+    render(<CrashPanel geometryId={1} meshDimension={3} />);
+    expect(screen.getByRole("tab", { name: "Model kur" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Geçmiş" }));
+    expect(screen.queryByTestId("crash-parts")).not.toBeInTheDocument();
   });
 });

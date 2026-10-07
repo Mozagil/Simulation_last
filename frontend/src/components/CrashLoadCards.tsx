@@ -121,6 +121,7 @@ export default function CrashLoadCards({
   regions,
   roles,
   disabled = false,
+  showCoverage = true,
 }: {
   cards: LoadCard[];
   onChange: (cards: LoadCard[]) => void;
@@ -129,6 +130,8 @@ export default function CrashLoadCards({
   regions: string[];
   roles: Record<number, PartRole>;
   disabled?: boolean;
+  /** Sade panelde parça davranışı ayrı tanımlanır — kapsama özeti gizlenir. */
+  showCoverage?: boolean;
 }) {
   const nextId = cards.reduce((m, c) => Math.max(m, c.id), 0) + 1;
   const defaultTarget = partIds.length ? `part:${partIds[0]}` : regions.length ? `region:${regions[0]}` : "";
@@ -233,7 +236,7 @@ export default function CrashLoadCards({
           </div>
         </div>
       ))}
-      {partIds.length > 0 && (
+      {showCoverage && partIds.length > 0 && (
         <div className="crash-coverage" aria-label="Kapsama özeti">
           <span className="ml-k">Kapsama</span>
           {cov.map((p) => (

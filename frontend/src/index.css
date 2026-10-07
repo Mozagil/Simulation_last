@@ -7014,3 +7014,126 @@ p {
   min-height: 0;
   height: auto;
 }
+
+/* Sade crash kurulumu (2026-10-07): sekmeler, parça davranışı, özet */
+.crash-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+
+.crash-behaviors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-behavior {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crash-behavior.crash-part-selected {
+  background: var(--accent-soft);
+}
+
+.crash-behavior-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crash-behavior-head select {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 60%;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.crash-behavior-mat {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crash-behavior-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.crash-behavior-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.crash-behavior-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-behavior-fields input:not([type="checkbox"]),
+.crash-behavior-fields select {
+  width: 64px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.crash-behavior-fields .crash-grav-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.crash-summary-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.crash-summary-line.warn {
+  color: var(--danger);
+}
+
+.crash-mat-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+
+.crash-mat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
