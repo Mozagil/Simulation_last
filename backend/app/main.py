@@ -27,6 +27,8 @@ from app.api.crash import router as crash_router
 from app.api.crash_runs import router as crash_runs_router
 from app.api.crash_scenario import router as crash_scenario_router
 from app.api.crash_catalog import router as crash_catalog_router
+from app.api.crash_doe import router as crash_doe_router
+from app.api.crash_ml import router as crash_ml_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -71,6 +73,8 @@ app.include_router(dataset_router)
 app.include_router(templates_router)
 app.include_router(doe_router)
 app.include_router(surrogate_router)
+app.include_router(crash_doe_router)  # /crash/doe (1.19c)
+app.include_router(crash_ml_router)  # /crash/ml (1.19e)
 app.include_router(crash_runs_router)  # /crash/runs — /crash/jobs'tan önce değil, ayrı önek
 app.include_router(crash_router)
 app.include_router(crash_scenario_router)  # /crash/scenario (1.17a)

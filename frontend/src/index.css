@@ -6397,3 +6397,284 @@ p {
   min-width: 720px;
   white-space: nowrap;
 }
+
+/* ---- Crash DOE (1.19f-1): durability DOE düzeni, crash'e özgü alanlar ---- */
+.crash-doe-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 20px;
+  overflow-y: auto;
+}
+
+.crash-doe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-doe-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-doe-vary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 96px 24px;
+  gap: 4px 6px;
+  align-items: center;
+}
+
+.crash-doe-vary .doe-num {
+  width: 100%;
+}
+
+.crash-doe-path {
+  text-align: left !important;
+  font-family: var(--font-mono);
+}
+
+.crash-doe-vh {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.crash-doe-x {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.crash-doe-x:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.crash-doe-add {
+  align-self: flex-start;
+}
+
+.crash-doe-json {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+}
+
+.crash-doe-json:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.doe-pfoot-field .doe-num.crash-doe-name {
+  width: 140px;
+  text-align: left;
+}
+
+.crash-doe-study {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crash-doe-shead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.crash-doe-shead .doe-btn {
+  margin-left: auto;
+}
+
+.crash-doe-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.crash-doe-status.s-running,
+.crash-doe-status.s-pending {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.crash-doe-status.s-completed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.crash-doe-status.s-completed_with_errors {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.crash-doe-progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.crash-doe-progress > span {
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.crash-doe-progress > span.fail {
+  background: var(--danger);
+}
+
+.crash-doe-kv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-doe-table {
+  max-height: none;
+}
+
+.crash-doe-table td.crash-doe-msg,
+.crash-doe-table th.crash-doe-msg {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  color: var(--muted);
+}
+
+/* Stüdyo alan anahtarı: Durability | Crash */
+.ml-domain-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ml-domain-switch button {
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ml-domain-switch button.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+
+/* ---- Crash vekil model (1.19f-2): iki kart, korpus + CV metrikleri ---- */
+.crash-ml-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.crash-ml-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-ml-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.crash-ml-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.crash-ml-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  flex: 1;
+}
+
+.crash-ml-select select {
+  min-height: 28px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.crash-ml-corpus {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.crash-ml-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.crash-ml-features code {
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.crash-ml-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crash-ml-metrics td.l,
+.crash-ml-metrics th.l {
+  text-align: left;
+}
+
+@media (max-width: 1100px) {
+  .crash-ml-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

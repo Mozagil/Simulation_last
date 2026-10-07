@@ -64,6 +64,9 @@ import ComparisonView from "./components/ComparisonView";
 import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
+import CrashDoePanel from "./components/CrashDoePanel";
+import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
+import CrashModelPanel from "./components/CrashModelPanel";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
@@ -487,6 +490,10 @@ function App() {
   const [workspace, setWorkspace] = useState<"workbench" | "ml">("workbench");
   // ML Stüdyo'da açık aşama (DOE → Veri seti → Yakınsama → Model → Tahmin).
   const [mlStage, setMlStage] = useState<MlStage>("doe");
+  // Stüdyo alanı: durability (CalculiX) ya da crash (OpenRadioss, 1.19f) —
+  // ayrı korpus, ayrı model; crash kendi panellerini taşır.
+  const [mlDomain, setMlDomain] = useState<"durability" | "crash">("durability");
+  const [crashMlStage, setCrashMlStage] = useState<CrashMlStage>("doe");
   // Stüdyonun şablonu: tezgahtaki seçimden başlar, üst şerit çipleriyle
   // değişir; tezgaha geri yazmaz (geometri seçimi ayrı iş).
   const [mlTemplateOverride, setMlTemplateOverride] = useState<string | null>(null);
@@ -2597,13 +2604,30 @@ function App() {
               <span className="app-brand-title">ML STÜDYO</span>
             </span>
             <span className="app-brand-divider" />
-            <span className="ml-studio-label">Şablon</span>
-            <MlTemplateChips
-              templates={mlStatus.templates}
-              withData={mlStatus.templatesWithData}
-              activeId={studioTemplateId}
-              onSelect={setMlTemplateOverride}
-            />
+            <span className="ml-domain-switch" role="group" aria-label="Analiz alanı">
+              {(["durability", "crash"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={mlDomain === d ? "active" : undefined}
+                  aria-pressed={mlDomain === d}
+                  onClick={() => setMlDomain(d)}
+                >
+                  {d === "durability" ? "Durability" : "Crash"}
+                </button>
+              ))}
+            </span>
+            {mlDomain === "durability" && (
+              <>
+                <span className="ml-studio-label">Şablon</span>
+                <MlTemplateChips
+                  templates={mlStatus.templates}
+                  withData={mlStatus.templatesWithData}
+                  activeId={studioTemplateId}
+                  onSelect={setMlTemplateOverride}
+                />
+              </>
+            )}
           </div>
           <div className="toolbar-actions">
             <span className="ml-studio-tagline">Her şablon ayrı model · korpus tek şablondan eğitilir</span>
@@ -2618,6 +2642,16 @@ function App() {
           </div>
         </div>
 
+        {mlDomain === "crash" ? (
+          <>
+            <CrashMlNav stage={crashMlStage} onSelect={setCrashMlStage} />
+            <div className="ml-studio-body">
+              {crashMlStage === "doe" && <CrashDoePanel />}
+              {crashMlStage === "model" && <CrashModelPanel />}
+            </div>
+          </>
+        ) : (
+        <>
         <MlStudioNav stage={mlStage} onSelect={setMlStage} meta={mlStatus.meta} />
 
         <div className="ml-studio-body">
@@ -2664,6 +2698,8 @@ function App() {
         />
         )}
         </div>
+        </>
+        )}
       </main>
     );
   }

@@ -1368,6 +1368,20 @@ senaryosu (1.17a) DOE kaynağı, korpus (crash_runs + geometri template_params �
 girdi × hedef), vekil model (`ml/crash/`, durability kodundan bağımsız), CV
 metrikleri, tahmin; DOE şeması ayrı onay; hedef tanımları (ezilme mesafesi,
 ortalama kuvvet …) mühendisten.
+- 1.19a ⏳ Hedef tanımları: crash_runs sonuçlarından skaler hedef çıkarımı
+  (liste mühendisten — örn. ezilme mesafesi, ortalama / tepe kuvvet, yutulan
+  enerji); yalnız postprocess fonksiyonları + test.
+- 1.19b ⏳ Korpus okuyucu `ml/crash/corpus.py`: crash_runs + geometri
+  template_params → girdi × hedef tablosu; durability `ml/corpus.py`'den
+  bağımsız; test.
+- 1.19c ⏳ DOE şeması (ayrı onay): senaryo, parametre adları + aralıklar,
+  örnekleme; sunucu tarafında toplu koşu → crash_runs.
+- 1.19d ⏳ Vekil model `ml/crash/`: eğitim + K-fold CV metrikleri (R², MAE
+  hedef başına); model kaydı; test.
+- 1.19e ⏳ Tahmin endpoint'i: parametre → hedef tahmini + CV metrikleri
+  (yeni crash yolu, `/solve`'a dokunmadan); test.
+- 1.19f ⏳ ML tezgahında crash sekmesi: korpus özeti, CV metrikleri, tahmin
+  formu (UI, işlevle birlikte sunulabilir kalitede).
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
