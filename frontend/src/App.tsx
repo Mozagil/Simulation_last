@@ -379,6 +379,7 @@ function App() {
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  const [scenarioJob, setScenarioJob] = useState<{ jobId: string; geometryId: number } | null>(null);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
@@ -5101,6 +5102,7 @@ function App() {
           view={expandedSteps.has("results") ? "results" : "setup"}
           onRunStarted={() => setExpandedSteps(new Set(["results"]))}
           onJobKey={setCrashJobKey}
+          externalJob={scenarioJob}
           selectedPartIds={selectedPartIds}
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}
@@ -5262,6 +5264,10 @@ function App() {
             setShowNewCrashCase(false);
           }}
           onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
+          onJobStarted={(jobId, geoId) => {
+            setScenarioJob({ jobId, geometryId: geoId });
+            setExpandedSteps(new Set(["results"]));
+          }}
         />
       )}
       {analysisTab !== "crash" && (

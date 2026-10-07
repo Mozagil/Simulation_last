@@ -11,10 +11,12 @@ export default function CrashNewCaseDialog({
   onClose,
   onGeometry,
   onDone,
+  onJobStarted,
 }: {
   onClose: () => void;
   onGeometry: (geometryId: number, name: string) => void;
   onDone: () => void;
+  onJobStarted?: (jobId: string, geometryId: number) => void;
 }) {
   return (
     <div className="crash-newcase-backdrop" role="presentation" onClick={onClose}>
@@ -34,7 +36,7 @@ export default function CrashNewCaseDialog({
         <div className="crash-newcase-body">
           <div>
             <CrashSchematic />
-            <CrashScenarioCard onDone={onDone} onGeometry={onGeometry} />
+            <CrashScenarioCard onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} />
           </div>
           <div>
             <CrashCatalog />

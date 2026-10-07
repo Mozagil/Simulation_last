@@ -541,4 +541,16 @@ describe("CrashPanel", () => {
       ),
     );
   });
+
+  it("dışarıda başlatılan senaryo koşusunu sonuç görünümünde izler", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({
+      job_id: "scn1",
+      status: "solved",
+      message: "OpenRadioss bitti",
+      scalars: { rwall_fmax: 12.5 },
+    });
+    render(<CrashPanel geometryId={7} meshDimension={2} view="results" externalJob={{ jobId: "scn1", geometryId: 7 }} />);
+    await waitFor(() => expect(fetchCrashJob).toHaveBeenCalledWith("scn1"));
+    expect(await screen.findByText(/scn1 · solved/)).toBeInTheDocument();
+  });
 });

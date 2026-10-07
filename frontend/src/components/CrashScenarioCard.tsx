@@ -225,8 +225,11 @@ const ISHELL_OPTIONS: [string, string][] = [
 export default function CrashScenarioCard({
   onDone,
   onGeometry,
+  onJobStarted,
 }: {
   onDone?: () => void;
+  /** Senaryo koşusu başladı — App bunu 5 · Sonuçlar paneline bağlar. */
+  onJobStarted?: (jobId: string, geometryId: number) => void;
   /** Senaryonun sunucuda ürettiği geometri — App viewport'a yükler (TODO 11.6). */
   onGeometry?: (geometryId: number, name: string) => void;
 }) {
@@ -325,6 +328,7 @@ export default function CrashScenarioCard({
       setStatus(r.crash.status);
       setPercent(0);
       onGeometry?.(r.geometry_id, `${entry.template_id}.step`);
+      if (r.crash.job_id) onJobStarted?.(r.crash.job_id, r.geometry_id);
       onDone?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Senaryo başlatılamadı.");

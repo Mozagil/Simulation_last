@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   crashJobWsUrl,
   fetchCrashJob,
@@ -164,6 +164,7 @@ export default function CrashPanel({
   view = "both",
   onRunStarted,
   onJobKey,
+  externalJob = null,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -199,6 +200,8 @@ export default function CrashPanel({
   onRunStarted?: () => void;
   /** Koşu geçmişini yenilemek için iş anahtarı (job/status). */
   onJobKey?: (key: string) => void;
+  /** Panel dışında başlatılan koşu (ör. "+ Yeni crash vakası" senaryosu) — sonuçlar burada izlenir. */
+  externalJob?: { jobId: string; geometryId: number } | null;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -258,6 +261,22 @@ export default function CrashPanel({
   const jobId = result?.job_id ?? snapshot?.job_id ?? null;
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
+
+  // Geometri değişince önceki geometrinin koşu sonucu gösterilmez.
+  const prevGeometryRef = useRef(geometryId);
+  useEffect(() => {
+    if (prevGeometryRef.current === geometryId) return;
+    prevGeometryRef.current = geometryId;
+    // Yeni geometriye ait koşu (ör. senaryo — geometri koşudan sonra yüklenir) korunur.
+    setResult((r) => (r && r.geometry_id === geometryId ? r : null));
+    setSnapshot((s) => (s && s.geometry_id === geometryId ? s : null));
+  }, [geometryId]);
+  // Dışarıda başlatılan koşu: sonuç paneline bağla (yoklama aşağıda başlar).
+  useEffect(() => {
+    if (!externalJob) return;
+    setResult(null);
+    setSnapshot({ job_id: externalJob.jobId, geometry_id: externalJob.geometryId, status: "pending" });
+  }, [externalJob]);
 
   useEffect(() => {
     if (!jobId || !polling) return;
