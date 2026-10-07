@@ -7383,3 +7383,24 @@ p {
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* Malzeme modeli 3 · Material'de; 4 · Crash'te özet */
+.crash-mat-section-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.crash-mat-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}

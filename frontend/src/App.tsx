@@ -66,6 +66,8 @@ import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
+import CrashMaterialSection from "./components/CrashMaterialSection";
+import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
@@ -361,6 +363,9 @@ function App() {
   const [hoverPartId, setHoverPartId] = useState<number | null>(null);
   // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
   const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
+  // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
+  const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
+  const [crashPartCards, setCrashPartCards] = useState<Record<number, MatCardState>>({});
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -4267,6 +4272,23 @@ function App() {
                 + ÖZEL
               </button>
             </div>
+            {analysisTab === "crash" && (
+              <CrashMaterialSection
+                partIds={
+                  meshResult?.dimension === 2
+                    ? uniquePartIdsFromPreview(meshPreview).length
+                      ? uniquePartIdsFromPreview(meshPreview)
+                      : [0]
+                    : volumePartIds.length
+                      ? volumePartIds
+                      : [0]
+                }
+                matCard={crashMatCard}
+                setMatCard={setCrashMatCard}
+                partCards={crashPartCards}
+                setPartCards={setCrashPartCards}
+              />
+            )}
             <button
               type="button"
               className="material-advanced-toggle"
@@ -4937,6 +4959,12 @@ function App() {
           regions={physicalGroups.map((g) => g.name)}
           animRunId={crashAnim?.id ?? null}
           onAnimateRun={setCrashAnim}
+          material={{
+            matCard: crashMatCard,
+            setMatCard: setCrashMatCard,
+            partCards: crashPartCards,
+            setPartCards: setCrashPartCards,
+          }}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey

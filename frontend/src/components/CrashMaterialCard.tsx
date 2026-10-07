@@ -206,6 +206,16 @@ type ScalarKey = {
   [K in keyof MatCardState]: MatCardState[K] extends string ? K : never;
 }[keyof MatCardState];
 
+/** Kullanıcı 2026-10-07: "kopma / FAIL nedir, hangi senaryoda" — düz Türkçe açıklamalar. */
+const LAW_HINT: Record<CrashLaw, string> = {
+  elastic:
+    "Elastik: malzeme yalnız yaylanır, yük kalkınca eski haline döner; kalıcı ezilme olmaz. Doğrulama koşuları ya da gerçekten esnek kalan parçalar (ör. rijit sayılan çarpıcı) için.",
+  plastic:
+    "Elasto-plastik: akma gerilmesini (σy) aşınca kalıcı şekil değiştirir, ezilir; pekleştikçe sertleşir (σ = σy + b·εpⁿ). Metal çarpışmalarının olağan seçimi.",
+  tabulated:
+    "Tablolu eğri: ölçülmüş gerilme–plastik gerinim eğrilerini (farklı hızlarda) doğrudan kullanır. Elinde test eğrisi varsa.",
+};
+
 export default function CrashMaterialCard({
   value,
   onChange,
@@ -254,6 +264,7 @@ export default function CrashMaterialCard({
           { key: "tabulated", label: "LAW36 tablo", active: law === "tabulated", disabled, onClick: () => set({ law: "tabulated" }) },
         ]}
       />
+      <p className="crash-behavior-hint" data-testid="crash-law-hint">{LAW_HINT[law]}</p>
 
       {law === "plastic" && (
         <>
@@ -264,8 +275,17 @@ export default function CrashMaterialCard({
             {field("epsPMax", "EPS_p_max")}
             {field("sigMax0", "SIG_max0 (MPa)")}
           </div>
+          <p className="crash-behavior-hint">
+            σy: akma gerilmesi (boşsa kütüphane malzemesinin Rp0.2'si). b, n: pekleşme — b büyüdükçe
+            ezildikçe daha çok sertleşir. EPS_p_max: bu plastik gerinime ulaşan eleman silinir (boş = kapalı;
+            basit bir kopma sınırı). SIG_max0: gerilme tavanı (boş = yok).
+          </p>
           <details className="crash-mat-section">
-            <summary>Johnson-Cook hız / sıcaklık</summary>
+            <summary>Hız / sıcaklık etkisi — Johnson-Cook (boş = yok)</summary>
+            <p className="crash-behavior-hint">
+              Metaller hızlı yüklemede sertleşir: c hız katsayısı, ε̇₀ referans hız; m ve sıcaklıklar ısınma
+              ile yumuşamayı verir. Değerler malzemeye özgü, literatürden (ör. Johnson-Cook tabloları).
+            </p>
             <div className="mesh-grid">
               {field("jcC", "c")}
               {field("jcEps0", "ε̇₀ (1/s)")}
@@ -364,8 +384,18 @@ export default function CrashMaterialCard({
 
       <details className="crash-mat-section" open={failCount > 0 || undefined}>
         <summary>
-          Kopma — /FAIL{failCount > 0 ? ` · ${failCount} kriter` : ""}
+          Kopma / hasar — /FAIL{failCount > 0 ? ` · ${failCount} kriter` : " · kapalı"}
         </summary>
+        <p className="crash-behavior-hint" data-testid="crash-fail-intro">
+          Kapalıyken malzeme ne kadar uzarsa uzasın kopmaz — sac yırtılmaz, cam kırılmaz, mermi delmez;
+          yalnız ezilir ve bükülür. Açıkken seçilen kriter sağlanan eleman modelden silinir: yırtılma,
+          delinme, kırılma görünür, silinen eleman sayısı sonuçlarda yazar.
+        </p>
+        <p className="crash-behavior-hint">
+          Tipik kullanım: delinme / penetrasyon (plaka–küre, mermi, kuş çarpması), kırılgan parça (cam,
+          döküm), yırtılan sac, kopan bağlantı. Yalnız ezilme / katlanma incelenen koşularda (ör. crash
+          box) çoğunlukla kapalı tutulur.
+        </p>
         <label className="material-check">
           <input
             type="checkbox"
@@ -375,6 +405,10 @@ export default function CrashMaterialCard({
           />
           /FAIL/JOHNSON
         </label>
+        <p className="crash-behavior-hint">
+          Johnson-Cook hasarı: kopma gerinimi gerilme durumuna (çekme / kesme / bası), hıza ve sıcaklığa
+          bağlı. D1–D5 malzeme sabitleri (literatür / test). En gerçekçi, en çok veri isteyen.
+        </p>
         {j && (
           <div className="mesh-grid">
             {(["d1", "d2", "d3", "d4", "d5"] as const).map((k) => (
@@ -397,6 +431,10 @@ export default function CrashMaterialCard({
           />
           /FAIL/TENSSTRAIN
         </label>
+        <p className="crash-behavior-hint">
+          Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir (çekme deneyindeki kopma uzaması).
+          Basit, az veri ister; ölçüm yoksa ilk yaklaşım.
+        </p>
         {t && (
           <div className="mesh-grid">
             {failField(t, "t1", "ε_t1", (n) => set({ failTens: n }))}
@@ -407,8 +445,7 @@ export default function CrashMaterialCard({
           </div>
         )}
         <p className="material-assign-hint">
-          Kriter sağlanınca eleman silinir; silinen eleman sayısı iş sonucunda. S_Flag: 0, 1,
-          11, 21. Ifail: 0, 1, 2.
+          S_Flag: 0, 1, 11, 21 · Ifail: 0, 1, 2 (Radioss bayrakları; boş = varsayılan).
         </p>
       </details>
     </div>

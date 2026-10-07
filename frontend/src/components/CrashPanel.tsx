@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import {
   crashJobWsUrl,
   fetchCrashJob,
@@ -9,7 +9,8 @@ import {
   type CrashPartSpec,
   type CrashSolveResponse,
 } from "../api/crash";
-import CrashMaterialCard, { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
+import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
+import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashHistory from "./CrashHistory";
@@ -170,6 +171,7 @@ export default function CrashPanel({
   regions = [],
   animRunId = null,
   onAnimateRun,
+  material,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -191,6 +193,14 @@ export default function CrashPanel({
   /** TODO 11.4 — deforme şekil ana viewport'ta (App). */
   animRunId?: number | null;
   onAnimateRun?: (run: { id: number; title: string } | null) => void;
+  /** Kullanıcı 2026-10-07: malzeme modeli 3 · Material adımında (state App'te).
+   * Verilirse panel yalnız özet gösterir; verilmezse kart burada (bağımsız kullanım). */
+  material?: {
+    matCard: MatCardState;
+    setMatCard: (next: MatCardState) => void;
+    partCards: Record<number, MatCardState>;
+    setPartCards: Dispatch<SetStateAction<Record<number, MatCardState>>>;
+  };
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -217,8 +227,12 @@ export default function CrashPanel({
   const [tEnd, setTEnd] = useState("10");
   // Malzeme kartı (1.14e): global kart + isteğe bağlı parça başına kart (1.14b).
   // partCards'ta olmayan parça global karta düşer.
-  const [matCard, setMatCard] = useState<MatCardState>(defaultMatCard);
-  const [partCards, setPartCards] = useState<Record<number, MatCardState>>({});
+  const [ownMatCard, setOwnMatCard] = useState<MatCardState>(defaultMatCard);
+  const [ownPartCards, setOwnPartCards] = useState<Record<number, MatCardState>>({});
+  const matCard = material?.matCard ?? ownMatCard;
+  const setMatCard = material?.setMatCard ?? setOwnMatCard;
+  const partCards = material?.partCards ?? ownPartCards;
+  const setPartCards = material?.setPartCards ?? setOwnPartCards;
   // 1.15d — engine / TH / kesit ayarları; boş = backend varsayılanı (eski deck)
   const [output, setOutput] = useState<OutputState>(defaultOutput);
   /** 1.17g-7 — hızlı senaryo başlayınca / bitince geçmişi yenile */
@@ -859,8 +873,9 @@ export default function CrashPanel({
 
 
       <p className="crash-q-title crash-other-title">Diğer ayarlar</p>
+      <p className="crash-behavior-hint">Çoğu koşuda dokunulmaz. Boş alan = OpenRadioss varsayılanı.</p>
       <details className="crash-advanced">
-        <summary>Gelişmiş — bölgeye sınır koşulu, ek kütle, rijit gövde</summary>
+        <summary>Ek tanımlar — yüzey kilitleme, ek kütle, rijit gövde, parça başına hız</summary>
         <p className="material-assign-hint">
           Parçanın tamamı yukarıda tanımlanır. Buradaki kartlar bir bölgeye (yüzey grubu) ya da parçaya
           ek tanım ekler: ör. yalnız taban yüzeyini kilitlemek, kızak kütlesi eklemek.
@@ -876,64 +891,33 @@ export default function CrashPanel({
         />
       </details>
 
-      <p className="material-assignments-title">
-        {Object.keys(partCards).length > 0 ? "Malzeme kartı — global" : "Malzeme kartı"}
-      </p>
-      {partOptions.length > 1 && (
-        <div className="crash-mat-toggles">
-          {partOptions.map((pid) => (
-            <div key={pid} className="crash-mat-toggle">
-              <span>#{pid}</span>
-            <span className="doe-seg" role="group" aria-label={`Parça ${pid} kartı`}>
-              <button
-                type="button"
-                className={partCards[pid] ? "doe-seg-opt" : "doe-seg-opt active"}
-                aria-pressed={!partCards[pid]}
-                disabled={busy}
-                onClick={() =>
-                  setPartCards((c) => {
-                    const next = { ...c };
-                    delete next[pid];
-                    return next;
-                  })
-                }
-              >
-                Global
-              </button>
-              <button
-                type="button"
-                className={partCards[pid] ? "doe-seg-opt active" : "doe-seg-opt"}
-                aria-pressed={Boolean(partCards[pid])}
-                disabled={busy}
-                onClick={() => setPartCards((c) => (c[pid] ? c : { ...c, [pid]: { ...matCard } }))}
-              >
-                Ayrı
-              </button>
-            </span>
-            </div>
-          ))}
-          <span className="crash-behavior-hint">Global = aşağıdaki ortak kart; Ayrı = parçanın kendi kartı.</span>
+      {material ? (
+        <div className="crash-mat-summary" data-testid="crash-mat-summary">
+          <span className="ml-k">Malzeme modeli</span>
+          <span>
+            {matCardSummary(matCard)}
+            {Object.keys(partCards).length > 0 ? ` · ${Object.keys(partCards).length} parçaya ayrı model` : ""}
+          </span>
+          <span className="crash-behavior-hint">3 · Material adımından değiştirilir.</span>
         </div>
+      ) : (
+        <CrashMaterialSection
+          partIds={partOptions}
+          matCard={matCard}
+          setMatCard={setMatCard}
+          partCards={partCards}
+          setPartCards={setPartCards}
+          disabled={busy}
+        />
       )}
-      <CrashMaterialCard value={matCard} onChange={setMatCard} disabled={busy} testId="crash-mat-global" />
-      {partIds
-        .filter((pid) => partCards[pid])
-        .map((pid) => (
-          <div key={pid} className="crash-contact-card crash-mat-part">
-            <div className="crash-contact-head">
-              <strong>Parça #{pid} — malzeme kartı</strong>
-            </div>
-            <CrashMaterialCard
-              value={partCards[pid]}
-              onChange={(next) => setPartCards((c) => ({ ...c, [pid]: next }))}
-              disabled={busy}
-              testId={`crash-mat-part-${pid}`}
-            />
-          </div>
-        ))}
 
       <details className="crash-advanced">
-        <summary>İleri ayarlar — eleman formülasyonu, hourglass</summary>
+        <summary>Çözücü ayarları — eleman formülasyonu, hourglass</summary>
+        <p className="crash-behavior-hint">
+          Elemanın nasıl hesaplandığı (Ishell/Isolid) ve "kum saati" kontrolü (hourglass: indirgenmiş
+          integrasyonlu elemanlarda sahte, enerji yemeyen zikzak deformasyonu bastırır). Sonuçlarda
+          HG/IE oranı %5'i aşıyorsa buraya bakılır.
+        </p>
       {isShell ? (
         <>
           <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
@@ -1007,8 +991,14 @@ export default function CrashPanel({
       )}
       </details>
 
-      <p className="material-assignments-title">Çıktı ve kontrol</p>
-      <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
+      <details className="crash-advanced">
+        <summary>Çıktı — kayıt aralığı, kesit kuvvetleri, filtre (CFC), zaman adımı</summary>
+        <p className="crash-behavior-hint">
+          Hangi eğrilerin ne sıklıkla kaydedileceği ve kuvvet / ivme sinyallerinin filtresi. Boş = varsayılan
+          (süre/200 aralık).
+        </p>
+        <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
+      </details>
 
       </>
       )}
