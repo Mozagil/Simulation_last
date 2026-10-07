@@ -1576,6 +1576,9 @@ function App() {
         localSizes,
       );
       setMeshResult(result);
+      // Kullanıcı 2026-10-07: mesh sonrası CAD varsayılan gizli (mesh okunur);
+      // Solid / Surface düğmesi vurgulanınca CAD görünür.
+      setHiddenParts(new Set(triangleToPart.filter((pid) => pid >= 0)));
       // Remesh (yerel boyut) Mesh adımında kalır; ilk mesh Malzeme'ye geçer.
       if (!sizesOverride) ensureStepExpanded("material");
       setMeshDimension(result.dimension === 3 ? 3 : 2);
@@ -3454,19 +3457,21 @@ function App() {
               </button>
               <button
                 type="button"
-                className={allSelectedPartsHidden ? "active" : undefined}
+                className={!allSelectedPartsHidden && canToggleHidePart ? "active" : undefined}
+                aria-pressed={!allSelectedPartsHidden}
                 disabled={!canToggleHidePart}
                 onClick={handleToggleHidePart}
-                title={allSelectedPartsHidden ? "Solid göster" : "Solid gizle"}
+                title={allSelectedPartsHidden ? "Solid gizli — tıkla: göster" : "Solid görünür — tıkla: gizle"}
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
               </button>
               <button
                 type="button"
-                className={allSelectedSurfacesHidden ? "active" : undefined}
+                className={!allSelectedSurfacesHidden && canToggleHideSurfaces ? "active" : undefined}
+                aria-pressed={!allSelectedSurfacesHidden}
                 disabled={!canToggleHideSurfaces}
                 onClick={handleToggleHideSurfaces}
-                title={allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle"}
+                title={allSelectedSurfacesHidden ? "Surface gizli — tıkla: göster" : "Surface görünür — tıkla: gizle"}
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
               </button>

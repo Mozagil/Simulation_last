@@ -48,7 +48,7 @@ export default function MeshRemeshPanel({
       <p className="crash-behavior-hint">
         Viewport'ta YÜZEY modunda yüzey(ler) seç, boyutu yaz, uygula: yalnız o yüzeyler bu boyutla
         yeniden mesh'lenir, diğerleri {globalSize || "global"} mm kalır. Liste sonraki mesh'lerde de geçerli.
-        Yüzey seçmek için mesh görünümünü kapat (viewport solundaki ızgara düğmesi).
+        Yüzey seçmek için mesh görünümünü kapat ve Solid düğmesiyle CAD'i göster (mesh sonrası CAD gizli gelir).
       </p>
       <div className="remesh-row">
         <span className="remesh-sel">
