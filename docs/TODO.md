@@ -860,6 +860,260 @@ akışındaki eski çözümleri (varsa) geçersiz; kiriş/plaka DOE'leri etkilen
       eğitilmeli — diskteki eski `field_gnn.npz` şablon kaydı taşımadığı
       için artık hiçbir şablona verilmiyor.
 
+---
+
+## 11. Crash sınır koşulları paneli — yeniden düzen (Faz 1 UI)
+
+> Testler başladığında ortaya çıktı: panel "rijit duvar" varsayımı
+> üstüne kurulu, ama şablon + içe aktarılan geometri birlikte
+> yaşayacak. Her madde tek başına uygulanabilir; sıra önerilidir.
+
+### 11.1 Hız yönü duvardan bağımsızlaşsın — BACKEND, önce bu
+
+**Sorun:** `CrashBarrierParams.velocity_mm_per_ms()` hız yönünü
+`wall.unit_normal()`'dan türetiyor:
+
+```python
+n = self.wall.unit_normal()
+approach = (-n[0], -n[1], -n[2])
+direction = cos(θ)·approach + sin(θ)·sweep
+```
+
+Yani `use_rigid_wall: false` olsa bile — duvar hiç yazılmasa bile —
+hız yönü için `wall.normal` doldurmak **zorunlu**. Duvarsız senaryoda
+(kutu + çarpma plakası, temasla çözülen) o alan fiziksel olarak
+anlamsız ama gerekli.
+
+Ayrıca `barrier` alanının `CrashSolveRequest`'te varsayılanı yok →
+her crash koşusunda doldurulmak zorunda, SPH / patlama / düşme
+senaryolarında bile.
+
+**Yapılacak:**
+- [ ] `CrashBarrierParams`'a opsiyonel `direction: tuple[float,float,float] | None`
+- [ ] Verilmişse hız yönü ondan; verilmemişse **eski davranış** (duvar
+      normali) — mevcut koşular ve testler bozulmasın
+- [ ] `angle_deg`'in yalnız duvar varken anlamlı olduğu docstring'e yazılsın
+      (tanımı "0 = duvara dik", duvar yoksa referans yok)
+- [ ] `barrier`'ı opsiyonel yapmayı değerlendir (`None` = yükleme başka
+      mekanizmadan: `/GRAV`, `/IMPVEL`, SPH, patlama)
+
+**Kabul:** `use_rigid_wall: false` + `direction` verilen bir istek,
+`wall` alanı hiç doldurulmadan çözülebilmeli. Mevcut testler
+değişmeden geçmeli.
+
+### 11.2 Panel üç soruya indirgensin — FRONTEND
+
+**Sorun:** `CrashPanel.tsx` (761 satır) 15 kartı aynı düzeyde gösteriyor.
+Sıklık farkı görünmüyor: her koşuda değişenler (hız, süre, roller) ile
+nadiren dokunulanlar (`icog`, `istf`, `inacti`, hourglass, SPH) yan yana.
+
+**Yapılacak** — üç soru, her biri yalnız seçilen seçeneğin alanlarını açar:
+
+```
+Hazır senaryo: [Crash box → rijit duvar ▾]   ← üçünü birden doldurur
+
+1 · YÜKLEME   ◉ İlk hız ○ Dayatılmış hız ○ Yerçekimi
+              ○ Basınç/patlama ○ SPH mermi
+2 · ENGEL     ◉ Rijit duvar ○ Başka parça (temas) ○ Yok
+3 · TUTMA     parça rolleri + [+ /BCS] [+ /RBODY] [+ /ADMAS]
+
+▸ İleri ayarlar (hourglass, icog, istf, inacti)
+```
+
+- [ ] "Engel: Yok" → duvar alanları tamamen gizlenir (11.1 bunu mümkün kılar)
+- [ ] "Engel: Başka parça" → temas kartı açılır
+- [ ] Sorular **her zaman görünür** — kullanıcı neyi seçmediğini de bilsin
+- [ ] İleri ayarlar katlanmış
+
+**Neden pop-up DEĞİL:** Crash kurulumunda hatalar sessizdir — yanlış
+kurulmuş model hata vermez, saçma sonuç verir. "Duvar var ama temas da
+tanımlı mı", "parça hem sabit hem rijit gövde mi" gibi çelişkiler ancak
+hepsi aynı ekranda görününce fark edilir. Pop-up'lar ayrıca DOE/ML
+akışında işe yaramaz.
+
+**Düğme nerede doğru:** Tutma ve ek kartlar (`/BCS`, `/RBODY`, `/ADMAS`,
+`/SECT`) sayıca değişken, birden fazla eklenebiliyor → "+ ekle" doğru.
+Yükleme ve engel tekil seçim → soru olarak kalmalı.
+
+### 11.3 Şablon / içe aktarılan geometri ayrımı — TEK PANEL
+
+**Karar: panel ikiye BÖLÜNMESİN.**
+
+Üç soru şablona özel değil, fizik — her explicit modelin yükleme
+kaynağı, muhtemelen engeli, tutma biçimi vardır. İçe aktarılan
+geometride de öyle.
+
+Değişen tek şey **"nereye" seçicisinin kaynağı**:
+
+| | şablon | içe aktarılan |
+|---|---|---|
+| bölge listesi | şablonun hazır bölgeleri (`tutulan_uc`, `yuk_cekme`) | kullanıcının Physical Group'ları |
+| liste boşsa | — | "Viewport'tan yüzey seçip grup oluşturun" + kısayol |
+
+Altyapı **zaten var**: crash BC'leri Physical Group üzerinden çözülüyor
+(`app/api/crash.py:343`), ve içe aktarılan geometride yüzey seçip isim
+verme (Physical Group) Faz 0'da tamamlandı.
+
+- [ ] Bölge seçici, geometri şablondan mı geldi diye bakıp listeyi
+      doğru kaynaktan doldursun
+- [ ] İçe aktarılan geometride grup yoksa boş bırakma — yönlendirici
+      metin + grup oluşturma kısayolu
+
+**Neden tek panel:** İki ayrı UI = iki kod yolu, iki test seti, iki
+zihinsel model. Fizik aynıyken ikiye bölmek bakım maliyetini ikiye
+katlar.
+
+### 11.4 Deforme şekil ana viewport'a — opsiyonel
+
+Şu an sidebar'da 260px kutu; tam ekran düğmesi eklendi (⤢, ESC ile
+çıkış) ve `ResizeObserver` ile renderer kutuyu takip ediyor.
+
+Durability gibi **ana viewport**'ta göstermek için `animRun` durumunun
+`CrashHistory`'den `App`'e çıkarılması, viewport'un koşullu
+değiştirilmesi gerekiyor (~3 dosya, 40 satır).
+
+- [ ] Crash akışı durulduktan sonra değerlendir — kaplama şimdilik
+      yeterli, hatta viewport'tan geniş (ribbon yok)
+
+### 11.5 Başvuru dokümanı — ✅ yazıldı
+
+`docs/CRASH_BC_GUIDE.md`: her ayarın anlamı, OpenRadioss kartı,
+**LS-DYNA keyword karşılığı**, hangi analizde kullanıldığı, tipik
+senaryo kurulumları.
+
+Test sırasında en çok yanıltan noktalar orada: `role=fixed` ile `/BCS`
+farkı, `/INIVEL` ile `/IMPVEL` farkı, `law=elastic`'in crash'te neden
+yanlış olduğu, CFC filtresi olmadan tepe kuvveti okumanın neden
+anlamsız olduğu, hourglass enerjisinin %5 eşiği.
+
+### 11.6 "STEP indir" düğmesi çalışmıyor (durability + crash)
+
+**Teşhis yapıldı — backend sağlam, sorun frontend'de.**
+
+Uç doğru ve çalışıyor:
+```
+GET /geometry/2403/step            → HTTP 200   ✅
+GET /templates/geometry/2403/step  → HTTP 404   (router'da prefix yok, beklenen)
+```
+`downloadGeometryStep()` de doğru yola istek atıyor
+(`frontend/src/api/templates.ts:82`).
+
+**Asıl sebep:** düğme `disabled` —
+`TemplatePanel.tsx:223` → `disabled={geometryId == null || busy || downloading}`
+
+`geometryId` App'ten prop olarak geliyor (`App.tsx:3727`). Şablondan
+model üretildikten sonra App'in `geometryId` state'i güncellenmiyor ya da
+geç güncelleniyor → düğme kapalı kalıyor.
+
+**Yan belirti (muhtemelen aynı kök):** şablondan model üretildikten
+sonra viewport'ta "GEOMETRİ YÜKLE" ekranı duruyor, model görünmüyor —
+oysa koşu geçmişinde `geo 2403 · solved` kayıtlı. Yani geometri
+üretiliyor ama App aktif geometri olarak tutmuyor.
+
+**Yapılacak:**
+- [ ] `handleTemplateCreated` akışını izle — `setGeometryId` çağrılıyor mu,
+      çağrılıyorsa neden yansımıyor
+- [ ] Crash ve durability'de ayrı mı davranıyor, kontrol et
+      (aynı bileşen, `kind` prop'u ile ayrılıyor)
+- [ ] Viewport'un boş kalması aynı kökten mi — ikisi birlikte düzelmeli
+- [ ] Regresyon testi: model üret → `geometryId` dolu → düğme etkin
+
+**Not:** `TemplatePanel.test.tsx` zaten "geometri varken STEP indir
+API'sini çağırır" testini içeriyor ve geçiyor — yani bileşen doğru
+çalışıyor, ona **doğru prop gelmiyor**. Test bileşeni izole ettiği için
+App entegrasyonundaki boşluğu yakalamıyor.
+
+### 11.7 Parça satırları seçilebilir olsun + ürün ağacı vurgulama
+
+**Sorun:** PARÇALAR tablosunda `#0`, `#1` yazıyor ama hangisinin
+viewport'ta hangi katı olduğu görünmüyor. Kullanıcı rolleri (hareketli/
+sabit) doğru parçaya atadığından emin olamıyor — yanlış atama hata
+vermez, sessizce saçma sonuç verir.
+
+**Yapılacak:**
+- [ ] Parça satırına tıklayınca viewport'ta o parça vurgulansın
+- [ ] Ürün ağacında (Model Ağacı) tıklayınca da aynı vurgulama
+- [ ] İki yön senkron: viewport'ta parça seçilince tablo satırı da işaretlensin
+- [ ] Üzerine gelince (hover) hafif vurgulama — tıklamadan önce görülsün
+
+**Altyapı var:** `triangle_to_part` eşlemesi tessellation çıktısında
+mevcut (Faz 0, "Montaj/parça ayrımı"), `GeometryViewer` parça
+gizleme/gösterme zaten yapıyor (`hiddenParts`). Vurgulama aynı
+mekanizmanın üstüne kurulabilir.
+
+### 11.8 `free` rolü arayüzde yok
+
+**Sorun:** Backend üç rol destekliyor:
+
+```python
+role: "moving (ilk hız) | fixed (tüm düğümler /BCS) | free (ilk hız yok, /BCS yok — 1.18b)"
+```
+
+Arayüzde yalnız **Hareketli** ve **Sabit** var (`CrashPanel.tsx:394, 403`).
+`free` hiç seçilemiyor.
+
+**Neden önemli:** Bir parça başka parçanın itmesiyle hareket edecekse
+(zincirleme çarpışma, plaka–küre senaryosunda serbest küre) ne ilk hız
+vermek ne kilitlemek doğru. Şu an kullanıcı ikisinden birini seçmek
+zorunda ve ikisi de yanlış fizik.
+
+**Yapılacak:**
+- [ ] Üçüncü düğme: **Serbest**
+- [ ] İpucu metni: "ilk hız almaz, kilitlenmez — yalnız temasla hareket eder"
+- [ ] Mevcut iki rolün açıklaması da satır altına değil, düğme ipucuna
+
+### 11.9 Rol tablosu yerine kart tabanlı yükleme/tutma
+
+**Öneri (kullanıcıdan):** PARÇALAR tablosundaki Hareketli/Sabit
+düğmeleri yerine, kart ekleyip hedefi (parça ya da bölge) kendin seç.
+
+**Neden mantıklı:** Panelin geri kalanı zaten böyle çalışıyor —
+`/BCS`, `/RBODY`, `/ADMAS`, `/IMPVEL` hepsi "kart ekle → bölge ya da
+parça seç" düzeninde. Rol tablosu tek istisna.
+
+**Teknik engel yok:** `/INIVEL` zaten bir DÜĞÜM GRUBUNA yazılıyor
+(`/GRNOD`, `openradioss.py:867`), parçaya değil. Şu an o grup
+"hareketli parçaların düğümleri"nden kuruluyor; bir Physical Group'tan
+da kurulabilir. Yani bölge bazlı ilk hız altyapısı hazır.
+
+**Ama bir şey kaybediliyor — ve bu önemli:**
+
+| | rol tablosu | kart tabanlı |
+|---|---|---|
+| bütünlük | ✅ her parça listede, durumu görünür | ❌ unutulan parça sessizce varsayılana düşer |
+| esneklik | ❌ yalnız parça bazında | ✅ bölge bazında (parçanın tek yüzü) |
+
+Explicit dinamikte her parçanın bir hali olmak zorunda. Yanlış kurulmuş
+crash modeli **hata vermez, saçma sonuç verir** — bütünlük görünür
+kalmalı.
+
+**Çözüm: ikisini birleştir.** Kartlar esneklik için, altında kapsama
+özeti:
+
+```
+YÜKLEME / TUTMA
+  [+ İlk hız] [+ Sabitle] [+ Dayatılmış hız] [+ Rijit gövde]
+
+  ▸ İlk hız · parça #0 · 10 m/s · (-1,0,0)     [düzenle] [sil]
+  ▸ Sabitle · bölge "taban" · 111111            [düzenle] [sil]
+
+  ⚠ Parça #1 tanımsız — varsayılan: hareketli
+```
+
+**Yapılacak:**
+- [ ] `/INIVEL` grubunu Physical Group'tan kurabilme (backend; grup
+      mantığı hazır, kaynak seçimi eklenecek)
+- [ ] Kart listesi + "+ ekle" düğmeleri
+- [ ] **Kapsama özeti**: hangi parça hiçbir kartta geçmiyor, uyarı
+- [ ] Geriye uyumluluk: `parts[].role` alanı kalsın, kart yoksa eski
+      davranış (mevcut koşular ve DOE bozulmasın)
+- [ ] `free` rolü (11.8) bu düzende "hiç kart yok" demek olur — ayrı
+      düğmeye gerek kalmayabilir, 11.8 ile birlikte değerlendir
+
+**Sıra notu:** 11.2'nin (üç soru) TUTMA bölümünü de etkiliyor ama
+ondan bağımsız yapılabilir. 11.8 ile birlikte ele alınırsa `free`
+sorunu da kendiliğinden çözülür.
+
 ## Öncelik sırası (öneri)
 
 1. ~~**0.1** — yüzey yükü doğrulaması~~ ✅ kapandı
@@ -873,6 +1127,21 @@ akışındaki eski çözümleri (varsa) geçersiz; kiriş/plaka DOE'leri etkilen
 8. **4** — NLGEOM arayüz + veri seti
 9. **6, 7, 8.2** — iyileştirmeler
 10. **5 (devam)** — kalan 10 şablon için DOE + eğitim
+### Crash UI (bölüm 11) — bağımlılığa göre sıra
+
+11. **11.6** — STEP indir + viewport boş kalması · *küçük, teşhis hazır*
+12. **11.1** — hız yönü duvardan bağımsız · *küçük, backend; 11.2'nin önkoşulu*
+13. **11.7** — parça seçimi + ürün ağacı vurgulama · *orta; 11.9'u kullanışlı kılar*
+14. **11.9** — kart tabanlı yükleme/tutma + kapsama özeti · *orta; 11.8'i kapsayabilir*
+15. **11.8** — `free` rolü · *11.9 yapılırsa gereksiz olabilir, sonra bak*
+16. **11.2 + 11.3** — panel üç soru + şablon/import tek panel · *büyük; 11.1 ve 11.9 üstüne*
+17. **11.4** — deforme şekil ana viewport · *opsiyonel, crash akışı durulunca*
+
+Mantık: önce bağımsız küçük düzeltmeler (11.6, 11.1), sonra parça
+seçimi (11.7 — kart tabanlı düzende hedefi görmek şart), sonra kart
+düzeni (11.9), en son büyük yeniden düzen (11.2/11.3). 11.8 ayrı bir
+düğme olarak gerekebilir ya da 11.9 içinde erir — 11.9 bittiğinde
+karar ver.
 
 **Crash'e (Faz 1) geçmeden önce en az 0.1 (✅) ve 3 (✅) kapanmalı** — crash de çok artımlı `.frd` üretecek; 4.0 aynı sınıftan — ikisi de
 solver altyapısını ilgilendiriyor, crash aynı altyapıyı kullanacak.
