@@ -23,6 +23,19 @@ describe("Crash geçmişi dock / yeni vaka (tasarım adım 3)", () => {
     expect(screen.getByTestId("crash-history-inner")).toBeInTheDocument();
   });
 
+  it("açık dock alçak başlar, üst kenardan sürüklenip büyür ve yükseklik hatırlanır", () => {
+    window.localStorage.removeItem("crashHistoryDockH");
+    render(<CrashHistoryDock geometryId={1} refreshKey="" activeAnimId={null} onAnimate={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: /Crash geçmişi/ }));
+    const dock = screen.getByTestId("crash-history-dock");
+    expect(dock.style.height).toBe("200px");
+    fireEvent.mouseDown(screen.getByRole("separator"), { clientY: 500 });
+    fireEvent.mouseMove(window, { clientY: 440 });
+    fireEvent.mouseUp(window);
+    expect(dock.style.height).toBe("260px");
+    expect(window.localStorage.getItem("crashHistoryDockH")).toBe("260");
+  });
+
   it("yeni vaka penceresi: katalog + senaryo; geometri bildirilir, dışa tık kapatır", () => {
     const onGeometry = vi.fn();
     const onClose = vi.fn();
