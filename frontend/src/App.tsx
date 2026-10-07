@@ -69,6 +69,7 @@ import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
 import CrashHistoryDock from "./components/CrashHistoryDock";
+import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import CrashMaterialSection from "./components/CrashMaterialSection";
@@ -1254,7 +1255,11 @@ function App() {
     if (meshPicks.length === 0) return;
     setMeshGrow(grow);
     if (grow === "attached") {
-      const ids = [...new Set(meshPicks.map((p) => p.partId))];
+      const meshIds = [...new Set(meshPicks.map((p) => p.partId))];
+      // mesh parça no → CAD parça no (viewport seçimi CAD numarası tutar)
+      const ids = meshToCad
+        ? [...new Set(meshIds.flatMap((m) => meshToCad.get(m) ?? [m]))]
+        : meshIds;
       setMode("part");
       setSelection({ mode: "part", ids });
     }
@@ -1850,18 +1855,42 @@ function App() {
   // TODO 11.7 — parça seçimi tek kaynak: viewport "parça" modu seçimi.
   // Crash parça tablosu ve ürün ağacı bunu okur / yazar; üzerine gelme
   // (hover) o parçanın yüzeylerini dış vurguyla gösterir.
-  const selectedPartIds = selection.mode === "part" ? selection.ids : [];
+  // 2D: ağaç / crash parça listesi MESH parça numarası, viewport seçimi CAD
+  // parça numarası kullanır (solid + orta yüzeyde farklı) — yüzey üzerinden eşle.
+  const meshToCad = useMemo(
+    () =>
+      meshResult?.dimension === 2 && meshPreview?.triangle_to_face?.length
+        ? buildMeshToCadParts(
+            meshPreview.triangle_to_part ?? [],
+            meshPreview.triangle_to_face,
+            triangleToPart,
+            triangleToFace,
+          )
+        : null,
+    [meshResult?.dimension, meshPreview, triangleToPart, triangleToFace],
+  );
+  const selectedPartIds =
+    selection.mode !== "part"
+      ? []
+      : meshToCad
+        ? meshPartsForCadSelection(meshToCad, selection.ids)
+        : selection.ids;
   const hoverFaceIds = useMemo(() => {
     if (hoverPartId === null) return null;
+    if (meshToCad && meshPreview?.triangle_to_face) {
+      return meshPartFaces(meshPreview.triangle_to_part ?? [], meshPreview.triangle_to_face, hoverPartId);
+    }
     const faces = new Set<number>();
     triangleToPart.forEach((p, i) => {
       if (p === hoverPartId) faces.add(triangleToFace[i]);
     });
     return [...faces];
-  }, [hoverPartId, triangleToPart, triangleToFace]);
+  }, [hoverPartId, triangleToPart, triangleToFace, meshToCad, meshPreview]);
+  /** partId: 2D'de mesh parça no (ağaç/crash listesi), aksi halde CAD parça no. */
   function selectPart(partId: number) {
+    const cad = meshToCad?.get(partId);
     setMode("part");
-    setSelection({ mode: "part", ids: [partId] });
+    setSelection({ mode: "part", ids: cad?.length ? cad : [partId] });
   }
   const externalHighlight = hoverFaceIds
     ? { faceIds: hoverFaceIds }
@@ -1940,9 +1969,14 @@ function App() {
     materials.find((m) => m.id === selectedMaterialId) ?? null;
 
   const meshPartIds = [...new Set(meshPicks.map((p) => p.partId))];
+  // Atama 2D'de mesh parça numarasıyla yapılır; CAD seçimini çevir.
   const cadPartId =
     meshPicks.length === 0 && mode === "part" && selection.ids.length === 1
-      ? selection.ids[0]
+      ? meshToCad
+        ? selectedPartIds.length === 1
+          ? selectedPartIds[0]
+          : null
+        : selection.ids[0]
       : null;
   const assignPartId = meshPartIds.length === 1 ? meshPartIds[0] : cadPartId;
 
