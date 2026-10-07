@@ -2224,6 +2224,14 @@ class GmshMesherAdapter(MesherAdapter):
                 if scheme == "quad":
                     gmsh.option.setNumber("Mesh.Algorithm", 8)
                     gmsh.option.setNumber("Mesh.RecombineAll", 1)
+                    # Frontal-Delaunay-for-quads (8) OCC silindir / eğri yüzeyde
+                    # parametre uzayında çöküyor: ÖLÇÜLDÜ (door_beam impaktörü,
+                    # 6 mm) — çeyrek-yay yüzü başına ~50 uzun şerit eleman,
+                    # minSICN medyan 0.20. Düzlem dışı yüzeylerde Frontal-Delaunay
+                    # (6) + recombine: ~460 quad, medyan 0.97, üçgen 0. Düzlemler 8'de kalır.
+                    for _d, ftag in gmsh.model.getEntities(dim=2):
+                        if gmsh.model.getType(2, ftag) != "Plane":
+                            gmsh.model.mesh.setAlgorithm(2, ftag, 6)
                     gmsh.model.mesh.generate(2)
                     gmsh.model.mesh.recombine()
                 elif scheme == "mix":
