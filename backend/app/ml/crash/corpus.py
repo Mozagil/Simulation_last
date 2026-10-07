@@ -25,6 +25,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.crash_doe import CrashDoeCase
 from app.models.crash_run import CrashRun
 from app.models.geometry import Geometry
 from app.postprocess.crash_targets import TARGET_KEYS, crash_targets
@@ -59,11 +60,14 @@ class CrashCorpus:
     constant_features: dict[str, float] = field(default_factory=dict)
     #: Süzgeçte düşen koşu sayıları (neden → adet).
     dropped: dict[str, int] = field(default_factory=dict)
+    #: Korpus tek bir crash DOE çalışmasından süzüldüyse onun kimliği.
+    study_id: int | None = None
 
     def summary(self) -> dict[str, Any]:
         return {
             "template_id": self.template_id,
             "scenario": self.scenario,
+            "study_id": self.study_id,
             "n_runs": len(self.run_ids),
             "features": self.feature_names,
             "constant_features": self.constant_features,
@@ -155,14 +159,20 @@ def build_corpus(
     )
 
 
-def load_records(db: Session) -> list[CrashRecord]:
-    """Çözülmüş, dışlanmamış crash_runs + geometri şablonu."""
+def load_records(db: Session, study_id: int | None = None) -> list[CrashRecord]:
+    """Çözülmüş, dışlanmamış crash_runs + geometri şablonu.
+
+    `study_id` verilirse yalnız o crash DOE çalışmasının koşuları (1.19c-3):
+    elle yapılmış dağınık denemeler eğitime karışmaz.
+    """
     q = (
         select(CrashRun, Geometry.template_id, Geometry.template_params)
         .join(Geometry, Geometry.id == CrashRun.geometry_id)
         .where(CrashRun.status == "solved", CrashRun.excluded.is_(False))
         .order_by(CrashRun.id)
     )
+    if study_id is not None:
+        q = q.join(CrashDoeCase, CrashDoeCase.run_id == CrashRun.id).where(CrashDoeCase.study_id == study_id)
     return [
         CrashRecord(
             run_id=run.id,
@@ -177,6 +187,12 @@ def load_records(db: Session) -> list[CrashRecord]:
 
 
 def load_crash_corpus(
-    db: Session, template_id: str, scenario: str, curves_loader: CurvesLoader = job_json_curves
+    db: Session,
+    template_id: str,
+    scenario: str,
+    curves_loader: CurvesLoader = job_json_curves,
+    study_id: int | None = None,
 ) -> CrashCorpus:
-    return build_corpus(load_records(db), template_id, scenario, curves_loader)
+    corpus = build_corpus(load_records(db, study_id), template_id, scenario, curves_loader)
+    corpus.study_id = study_id
+    return corpus

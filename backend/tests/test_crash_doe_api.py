@@ -68,3 +68,31 @@ def test_invalid_spec_and_missing_study():
     assert client.post("/crash/doe/studies", json=_spec(vary={"geometry.nope": [1, 2]})).status_code == 422
     assert client.post("/crash/doe/studies", json=_spec(vary={"speed_m_s": [5, 5]})).status_code == 422
     assert client.get("/crash/doe/studies/999999").status_code == 404
+
+
+@requires_db
+def test_corpus_study_filter():
+    """1.19c-3 — korpus yalnız seçilen DOE çalışmasının koşularını alır."""
+    from app.ml.crash.corpus import load_crash_corpus, load_records
+    from app.models.crash_run import CrashRun
+
+    s = client.post("/crash/doe/studies", params={"wait": True}, json=_spec(n_samples=3)).json()
+    other = client.post("/crash/scenario", json={"run_solver": False, "name": "elle"}).json()
+    doe_ids = sorted(c["run_id"] for c in s["cases"])
+    all_ids = set(doe_ids) | {other["crash"]["run_id"]}
+
+    db = SessionLocal()
+    try:
+        # çözücüsüz koşuları "solved" + hedef skaleriyle işaretle (korpus yalnız solved alır)
+        for run in db.query(CrashRun).filter(CrashRun.id.in_(all_ids)):
+            run.status = "solved"
+            run.scalars = {"rwall_force_max": 100.0, "internal_energy_final": 50.0}
+        db.commit()
+
+        assert all_ids <= {r.run_id for r in load_records(db)}
+        assert sorted(r.run_id for r in load_records(db, study_id=s["id"])) == doe_ids
+        c = load_crash_corpus(db, "crash_box_shell", "rigid_wall", curves_loader=lambda _j: {}, study_id=s["id"])
+        assert sorted(c.run_ids) == doe_ids and c.summary()["study_id"] == s["id"]
+        assert "req.barrier.speed_m_s" in c.feature_names and "geom.wall" in c.feature_names
+    finally:
+        db.close()
