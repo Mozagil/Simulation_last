@@ -65,6 +65,8 @@ import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
 import CrashDoePanel from "./components/CrashDoePanel";
+import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
+import CrashModelPanel from "./components/CrashModelPanel";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
@@ -491,6 +493,7 @@ function App() {
   // Stüdyo alanı: durability (CalculiX) ya da crash (OpenRadioss, 1.19f) —
   // ayrı korpus, ayrı model; crash kendi panellerini taşır.
   const [mlDomain, setMlDomain] = useState<"durability" | "crash">("durability");
+  const [crashMlStage, setCrashMlStage] = useState<CrashMlStage>("doe");
   // Stüdyonun şablonu: tezgahtaki seçimden başlar, üst şerit çipleriyle
   // değişir; tezgaha geri yazmaz (geometri seçimi ayrı iş).
   const [mlTemplateOverride, setMlTemplateOverride] = useState<string | null>(null);
@@ -2588,7 +2591,7 @@ function App() {
 
   if (workspace === "ml") {
     return (
-      <main className={mlDomain === "crash" ? "ml-studio-page ml-studio-page--crash" : "ml-studio-page"}>
+      <main className="ml-studio-page">
         <div className="toolbar">
           <div className="toolbar-left">
             <span className="app-brand">
@@ -2640,9 +2643,13 @@ function App() {
         </div>
 
         {mlDomain === "crash" ? (
-          <div className="ml-studio-body">
-            <CrashDoePanel />
-          </div>
+          <>
+            <CrashMlNav stage={crashMlStage} onSelect={setCrashMlStage} />
+            <div className="ml-studio-body">
+              {crashMlStage === "doe" && <CrashDoePanel />}
+              {crashMlStage === "model" && <CrashModelPanel />}
+            </div>
+          </>
         ) : (
         <>
         <MlStudioNav stage={mlStage} onSelect={setMlStage} meta={mlStatus.meta} />

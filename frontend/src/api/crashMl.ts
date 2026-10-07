@@ -76,3 +76,79 @@ export function createCrashDoeStudy(spec: CrashDoeSpecPayload): Promise<CrashDoe
 export function resumeCrashDoeStudy(id: number): Promise<CrashDoeStudyInfo> {
   return request<CrashDoeStudyInfo>(`${API_BASE_URL}/crash/doe/studies/${id}/run`, { method: "POST" });
 }
+
+/* ---- Vekil model (1.19e: /crash/ml) ---- */
+
+export interface CrashTargetDef {
+  key: string;
+  label: string;
+  unit: string;
+  definition: string;
+}
+
+export interface CrashCorpusQuery {
+  template_id: string;
+  scenario: string;
+  study_id?: number | null;
+}
+
+export interface CrashCorpusSummary {
+  template_id: string;
+  scenario: string;
+  study_id: number | null;
+  n_runs: number;
+  features: string[];
+  constant_features: Record<string, number>;
+  /** Hedef → dolu satır sayısı */
+  targets: Record<string, number>;
+  /** Düşen koşular: neden → adet */
+  dropped: Record<string, number>;
+}
+
+export interface CrashCvMetrics {
+  n: number;
+  r2?: number;
+  mae?: number;
+  mape?: number;
+  folds?: number;
+  skipped?: string;
+}
+
+export interface CrashModelInfo {
+  template_id: string;
+  scenario: string;
+  study_id: number | null;
+  n_runs: number;
+  feature_keys: string[];
+  dropped_features: string[];
+  constant_features: Record<string, number>;
+  bounds: Record<string, [number, number]>;
+  targets: (CrashTargetDef & { trained: boolean; cv: CrashCvMetrics | null })[];
+  seed: number | null;
+  path?: string;
+}
+
+export interface CrashPrediction {
+  prediction: Record<string, number | null>;
+  out_of_domain: string[];
+}
+
+export function fetchCrashCorpus(q: CrashCorpusQuery): Promise<CrashCorpusSummary> {
+  return request<CrashCorpusSummary>(`${API_BASE_URL}/crash/ml/corpus`, post(q));
+}
+
+export function trainCrashModel(q: CrashCorpusQuery & { seed?: number; n_folds?: number }): Promise<CrashModelInfo> {
+  return request<CrashModelInfo>(`${API_BASE_URL}/crash/ml/train`, post(q));
+}
+
+export async function fetchCrashModels(): Promise<CrashModelInfo[]> {
+  return (await request<{ models: CrashModelInfo[] }>(`${API_BASE_URL}/crash/ml/models`)).models;
+}
+
+export function predictCrash(body: {
+  template_id: string;
+  scenario: string;
+  inputs: Record<string, number>;
+}): Promise<CrashPrediction> {
+  return request<CrashPrediction>(`${API_BASE_URL}/crash/ml/predict`, post(body));
+}
