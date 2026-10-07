@@ -64,6 +64,10 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
   const [playing, setPlaying] = useState(false);
   const [scalar, setScalar] = useState("disp_mag");
   const holderRef = useRef<HTMLDivElement | null>(null);
+  // Tam ekran: sidebar'daki 260px kutu deforme şekli okumak için dar.
+  // Ana viewport'a taşımak `animRun` durumunu App'e çıkarmayı gerektirirdi
+  // (3 dosya); kaplama hem daha geniş (ribbon yok) hem tek dosya.
+  const [expanded, setExpanded] = useState(false);
   const meshRef = useRef<{ geom: THREE.BufferGeometry; render: () => void } | null>(null);
   /** 1.17g — hazır görünümler: model eksenlerine göre kamera konumu */
   const viewRef = useRef<((dir: ViewDir) => void) | null>(null);
@@ -143,7 +147,22 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
       render();
     };
     render();
+
+    // Kutu boyutu değişince (tam ekran aç/kapa, panel sürükleme) renderer
+    // ve kamera oranı güncellenmeli; yoksa görüntü gerilir.
+    const ro = new ResizeObserver(() => {
+      const w = holder.clientWidth;
+      const h = holder.clientHeight;
+      if (w < 2 || h < 2) return;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      render();
+    });
+    ro.observe(holder);
+
     return () => {
+      ro.disconnect();
       controls.dispose();
       geom.dispose();
       (mesh.material as THREE.Material).dispose();
@@ -197,10 +216,23 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
 
   const meta = data?.scalars[scalar];
   const fr = data?.frames[frame];
+  // ESC ile çık — tam ekranda başka çıkış yolu görünmüyor.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
   const deleted = fr?.face_alive ? fr.face_alive.filter((a) => a === 0).length : 0;
 
   return (
-    <figure className="cv-card crash-anim" data-testid="crash-anim">
+    <figure
+      className={expanded ? "cv-card crash-anim crash-anim-expanded" : "cv-card crash-anim"}
+      data-testid="crash-anim"
+    >
       <span className="cv-card-head">
         <strong>Deforme şekil{title ? ` · ${title}` : ""}</strong>
         {fr && (
@@ -209,6 +241,16 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
             {deleted ? ` · silinen ${deleted}` : ""}
           </span>
         )}
+        <button
+          type="button"
+          className="crash-anim-expand"
+          data-testid="crash-anim-expand"
+          onClick={() => setExpanded((v) => !v)}
+          title={expanded ? "Küçült (ESC)" : "Tam ekran"}
+          aria-label={expanded ? "Küçült" : "Tam ekran"}
+        >
+          {expanded ? "⤡" : "⤢"}
+        </button>
       </span>
       {error && <p className="material-assign-hint">{error}</p>}
       {!data && !error && <p className="doe-empty">Animasyon hazırlanıyor… (ilk açılışta dönüştürülür)</p>}
