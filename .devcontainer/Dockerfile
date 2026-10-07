@@ -45,10 +45,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# OpenRadioss resmi Linux paketi (~80MB). Kaynak derleme yok; lisans sunucusu yok.
+# OpenRadioss son açık sürümü (latest-20260728) DEPODAKİ arşivden — resmi
+# indirme adresi 2026-10 başında kalktı (docs/LICENSING.md). Kaynak derleme
+# yok; lisans sunucusu yok. Build bağlamı depo kökü (devcontainer.json).
+COPY vendor/openradioss-latest-20260728-linux64-agpl.tar.gz /tmp/openradioss.tar.gz
 COPY .devcontainer/install_openradioss.sh /tmp/install_openradioss.sh
-RUN chmod +x /tmp/install_openradioss.sh && /tmp/install_openradioss.sh \
-    && rm /tmp/install_openradioss.sh
+RUN chmod +x /tmp/install_openradioss.sh && /tmp/install_openradioss.sh /tmp/openradioss.tar.gz \
+    && rm /tmp/install_openradioss.sh /tmp/openradioss.tar.gz
 
 # Kurulumun gerçekten çalıştığını IMAGE BUILD sırasında doğrula — sessizce
 # eksik bir ortamla başlamaktansa build'in patlaması yeğdir.
