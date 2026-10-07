@@ -8,6 +8,7 @@ import {
   type CrashModelPayload,
   type CrashPartSpec,
   type CrashSolveResponse,
+  type CrashScenarioSetup,
 } from "../api/crash";
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
@@ -201,7 +202,7 @@ export default function CrashPanel({
   /** Koşu geçmişini yenilemek için iş anahtarı (job/status). */
   onJobKey?: (key: string) => void;
   /** Panel dışında başlatılan koşu (ör. "+ Yeni crash vakası" senaryosu) — sonuçlar burada izlenir. */
-  externalJob?: { jobId: string; geometryId: number } | null;
+  externalJob?: { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -276,6 +277,27 @@ export default function CrashPanel({
     if (!externalJob) return;
     setResult(null);
     setSnapshot({ job_id: externalJob.jobId, geometry_id: externalJob.geometryId, status: "pending" });
+    // Senaryonun çarpma kurulumu panele (ve viewport işaretlerine) yansır.
+    const su = externalJob.setup;
+    if (!su) return;
+    const wallMode = su.use_rigid_wall !== false;
+    setImpactMode(wallMode ? "wall" : "free");
+    if (su.speed_m_s != null) setSpeed(String(su.speed_m_s));
+    if (su.t_end_ms != null) setTEnd(String(su.t_end_ms));
+    if (su.wall?.point) setWallPoint(su.wall.point.join(", "));
+    // Duvar modunda düğme = duvar normali; duvarsızda doğrudan hız yönü.
+    const n = su.wall?.normal;
+    const v = wallMode
+      ? n
+      : su.direction ?? (n ? n.map((c: number) => (c === 0 ? 0 : -c)) : undefined);
+    if (v && v.length === 3) {
+      const preset = DIR_PRESETS.find((d) => d.id !== "custom" && d.v.every((c, i) => c === v[i]));
+      if (preset) setDirPreset(preset.id);
+      else {
+        setDirPreset("custom");
+        setCustomDir([String(v[0]), String(v[1]), String(v[2])]);
+      }
+    }
   }, [externalJob]);
 
   useEffect(() => {

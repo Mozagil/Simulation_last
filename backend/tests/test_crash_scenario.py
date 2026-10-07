@@ -27,6 +27,9 @@ def test_default_scenario_builds_deck_like_manual_setup():
     assert sc["geometry"] == {"box_length": 300.0, "box_height": 50.0, "box_width": 40.0, "wall": 3.0}
     assert sc["material_name"] == "S235" and sc["thickness_mm"] == 3.0
     assert sc["wall"] == {"point": [0.0, 25.0, 20.0], "normal": [1.0, 0.0, 0.0]}
+    assert sc["use_rigid_wall"] is True and sc["direction"] is None and sc["t_end_ms"] > 0
+    # Sunucu mesh'i arayüze döner (viewport'a yüklenir)
+    assert d["mesh"]["dimension"] == 2 and d["mesh"]["preview_url"].endswith(".preview.json")
     crash = d["crash"]
     assert crash["status"] == "rad_only" and crash["cards"]["has_shell"] and crash["cards"]["has_law2"]
     deck = (CRASH_DIR / crash["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")

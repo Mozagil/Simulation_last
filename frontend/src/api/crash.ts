@@ -1,5 +1,7 @@
 /** Crash (OpenRadioss) API — Faz 1.7–1.9. CalculiX `/solve` kullanmaz. */
 
+import type { MeshGenerateResponse } from "./geometry";
+
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
@@ -294,9 +296,22 @@ export interface CrashScenarioRequest {
   model?: { law: "elastic" | "plastic" | "tabulated"; shell?: Partial<CrashShellPayload> };
 }
 
+/** Senaryonun kurulumu (yanıttaki "scenario" alanının arayüzün okuduğu kısmı). */
+export interface CrashScenarioSetup {
+  template_id?: string;
+  wall?: { point: number[]; normal: number[] };
+  use_rigid_wall?: boolean;
+  direction?: number[] | null;
+  speed_m_s?: number;
+  t_end_ms?: number;
+  [key: string]: unknown;
+}
+
 export interface CrashScenarioResponse {
   geometry_id: number;
-  scenario: Record<string, unknown>;
+  scenario: CrashScenarioSetup;
+  /** Sunucuda üretilen mesh (geometry generate_mesh yanıtı). */
+  mesh?: MeshGenerateResponse;
   crash: CrashSolveResponse;
 }
 

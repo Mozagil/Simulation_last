@@ -553,4 +553,23 @@ describe("CrashPanel", () => {
     await waitFor(() => expect(fetchCrashJob).toHaveBeenCalledWith("scn1"));
     expect(await screen.findByText(/scn1 · solved/)).toBeInTheDocument();
   });
+
+  it("senaryo kurulumu (duvar, hız, süre) panele yansır", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "scn2", status: "solved" });
+    render(
+      <CrashPanel
+        geometryId={8}
+        meshDimension={2}
+        view="setup"
+        externalJob={{
+          jobId: "scn2",
+          geometryId: 8,
+          setup: { wall: { point: [0, 25, 20], normal: [1, 0, 0] }, speed_m_s: 7, t_end_ms: 4 },
+        }}
+      />,
+    );
+    expect(await screen.findByText(/7 m\/s · −X yönü · rijit duvar x=0/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Duvar konumu")).toHaveValue("0, 25, 20");
+    expect(screen.getByLabelText("Süre")).toHaveValue("4");
+  });
 });

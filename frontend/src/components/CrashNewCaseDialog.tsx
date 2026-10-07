@@ -3,6 +3,7 @@
  * "Katalog + hızlı senaryo → + Yeni vaka"). Senaryo geometrisi üretilince
  * App viewport'a yükler; koşu geçmişi dock'ta görünür.
  */
+import type { CrashScenarioResponse } from "../api/crash";
 import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
 import CrashSchematic from "./CrashSchematic";
@@ -16,7 +17,7 @@ export default function CrashNewCaseDialog({
   onClose: () => void;
   onGeometry: (geometryId: number, name: string) => void;
   onDone: () => void;
-  onJobStarted?: (jobId: string, geometryId: number) => void;
+  onJobStarted?: (res: CrashScenarioResponse) => void;
 }) {
   return (
     <div className="crash-newcase-backdrop" role="presentation" onClick={onClose}>

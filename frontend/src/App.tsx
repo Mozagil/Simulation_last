@@ -68,6 +68,7 @@ import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
+import type { CrashScenarioResponse, CrashScenarioSetup } from "./api/crash";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
@@ -379,7 +380,9 @@ function App() {
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
-  const [scenarioJob, setScenarioJob] = useState<{ jobId: string; geometryId: number } | null>(null);
+  const [scenarioJob, setScenarioJob] = useState<
+    { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null
+  >(null);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
@@ -1130,7 +1133,37 @@ function App() {
   /** Sunucuda üretilmiş bir geometriyi (crash hızlı senaryo, TODO 11.6)
    * aktif geometri yapar: viewport, ürün ağacı ve STEP indir buna bağlanır.
    * Önceki geometrinin seçim / mesh / sonuç durumu temizlenir. */
-  async function loadGeometryById(geoId: number, displayName: string) {
+  /** "+ Yeni crash vakası" senaryosu: geometri + sunucu mesh'i viewport'a,
+   * koşu 5 · Sonuçlar'a, çarpma kurulumu crash paneline. */
+  async function loadScenario(res: CrashScenarioResponse) {
+    const geoId = res.geometry_id;
+    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, setup: res.scenario });
+    setExpandedSteps(new Set(["results"]));
+    const cadParts = await loadGeometryById(geoId, `${res.scenario.template_id ?? "senaryo"}.step`);
+    const m = res.mesh;
+    if (!m || activeGeometryIdRef.current !== geoId) return;
+    setMeshResult(m);
+    setMeshDimension(m.dimension === 3 ? 3 : 2);
+    setMeshScheme(m.element_scheme);
+    setMeshElementSize(String(m.element_size));
+    setPropertyKind(m.dimension === 2 ? "shell" : "solid");
+    try {
+      if (m.preview_url) {
+        const preview = await fetchMeshPreview(m.preview_url);
+        if (activeGeometryIdRef.current !== geoId) return;
+        setMeshPreview(preview);
+        setShowMesh(true);
+        // mesh sonrası CAD varsayılan gizli (elle üretilen mesh ile aynı)
+        if (cadParts) setHiddenParts(new Set(cadParts.filter((pid) => pid >= 0)));
+      }
+      const tree = await fetchProductTree(geoId, 0);
+      if (activeGeometryIdRef.current === geoId) setProductTree(tree);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function loadGeometryById(geoId: number, displayName: string): Promise<number[] | null> {
     activeGeometryIdRef.current = geoId;
     setFaceSizes({});
     setErrorMessage(null);
@@ -1155,7 +1188,7 @@ function App() {
         fetchPhysicalGroups(geoId),
         fetchMaterialAssignments(geoId),
       ]);
-      if (activeGeometryIdRef.current !== geoId) return;
+      if (activeGeometryIdRef.current !== geoId) return null;
       setGeometryId(geoId);
       setFileName(displayName);
       setStlUrl(resolveTessellationUrl(`/files/tessellations/${geoId}.stl`));
@@ -1169,11 +1202,13 @@ function App() {
       setPhysicalGroups(groupList);
       setMaterialAssignments(assignments);
       setStatus("success");
+      return maps.triangle_to_part;
     } catch (err) {
-      if (activeGeometryIdRef.current !== geoId) return;
+      if (activeGeometryIdRef.current !== geoId) return null;
       setErrorMessage(
         err instanceof GeometryUploadError ? err.message : "Senaryo geometrisi yüklenemedi.",
       );
+      return null;
     }
   }
 
@@ -5259,15 +5294,9 @@ function App() {
       {showNewCrashCase && (
         <CrashNewCaseDialog
           onClose={() => setShowNewCrashCase(false)}
-          onGeometry={(id, name) => {
-            void loadGeometryById(id, name);
-            setShowNewCrashCase(false);
-          }}
+          onGeometry={() => setShowNewCrashCase(false)}
           onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
-          onJobStarted={(jobId, geoId) => {
-            setScenarioJob({ jobId, geometryId: geoId });
-            setExpandedSteps(new Set(["results"]));
-          }}
+          onJobStarted={(res) => void loadScenario(res)}
         />
       )}
       {analysisTab !== "crash" && (
