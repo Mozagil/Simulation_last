@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CrashPanel from "./CrashPanel";
 
@@ -492,5 +492,37 @@ describe("CrashPanel", () => {
     expect(screen.getByRole("tab", { name: "Model kur" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Geçmiş" }));
     expect(screen.queryByTestId("crash-parts")).not.toBeInTheDocument();
+  });
+
+  it("tasarım 2: viewport işaretleri bildirilir; Modelden seç duvar konumunu doldurur", async () => {
+    const onMarkersChange = vi.fn();
+    let done: ((p: [number, number, number]) => void) | null = null;
+    render(
+      <CrashPanel
+        geometryId={1}
+        meshDimension={3}
+        partIds={[0, 1]}
+        onMarkersChange={onMarkersChange}
+        onRequestPointPick={(cb) => {
+          done = cb;
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(onMarkersChange).toHaveBeenLastCalledWith({
+        wall: { point: [0, 0, 0], normal: [0, 0, 1] },
+        velocity: { dir: [0, 0, -1], label: "10 m/s" },
+        partLabels: { 0: "#0 hareketli", 1: "#1 hareketli" },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "⌖ Modelden seç" }));
+    expect(done).not.toBeNull();
+    act(() => done!([12.5, 0, 40]));
+    expect(screen.getByLabelText("Duvar konumu")).toHaveValue("12.5, 0, 40");
+    await waitFor(() =>
+      expect(onMarkersChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ wall: { point: [12.5, 0, 40], normal: [0, 0, 1] } }),
+      ),
+    );
   });
 });

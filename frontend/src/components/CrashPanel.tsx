@@ -11,6 +11,7 @@ import {
 } from "../api/crash";
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
+import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import CrashHistory from "./CrashHistory";
@@ -172,6 +173,9 @@ export default function CrashPanel({
   animRunId = null,
   onAnimateRun,
   material,
+  onMarkersChange,
+  onRequestPointPick,
+  pickingPoint = false,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -201,6 +205,11 @@ export default function CrashPanel({
     partCards: Record<number, MatCardState>;
     setPartCards: Dispatch<SetStateAction<Record<number, MatCardState>>>;
   };
+  /** Viewport işaretleri (duvar düzlemi, hız oku, parça rol etiketleri). */
+  onMarkersChange?: (markers: CrashMarkers | null) => void;
+  /** "Modelden seç": viewport'ta tıklanan nokta geri verilir. */
+  onRequestPointPick?: (done: (p: [number, number, number]) => void) => void;
+  pickingPoint?: boolean;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -369,6 +378,24 @@ export default function CrashPanel({
     impactMode === "free" && contacts.length === 0 && partOptions.length > 1 ? ["Temaslar: duvarsız çarpmada parçalar arası temas yok"] : [];
   const contactsState: GroupState = contactsMissing.length ? `${contactsMissing.length} eksik` : contacts.length ? "hazır" : "isteğe bağlı";
   const readyCount = [impactState, partsState, contactsState].filter((st) => !st.endsWith("eksik")).length;
+  // --- viewport işaretleri: panel değişince App'e bildir ---
+  const markers: CrashMarkers = {
+    wall: impactMode === "wall" && wallXYZ && dirOk ? { point: wallXYZ, normal: dirVec as [number, number, number] } : null,
+    velocity:
+      speedOk && dirOk
+        ? { dir: (impactMode === "wall" ? approachDir : dirVec) as [number, number, number], label: `${speed} m/s` }
+        : null,
+    partLabels: Object.fromEntries(
+      partOptions.map((pid) => [pid, `#${pid} ${ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short}`]),
+    ),
+  };
+  const markersKey = JSON.stringify(markers);
+  useEffect(() => {
+    onMarkersChange?.(JSON.parse(markersKey) as CrashMarkers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markersKey]);
+  useEffect(() => () => onMarkersChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const blockers = [
     ...(meshDimension !== 2 && meshDimension !== 3 ? ["Önce mesh üretin (2 · Mesh)"] : []),
     ...impactMissing,
@@ -583,6 +610,16 @@ export default function CrashPanel({
                 </div>
                 <div className="crash-unit-row">
                   <UnitField label="Duvar konumu" hideLabel unit="mm" wide value={wallPoint} onChange={setWallPoint} disabled={busy} placeholder="0, 0, 0" />
+                  {onRequestPointPick && (
+                    <button
+                      type="button"
+                      className={pickingPoint ? "crash-pick-btn active" : "crash-pick-btn"}
+                      disabled={busy}
+                      onClick={() => onRequestPointPick((pt) => setWallPoint(pt.join(", ")))}
+                    >
+                      {pickingPoint ? "Modelde bir noktaya tıkla…" : "⌖ Modelden seç"}
+                    </button>
+                  )}
                 </div>
               </>
             )}

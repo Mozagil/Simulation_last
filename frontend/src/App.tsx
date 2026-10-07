@@ -67,6 +67,7 @@ import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
+import type { CrashMarkers } from "./components/GeometryViewer";
 import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import CrashDoePanel from "./components/CrashDoePanel";
@@ -366,6 +367,10 @@ function App() {
   const [faceSizes, setFaceSizes] = useState<Record<number, number>>({});
   // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
   const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
+  // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
+  const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
+  const [pickingPoint, setPickingPoint] = useState(false);
+  const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
   const [crashPartCards, setCrashPartCards] = useState<Record<number, MatCardState>>({});
@@ -3685,6 +3690,13 @@ function App() {
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
                   onSelectionChange={handleSelectionChange}
+                  crashMarkers={analysisTab === "crash" ? crashMarkers : null}
+                  pickPointMode={analysisTab === "crash" && pickingPoint}
+                  onPointPick={(p) => {
+                    pointPickDoneRef.current?.(p);
+                    pointPickDoneRef.current = null;
+                    setPickingPoint(false);
+                  }}
                   onMeshPicks={handleMeshPicks}
                 />
               </div>
@@ -4977,6 +4989,12 @@ function App() {
           regions={physicalGroups.map((g) => g.name)}
           animRunId={crashAnim?.id ?? null}
           onAnimateRun={setCrashAnim}
+          onMarkersChange={setCrashMarkers}
+          pickingPoint={pickingPoint}
+          onRequestPointPick={(done) => {
+            pointPickDoneRef.current = done;
+            setPickingPoint((v) => !v);
+          }}
           material={{
             matCard: crashMatCard,
             setMatCard: setCrashMatCard,
