@@ -5,8 +5,8 @@ Kullanıcı kararı (2026-10-08): dağıtım ESI; resmi Docker imajı
 Docker imajında koşar; kullanıcının makinesinde kurulu olduğu varsayılmaz.
 
 Bu modül şimdilik yalnız çalışma ortamını içerir: imaj çözümü, ``docker run``
-komutu ve solver log'undan iterasyon / başlangıç residual'ları. Case yazıcı
-(``build_input``) 2.1'de, ``OpenFoamAdapter(SolverAdapter)`` 2.1–2.2'de gelir.
+komutu ve solver log'undan iterasyon / başlangıç residual'ları. ``OpenFoamAdapter.build_input`` (2.1) case klasörünü
+``app.solvers.openfoam_case`` ile yazar; koşu 2.2'de, sonuç okuma 2.4'te gelir.
 """
 
 from __future__ import annotations
@@ -16,6 +16,18 @@ import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from pydantic import ValidationError
+
+from app.solvers.base import (
+    InputArtifact,
+    JobHandle,
+    JobStatus,
+    ResultSet,
+    SolverAdapter,
+    SolverError,
+)
 
 DEFAULT_IMAGE = "opencfd/openfoam-default:2412"
 WORK_DIR = "/work"
@@ -114,3 +126,32 @@ def parse_solver_log(text: str) -> SolverLog:
     if fatal:
         log.fatal_error = " ".join(fatal)[:500]
     return log
+
+
+class OpenFoamAdapter(SolverAdapter):
+    """CFD solver (ESI OpenFOAM). ``InputArtifact`` bir case klasörüdür.
+
+    2.1: ``build_input`` — parametrelerden ``0/``, ``constant/``, ``system/``.
+    Koşu (``submit`` / ``poll_status``) 2.2'de, sonuç okuma 2.4'te gelir.
+    """
+
+    def build_input(self, params: dict[str, Any]) -> InputArtifact:
+        from app.solvers.openfoam_case import CfdCaseParams, write_case
+
+        case_dir = Path(params["output_dir"])
+        try:
+            case = CfdCaseParams.model_validate(params.get("case") or {})
+        except ValidationError as exc:
+            raise SolverError(f"OpenFOAM case parametreleri geçersiz: {exc}") from exc
+        case_dir.mkdir(parents=True, exist_ok=True)
+        write_case(case, case_dir)
+        return InputArtifact(path=case_dir, kind="directory")
+
+    def submit(self, artifact: InputArtifact) -> JobHandle:
+        raise SolverError("OpenFOAM koşusu Faz 2.2'de eklenecek.")
+
+    def poll_status(self, job: JobHandle) -> JobStatus:
+        raise SolverError("OpenFOAM koşusu Faz 2.2'de eklenecek.")
+
+    def parse_results(self, job: JobHandle) -> ResultSet:
+        raise SolverError("OpenFOAM sonuç okuma Faz 2.4'te eklenecek.")

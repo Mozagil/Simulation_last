@@ -1446,10 +1446,17 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   pitzDaily 281 iterasyonda yakınsadı (SIMPLE residualControl), ~13 s; test
   `tests/test_openfoam_runtime.py` (Docker testi imaj yoksa atlanır). Codespace:
   docker-in-docker zaten var, imaj isteğe bağlı çekilir.
-- 2.1 ⏳ Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
+- 2.1 ✅ (2026-10-08) Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
   `0/U`, `0/p`, (`k`, `omega`, `nut`), `constant/transportProperties` /
   `momentumTransport`, `system/controlDict|fvSchemes|fvSolution` üretimi;
-  Docker'sız birim testi (dosya içerikleri).
+  Docker'sız birim testi (dosya içerikleri). **Sonuç:** `app/solvers/openfoam_case.py`
+  (`CfdCaseParams`: ν, ρ, yamalar inlet/outlet/wall/symmetry/empty, laminer | k-ω SST —
+  giriş k/ω yoğunluk I ve uzunluk ölçeği L'den, SIMPLE ayarları; varsayılanlar pitzDaily),
+  `OpenFoamAdapter.build_input` → case klasörü. Kontrol: yazıcının dosyaları + pitzDaily
+  ağı (`scripts/openfoam_case_check.py`) — k-ω SST 382 iterasyonda yakınsadı (~15 s);
+  laminer aynı ağda (Re ≈ 25 000) 2000 iterasyonda yakınsamadı (daimi laminer çözüm
+  yok; laminer doğrulama 2.3'te düşük Re kanalda). Test `tests/test_openfoam_case.py`.
+  İlk vaka kararı gelmeden yapıldı: yazıcı iç/dış akıştan bağımsız; varsayım iç akış (2.3 kanal).
 - 2.2 ⏳ Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
   + başlangıç residual'ları; `/cfd/solve` + `/cfd/jobs/{id}` (+ ws); test.
 - 2.3 ⏳ İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —

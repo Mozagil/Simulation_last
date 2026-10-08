@@ -1,0 +1,348 @@
+"""OpenFOAM case yazıcı — Faz 2.1 (ESI v2412 sözdizimi).
+
+Parametrelerden daimi, sıkıştırılamaz bir ``simpleFoam`` vakasının
+``0/``, ``constant/`` ve ``system/`` dosyalarını üretir. Mesh (``constant/polyMesh``)
+bu modülün işi değildir: 2.3'te ``blockMesh``, 2.5'te ``snappyHexMesh`` gelir;
+yazıcı yalnız mesh'in yama (patch) adlarını bilir.
+
+Birimler SI. Basınç OpenFOAM'un sıkıştırılamaz çözücülerindeki gibi
+kinematiktir (p/ρ, m²/s²); ρ yalnız sonuç okumada (kuvvet, Δp) kullanılır.
+
+Değerler mühendisindir: şema yalnız fiziksel geçerliliği denetler.
+Varsayılanlar (çözücü ayarları, şemalar) resmi ``pitzDaily`` öğretici
+vakasından alınmıştır.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+PatchKind = Literal["inlet", "outlet", "wall", "symmetry", "empty"]
+TurbulenceModel = Literal["laminar", "kOmegaSST"]
+
+#: k-ω SST için ω = √k / (Cμ^¼ · L)
+C_MU = 0.09
+
+_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class CfdPatch(BaseModel):
+    """Mesh'teki bir yama ve sınır koşulu türü."""
+
+    name: str
+    kind: PatchKind
+    #: Giriş hızı (m/s) — yalnız ``inlet``.
+    velocity_m_s: tuple[float, float, float] | None = None
+    #: Çıkış statik basıncı, kinematik (m²/s²) — yalnız ``outlet``.
+    pressure: float = 0.0
+
+    @field_validator("name")
+    @classmethod
+    def _name_ok(cls, v: str) -> str:
+        if not _NAME.match(v):
+            raise ValueError(f"Yama adı '{v}' OpenFOAM için geçersiz (harf/rakam/_; rakamla başlamaz).")
+        return v
+
+    @model_validator(mode="after")
+    def _inlet_velocity(self) -> "CfdPatch":
+        if self.kind == "inlet":
+            if self.velocity_m_s is None:
+                raise ValueError(f"'{self.name}' girişinde hız (velocity_m_s) gerekli.")
+            if not all(math.isfinite(c) for c in self.velocity_m_s):
+                raise ValueError(f"'{self.name}' giriş hızı sonlu olmalı.")
+        if not math.isfinite(self.pressure):
+            raise ValueError(f"'{self.name}' basıncı sonlu olmalı.")
+        return self
+
+
+class CfdTurbulence(BaseModel):
+    model: TurbulenceModel = "laminar"
+    #: Giriş türbülans yoğunluğu I (0–1): k = 1.5·(|U|·I)²
+    intensity: float = Field(0.05, gt=0, le=1)
+    #: Türbülans uzunluk ölçeği L (m): ω = √k / (Cμ^¼·L)
+    length_scale_m: float = Field(0.01, gt=0)
+
+
+class CfdControl(BaseModel):
+    """SIMPLE döngüsü; varsayılanlar pitzDaily."""
+
+    iterations: int = Field(2000, gt=0)
+    write_interval: int = Field(100, gt=0)
+    residual_p: float = Field(1e-2, gt=0)
+    residual_u: float = Field(1e-3, gt=0)
+    residual_turbulence: float = Field(1e-3, gt=0)
+    relax_u: float = Field(0.9, gt=0, le=1)
+    relax_other: float = Field(0.9, gt=0, le=1)
+
+
+class CfdCaseParams(BaseModel):
+    #: Kinematik viskozite ν (m²/s)
+    nu_m2_s: float = Field(gt=0)
+    #: Yoğunluk ρ (kg/m³) — kuvvet / Δp dönüşümü için (2.4).
+    rho_kg_m3: float = Field(1.0, gt=0)
+    patches: list[CfdPatch] = Field(min_length=1)
+    turbulence: CfdTurbulence = Field(default_factory=CfdTurbulence)
+    control: CfdControl = Field(default_factory=CfdControl)
+    #: İç alanın başlangıç hızı (m/s)
+    initial_velocity_m_s: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    @model_validator(mode="after")
+    def _patches_ok(self) -> "CfdCaseParams":
+        names = [p.name for p in self.patches]
+        dup = sorted({n for n in names if names.count(n) > 1})
+        if dup:
+            raise ValueError(f"Yama adları tekrar ediyor: {', '.join(dup)}")
+        kinds = {p.kind for p in self.patches}
+        if "inlet" not in kinds or "outlet" not in kinds:
+            raise ValueError("En az bir giriş (inlet) ve bir çıkış (outlet) yaması gerekli.")
+        return self
+
+    @property
+    def turbulent(self) -> bool:
+        return self.turbulence.model != "laminar"
+
+
+# --------------------------------------------------------------- yazım yardımcıları
+
+
+def _num(x: float) -> str:
+    return f"{x:.6g}"
+
+
+def _vec(v: tuple[float, float, float]) -> str:
+    return f"({_num(v[0])} {_num(v[1])} {_num(v[2])})"
+
+
+def _header(cls: str, obj: str, location: str | None = None) -> str:
+    loc = f'    location    "{location}";\n' if location else ""
+    return (
+        "/*--------------------------------*- C++ -*----------------------------------*\\\n"
+        "  SimSurrogate — OpenFOAM (ESI) case, otomatik üretildi\n"
+        "\\*---------------------------------------------------------------------------*/\n"
+        "FoamFile\n{\n"
+        "    version     2.0;\n"
+        "    format      ascii;\n"
+        f"    class       {cls};\n"
+        f"{loc}"
+        f"    object      {obj};\n"
+        "}\n\n"
+    )
+
+
+def _block(name: str, body: dict[str, str], indent: int = 4) -> str:
+    pad = " " * indent
+    lines = [f"{pad}{name}", f"{pad}{{"]
+    for k, v in body.items():
+        lines.append(f"{pad}    {k:<15} {v};")
+    lines.append(f"{pad}}}")
+    return "\n".join(lines)
+
+
+def _field(cls: str, obj: str, dims: str, internal: str, patches: list[tuple[str, dict[str, str]]]) -> str:
+    out = _header(cls, obj, "0")
+    out += f"dimensions      {dims};\n\ninternalField   {internal};\n\nboundaryField\n{{\n"
+    out += "\n".join(_block(name, body) for name, body in patches)
+    out += "\n}\n"
+    return out
+
+
+def inlet_turbulence(speed: float, t: CfdTurbulence) -> tuple[float, float]:
+    """Girişte (k, ω): k = 1.5·(|U|·I)², ω = √k / (Cμ^¼·L)."""
+    k = 1.5 * (speed * t.intensity) ** 2
+    omega = math.sqrt(k) / (C_MU**0.25 * t.length_scale_m) if k > 0 else 0.0
+    return k, omega
+
+
+# ------------------------------------------------------------------- dosyalar
+
+
+def _u_file(p: CfdCaseParams) -> str:
+    rows = []
+    for patch in p.patches:
+        if patch.kind == "inlet":
+            body = {"type": "fixedValue", "value": f"uniform {_vec(patch.velocity_m_s)}"}  # type: ignore[arg-type]
+        elif patch.kind == "outlet":
+            body = {"type": "zeroGradient"}
+        elif patch.kind == "wall":
+            body = {"type": "noSlip"}
+        else:
+            body = {"type": patch.kind}
+        rows.append((patch.name, body))
+    return _field("volVectorField", "U", "[0 1 -1 0 0 0 0]", f"uniform {_vec(p.initial_velocity_m_s)}", rows)
+
+
+def _p_file(p: CfdCaseParams) -> str:
+    rows = []
+    for patch in p.patches:
+        if patch.kind == "outlet":
+            body = {"type": "fixedValue", "value": f"uniform {_num(patch.pressure)}"}
+        elif patch.kind in ("inlet", "wall"):
+            body = {"type": "zeroGradient"}
+        else:
+            body = {"type": patch.kind}
+        rows.append((patch.name, body))
+    return _field("volScalarField", "p", "[0 2 -2 0 0 0 0]", "uniform 0", rows)
+
+
+def _turbulence_files(p: CfdCaseParams) -> dict[str, str]:
+    inlets = {pt.name: inlet_turbulence(math.hypot(*pt.velocity_m_s), p.turbulence) for pt in p.patches if pt.kind == "inlet"}  # type: ignore[misc]
+    k0 = max(k for k, _ in inlets.values())
+    w0 = max(w for _, w in inlets.values())
+    files: dict[str, str] = {}
+    for obj, dims, internal, inlet_idx, wall in (
+        ("k", "[0 2 -2 0 0 0 0]", k0, 0, "kqRWallFunction"),
+        ("omega", "[0 0 -1 0 0 0 0]", w0, 1, "omegaWallFunction"),
+    ):
+        rows = []
+        for patch in p.patches:
+            if patch.kind == "inlet":
+                body = {"type": "fixedValue", "value": f"uniform {_num(inlets[patch.name][inlet_idx])}"}
+            elif patch.kind == "outlet":
+                body = {"type": "zeroGradient"}
+            elif patch.kind == "wall":
+                body = {"type": wall, "value": f"uniform {_num(internal)}"}
+            else:
+                body = {"type": patch.kind}
+            rows.append((patch.name, body))
+        files[f"0/{obj}"] = _field("volScalarField", obj, dims, f"uniform {_num(internal)}", rows)
+    rows = []
+    for patch in p.patches:
+        if patch.kind == "wall":
+            body = {"type": "nutkWallFunction", "value": "uniform 0"}
+        elif patch.kind in ("symmetry", "empty"):
+            body = {"type": patch.kind}
+        else:
+            body = {"type": "calculated", "value": "uniform 0"}
+        rows.append((patch.name, body))
+    files["0/nut"] = _field("volScalarField", "nut", "[0 2 -1 0 0 0 0]", "uniform 0", rows)
+    return files
+
+
+def _transport(p: CfdCaseParams) -> str:
+    return _header("dictionary", "transportProperties", "constant") + (
+        f"transportModel  Newtonian;\n\nnu              {_num(p.nu_m2_s)};\n"
+    )
+
+
+def _turbulence_properties(p: CfdCaseParams) -> str:
+    out = _header("dictionary", "turbulenceProperties", "constant")
+    if not p.turbulent:
+        return out + "simulationType  laminar;\n"
+    return out + (
+        "simulationType  RAS;\n\nRAS\n{\n"
+        f"    RASModel        {p.turbulence.model};\n"
+        "    turbulence      on;\n"
+        "    printCoeffs     on;\n}\n"
+    )
+
+
+def _control_dict(p: CfdCaseParams) -> str:
+    c = p.control
+    return _header("dictionary", "controlDict", "system") + (
+        "application     simpleFoam;\n"
+        "startFrom       startTime;\n"
+        "startTime       0;\n"
+        "stopAt          endTime;\n"
+        f"endTime         {c.iterations};\n"
+        "deltaT          1;\n"
+        "writeControl    timeStep;\n"
+        f"writeInterval   {c.write_interval};\n"
+        "purgeWrite      0;\n"
+        "writeFormat     ascii;\n"
+        "writePrecision  6;\n"
+        "writeCompression off;\n"
+        "timeFormat      general;\n"
+        "timePrecision   6;\n"
+        "runTimeModifiable true;\n"
+    )
+
+
+def _fv_schemes(p: CfdCaseParams) -> str:
+    turb = (
+        "    turbulence      bounded Gauss limitedLinear 1;\n"
+        "    div(phi,k)      $turbulence;\n"
+        "    div(phi,omega)  $turbulence;\n"
+        if p.turbulent
+        else ""
+    )
+    return _header("dictionary", "fvSchemes", "system") + (
+        "ddtSchemes\n{\n    default         steadyState;\n}\n\n"
+        "gradSchemes\n{\n    default         Gauss linear;\n}\n\n"
+        "divSchemes\n{\n"
+        "    default         none;\n"
+        "    div(phi,U)      bounded Gauss linearUpwind grad(U);\n"
+        f"{turb}"
+        "    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n"
+        "}\n\n"
+        "laplacianSchemes\n{\n    default         Gauss linear corrected;\n}\n\n"
+        "interpolationSchemes\n{\n    default         linear;\n}\n\n"
+        "snGradSchemes\n{\n    default         corrected;\n}\n\n"
+        "wallDist\n{\n    method          meshWave;\n}\n"
+    )
+
+
+def _fv_solution(p: CfdCaseParams) -> str:
+    c = p.control
+    fields = "(U|k|omega)" if p.turbulent else "U"
+    turb_res = f'        "(k|omega)"     {_num(c.residual_turbulence)};\n' if p.turbulent else ""
+    return _header("dictionary", "fvSolution", "system") + (
+        "solvers\n{\n"
+        "    p\n    {\n"
+        "        solver          GAMG;\n"
+        "        tolerance       1e-06;\n"
+        "        relTol          0.1;\n"
+        "        smoother        GaussSeidel;\n    }\n\n"
+        f'    "{fields}"\n    {{\n'
+        "        solver          smoothSolver;\n"
+        "        smoother        symGaussSeidel;\n"
+        "        tolerance       1e-05;\n"
+        "        relTol          0.1;\n    }\n}\n\n"
+        "SIMPLE\n{\n"
+        "    nNonOrthogonalCorrectors 0;\n"
+        "    consistent      yes;\n\n"
+        "    residualControl\n    {\n"
+        f"        p               {_num(c.residual_p)};\n"
+        f"        U               {_num(c.residual_u)};\n"
+        f"{turb_res}"
+        "    }\n}\n\n"
+        "relaxationFactors\n{\n    equations\n    {\n"
+        f"        U               {_num(c.relax_u)};\n"
+        f'        ".*"            {_num(c.relax_other)};\n'
+        "    }\n}\n"
+    )
+
+
+def case_files(params: CfdCaseParams) -> dict[str, str]:
+    """Göreli yol → dosya içeriği (diske yazmadan; testler için)."""
+    files = {
+        "0/U": _u_file(params),
+        "0/p": _p_file(params),
+        "constant/transportProperties": _transport(params),
+        "constant/turbulenceProperties": _turbulence_properties(params),
+        "system/controlDict": _control_dict(params),
+        "system/fvSchemes": _fv_schemes(params),
+        "system/fvSolution": _fv_solution(params),
+    }
+    if params.turbulent:
+        files.update(_turbulence_files(params))
+    return files
+
+
+def write_case(params: CfdCaseParams, case_dir: Path) -> list[Path]:
+    """Dosyaları ``case_dir`` altına yazar; yazılan yolları döndürür.
+
+    Var olan ``constant/polyMesh`` ve ``system/blockMeshDict`` gibi mesh
+    dosyalarına dokunmaz.
+    """
+    written = []
+    for rel, text in case_files(params).items():
+        path = Path(case_dir) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+        written.append(path)
+    return written
