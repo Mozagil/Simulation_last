@@ -1,5 +1,7 @@
 # Crash eğitim testleri — Malzeme + Sınır koşulları
 
+> Arayüzde: Belgeler → son sayfa "Eğitim testleri (T1–T17)" (frontend/src/docs/crashTraining.ts). Biri değişince diğeri de güncellenir.
+
 Amaç: 3 · Material ve 4 · Crash'teki **her** özelliği küçük, karşılaştırmalı
 deneylerle anlamak; "bu ne işe yarar?" sorusuna kendi sonucunla cevap
 verebilmek. Her test tek bir şeyi değiştirir, gerisi aynı kalır.

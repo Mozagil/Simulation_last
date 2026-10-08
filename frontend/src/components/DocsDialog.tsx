@@ -6,9 +6,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CRASH_DOC, CRASH_SCENARIOS, type DocItem } from "../docs/crashDoc";
 import { DYNA_EQUIV, dynaFor } from "../lib/dynaKeywords";
+import { CRASH_TRAINING, TRAINING_BASE, TRAINING_RECORD } from "../docs/crashTraining";
 
 const MAP_ID = "eslesme";
 const SCEN_ID = "senaryolar";
+const TRAIN_ID = "egitim";
 
 function itemDyna(it: DocItem): string | null {
   return it.dyna ?? (it.card ? dynaFor(it.card) : null);
@@ -81,6 +83,9 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
             </button>
             <button type="button" onClick={() => go(MAP_ID)}>
               OpenRadioss ↔ LS-DYNA tablosu
+            </button>
+            <button type="button" className="docs-nav-train" onClick={() => go(TRAIN_ID)}>
+              Eğitim testleri (T1–T17)
             </button>
           </nav>
           <main className="docs-main">
@@ -202,6 +207,57 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
                   </tbody>
                 </table>
               </div>
+            </section>
+
+            <section id={`doc-${TRAIN_ID}`} className="docs-section docs-training">
+              <h2>Eğitim testleri (T1–T17)</h2>
+              <p>
+                Malzeme ve sınır koşullarındaki her özelliği küçük, karşılaştırmalı deneylerle anlamak için. Her test
+                tek bir şeyi değiştirir; sonucu bir öncekiyle karşılaştır. {TRAINING_RECORD}
+              </p>
+              <div className="docs-train-base">
+                <strong>Ortak taban — Crash box</strong>
+                <ol>
+                  {TRAINING_BASE.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ol>
+              </div>
+              {CRASH_TRAINING.filter((g) => !q || g.tests.some((t) => [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))).map((g) => (
+                <div key={g.title} className="docs-train-group">
+                  <h3>{g.title}</h3>
+                  {g.tests
+                    .filter((t) => !q || [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))
+                    .map((t) => (
+                      <article key={t.id} className="docs-train-card" data-testid={`train-${t.id}`}>
+                        <header>
+                          <span className="docs-train-id">{t.id}</span>
+                          <strong>{t.title}</strong>
+                        </header>
+                        <p className="docs-train-learn">{t.learn}</p>
+                        {t.setup && (
+                          <p>
+                            <b>Kurulum:</b> {t.setup}
+                          </p>
+                        )}
+                        <ol>
+                          {t.steps.map((st) => (
+                            <li key={st}>{st}</li>
+                          ))}
+                        </ol>
+                        {t.observe && (
+                          <p>
+                            <b>Bak:</b> {t.observe}
+                          </p>
+                        )}
+                        <p>
+                          <b>Beklenen:</b> {t.expect}
+                        </p>
+                        {t.answer && <p className="docs-train-answer">Biri sorarsa: “{t.answer}”</p>}
+                      </article>
+                    ))}
+                </div>
+              ))}
             </section>
           </main>
         </div>

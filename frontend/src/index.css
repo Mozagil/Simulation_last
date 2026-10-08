@@ -8429,3 +8429,70 @@ p {
   color: var(--hint-ink);
   font-weight: 500;
 }
+
+/* Belgeler — eğitim testleri sayfası */
+.docs-nav-train {
+  margin-top: 8px;
+  font-weight: 600 !important;
+  color: var(--ref-blue) !important;
+}
+
+.docs-train-base {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-train-base ol,
+.docs-train-card ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.docs-train-group h3 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.docs-train-card {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-train-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docs-train-id {
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.docs-train-card p {
+  margin: 4px 0;
+}
+
+.docs-train-learn {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
+
+.docs-train-answer {
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
