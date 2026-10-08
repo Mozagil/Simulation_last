@@ -7,7 +7,7 @@
 const STEPS: { id: string; title: string; what: string; status: "plan" | "karar" | "tamam" }[] = [
   { id: "2.0", title: "Altyapı", what: "OpenFOAM ESI v2412 resmi Docker imajı; resmi pitzDaily vakası simpleFoam ile koştu (281 iterasyonda yakınsadı, ~13 s).", status: "tamam" },
   { id: "2.1", title: "Case yazıcı", what: "Parametrelerden 0/U, 0/p, (k, ω, νt), constant/, system/ — laminer ya da k-ω SST. pitzDaily ağında k-ω SST 382 iterasyonda yakınsadı.", status: "tamam" },
-  { id: "2.2", title: "Koşu + ilerleme", what: "Docker'da koşu; log'dan iterasyon ve residual'lar (crash'teki canlı izleme deseni).", status: "plan" },
+  { id: "2.2", title: "Koşu + ilerleme", what: "Docker'da koşu; canlı iterasyon ve residual'lar (/cfd/solve, /cfd/jobs, ws). pitzDaily 382 iterasyonda yakınsadı (~12 s).", status: "tamam" },
   { id: "2.3", title: "İlk doğrulama", what: "2B kanalda laminer akış (blockMesh) — basınç düşümü analitik değerle karşılaştırılır.", status: "plan" },
   { id: "2.4", title: "Sonuç okuma", what: "Kuvvet / Cd / Cl, ortalama basınç, debi, residual geçmişi; koşu kaydı (DB şeması ayrı onay).", status: "plan" },
   { id: "2.5", title: "CFD mesh", what: "STEP → Gmsh yüzey → snappyHexMesh (inceltme ve sınır tabakası değerleri mühendisin); checkMesh verisi.", status: "plan" },

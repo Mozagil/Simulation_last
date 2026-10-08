@@ -1457,8 +1457,17 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   laminer aynı ağda (Re ≈ 25 000) 2000 iterasyonda yakınsamadı (daimi laminer çözüm
   yok; laminer doğrulama 2.3'te düşük Re kanalda). Test `tests/test_openfoam_case.py`.
   İlk vaka kararı gelmeden yapıldı: yazıcı iç/dış akıştan bağımsız; varsayım iç akış (2.3 kanal).
-- 2.2 ⏳ Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
+- 2.2 ✅ (2026-10-08) Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
   + başlangıç residual'ları; `/cfd/solve` + `/cfd/jobs/{id}` (+ ws); test.
+  **Sonuç:** `OpenFoamAdapter.submit` (Docker; `blockMeshDict` varsa önce
+  blockMesh, ardından controlDict'teki application; çıktı satır satır →
+  `SolverLogStream`, her iterasyonda geri çağırma), `parse_results` residual
+  geçmişi + yakınsama; `app/api/cfd.py` (arka plan işi, `uploads/cfd/<id>/job.json`,
+  canlı residual geçmişi GET'te, ws). Mesh şimdilik ham `blockMeshDict` metni
+  (2.3 parametrik kanal, 2.5 STEP). Canlı deneme: pitzDaily k-ω SST, 2 s'de bir
+  iterasyon + residual'lar, 382 iterasyonda yakınsadı (~12 s). Yüzde = iterasyon /
+  iterasyon sınırı (yakınsayınca erken biter). DB kaydı yok (2.4, ayrı onay).
+  Test `tests/test_cfd_api.py` (sahte süreç + gerçek Docker).
 - 2.3 ⏳ İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
   basınç düşümü analitik değerle karşılaştırılır (V-C1, veri olarak).
 - 2.4 ⏳ Sonuç okuma (`parse_results`): function object çıktıları (forces /

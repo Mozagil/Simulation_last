@@ -14,6 +14,10 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
+import time
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -84,55 +88,69 @@ _RESIDUAL = re.compile(
 _CONVERGED = re.compile(r"(solution converged|reached convergence) in \d+ iterations")
 
 
-def parse_solver_log(text: str) -> SolverLog:
-    """Log metninden iterasyonlar ve alan başına başlangıç residual'ları.
+class SolverLogStream:
+    """Satır satır beslenen log okuyucu — canlı ilerleme (2.2) ve dosya için ortak.
 
     Bir iterasyonda aynı alan birden çok kez çözülürse (ör. p'nin
     düzeltici adımları) yalnız ilki alınır — residual grafiğinin olağan
     tanımı.
     """
-    log = SolverLog()
-    seen: set[str] = set()
-    fatal: list[str] = []
-    in_fatal = False
-    for raw in text.splitlines():
+
+    def __init__(self) -> None:
+        self.log = SolverLog()
+        self._seen: set[str] = set()
+        self._fatal: list[str] = []
+        self._in_fatal = False
+
+    def feed(self, raw: str) -> bool:
+        """Bir satır işler; yeni bir iterasyon başladıysa True döner."""
+        log = self.log
         line = raw.strip()
         m = _TIME.match(line)
         if m:
             try:
-                log.iterations.append(int(float(m.group(1))))
+                value = float(m.group(1))
             except ValueError:
-                continue
-            seen = set()
-            continue
+                return False
+            log.iterations.append(int(value) if value.is_integer() else value)
+            self._seen = set()
+            return True
         m = _RESIDUAL.search(line)
         if m and log.iterations:
             name = m.group(1)
-            if name not in seen:
-                seen.add(name)
+            if name not in self._seen:
+                self._seen.add(name)
                 log.initial_residuals.setdefault(name, []).append(float(m.group(2)))
-            continue
+            return False
         if _CONVERGED.search(line):
             log.converged = True
         elif line == "End":
             log.finished = True
         elif "FOAM FATAL" in line:
-            in_fatal = True
-        if in_fatal:
+            self._in_fatal = True
+        if self._in_fatal:
             if line:
-                fatal.append(line)
-            elif len(fatal) > 1:
-                in_fatal = False
-    if fatal:
-        log.fatal_error = " ".join(fatal)[:500]
-    return log
+                self._fatal.append(line)
+            elif len(self._fatal) > 1:
+                self._in_fatal = False
+            log.fatal_error = " ".join(self._fatal)[:500]
+        return False
+
+
+def parse_solver_log(text: str) -> SolverLog:
+    """Log metninden iterasyonlar ve alan başına başlangıç residual'ları."""
+    stream = SolverLogStream()
+    for raw in text.splitlines():
+        stream.feed(raw)
+    return stream.log
 
 
 class OpenFoamAdapter(SolverAdapter):
     """CFD solver (ESI OpenFOAM). ``InputArtifact`` bir case klasörüdür.
 
     2.1: ``build_input`` — parametrelerden ``0/``, ``constant/``, ``system/``.
-    Koşu (``submit`` / ``poll_status``) 2.2'de, sonuç okuma 2.4'te gelir.
+    2.2: ``submit`` Docker'da koşturur, canlı residual ilerlemesi verir;
+    ``parse_results`` residual geçmişi döner (kuvvet / Δp 2.4'te).
     """
 
     def build_input(self, params: dict[str, Any]) -> InputArtifact:
@@ -147,11 +165,104 @@ class OpenFoamAdapter(SolverAdapter):
         write_case(case, case_dir)
         return InputArtifact(path=case_dir, kind="directory")
 
-    def submit(self, artifact: InputArtifact) -> JobHandle:
-        raise SolverError("OpenFOAM koşusu Faz 2.2'de eklenecek.")
+    def submit(
+        self,
+        artifact: InputArtifact,
+        *,
+        progress_cb: Callable[[SolverLog], None] | None = None,
+        timeout_s: float | None = None,
+    ) -> JobHandle:
+        """Case'i Docker imajında koşturur (senkron; arka plan işi çağırır).
+
+        ``system/blockMeshDict`` varsa önce ``blockMesh``; ardından
+        ``controlDict``'teki ``application`` (ör. simpleFoam). Solver çıktısı
+        satır satır okunur, her yeni iterasyonda ``progress_cb`` çağrılır ve
+        ``log.<application>`` dosyasına yazılır.
+        """
+        image = resolve_openfoam_image()
+        if image is None:
+            raise SolverError("OpenFOAM yapılandırılmamış: OPENFOAM_DOCKER_IMAGE boş (bkz. .env.example).")
+        case_dir = Path(artifact.path)
+        app = case_application(case_dir)
+        timeout = timeout_s if timeout_s is not None else float(os.environ.get("CFD_TIMEOUT_S") or 3600)
+        script = (
+            "set -o pipefail; "
+            "if [ -f system/blockMeshDict ]; then blockMesh > log.blockMesh 2>&1 || "
+            "{ echo 'FOAM FATAL ERROR: blockMesh başarısız (log.blockMesh)'; exit 3; }; fi; "
+            f"{app} 2>&1 | tee log.{app}"
+        )
+        stream = SolverLogStream()
+        proc = subprocess.Popen(
+            docker_command(image, case_dir, script),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        deadline = time.monotonic() + timeout
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                if stream.feed(line) and progress_cb is not None:
+                    progress_cb(stream.log)
+                if time.monotonic() > deadline:
+                    proc.kill()
+                    raise SolverError(f"OpenFOAM zaman aşımı ({timeout:.0f} s).")
+            exit_code = proc.wait()
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+        if progress_cb is not None:
+            progress_cb(stream.log)
+        handle = JobHandle(job_id=str(uuid.uuid4()), work_dir=case_dir, artifact=artifact)
+        handle._exit_code = exit_code  # type: ignore[attr-defined]
+        handle._application = app  # type: ignore[attr-defined]
+        if exit_code != 0:
+            detail = stream.log.fatal_error or f"çıkış kodu {exit_code}"
+            raise SolverError(f"OpenFOAM {app} hata: {detail}")
+        return handle
 
     def poll_status(self, job: JobHandle) -> JobStatus:
-        raise SolverError("OpenFOAM koşusu Faz 2.2'de eklenecek.")
+        exit_code = getattr(job, "_exit_code", None)
+        if exit_code is None:
+            return JobStatus(state="pending")
+        if exit_code == 0:
+            return JobStatus(state="done", exit_code=0)
+        return JobStatus(state="failed", exit_code=exit_code, message="OpenFOAM hata")
 
     def parse_results(self, job: JobHandle) -> ResultSet:
-        raise SolverError("OpenFOAM sonuç okuma Faz 2.4'te eklenecek.")
+        """2.2: yalnız residual geçmişi ve yakınsama; kuvvet / Δp 2.4'te."""
+        app = getattr(job, "_application", None) or case_application(job.work_dir)
+        log_path = Path(job.work_dir) / f"log.{app}"
+        if not log_path.is_file():
+            raise SolverError(f"Solver log'u yok: {log_path}")
+        return residual_result(parse_solver_log(log_path.read_text(encoding="utf-8", errors="replace")), log_path)
+
+
+def case_application(case_dir: Path) -> str:
+    """``system/controlDict`` → ``application`` (ör. simpleFoam)."""
+    path = Path(case_dir) / "system" / "controlDict"
+    if not path.is_file():
+        raise SolverError(f"controlDict yok: {path}")
+    m = re.search(r"^\s*application\s+(\w+)\s*;", path.read_text(encoding="utf-8", errors="replace"), re.M)
+    if not m:
+        raise SolverError("controlDict'te application tanımı yok.")
+    return m.group(1)
+
+
+def residual_result(log: SolverLog, log_path: Path | None = None) -> ResultSet:
+    """Log özeti → ResultSet (skalerler: iterasyon, yakınsama, son residual'lar)."""
+    scalars: dict[str, float] = {
+        "iterations": float(log.last_iteration or 0),
+        "converged": 1.0 if log.converged else 0.0,
+    }
+    for name, values in log.initial_residuals.items():
+        if values:
+            scalars[f"residual_final_{name}"] = values[-1]
+    return ResultSet(
+        scalars=scalars,
+        curves={"iteration": list(log.iterations), "residuals": {k: list(v) for k, v in log.initial_residuals.items()}},
+        raw_result_path=log_path,
+        diagnostics={"finished": log.finished, "fatal_error": log.fatal_error},
+    )

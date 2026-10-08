@@ -29,6 +29,8 @@ from app.api.crash_scenario import router as crash_scenario_router
 from app.api.crash_catalog import router as crash_catalog_router
 from app.api.crash_doe import router as crash_doe_router
 from app.api.crash_ml import router as crash_ml_router
+from app.api.cfd import CFD_DIR
+from app.api.cfd import router as cfd_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -79,6 +81,7 @@ app.include_router(crash_runs_router)  # /crash/runs — /crash/jobs'tan önce d
 app.include_router(crash_router)
 app.include_router(crash_scenario_router)  # /crash/scenario (1.17a)
 app.include_router(crash_catalog_router)  # /crash/catalog (K0)
+app.include_router(cfd_router)  # /cfd (Faz 2.2)
 
 # Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.
 Path(TESSELLATION_DIR).mkdir(parents=True, exist_ok=True)
@@ -104,4 +107,10 @@ app.mount(
     "/files/crash",
     StaticFiles(directory=str(CRASH_DIR)),
     name="crash_files",
+)
+Path(CFD_DIR).mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/files/cfd",
+    StaticFiles(directory=str(CFD_DIR)),
+    name="cfd_files",
 )
