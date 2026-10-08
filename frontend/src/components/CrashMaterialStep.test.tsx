@@ -60,4 +60,13 @@ describe("CrashMaterialStep (3 · Material, BC gibi akordeon)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Davranış ve kopma/ }));
     expect(screen.getByRole("button", { name: "LAW2 plastik" })).toBeInTheDocument();
   });
+
+  it("kütüphane grubu yalnız explicit'te kullanılan değerleri gösterir (Rm / uzama / S-N yok)", () => {
+    render(<Harness assignments={[]} onAssign={() => undefined} />);
+    const props = screen.getByTestId("crash-mat-props");
+    expect(props).toHaveTextContent("E · elastisite modülü");
+    expect(props).toHaveTextContent("LAW2 a");
+    expect(props).not.toHaveTextContent("Rm");
+    expect(props).not.toHaveTextContent("uzama");
+  });
 });

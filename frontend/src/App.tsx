@@ -2184,7 +2184,9 @@ function App() {
     const nu = parseFloat(customNu);
     const rho = parseFloat(customRho);
     const fy = parseFloat(customFy) * 1e6;
-    const rm = parseFloat(customRm) * 1e6;
+    // Crash (explicit) Rm kullanmaz — boşsa kayıt için akma değeri yazılır.
+    const rmRaw = analysisTab === "crash" && !customRm.trim() ? customFy : customRm;
+    const rm = parseFloat(rmRaw) * 1e6;
     if (!name || ![E, nu, rho, fy, rm].every((v) => Number.isFinite(v) && v > 0)) {
       setErrorMessage("Özel malzeme alanlarını kontrol edin (E GPa, akma/Rm MPa).");
       return;
@@ -2199,7 +2201,7 @@ function App() {
         poisson_ratio: nu,
         yield_strength: fy,
         ultimate_strength: rm,
-        sn_mode: snEstimate ? "estimated" : "none",
+        sn_mode: analysisTab !== "crash" && snEstimate ? "estimated" : "none",
       });
       setMaterials((prev) => [...prev, mat].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedMaterialId(mat.id);
@@ -4523,12 +4525,6 @@ function App() {
                 </p>
               </div>
             )}
-            {selectedMaterial && (
-              <MaterialCrashCurves
-                material={selectedMaterial}
-                onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
-              />
-            )}
             <div className="material-action-row">
               <button
                 type="button"
@@ -4675,11 +4671,14 @@ function App() {
                   <span>Rp0.2 (MPa)</span>
                   <input value={customFy} onChange={(e) => setCustomFy(e.target.value)} />
                 </label>
+                {analysisTab !== "crash" && (
                 <label className="mesh-field">
                   <span>Rm (MPa)</span>
                   <input value={customRm} onChange={(e) => setCustomRm(e.target.value)} />
                 </label>
+                )}
               </div>
+              {analysisTab !== "crash" && (
               <label className="material-check">
                 <input
                   type="checkbox"
@@ -4688,6 +4687,12 @@ function App() {
                 />
                 Oluştururken tahmini S-N ekle
               </label>
+              )}
+              {analysisTab === "crash" && (
+                <p className="crash-behavior-hint">
+                  Crash yalnız E, ν, ρ ve akmayı kullanır; çekme dayanımı / S-N durability'ye aittir.
+                </p>
+              )}
               <button
                 type="button"
                 className="material-secondary-button"

@@ -8183,7 +8183,8 @@ p {
 
 .crash-mat-props {
   display: grid;
-  grid-template-columns: auto 1fr auto 1fr;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
   gap: 6px 12px;
   padding: 8px 10px;
   font-size: 12.5px;
@@ -8232,4 +8233,21 @@ p {
 .crash-mat-part-text span {
   font-size: 11.5px;
   color: var(--muted);
+}
+
+.crash-mat-props code {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-expert-field select {
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }

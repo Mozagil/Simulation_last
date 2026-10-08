@@ -131,7 +131,8 @@ export default function CrashMaterialStep({
         {open === 1 && (
           <div className="crash-acc-body">
             <p className="crash-behavior-hint">
-              Elastik sabitler ve akma buradan gelir (E, ν, ρ, Rp0.2). Davranış modeli (3. grup) bunları kullanır.
+              OpenRadioss malzeme kartına giden değerler. Davranış modeli (3. grup) bunları kullanır; LAW2'de σy boşsa
+              buradaki akma alınır.
             </p>
             <label className="crash-expert-field">
               <span>Malzeme</span>
@@ -149,25 +150,25 @@ export default function CrashMaterialStep({
               </select>
             </label>
             {sel && (
-              <div className="crash-mat-props">
-                <span>E</span>
+              <div className="crash-mat-props" data-testid="crash-mat-props">
+                <span>E · elastisite modülü</span>
                 <b>{gpa(sel.youngs_modulus)}</b>
-                <span>ν</span>
+                <code>/MAT E</code>
+                <span>ν · Poisson</span>
                 <b>{sel.poisson_ratio.toFixed(2)}</b>
-                <span>ρ</span>
+                <code>/MAT ν</code>
+                <span>ρ · yoğunluk</span>
                 <b>{sel.density.toFixed(0)} kg/m³</b>
-                <span>Rp0.2 (akma)</span>
+                <code>/MAT ρ</code>
+                <span>σy · akma (Rp0.2)</span>
                 <b>{mpa(sel.yield_strength)}</b>
-                <span>Rm (çekme)</span>
-                <b>{mpa(sel.ultimate_strength)}</b>
-                {sel.elongation != null && (
-                  <>
-                    <span>A (uzama)</span>
-                    <b>{sel.elongation.toFixed(0)} %</b>
-                  </>
-                )}
+                <code>LAW2 a</code>
               </div>
             )}
+            <p className="crash-behavior-hint">
+              Explicit (OpenRadioss) yalnız bu dört değeri ve LAW36 eğrilerini kullanır. Çekme dayanımı, uzama ve S-N
+              durability'ye aittir; burada gösterilmez.
+            </p>
             {crashCurves}
             <button type="button" className="doe-btn doe-btn-ghost" disabled={busy} onClick={onCustom}>
               + Özel malzeme
