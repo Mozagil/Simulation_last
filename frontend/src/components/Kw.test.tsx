@@ -23,10 +23,13 @@ describe("LS-DYNA karşılıkları (bilgi amaçlı)", () => {
       </>,
     );
     expect(screen.getByText("/RWALL normal")).toBeInTheDocument();
-    expect(screen.queryByText(/RIGIDWALL_PLANAR/)).toBeNull();
-    fireEvent.click(screen.getByLabelText("LS-DYNA karşılıklarını göster"));
-    expect(screen.getByText("≈ *RIGIDWALL_PLANAR")).toBeInTheDocument();
-    expect(screen.getByText("≈ *BOUNDARY_SPC_SET")).toBeInTheDocument();
+    expect(screen.queryAllByTitle(/LS-DYNA karşılığı/)).toHaveLength(0);
+    const btn = screen.getByRole("button", { name: /LS-DYNA karşılıkları/ });
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    const refs = screen.getAllByTitle(/LS-DYNA karşılığı/).map((e) => e.textContent);
+    expect(refs).toEqual(["≈ *RIGIDWALL_PLANAR", "≈ *BOUNDARY_SPC_SET"]);
     expect(window.localStorage.getItem("showDynaRefs")).toBe("1");
   });
 });
