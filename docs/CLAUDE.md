@@ -27,17 +27,26 @@ sunucuda da ticari lisans/lisans sunucusu gerekmiyor artık.
 
 ## Mevcut faz
 
-**FAZ 1 — Crash (OpenRadioss), mikro-adım 1.10 tamam (2026-10-02): ilk gerçek
-çözüm, kutu profil + rijit duvar.** Durability (CalculiX `/solve`, modal, DOE,
-surrogate) paralel ve dokunulmaz. Sırada 1.11 çok parçalı deck → 1.12 temas
-(`/INTER/TYPE7`, master/slave) → 1.13 kabuk; crash vekil modeli 1.17'de
-(`docs/ROADMAP.md`). `/solve` refaktör edilmez. Solver: OpenRadioss artık
-kapalı kaynak; donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
+**FAZ 1 — Crash (OpenRadioss) TAMAM (2026-10-07):** 1.10–1.18 (temas, kabuk,
+malzeme + /FAIL, çıktı kartları, crash_runs, standart explicit ortam,
+plaka–küre), explicit şablon kataloğu K0–K13 (15/15; validasyon V1–V18),
+**1.19 crash ML tezgahı** (hedefler, korpus, DOE, RF + K-fold CV, tahmin, ML
+Stüdyo crash sekmesi) ve **1.20 crash arayüz düzeni** (akordeon BC paneli,
+viewport işaretleri + rol renkleri, 5 · Sonuçlar, geçmiş dock'u, yeni vaka
+penceresi) bitti. Tam ALE ayrı faz. Solver: OpenRadioss artık kapalı kaynak;
+donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 
-**Operasyonel borç:** 200'lük kalite seti Codespace'te ccx ile koşulacak.
+**Sıradaki: FAZ 2 — CFD / akış (OpenFOAM)** — sıra değişikliği 2026-10-07
+(kompozit Faz 3'e kaydı). Durum: **plan** (`docs/ROADMAP.md` Faz 2, 2.0–2.9);
+açık sorular yanıtlanıp kullanıcı onay vermeden kod yazılmaz. Durability
+(CalculiX `/solve`, modal, DOE, surrogate) ve crash yolları dokunulmaz; yeni
+CFD yolu eklenir. ML en sonda (2.9).
 
-Grup 3 şablonları ayrı onay. Faz 1'de `/solve` refaktör etme; yeni crash
-yolu ekle. Bir mikro-adımı bitirince dur.
+**Operasyonel borç:** 200'lük durability kalite seti (ccx) ve 200 koşuluk
+crash DOE Codespace'te koşulacak.
+
+Grup 3 şablonları ayrı onay. `/solve` refaktör etme. Bir mikro-adımı
+bitirince dur.
 
 **Faz değiştirmeden önce bana sor.** Bir sonraki faza otomatik geçme, onay iste.
 

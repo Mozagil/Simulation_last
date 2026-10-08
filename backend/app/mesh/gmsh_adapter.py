@@ -1391,12 +1391,28 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 if key not in face_part:
                     face_part[key] = part_id
                     face_tet[key] = tet_index
+        # Dış yüzey üçgeni → CAD yüzey tag'i (remesh / Face grow 3D'de de çalışsın;
+        # önceden hep 0 yazılıyordu). Gmsh 3D mesh'te sınır yüzeylerinin 2D
+        # üçgenleri de vardır (tri3 = 2, tri6 = 9; ilk 3 düğüm köşe).
+        surf_of: dict[tuple[int, int, int], int] = {}
+        for _d, ftag in gmsh.model.getEntities(2):
+            etypes, _etags, enodes_list = gmsh.model.mesh.getElements(dim=2, tag=ftag)
+            for etype, enodes in zip(etypes, enodes_list):
+                n_per = {2: 3, 9: 6}.get(int(etype))
+                if n_per is None:
+                    continue
+                for e in range(len(enodes) // n_per):
+                    try:
+                        tri_key = tuple(sorted(tag_to_idx[int(enodes[e * n_per + k])] for k in range(3)))
+                    except KeyError:
+                        continue
+                    surf_of[tri_key] = int(ftag)
         for key, count in face_count.items():
             if count != 1:
                 continue
             i0, i1, i2 = face_orient[key]
             tet_id = face_tet.get(key, 0)
-            _add_tri_face(i0, i1, i2, face_part.get(key, 0), 0, tet_id)
+            _add_tri_face(i0, i1, i2, face_part.get(key, 0), surf_of.get(key, 0), tet_id)
             _add_edge(i0, i1)
             _add_edge(i1, i2)
             _add_edge(i2, i0)
@@ -1456,6 +1472,42 @@ def _apply_curve_node_seeds(
         curves = [int(t) for dim, t in boundary if dim == 1]
         if len(curves) in (3, 4) and curves and all(c in seeded for c in curves):
             gmsh.model.mesh.setTransfiniteSurface(int(ftag))
+
+
+def _apply_face_sizes(face_sizes: dict[int, float], global_size: float) -> None:
+    """Yüzey başına sabit eleman boyutu (remesh). Seçili yüzeylere kendi boyutu,
+    diğer tüm yüzey / hacimlere `global_size`; ortak kenarda küçük olan geçerli
+    (Min alanı). Boyut sınırları alanların aralığına açılır."""
+    existing = {int(t) for _d, t in gmsh.model.getEntities(dim=2)}
+    local = {int(f): float(s) for f, s in face_sizes.items() if int(f) in existing and float(s) > 0}
+    if not local:
+        return
+    sizes = [*local.values(), float(global_size)]
+    gmsh.option.setNumber("Mesh.MeshSizeMin", min(sizes))
+    gmsh.option.setNumber("Mesh.MeshSizeMax", max(sizes))
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    fields: list[int] = []
+    others = sorted(existing - set(local))
+    volumes = [int(t) for _d, t in gmsh.model.getEntities(dim=3)]
+    if others or volumes:
+        g = gmsh.model.mesh.field.add("Constant")
+        gmsh.model.mesh.field.setNumber(g, "VIn", float(global_size))
+        gmsh.model.mesh.field.setNumber(g, "IncludeBoundary", 1)
+        if others:
+            gmsh.model.mesh.field.setNumbers(g, "SurfacesList", others)
+        if volumes:
+            gmsh.model.mesh.field.setNumbers(g, "VolumesList", volumes)
+        fields.append(g)
+    for f, s in local.items():
+        c = gmsh.model.mesh.field.add("Constant")
+        gmsh.model.mesh.field.setNumber(c, "VIn", s)
+        gmsh.model.mesh.field.setNumber(c, "IncludeBoundary", 1)
+        gmsh.model.mesh.field.setNumbers(c, "SurfacesList", [f])
+        fields.append(c)
+    m = gmsh.model.mesh.field.add("Min")
+    gmsh.model.mesh.field.setNumbers(m, "FieldsList", fields)
+    gmsh.model.mesh.field.setAsBackgroundMesh(m)
 
 
 class GmshMesherAdapter(MesherAdapter):
@@ -2173,6 +2225,8 @@ class GmshMesherAdapter(MesherAdapter):
             gmsh.option.setNumber("Mesh.Recombine3DAll", 0)
             gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 0)
 
+            _apply_face_sizes(params.face_sizes or {}, params.element_size)
+
             _apply_curve_node_seeds(
                 params.curve_nodes or {},
                 transfinite_surfaces=(
@@ -2224,6 +2278,14 @@ class GmshMesherAdapter(MesherAdapter):
                 if scheme == "quad":
                     gmsh.option.setNumber("Mesh.Algorithm", 8)
                     gmsh.option.setNumber("Mesh.RecombineAll", 1)
+                    # Frontal-Delaunay-for-quads (8) OCC silindir / eğri yüzeyde
+                    # parametre uzayında çöküyor: ÖLÇÜLDÜ (door_beam impaktörü,
+                    # 6 mm) — çeyrek-yay yüzü başına ~50 uzun şerit eleman,
+                    # minSICN medyan 0.20. Düzlem dışı yüzeylerde Frontal-Delaunay
+                    # (6) + recombine: ~460 quad, medyan 0.97, üçgen 0. Düzlemler 8'de kalır.
+                    for _d, ftag in gmsh.model.getEntities(dim=2):
+                        if gmsh.model.getType(2, ftag) != "Plane":
+                            gmsh.model.mesh.setAlgorithm(2, ftag, 6)
                     gmsh.model.mesh.generate(2)
                     gmsh.model.mesh.recombine()
                 elif scheme == "mix":

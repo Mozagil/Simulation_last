@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchMaterials } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
 import { numberFieldsFromSchema, type JsonSchema } from "../templates/schemaForm";
@@ -122,6 +122,7 @@ export default function SurrogatePanel({
   // Sessiz doğrulama `busy`'yi kilitlemez: eğitim/dondurma düğmeleri o
   // sırada tıklanabilir kalmalı.
   const [validating, setValidating] = useState(false);
+  const validateSeqRef = useRef(0);
   // Toplu tarama: tek parametre, aralık, adım (2 · Tahmin altında).
   const [sweepParam, setSweepParam] = useState<string>("");
   const [sweepMin, setSweepMin] = useState("");
@@ -376,6 +377,10 @@ export default function SurrogatePanel({
   /** Tahmin vs FEA. `silent`: aşama açılınca/ayar değişince kendiliğinden;
    * mesaj alanına dokunmaz, hatayı kendi satırına yazar. */
   async function handleValidate(silent = false) {
+    // Yalnız en son isteğin yanıtı tabloya yazılır: geç dönen otomatik
+    // (süzgeçsiz) istek, elle istenen süzgeçli tabloyu ezmesin.
+    const seq = ++validateSeqRef.current;
+    const stale = () => seq !== validateSeqRef.current;
     setValidating(true);
     if (!silent) {
       setBusy("validate");
@@ -401,6 +406,7 @@ export default function SurrogatePanel({
         nameContains: validateName.trim() || null,
         runIds,
       });
+      if (stale()) return;
       setValidation(result);
       const sk = Object.values(result.skipped).reduce((a, b) => a + b, 0);
       if (!silent) {
@@ -412,11 +418,12 @@ export default function SurrogatePanel({
         );
       }
     } catch (e) {
+      if (stale()) return;
       const m = e instanceof Error ? e.message : "Doğrulama tablosu alınamadı.";
       if (silent) setValidateError(m);
       else setError(m);
     } finally {
-      setValidating(false);
+      if (!stale()) setValidating(false);
       if (!silent) setBusy(null);
     }
   }

@@ -38,6 +38,7 @@ from app.solvers.crash_params import (
     CrashFilterParams,
     CrashGravityParams,
     CrashImpVelParams,
+    CrashInitVelParams,
     CrashPressureLoadParams,
     CrashSphProjectileParams,
     CrashMassParams,
@@ -536,6 +537,8 @@ def _contact_cards(
 
 
 _SECT_GR_BASE = 8000
+_INIVEL_GR_BASE = 8600  # TODO 11.9 — kart tabanlı ilk hız grupları
+_INIVEL_ID_BASE = 60
 _MASS_GR_BASE = 8500
 _RBODY_GR_BASE = 8700
 _BC_GR_BASE = 8800
@@ -599,6 +602,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     moving = [p for p in part_ids if roles[p] == "moving"]
     fixed = [p for p in part_ids if roles[p] == "fixed"]
     if (not moving and not (params.get("imposed_velocities") or []) and not (params.get("pressure_loads") or [])
+            and not (params.get("initial_velocities") or [])
             and not (params.get("sph_projectiles") or []) and not (params.get("blast_loads") or [])):
         # K4 / K10 — hareketli parça yoksa yük zorlanmış hızdan ya da basınçtan gelmeli.
         raise SolverError("Crash: en az bir hareketli parça, zorlanmış hız ya da basınç yükü gerekli.")
@@ -660,6 +664,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         rbodies = [CrashRigidBodyParams.model_validate(r) for r in params.get("rigid_bodies") or []]
         bcs = [CrashBcParams.model_validate(r) for r in params.get("boundary_conditions") or []]
         impvels = [CrashImpVelParams.model_validate(r) for r in params.get("imposed_velocities") or []]
+        inivels = [CrashInitVelParams.model_validate(r) for r in params.get("initial_velocities") or []]
         gravity = CrashGravityParams.model_validate(params["gravity"]) if params.get("gravity") else None
         ploads = [CrashPressureLoadParams.model_validate(r) for r in params.get("pressure_loads") or []]
         sphs = [CrashSphProjectileParams.model_validate(r) for r in params.get("sph_projectiles") or []]
@@ -860,8 +865,9 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     vy = float(vel.get("vy") or 0.0)
     vz = float(vel.get("vz") or 0.0)
     # /INIVEL/TRA: Vx Vy Vz grnd_ID skew_ID tek satırda (mm/ms). Hareketli
-    # parça yoksa (K4) grup 1 yok — ilk hız kartı da yazılmaz.
-    if moving:
+    # parça yoksa (K4) grup 1 yok — ilk hız kartı da yazılmaz. TODO 11.9: ilk
+    # hız kartları (`initial_velocities`) varsa bariyer hızı parçalara verilmez.
+    if moving and not inivels:
         lines.extend(
             [
                 "/INIVEL/TRA/1",
@@ -901,11 +907,22 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         ]
         if set(ids) & moving_nodes:
             moving_masters.append(master)
-    if moving_masters:
+    if moving_masters and not inivels:
         # Hareketli parçaya bağlı rijit gövde ana düğümü de ilk hızı alır
         # (ek kütle ancak böyle momentuma girer).
         lines += _grnod_nodes(_RBODY_GR_BASE, "rbody_masters_moving", moving_masters)
         lines += ["/INIVEL/TRA/2", "impact_vel_rbody", f"{_f(vx)}{_f(vy)}{_f(vz)}{_i(_RBODY_GR_BASE)}{_i(0)}"]
+
+    # TODO 11.9 — kart tabanlı ilk hız: her kart kendi düğüm grubu + /INIVEL/TRA.
+    # Seçime değen rijit gövdenin ana düğümü de aynı hızı alır.
+    for k, iv in enumerate(inivels, start=1):
+        ids = set(_selected(iv))
+        ids.update(master for _rb, rb_ids, master in rbody_sets if ids & set(rb_ids))
+        gid = _INIVEL_GR_BASE + k
+        ivx, ivy, ivz = iv.velocity_mm_per_ms()
+        lines += _grnod_nodes(gid, f"inivel_{iv.name}"[:100], sorted(ids))
+        lines += [f"/INIVEL/TRA/{_INIVEL_ID_BASE + k}", f"inivel_{iv.name}"[:100],
+                  f"{_f(ivx)}{_f(ivy)}{_f(ivz)}{_i(gid)}{_i(0)}"]
 
     # 1.17c — bölge / parça sınır koşulu (/BCS, hm_cfg r51: "   111 111" skew grnod)
     # ve zorlanmış hız (/IMPVEL r120 + sabit /FUNCT; v(t) = Scale_y · f(t), f = v, Scale_y = 1).

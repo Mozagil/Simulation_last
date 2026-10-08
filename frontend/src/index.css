@@ -6678,3 +6678,857 @@ p {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- Crash tahmin (1.19f-3) ---- */
+.crash-pred-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.crash-pred-row {
+  display: contents;
+}
+
+.crash-pred-row code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crash-pred-row .doe-num {
+  width: 100%;
+}
+
+.crash-pred-row.ood code,
+.crash-pred-row.ood .crash-doe-sub {
+  color: var(--danger);
+}
+
+.crash-pred-row.ood .doe-num {
+  border-color: var(--danger);
+}
+
+.crash-pred-ood {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}
+
+.crash-pred-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.crash-pred-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.crash-pred-value {
+  font-family: var(--font-head);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.crash-pred-unit {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+<<<<<<< Updated upstream
+=======
+
+/* ---- Crash deforme şekil: tam ekran ----
+   Sidebar'daki 260px kutu deforme şekli okumak için dar. Ana viewport'a
+   taşımak `animRun` durumunu App'e çıkarmayı gerektirirdi (3 dosya,
+   aktif geliştirilen crash akışına dokunur); kaplama hem daha geniş
+   (ribbon yok) hem tek dosyada kalıyor. Renderer ResizeObserver ile
+   kutuyu takip ediyor. */
+.crash-anim-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 12px 16px 16px;
+  background: var(--surface);
+  overflow: auto;
+}
+
+.crash-anim-expanded .crash-anim-canvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.crash-anim-expand {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.crash-anim-expand:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+>>>>>>> Stashed changes
+
+/* TODO 11.6 — STEP indir Geometri adımında */
+.geometry-step-download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.geometry-step-download button {
+  align-self: flex-start;
+}
+
+/* TODO 11.7 — parça seçimi: crash tablosu ↔ viewport ↔ ürün ağacı */
+.crash-part-pick {
+  padding: 1px 6px;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.crash-part-pick:hover {
+  border-color: var(--accent);
+}
+
+.crash-parts tr.crash-part-selected td,
+.model-tree-row-selected {
+  background: var(--accent-soft);
+}
+
+.model-tree-row-pickable {
+  cursor: pointer;
+}
+
+.model-tree-row-pickable:hover {
+  background: var(--surface-2);
+}
+
+/* TODO 11.9 — kart tabanlı yükleme / tutma + kapsama özeti */
+.crash-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.crash-cards-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crash-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crash-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crash-card-head select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.crash-card-kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.crash-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.crash-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-card-field input,
+.crash-card-field select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-coverage {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.crash-coverage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--ink);
+}
+
+.crash-coverage-row.warn {
+  color: var(--danger);
+}
+
+/* TODO 11.2 — crash paneli üç soru */
+.crash-q {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-q-title {
+  margin: 4px 0 0;
+  font-family: var(--font-head);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.crash-q-options {
+  flex-wrap: wrap;
+}
+
+.crash-q-preset {
+  margin: 6px 0;
+}
+
+.crash-q-preset select {
+  width: 100%;
+}
+
+.crash-advanced {
+  margin: 10px 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.crash-advanced > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.crash-q {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.crash-q .crash-q-options {
+  display: flex;
+  flex-wrap: wrap;
+  width: auto;
+}
+
+/* 11.8 — üç rol düğmesi dar yan panele sığsın */
+.crash-parts .doe-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+
+.crash-parts .doe-seg-opt {
+  padding: 2px 6px;
+}
+
+.crash-parts th,
+.crash-parts td {
+  padding: 4px 4px;
+}
+
+/* TODO 11.4 — deforme şekil ana viewport'ta */
+.crash-anim-viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  background: var(--surface);
+}
+
+.crash-anim-docked {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 12px;
+}
+
+.crash-anim-docked .crash-anim-canvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+/* Sade crash kurulumu (2026-10-07): sekmeler, parça davranışı, özet */
+.crash-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+
+.crash-behaviors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-behavior {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.crash-behavior.crash-part-selected {
+  background: var(--accent-soft);
+}
+
+.crash-behavior-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crash-behavior-head select {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 60%;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.crash-behavior-mat {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crash-behavior-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.crash-behavior-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.crash-behavior-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-behavior-fields input:not([type="checkbox"]),
+.crash-behavior-fields select {
+  width: 64px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.crash-behavior-fields .crash-grav-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.crash-summary-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.crash-summary-line.warn {
+  color: var(--danger);
+}
+
+.crash-mat-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+
+.crash-mat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+/* Claude Design "Crash BC Sidebar" — akordeon sınır koşulları (2026-10-07) */
+.crash-acc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 6px;
+}
+
+.crash-acc-count {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.crash-acc-count.ok {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.crash-acc {
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.crash-acc-toggle {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.crash-acc-toggle:hover {
+  background: var(--surface-2);
+}
+
+.crash-acc-n {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-family: var(--font-head);
+  font-size: 12px;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.crash-acc-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.crash-acc-text strong {
+  font-size: 13px;
+}
+
+.crash-acc-summary {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crash-acc-state {
+  padding: 1px 7px;
+  font-size: 10.5px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.crash-acc-state.ok {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.crash-acc-state.warn {
+  color: #9a6400;
+  background: rgba(240, 173, 78, 0.18);
+}
+
+.crash-acc-state.muted {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.crash-acc-chev {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-acc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.crash-unit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crash-unit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10.5px;
+  font-family: var(--font-head);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-unit-box {
+  display: flex;
+  align-items: center;
+  width: 92px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.crash-unit-field.wide .crash-unit-box {
+  width: 180px;
+}
+
+.crash-unit-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.crash-unit-box em {
+  padding: 0 6px;
+  font-style: normal;
+  font-size: 11px;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.crash-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-family: var(--font-head);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-field-label code {
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.crash-dir-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.crash-dir-btn {
+  min-width: 34px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.crash-dir-btn.active {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.crash-role-seg {
+  margin-left: auto;
+}
+
+.crash-blockers {
+  margin: 8px 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #8a5a00;
+  background: rgba(240, 173, 78, 0.16);
+  border: 1px solid rgba(240, 173, 78, 0.45);
+  border-radius: var(--radius-md);
+}
+
+.crash-blockers p {
+  margin: 0;
+}
+
+.crash-other-title {
+  margin-top: 18px;
+  color: var(--muted);
+}
+
+.crash-acc-body .crash-grav-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.crash-blockers p {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Malzeme modeli 3 · Material'de; 4 · Crash'te özet */
+.crash-mat-section-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.crash-mat-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+/* Remesh — yerel eleman boyutu (2026-10-07) */
+.remesh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.remesh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.remesh-sel {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.remesh-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.remesh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 8px;
+  font-size: 11.5px;
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.remesh-chip button {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.crash-pick-btn {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.crash-pick-btn.active {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Tasarım adım 3 — crash geçmişi dock + yeni vaka penceresi */
+.crash-history-dock {
+  height: 200px;
+}
+
+.crash-history-dock-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 12px;
+  overflow: auto;
+}
+
+.crash-newcase-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.crash-newcase-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 94vw);
+  max-height: 88vh;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.crash-newcase-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.crash-newcase-head .crash-doe-x {
+  margin-left: auto;
+}
+
+.crash-newcase-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 16px 16px;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .crash-newcase-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.crash-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

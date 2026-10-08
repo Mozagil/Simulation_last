@@ -113,6 +113,8 @@ class CrashScenarioRequest(BaseModel):
     )
     speed_m_s: float = Field(default=10.0)
     angle_deg: float = Field(default=0.0)
+    #: TODO 11.1 — ilk hız yönü duvardan bağımsız (boş = duvar normali + açı).
+    direction: tuple[float, float, float] | None = Field(default=None)
     wall: CrashWall | None = Field(
         default=None,
         description="Rijit duvar; boş = şablondan: ön uç (x = 0) kesit merkezi, normal +x",
@@ -326,7 +328,7 @@ def crash_scenario(
     # 3D (K1): kart "quad" varsayılanı solidde hex değil tet üretiyor (Recombine3D
     # yalnız tet bıraktı, ölçüldü) — solid şablonlarda açıkça tet.
     scheme = req.element_scheme if dimension == 2 or req.element_scheme != "quad" else "tet"
-    generate_mesh(
+    mesh = generate_mesh(
         geo.id,
         GenerateMeshRequest(element_size=req.element_size_mm, dimension=dimension, element_scheme=scheme),
         db,
@@ -441,7 +443,7 @@ def crash_scenario(
         wait=req.wait,
         t_end_ms=req.t_end_ms,
         name=req.name,
-        barrier={"speed_m_s": speed, "angle_deg": req.angle_deg, "wall": wall},
+        barrier={"speed_m_s": speed, "angle_deg": req.angle_deg, "wall": wall, "direction": req.direction},
         gravity=gravity,
         model=req.model,
         engine=req.engine,
@@ -466,6 +468,10 @@ def crash_scenario(
             "material_name": mat.name,
             "thickness_mm": thickness,
             "wall": wall,
+            "use_rigid_wall": bool(setup.get("use_rigid_wall", True)),
+            "part_roles": {int(p["part_id"]): p["role"] for p in setup.get("parts", [])},
+            "direction": list(req.direction) if req.direction is not None else None,
+            "t_end_ms": req.t_end_ms,
             "speed_m_s": speed,
             "drop_height_mm": req.drop_height_mm,
             "gravity": gravity.model_dump() if gravity is not None else None,
@@ -481,6 +487,8 @@ def crash_scenario(
                 else {}
             ),
         },
+        # Sunucuda üretilen mesh — arayüz viewport'a yükler (generate_mesh yanıtı).
+        "mesh": mesh,
         "crash": result,
     }
 

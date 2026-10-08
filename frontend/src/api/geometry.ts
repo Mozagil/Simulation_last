@@ -422,6 +422,7 @@ export async function generateMesh(
   elementScheme: MeshElementScheme = "tet",
   curveNodes: Record<number, number> = {},
   highOrderOptimize = false,
+  faceSizes: Record<number, number> = {},
 ): Promise<MeshGenerateResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
     method: "POST",
@@ -432,6 +433,7 @@ export async function generateMesh(
       element_scheme: elementScheme,
       curve_nodes: curveNodes,
       ...(highOrderOptimize ? { high_order_optimize: true } : {}),
+      ...(Object.keys(faceSizes).length ? { face_sizes: faceSizes } : {}),
     }),
   });
   if (!response.ok) {
@@ -440,6 +442,16 @@ export async function generateMesh(
     );
   }
   return (await response.json()) as MeshGenerateResponse;
+}
+
+/** Mesh'i sil (msh + önizleme); dimension verilmezse 2D ve 3D. */
+export async function deleteMesh(geometryId: number, dimension?: 2 | 3): Promise<{ removed: string[] }> {
+  const q = dimension ? `?dimension=${dimension}` : "";
+  const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh${q}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new GeometryUploadError(await parseErrorDetail(response, `Mesh silinemedi (HTTP ${response.status}).`));
+  }
+  return (await response.json()) as { removed: string[] };
 }
 
 export interface MeshQualityMetricSummary {

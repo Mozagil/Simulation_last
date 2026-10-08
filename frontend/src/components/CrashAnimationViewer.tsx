@@ -57,13 +57,28 @@ export function triangulate(faces: number[][]): { vtx: Int32Array; tri_face: Int
   return { vtx: Int32Array.from(vtx), tri_face: Int32Array.from(tf) };
 }
 
-export default function CrashAnimationViewer({ runId, title }: { runId: number; title?: string }) {
+export default function CrashAnimationViewer({
+  runId,
+  title,
+  docked = false,
+  onClose,
+}: {
+  runId: number;
+  title?: string;
+  /** TODO 11.4 — ana viewport'un üstünde, alanı kaplar (sidebar kutusu yerine). */
+  docked?: boolean;
+  onClose?: () => void;
+}) {
   const [data, setData] = useState<CrashAnimation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [scalar, setScalar] = useState("disp_mag");
   const holderRef = useRef<HTMLDivElement | null>(null);
+  // Tam ekran: sidebar'daki 260px kutu deforme şekli okumak için dar.
+  // Ana viewport'a taşımak `animRun` durumunu App'e çıkarmayı gerektirirdi
+  // (3 dosya); kaplama hem daha geniş (ribbon yok) hem tek dosya.
+  const [expanded, setExpanded] = useState(false);
   const meshRef = useRef<{ geom: THREE.BufferGeometry; render: () => void } | null>(null);
   /** 1.17g — hazır görünümler: model eksenlerine göre kamera konumu */
   const viewRef = useRef<((dir: ViewDir) => void) | null>(null);
@@ -143,7 +158,22 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
       render();
     };
     render();
+
+    // Kutu boyutu değişince (tam ekran aç/kapa, panel sürükleme) renderer
+    // ve kamera oranı güncellenmeli; yoksa görüntü gerilir.
+    const ro = new ResizeObserver(() => {
+      const w = holder.clientWidth;
+      const h = holder.clientHeight;
+      if (w < 2 || h < 2) return;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      render();
+    });
+    ro.observe(holder);
+
     return () => {
+      ro.disconnect();
       controls.dispose();
       geom.dispose();
       (mesh.material as THREE.Material).dispose();
@@ -197,10 +227,29 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
 
   const meta = data?.scalars[scalar];
   const fr = data?.frames[frame];
+  // ESC ile çık — tam ekranda başka çıkış yolu görünmüyor.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
   const deleted = fr?.face_alive ? fr.face_alive.filter((a) => a === 0).length : 0;
 
   return (
-    <figure className="cv-card crash-anim" data-testid="crash-anim">
+    <figure
+      className={
+        expanded
+          ? "cv-card crash-anim crash-anim-expanded"
+          : docked
+            ? "cv-card crash-anim crash-anim-docked"
+            : "cv-card crash-anim"
+      }
+      data-testid="crash-anim"
+    >
       <span className="cv-card-head">
         <strong>Deforme şekil{title ? ` · ${title}` : ""}</strong>
         {fr && (
@@ -208,6 +257,28 @@ export default function CrashAnimationViewer({ runId, title }: { runId: number; 
             t = {fmt(fr.time ?? 0)} ms · kare {frame + 1}/{data?.frames.length}
             {deleted ? ` · silinen ${deleted}` : ""}
           </span>
+        )}
+        <button
+          type="button"
+          className="crash-anim-expand"
+          data-testid="crash-anim-expand"
+          onClick={() => setExpanded((v) => !v)}
+          title={expanded ? "Küçült (ESC)" : "Tam ekran"}
+          aria-label={expanded ? "Küçült" : "Tam ekran"}
+        >
+          {expanded ? "⤡" : "⤢"}
+        </button>
+        {onClose && (
+          <button
+            type="button"
+            className="crash-anim-expand"
+            data-testid="crash-anim-close"
+            onClick={onClose}
+            title="Geometriye dön"
+            aria-label="Deforme şekli kapat"
+          >
+            ×
+          </button>
         )}
       </span>
       {error && <p className="material-assign-hint">{error}</p>}

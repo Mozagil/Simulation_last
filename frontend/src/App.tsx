@@ -16,6 +16,7 @@ import {
   fetchPoints,
   applyDefeature,
   generateMesh,
+  deleteMesh,
   fetchMeshPreview,
   fetchMeshQuality,
   fetchMeshFreeEdges,
@@ -64,9 +65,21 @@ import ComparisonView from "./components/ComparisonView";
 import ConvergencePanel from "./components/ConvergencePanel";
 import DatasetPanel from "./components/DatasetPanel";
 import DoePanel from "./components/DoePanel";
+import GeometryStepDownload from "./components/GeometryStepDownload";
+import MeshRemeshPanel from "./components/MeshRemeshPanel";
+import CrashAnimationViewer from "./components/CrashAnimationViewer";
+import type { CrashScenarioResponse, CrashScenarioSetup } from "./api/crash";
+import CrashHistoryDock from "./components/CrashHistoryDock";
+import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
+import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
+import type { CrashMarkers } from "./components/GeometryViewer";
+import CrashMaterialSection from "./components/CrashMaterialSection";
+import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
+import CrashPredictPanel from "./components/CrashPredictPanel";
+import CrashValidation from "./components/CrashValidation";
 import MlStudioNav, { type MlStage } from "./components/MlStudioNav";
 import MlTemplateChips from "./components/MlTemplateChips";
 import { useMlStudioStatus } from "./components/mlStudioStatus";
@@ -330,7 +343,7 @@ function App() {
     analysisTab === "modal"
       ? ["geometry", "mesh", "material", "modal", "results"]
       : analysisTab === "crash"
-        ? ["geometry", "mesh", "material", "bc"]
+        ? ["geometry", "mesh", "material", "bc", "results"]
         : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
@@ -355,6 +368,25 @@ function App() {
   const [points, setPoints] = useState<PointInfo[]>([]);
   const [mode, setMode] = useState<SelectionMode>("surface");
   const [selection, setSelection] = useState<MultiSelectionInfo>(EMPTY_SELECTION);
+  const [hoverPartId, setHoverPartId] = useState<number | null>(null);
+  // Remesh (kullanıcı 2026-10-07): CAD yüzey id → yerel eleman boyutu (mm)
+  const [faceSizes, setFaceSizes] = useState<Record<number, number>>({});
+  // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
+  const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
+  // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
+  const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
+  const [pickingPoint, setPickingPoint] = useState(false);
+  const [showBcMarkers, setShowBcMarkers] = useState(true);
+  // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
+  const [crashJobKey, setCrashJobKey] = useState("");
+  const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  const [scenarioJob, setScenarioJob] = useState<
+    { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null
+  >(null);
+  const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
+  // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
+  const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
+  const [crashPartCards, setCrashPartCards] = useState<Record<number, MatCardState>>({});
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -1017,6 +1049,7 @@ function App() {
   }
 
   async function handleFileSelected(file: File) {
+    setFaceSizes({});
     setStatus("uploading");
     setErrorMessage(null);
     setInfoMessage(null);
@@ -1057,6 +1090,7 @@ function App() {
   }
 
   async function handleTemplateCreated(result: CreateFromTemplateResponse) {
+    setFaceSizes({});
     setStatus("uploading");
     setErrorMessage(null);
     setInfoMessage(null);
@@ -1093,6 +1127,88 @@ function App() {
       setInfoMessage(
         `Şablonun ${defaults.length} varsayılan sınır koşulu yüklendi — BC listesinden düzenleyebilirsiniz.`,
       );
+    }
+  }
+
+  /** Sunucuda üretilmiş bir geometriyi (crash hızlı senaryo, TODO 11.6)
+   * aktif geometri yapar: viewport, ürün ağacı ve STEP indir buna bağlanır.
+   * Önceki geometrinin seçim / mesh / sonuç durumu temizlenir. */
+  /** "+ Yeni crash vakası" senaryosu: geometri + sunucu mesh'i viewport'a,
+   * koşu 5 · Sonuçlar'a, çarpma kurulumu crash paneline. */
+  async function loadScenario(res: CrashScenarioResponse) {
+    const geoId = res.geometry_id;
+    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, setup: res.scenario });
+    setExpandedSteps(new Set(["results"]));
+    const cadParts = await loadGeometryById(geoId, `${res.scenario.template_id ?? "senaryo"}.step`);
+    const m = res.mesh;
+    if (!m || activeGeometryIdRef.current !== geoId) return;
+    setMeshResult(m);
+    setMeshDimension(m.dimension === 3 ? 3 : 2);
+    setMeshScheme(m.element_scheme);
+    setMeshElementSize(String(m.element_size));
+    setPropertyKind(m.dimension === 2 ? "shell" : "solid");
+    try {
+      if (m.preview_url) {
+        const preview = await fetchMeshPreview(m.preview_url);
+        if (activeGeometryIdRef.current !== geoId) return;
+        setMeshPreview(preview);
+        setShowMesh(true);
+        // mesh sonrası CAD varsayılan gizli (elle üretilen mesh ile aynı)
+        if (cadParts) setHiddenParts(new Set(cadParts.filter((pid) => pid >= 0)));
+      }
+      const tree = await fetchProductTree(geoId, 0);
+      if (activeGeometryIdRef.current === geoId) setProductTree(tree);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function loadGeometryById(geoId: number, displayName: string): Promise<number[] | null> {
+    activeGeometryIdRef.current = geoId;
+    setFaceSizes({});
+    setErrorMessage(null);
+    setSelection(EMPTY_SELECTION);
+    setMode("surface");
+    setHiddenParts(new Set());
+    setActiveGroupId(null);
+    setCanUndo(false);
+    setMeshResult(null);
+    setMeshPreview(null);
+    setMeshQuality(null);
+    setMeshPicks([]);
+    setSolveResult(null);
+    setResultsPreview(null);
+    setShowResults(false);
+    setProductTree(null);
+    try {
+      const maps = await fetchTessellationMaps(geoId);
+      const [edgeList, pointList, groupList, assignments] = await Promise.all([
+        fetchEdges(geoId),
+        fetchPoints(geoId),
+        fetchPhysicalGroups(geoId),
+        fetchMaterialAssignments(geoId),
+      ]);
+      if (activeGeometryIdRef.current !== geoId) return null;
+      setGeometryId(geoId);
+      setFileName(displayName);
+      setStlUrl(resolveTessellationUrl(`/files/tessellations/${geoId}.stl`));
+      setTriangleToFace(maps.triangle_to_face);
+      setTriangleToPart(maps.triangle_to_part);
+      setVolumePartIds([...new Set(maps.triangle_to_part)].sort((a, b) => a - b));
+      setFaceCount(new Set(maps.triangle_to_face).size || null);
+      setPartCount(new Set(maps.triangle_to_part).size || null);
+      setEdges(edgeList);
+      setPoints(pointList);
+      setPhysicalGroups(groupList);
+      setMaterialAssignments(assignments);
+      setStatus("success");
+      return maps.triangle_to_part;
+    } catch (err) {
+      if (activeGeometryIdRef.current !== geoId) return null;
+      setErrorMessage(
+        err instanceof GeometryUploadError ? err.message : "Senaryo geometrisi yüklenemedi.",
+      );
+      return null;
     }
   }
 
@@ -1175,7 +1291,11 @@ function App() {
     if (meshPicks.length === 0) return;
     setMeshGrow(grow);
     if (grow === "attached") {
-      const ids = [...new Set(meshPicks.map((p) => p.partId))];
+      const meshIds = [...new Set(meshPicks.map((p) => p.partId))];
+      // mesh parça no → CAD parça no (viewport seçimi CAD numarası tutar)
+      const ids = meshToCad
+        ? [...new Set(meshIds.flatMap((m) => meshToCad.get(m) ?? [m]))]
+        : meshIds;
       setMode("part");
       setSelection({ mode: "part", ids });
     }
@@ -1468,8 +1588,33 @@ function App() {
     }
   }
 
-  async function handleGenerateMesh() {
+  /** Mesh'i sil (kullanıcı 2026-10-07): dosya + önizleme; hiç mesh kalmayınca CAD görünür. */
+  async function handleDeleteMesh() {
     if (!geometryId) return;
+    setBusyAction("mesh");
+    setErrorMessage(null);
+    try {
+      await deleteMesh(geometryId, meshDimension);
+      invalidateStaleResults();
+      setMeshResult(null);
+      setMeshPreview(null);
+      setMeshQuality(null);
+      setFreeEdges([]);
+      setNsetReport(null);
+      setMeshPicks([]);
+      setFaceSizes({});
+      setHiddenParts(new Set());
+      setInfoMessage("Mesh silindi — CAD görünür.");
+    } catch (err) {
+      setErrorMessage(err instanceof GeometryUploadError ? err.message : "Mesh silinemedi.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleGenerateMesh(sizesOverride?: Record<number, number>) {
+    if (!geometryId) return;
+    const localSizes = sizesOverride ?? faceSizes;
     invalidateStaleResults();
     const size = parseFloat(meshElementSize);
     if (!Number.isFinite(size) || size <= 0) {
@@ -1494,9 +1639,14 @@ function App() {
         meshScheme,
         {},
         highOrderOptimize,
+        localSizes,
       );
       setMeshResult(result);
-      ensureStepExpanded("material");
+      // Kullanıcı 2026-10-07: mesh sonrası CAD varsayılan gizli (mesh okunur);
+      // Solid / Surface düğmesi vurgulanınca CAD görünür.
+      setHiddenParts(new Set(triangleToPart.filter((pid) => pid >= 0)));
+      // Remesh (yerel boyut) Mesh adımında kalır; ilk mesh Malzeme'ye geçer.
+      if (!sizesOverride) ensureStepExpanded("material");
       setMeshDimension(result.dimension === 3 ? 3 : 2);
       if (result.element_scheme === "tet" || result.element_scheme === "quad" || result.element_scheme === "mix") {
         setMeshScheme(result.element_scheme);
@@ -1738,7 +1888,66 @@ function App() {
   }
 
   const activeGroup = physicalGroups.find((g) => g.id === activeGroupId) ?? null;
-  const externalHighlight = activeGroup
+  // TODO 11.7 — parça seçimi tek kaynak: viewport "parça" modu seçimi.
+  // Crash parça tablosu ve ürün ağacı bunu okur / yazar; üzerine gelme
+  // (hover) o parçanın yüzeylerini dış vurguyla gösterir.
+  // 2D: ağaç / crash parça listesi MESH parça numarası, viewport seçimi CAD
+  // parça numarası kullanır (solid + orta yüzeyde farklı) — yüzey üzerinden eşle.
+  const meshToCad = useMemo(
+    () =>
+      meshResult?.dimension === 2 && meshPreview?.triangle_to_face?.length
+        ? buildMeshToCadParts(
+            meshPreview.triangle_to_part ?? [],
+            meshPreview.triangle_to_face,
+            triangleToPart,
+            triangleToFace,
+          )
+        : null,
+    [meshResult?.dimension, meshPreview, triangleToPart, triangleToFace],
+  );
+  const selectedPartIds =
+    selection.mode !== "part"
+      ? []
+      : meshToCad
+        ? meshPartsForCadSelection(meshToCad, selection.ids)
+        : selection.ids;
+  // Crash işaretleri: panel parça numarası (2D: mesh) → etiket/CAD tonu için CAD
+  // numarasına çevrilir; mesh tonu mesh numarasıyla kalır.
+  const viewerCrashMarkers = useMemo((): CrashMarkers | null => {
+    if (!crashMarkers) return null;
+    const meshPartRoles = crashMarkers.partRoles;
+    if (!meshToCad) return { ...crashMarkers, meshPartRoles };
+    const partLabels: Record<number, string> = {};
+    const partRoles: NonNullable<CrashMarkers["partRoles"]> = {};
+    for (const [mp, label] of Object.entries(crashMarkers.partLabels)) {
+      for (const cad of meshToCad.get(Number(mp)) ?? []) {
+        partLabels[cad] = label;
+        const role = crashMarkers.partRoles?.[Number(mp)];
+        if (role) partRoles[cad] = role;
+      }
+    }
+    return { ...crashMarkers, partLabels, partRoles, meshPartRoles };
+  }, [crashMarkers, meshToCad]);
+  const hoverFaceIds = useMemo(() => {
+    if (hoverPartId === null) return null;
+    if (meshToCad && meshPreview?.triangle_to_face) {
+      return meshPartFaces(meshPreview.triangle_to_part ?? [], meshPreview.triangle_to_face, hoverPartId);
+    }
+    const faces = new Set<number>();
+    triangleToPart.forEach((p, i) => {
+      if (p === hoverPartId) faces.add(triangleToFace[i]);
+    });
+    return [...faces];
+  }, [hoverPartId, triangleToPart, triangleToFace, meshToCad, meshPreview]);
+  /** partId: 2D'de mesh parça no (ağaç/crash listesi), aksi halde CAD parça no. */
+  function selectPart(partId: number) {
+    const cad = meshToCad?.get(partId);
+    setMode("part");
+    setSelection({ mode: "part", ids: cad?.length ? cad : [partId] });
+  }
+  const externalHighlight = hoverFaceIds
+    ? { faceIds: hoverFaceIds }
+    : activeGroup
     ? activeGroup.dim === 1
       ? { edgeIds: activeGroup.entity_tags }
       : { faceIds: activeGroup.entity_tags }
@@ -1813,9 +2022,14 @@ function App() {
     materials.find((m) => m.id === selectedMaterialId) ?? null;
 
   const meshPartIds = [...new Set(meshPicks.map((p) => p.partId))];
+  // Atama 2D'de mesh parça numarasıyla yapılır; CAD seçimini çevir.
   const cadPartId =
     meshPicks.length === 0 && mode === "part" && selection.ids.length === 1
-      ? selection.ids[0]
+      ? meshToCad
+        ? selectedPartIds.length === 1
+          ? selectedPartIds[0]
+          : null
+        : selection.ids[0]
       : null;
   const assignPartId = meshPartIds.length === 1 ? meshPartIds[0] : cadPartId;
 
@@ -2648,6 +2862,14 @@ function App() {
             <div className="ml-studio-body">
               {crashMlStage === "doe" && <CrashDoePanel />}
               {crashMlStage === "model" && <CrashModelPanel />}
+              {crashMlStage === "pred" && <CrashPredictPanel />}
+              {crashMlStage === "valid" && (
+                <div className="crash-ml-stage crash-ml-valid">
+                  <section className="crash-ml-card">
+                    <CrashValidation />
+                  </section>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -2886,6 +3108,15 @@ function App() {
         4 · CRASH
       </button>
       )}
+      {analysisTab === "crash" && (
+      <button
+        type="button"
+        className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("results")}
+      >
+        5 · SONUÇLAR
+      </button>
+      )}
       {analysisTab !== "crash" && (
       <button
         type="button"
@@ -3078,6 +3309,22 @@ function App() {
                     </svg>
                     <span className="selection-mode-label">KENARLAR</span>
                   </button>
+                  {analysisTab === "crash" && (
+                    <button
+                      type="button"
+                      className={showBcMarkers ? "active bc-toggle" : "bc-toggle"}
+                      aria-pressed={showBcMarkers}
+                      onClick={() => setShowBcMarkers((prev) => !prev)}
+                      title={showBcMarkers ? "Sınır koşulu işaretleri (açık)" : "Sınır koşulu işaretleri (kapalı)"}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+                        <path d="M10 2v12" />
+                        <path d="M2 8h6" />
+                        <path d="M5.5 5.5L8 8l-2.5 2.5" />
+                      </svg>
+                      <span className="selection-mode-label">SINIR KOŞ.</span>
+                    </button>
+                  )}
 
                   <span className="viewer-ribbon-sep" />
                   <span className="toolbar-groups-inline">
@@ -3163,7 +3410,21 @@ function App() {
         {uniquePartIdsFromPreview(meshPreview).map((partId) => {
           const assignment = materialAssignments.find((a) => a.part_id === partId);
           return (
-            <div className="model-tree-row model-tree-depth-2" key={partId}>
+            <div
+              className={
+                selectedPartIds.includes(partId)
+                  ? "model-tree-row model-tree-depth-2 model-tree-row-pickable model-tree-row-selected"
+                  : "model-tree-row model-tree-depth-2 model-tree-row-pickable"
+              }
+              key={partId}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedPartIds.includes(partId)}
+              onClick={() => selectPart(partId)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && selectPart(partId)}
+              onMouseEnter={() => setHoverPartId(partId)}
+              onMouseLeave={() => setHoverPartId(null)}
+            >
               <span className="model-tree-leaf">Parça #{partId}</span>
               {assignment?.material_name ? (
                 <span className="model-tree-value">{assignment.material_name}</span>
@@ -3250,6 +3511,14 @@ function App() {
       </div>
       </>
       )}
+      {analysisTab === "crash" && (
+        <div className="new-case-row">
+          <button type="button" className="reset-button" onClick={() => setShowNewCrashCase(true)}>
+            + Yeni crash vakası
+          </button>
+          <p className="new-case-hint">Hazır örnekten (katalog / hızlı senaryo) geometri + kurulum.</p>
+        </div>
+      )}
       {status !== "idle" && (
         <div className="new-case-row">
           <button type="button" className="reset-button" onClick={handleReset}>
@@ -3300,19 +3569,21 @@ function App() {
               </button>
               <button
                 type="button"
-                className={allSelectedPartsHidden ? "active" : undefined}
+                className={!allSelectedPartsHidden && canToggleHidePart ? "active" : undefined}
+                aria-pressed={!allSelectedPartsHidden}
                 disabled={!canToggleHidePart}
                 onClick={handleToggleHidePart}
-                title={allSelectedPartsHidden ? "Solid göster" : "Solid gizle"}
+                title={allSelectedPartsHidden ? "Solid gizli — tıkla: göster" : "Solid görünür — tıkla: gizle"}
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6l5-3 5 3-5 3z M3 6v6l5 3v-6 M13 6v6l-5 3" /></svg>
               </button>
               <button
                 type="button"
-                className={allSelectedSurfacesHidden ? "active" : undefined}
+                className={!allSelectedSurfacesHidden && canToggleHideSurfaces ? "active" : undefined}
+                aria-pressed={!allSelectedSurfacesHidden}
                 disabled={!canToggleHideSurfaces}
                 onClick={handleToggleHideSurfaces}
-                title={allSelectedSurfacesHidden ? "Surface göster" : "Surface gizle"}
+                title={allSelectedSurfacesHidden ? "Surface gizli — tıkla: göster" : "Surface görünür — tıkla: gizle"}
               >
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 8l6-3 6 3-6 3z M2 11l6 3 6-3" /></svg>
               </button>
@@ -3328,6 +3599,17 @@ function App() {
             </div>
             <div className="viewer-body">
               <div className="viewer-stage">
+                {analysisTab === "crash" && crashAnim && (
+                  <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
+                    <CrashAnimationViewer
+                      key={crashAnim.id}
+                      runId={crashAnim.id}
+                      title={crashAnim.title}
+                      docked
+                      onClose={() => setCrashAnim(null)}
+                    />
+                  </div>
+                )}
                 {showMesh && meshPreview !== null && meshPicks.length > 0 && (
                   <div className="mesh-grow-bar">
                     <ButtonGroup
@@ -3572,6 +3854,13 @@ function App() {
                   externalHighlight={externalHighlight}
                   selectedIds={selection.ids}
                   onSelectionChange={handleSelectionChange}
+                  crashMarkers={analysisTab === "crash" && showBcMarkers ? viewerCrashMarkers : null}
+                  pickPointMode={analysisTab === "crash" && pickingPoint}
+                  onPointPick={(p) => {
+                    pointPickDoneRef.current?.(p);
+                    pointPickDoneRef.current = null;
+                    setPickingPoint(false);
+                  }}
                   onMeshPicks={handleMeshPicks}
                 />
               </div>
@@ -3722,8 +4011,6 @@ function App() {
         </div>
 
         <TemplatePanel
-          geometryId={geometryId}
-          geometryFilename={fileName}
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
@@ -3764,6 +4051,14 @@ function App() {
             {fileName}
             {status === "success" && " — yüklendi"}
           </p>
+        )}
+
+        {geometryId !== null && (
+          <GeometryStepDownload
+            geometryId={geometryId}
+            filename={fileName}
+            disabled={status === "uploading" || busyAction !== null}
+          />
         )}
 
         {errorMessage && (
@@ -3933,6 +4228,20 @@ function App() {
         >
           {busyAction === "mesh" ? "Üretiliyor…" : "Mesh üret"}
         </button>
+        <MeshRemeshPanel
+          selectedFaceIds={
+            selection.mode === "surface" && selection.ids.length
+              ? selection.ids
+              : [...new Set(meshPicks.map((pk) => pk.faceId))]
+          }
+          onDelete={() => void handleDeleteMesh()}
+          faceSizes={faceSizes}
+          onChange={setFaceSizes}
+          onRemesh={(sizes) => void handleGenerateMesh(sizes)}
+          globalSize={meshElementSize}
+          disabled={busyAction !== null}
+          hasMesh={meshResult !== null}
+        />
         <div className="mesh-tools" role="group" aria-label="Mesh araçları">
           <button
             type="button"
@@ -4162,6 +4471,23 @@ function App() {
                 + ÖZEL
               </button>
             </div>
+            {analysisTab === "crash" && (
+              <CrashMaterialSection
+                partIds={
+                  meshResult?.dimension === 2
+                    ? uniquePartIdsFromPreview(meshPreview).length
+                      ? uniquePartIdsFromPreview(meshPreview)
+                      : [0]
+                    : volumePartIds.length
+                      ? volumePartIds
+                      : [0]
+                }
+                matCard={crashMatCard}
+                setMatCard={setCrashMatCard}
+                partCards={crashPartCards}
+                setPartCards={setCrashPartCards}
+              />
+            )}
             <button
               type="button"
               className="material-advanced-toggle"
@@ -4822,9 +5148,29 @@ function App() {
 
       {analysisTab === "crash" && (
       <>
-      {expandedSteps.has("bc") && (
+      {(expandedSteps.has("bc") || expandedSteps.has("results")) && (
         <CrashPanel
           geometryId={geometryId}
+          view={expandedSteps.has("results") ? "results" : "setup"}
+          onRunStarted={() => setExpandedSteps(new Set(["results"]))}
+          onJobKey={setCrashJobKey}
+          externalJob={scenarioJob}
+          selectedPartIds={selectedPartIds}
+          onPartSelect={selectPart}
+          onPartHover={setHoverPartId}
+          regions={physicalGroups.map((g) => g.name)}
+          onMarkersChange={setCrashMarkers}
+          pickingPoint={pickingPoint}
+          onRequestPointPick={(done) => {
+            pointPickDoneRef.current = done;
+            setPickingPoint((v) => !v);
+          }}
+          material={{
+            matCard: crashMatCard,
+            setMatCard: setCrashMatCard,
+            partCards: crashPartCards,
+            setPartCards: setCrashPartCards,
+          }}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
@@ -4954,6 +5300,23 @@ function App() {
         </div>
       </aside>
 
+      {analysisTab === "crash" && (
+        <CrashHistoryDock
+          geometryId={geometryId}
+          refreshKey={crashJobKey}
+          activeAnimId={crashAnim?.id ?? null}
+          onAnimate={setCrashAnim}
+        />
+      )}
+      {showNewCrashCase && (
+        <CrashNewCaseDialog
+          onClose={() => setShowNewCrashCase(false)}
+          onGeometry={() => setShowNewCrashCase(false)}
+          onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
+          onJobStarted={(res) => void loadScenario(res)}
+        />
+      )}
+      {analysisTab !== "crash" && (
       <HistoryFooter
         runs={runsHistory}
         compareSelection={compareSelection}
@@ -5000,6 +5363,7 @@ function App() {
           })();
         }}
       />
+      )}
 
       <div className="status-bar">
         <span className="status-bar-group">

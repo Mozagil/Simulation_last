@@ -77,7 +77,7 @@ describe("TemplatePanel", () => {
   it("şema varsayılanlarını doldurur ve üretince API'ye parametre gönderir", async () => {
     const onCreated = vi.fn();
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={onCreated} />,
+      <TemplatePanel busy={false} onCreated={onCreated} />,
     );
 
     expect(await screen.findByDisplayValue("500")).toBeInTheDocument();
@@ -87,7 +87,8 @@ describe("TemplatePanel", () => {
     expect(
       screen.getByRole("img", { name: /ankastre kiriş/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "STEP indir" })).toBeDisabled();
+    // STEP indir artık Geometri adımında (GeometryStepDownload, TODO 11.6)
+    expect(screen.queryByRole("button", { name: "STEP indir" })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
     // Onay penceresi: şema, kısıt ve yük alanları
@@ -108,7 +109,7 @@ describe("TemplatePanel", () => {
 
   it("kullanıcı parametre değiştirince o değerleri gönderir", async () => {
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     const length = await screen.findByDisplayValue("500");
     await userEvent.clear(length);
@@ -128,7 +129,7 @@ describe("TemplatePanel", () => {
 
   it("geçersiz sayıda üretmez ve hata gösterir", async () => {
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     const length = await screen.findByDisplayValue("500");
     fireEvent.change(length, { target: { value: "abc" } });
@@ -142,7 +143,7 @@ describe("TemplatePanel", () => {
   it("üretim API hatasını gösterir", async () => {
     vi.mocked(createGeometryFromTemplate).mockRejectedValue(new TemplateApiError("L ≥ 5T"));
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     await screen.findByDisplayValue("500");
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
@@ -152,37 +153,10 @@ describe("TemplatePanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("L ≥ 5T");
   });
 
-  it("geometri varken STEP indir API'sini çağırır", async () => {
-    render(
-      <TemplatePanel
-        geometryId={9}
-        geometryFilename="9.step"
-        busy={false}
-        onCreated={vi.fn()}
-      />,
-    );
-    await screen.findByDisplayValue("500");
-    const download = screen.getByRole("button", { name: "STEP indir" });
-    expect(download).toBeEnabled();
-    await userEvent.click(download);
-    await waitFor(() => expect(downloadGeometryStep).toHaveBeenCalledTimes(1));
-    expect(downloadGeometryStep).toHaveBeenCalledWith(9, "9.step");
-  });
-
-  it("STEP indirme hatasını gösterir", async () => {
-    vi.mocked(downloadGeometryStep).mockRejectedValue(new TemplateApiError("STEP indirilemedi (HTTP 404)."));
-    render(
-      <TemplatePanel geometryId={9} geometryFilename="9.step" busy={false} onCreated={vi.fn()} />,
-    );
-    await screen.findByDisplayValue("500");
-    await userEvent.click(screen.getByRole("button", { name: "STEP indir" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("STEP indirilemedi (HTTP 404).");
-  });
-
   it("şablon listesi alınamazsa hata gösterir", async () => {
     vi.mocked(fetchTemplates).mockRejectedValue(new Error("network"));
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("network");
   });
@@ -190,7 +164,7 @@ describe("TemplatePanel", () => {
   it("kullanıcının girdiği yük değerini bağlı BC'lere uygular", async () => {
     const onCreated = vi.fn();
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={onCreated} />,
+      <TemplatePanel busy={false} onCreated={onCreated} />,
     );
     await screen.findByDisplayValue("500");
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
@@ -211,7 +185,7 @@ describe("TemplatePanel", () => {
 
   it("geçersiz yük değerinde üretmez", async () => {
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     await screen.findByDisplayValue("500");
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
@@ -225,7 +199,7 @@ describe("TemplatePanel", () => {
 
   it("vazgeçince üretmez ve pencereyi kapatır", async () => {
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     await screen.findByDisplayValue("500");
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
@@ -238,7 +212,7 @@ describe("TemplatePanel", () => {
 
   it("parametre etiketinde şemadaki harfi gösterir", async () => {
     render(
-      <TemplatePanel geometryId={null} geometryFilename={null} busy={false} onCreated={vi.fn()} />,
+      <TemplatePanel busy={false} onCreated={vi.fn()} />,
     );
     const length = await screen.findByDisplayValue("500");
     const label = length.closest("label");

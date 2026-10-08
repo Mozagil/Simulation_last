@@ -44,14 +44,32 @@ class CrashDoeError(ValueError):
     pass
 
 
+def _child(node: Any, key: str) -> Any:
+    """Sözlük anahtarı ya da liste indisi (ör. `rigid_bodies.0.mass_kg`)."""
+    if isinstance(node, dict):
+        return node.get(key)
+    if isinstance(node, list) and key.isdigit() and int(key) < len(node):
+        return node[int(key)]
+    return None
+
+
 def _set_path(body: dict[str, Any], path: str, value: float) -> None:
     keys = path.split(".")
     node: Any = body
     for k in keys[:-1]:
-        node = node.setdefault(k, {}) if isinstance(node, dict) else None
-        if not isinstance(node, dict):
-            raise CrashDoeError(f"'{path}': sözlük olmayan alanın altı taranamaz.")
-    node[keys[-1]] = value
+        nxt = _child(node, k)
+        if nxt is None and isinstance(node, dict):
+            nxt = node.setdefault(k, {})
+        node = nxt
+        if not isinstance(node, (dict, list)):
+            raise CrashDoeError(f"'{path}': sözlük/liste olmayan alanın altı taranamaz.")
+    last = keys[-1]
+    if isinstance(node, list):
+        if not (last.isdigit() and int(last) < len(node)):
+            raise CrashDoeError(f"'{path}': liste indisi yok.")
+        node[int(last)] = value
+    else:
+        node[last] = value
 
 
 def _validate(body: dict[str, Any]) -> dict[str, Any]:
@@ -80,10 +98,10 @@ def check_paths(spec: CrashDoeSpec) -> None:
             continue
         node: Any = base
         for k in keys[:-1]:
-            node = node.get(k) if isinstance(node, dict) else None
-        if not isinstance(node, dict) or keys[-1] not in node:
+            node = _child(node, k)
+        v = _child(node, keys[-1])
+        if v is None and not (isinstance(node, dict) and keys[-1] in node):
             raise CrashDoeError(f"'{path}': senaryo isteğinde böyle alan yok.")
-        v = node[keys[-1]]
         if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))):
             raise CrashDoeError(f"'{path}': sayısal alan değil.")
 

@@ -79,8 +79,8 @@ kullanıcı zaten bunu istemiyor. Akış tamamen manuel:
    döner — sessizce yanlış bir yüzey üretmez.
 
 Bu, "otomatik defeature/midsurface" değil, **kullanıcının CAD bilgisiyle yönlendirdiği bir
-araç** — tıpkı ANSA/HyperMesh'teki "select 2 faces → extract midsurface" butonunun aynısı,
-sadece otomatik yüzey-çifti bulma adımı yok.
+araç** — mühendis iki karşı yüzeyi seçer, araç orta yüzeyi çıkarır; otomatik yüzey-çifti
+bulma adımı yok.
 
 ## Mesh üretimi ve kalite
 
@@ -95,7 +95,7 @@ sadece otomatik yüzey-çifti bulma adımı yok.
   kullanılır — "bu yüzeyde daha ince mesh" gibi)
 
 **Dürüst bir not:** Gmsh'in hex mesh üretimi (`Recombine3D` + ilgili algoritmalar) genel,
-karmaşık katılarda ANSA/HyperMesh kalitesinde değil — extrusion/sweep'e uygun (prizmatik,
+karmaşık katılarda her zaman yüksek kaliteli değil — extrusion/sweep'e uygun (prizmatik,
 basit) geometrilerde iyi sonuç verir, serbest-form karmaşık parçalarda tet ya da karma mesh
 daha güvenilir olabilir.
 

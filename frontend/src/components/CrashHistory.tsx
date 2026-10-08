@@ -48,10 +48,15 @@ const label = (r: CrashRunSummary) => r.name?.trim() || `#${r.id}`;
 export default function CrashHistory({
   geometryId,
   refreshKey,
+  activeAnimId,
+  onAnimate,
 }: {
   geometryId: number | null;
   /** Değişince liste yeniden yüklenir (yeni iş / iş bitti). */
   refreshKey?: string;
+  /** TODO 11.4 — verilirse deforme şekil App'te (ana viewport) açılır. */
+  activeAnimId?: number | null;
+  onAnimate?: (run: { id: number; title: string } | null) => void;
 }) {
   const [runs, setRuns] = useState<CrashRunSummary[]>([]);
   const [showExcluded, setShowExcluded] = useState(false);
@@ -192,9 +197,15 @@ export default function CrashHistory({
                   aria-label={`${label(r)} deforme şekil`}
                   title="Deforme şekil (animasyon)"
                   disabled={!r.solver_ran || r.status !== "solved"}
-                  onClick={() => setAnimRun((a) => (a?.id === r.id ? null : r))}
+                  onClick={() => {
+                    if (onAnimate) {
+                      onAnimate(activeAnimId === r.id ? null : { id: r.id, title: `#${r.id} ${label(r)}` });
+                    } else {
+                      setAnimRun((a) => (a?.id === r.id ? null : r));
+                    }
+                  }}
                 >
-                  {animRun?.id === r.id ? "■" : "▶"}
+                  {(onAnimate ? activeAnimId === r.id : animRun?.id === r.id) ? "■" : "▶"}
                 </button>
                 <button
                   type="button"
@@ -211,7 +222,7 @@ export default function CrashHistory({
         </ul>
       )}
       {chartRun && <CrashRunCharts runId={chartRun.id} title={`#${chartRun.id} ${label(chartRun)}`} />}
-      {animRun && <CrashAnimationViewer runId={animRun.id} title={`#${animRun.id} ${label(animRun)}`} />}
+      {!onAnimate && animRun && <CrashAnimationViewer runId={animRun.id} title={`#${animRun.id} ${label(animRun)}`} />}
       <button
         type="button"
         className="doe-btn doe-btn-ghost crash-contact-add"

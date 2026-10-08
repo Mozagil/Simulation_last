@@ -59,3 +59,19 @@ def test_every_crash_template_samples(template_id):
     spec = CrashDoeSpec(base={"template_id": template_id}, vary={"t_end_ms": (1.0, 2.0)}, n_samples=3)
     cases = sample_crash_cases(spec)
     assert len(cases) == 3 and all(c["request"]["template_id"] == template_id for c in cases)
+
+
+def test_list_index_path_sled_mass():
+    """Kızak kütlesi listede: `rigid_bodies.0.mass_kg` taranır."""
+    spec = _spec(
+        base={"template_id": "crash_box_shell", "t_end_ms": 6.0,
+              "rigid_bodies": [{"name": "kizak", "region": "kutu_arka", "mass_kg": 40.0}]},
+        vary={"rigid_bodies.0.mass_kg": (30.0, 50.0)},
+    )
+    cases = sample_crash_cases(spec)
+    assert len(cases) == 10
+    for c in cases:
+        m = c["request"]["rigid_bodies"][0]["mass_kg"]
+        assert 30.0 <= m <= 50.0 and m == c["values"]["rigid_bodies.0.mass_kg"]
+    with pytest.raises(CrashDoeError):
+        sample_crash_cases(_spec(base=spec.base, vary={"rigid_bodies.3.mass_kg": (1.0, 2.0)}))

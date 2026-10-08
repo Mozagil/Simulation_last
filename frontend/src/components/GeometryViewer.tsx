@@ -29,6 +29,52 @@ export interface GeometryViewerHandle {
   setCameraState: (state: CameraState) => void;
 }
 
+/** Crash sınır koşulu işaretleri (Claude Design "Crash BC Sidebar" 2. adım). */
+export interface CrashMarkers {
+  /** Rijit duvar: CAD koordinatında nokta + normal. */
+  wall: { point: [number, number, number]; normal: [number, number, number] } | null;
+  /** İlk hız yönü + etiket ("10 m/s"). */
+  velocity: { dir: [number, number, number]; label: string } | null;
+  /** Parça id → etiket ("#0 hareketli"). */
+  partLabels: Record<number, string>;
+  /** CAD parça id → rol: etiket rengi + CAD parça tonu. */
+  partRoles?: Record<number, CrashRole>;
+  /** Mesh parça id → rol: mesh eleman tonu (2D'de mesh numarası CAD'den farklı olabilir). */
+  meshPartRoles?: Record<number, CrashRole>;
+}
+
+export type CrashRole = "moving" | "fixed" | "free";
+/** Rol tonları — seçim vurgusu (turuncu) ve duvar (mavi) ile karışmaz. */
+export const ROLE_TINT: Record<CrashRole, string> = { moving: "#d9a62e", fixed: "#c94a4a", free: "#8a6fd1" };
+export const ROLE_LABEL_COLOR: Record<CrashRole, string> = { moving: "#a16207", fixed: "#b91c1c", free: "#6d28d9" };
+const ROLE_TINT_THREE: Record<CrashRole, THREE.Color> = {
+  moving: new THREE.Color(ROLE_TINT.moving),
+  fixed: new THREE.Color(ROLE_TINT.fixed),
+  free: new THREE.Color(ROLE_TINT.free),
+};
+
+function makeTextSprite(text: string, color: string, worldHeight: number): THREE.Sprite {
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  const font = 44;
+  c.width = 16 + Math.ceil(text.length * font * 0.6);
+  c.height = font + 20;
+  if (ctx) {
+    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.font = `600 ${font}px sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 8, c.height / 2);
+  }
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }),
+  );
+  sprite.scale.set((worldHeight * c.width) / c.height, worldHeight, 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
 interface GeometryViewerProps {
   stlUrl: string;
   triangleToFace: number[];
@@ -103,6 +149,11 @@ interface GeometryViewerProps {
   /** true: düşük değer kötü (Jacobian). false: yüksek değer kötü (skew/warp). */
   meshQualityInvert?: boolean;
   freeEdgeSegments?: { p0: number[]; p1: number[] }[] | null;
+  /** Crash işaretleri: duvar düzlemi, hız oku, parça rol etiketleri. */
+  crashMarkers?: CrashMarkers | null;
+  /** true iken model tıklaması seçim yapmaz, tıklanan CAD noktasını bildirir. */
+  pickPointMode?: boolean;
+  onPointPick?: (point: [number, number, number]) => void;
 }
 
 export interface ResultProbeHit {
@@ -362,6 +413,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshQualityValues = null,
   meshQualityInvert = true,
   freeEdgeSegments = null,
+  crashMarkers = null,
+  pickPointMode = false,
+  onPointPick,
 }: GeometryViewerProps,
   ref: ForwardedRef<GeometryViewerHandle>,
 ) {
@@ -423,6 +477,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshNodePicksRef.current = meshNodePicks;
   const meshGrowRef = useRef(meshGrow);
   meshGrowRef.current = meshGrow;
+  const crashMarkersRef = useRef(crashMarkers);
+  crashMarkersRef.current = crashMarkers;
+  const pickPointModeRef = useRef(pickPointMode);
+  pickPointModeRef.current = pickPointMode;
+  const onPointPickRef = useRef(onPointPick);
+  onPointPickRef.current = onPointPick;
+  const crashMarkerGroupRef = useRef<THREE.Group | null>(null);
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
   const pointsRef = useRef(points);
@@ -544,6 +605,96 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
       suppressCameraEventRef.current = false;
     },
   }));
+
+  /** Crash işaretlerini sahneye (model-merkezli koordinat) çizer; eskisini atar. */
+  /** CAD parça taban rengi: crash rolü varsa rol tonu, yoksa standart yeşil. */
+  function cadPartBaseColor(partId: number): THREE.Color {
+    const role = crashMarkersRef.current?.partRoles?.[partId];
+    return role ? ROLE_TINT_THREE[role] : BASE_COLOR;
+  }
+
+  function applyCrashMarkers() {
+    const refs = sceneRefs.current;
+    const old = crashMarkerGroupRef.current;
+    if (old && refs.scene) {
+      refs.scene.remove(old);
+      old.traverse((o) => {
+        if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Line) {
+          o.geometry.dispose();
+          (o.material as THREE.Material).dispose();
+        }
+        if (o instanceof THREE.Sprite) {
+          (o.material as THREE.SpriteMaterial).map?.dispose();
+          o.material.dispose();
+        }
+      });
+    }
+    crashMarkerGroupRef.current = null;
+    const m = crashMarkersRef.current;
+    if (!m || !refs.scene || refs.partMeshes.length === 0) return;
+    const center = refs.modelCenter;
+    const L = refs.maxDim || 1;
+    const group = new THREE.Group();
+    group.name = "crash-markers";
+    if (m.wall) {
+      const n = new THREE.Vector3(...m.wall.normal);
+      if (n.lengthSq() > 0) {
+        n.normalize();
+        const plane = new THREE.Mesh(
+          new THREE.PlaneGeometry(L * 1.4, L * 1.4),
+          new THREE.MeshBasicMaterial({
+            color: 0x3b82f6,
+            transparent: true,
+            opacity: 0.22,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          }),
+        );
+        plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+        plane.position.set(m.wall.point[0] - center.x, m.wall.point[1] - center.y, m.wall.point[2] - center.z);
+        const outline = new THREE.LineSegments(
+          new THREE.EdgesGeometry(plane.geometry),
+          new THREE.LineBasicMaterial({ color: 0x2563eb }),
+        );
+        outline.quaternion.copy(plane.quaternion);
+        outline.position.copy(plane.position);
+        group.add(plane, outline);
+        const tag = makeTextSprite("rijit duvar", "#1d4ed8", L * 0.07);
+        tag.position.copy(plane.position).add(new THREE.Vector3(L * 0.5, L * 0.5, 0).applyQuaternion(plane.quaternion));
+        group.add(tag);
+      }
+    }
+    if (m.velocity) {
+      const d = new THREE.Vector3(...m.velocity.dir);
+      if (d.lengthSq() > 0) {
+        d.normalize();
+        const len = L * 0.35;
+        const origin = d.clone().multiplyScalar(-(L * 0.55 + len));
+        const arrow = new THREE.ArrowHelper(d, origin, len, 0xf97316, len * 0.25, len * 0.12);
+        group.add(arrow);
+        const tag = makeTextSprite(m.velocity.label, "#c2410c", L * 0.07);
+        tag.position.copy(origin).add(d.clone().multiplyScalar(len * 0.4)).add(new THREE.Vector3(0, L * 0.05, 0));
+        group.add(tag);
+      }
+    }
+    for (const [pidRaw, label] of Object.entries(m.partLabels)) {
+      const entry = refs.partMeshByPartId.get(Number(pidRaw));
+      if (!entry) continue;
+      entry.mesh.geometry.computeBoundingBox();
+      const bb = entry.mesh.geometry.boundingBox;
+      if (!bb) continue;
+      const c = new THREE.Vector3();
+      bb.getCenter(c);
+      c.add(entry.mesh.position);
+      const role = m.partRoles?.[Number(pidRaw)];
+      const color = role ? ROLE_LABEL_COLOR[role] : "#0f172a";
+      const tag = makeTextSprite(label, color, L * 0.065);
+      tag.position.set(c.x, bb.max.y + entry.mesh.position.y + L * 0.06, c.z);
+      group.add(tag);
+    }
+    refs.scene.add(group);
+    crashMarkerGroupRef.current = group;
+  }
 
   function clearOverlayMaps(refs: typeof sceneRefs.current) {
     refs.overlayMesh = null;
@@ -832,10 +983,14 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     const invert = meshQualityInvertRef.current;
     const tElem = refs.triangleToElement;
     if (!values || values.length === 0 || !tElem) {
+      const roles = crashMarkersRef.current?.meshPartRoles;
+      const tPart = refs.triangleToPart;
       for (let i = 0; i < arr.length; i += 3) {
-        arr[i] = MESH_FACE_THREE.r;
-        arr[i + 1] = MESH_FACE_THREE.g;
-        arr[i + 2] = MESH_FACE_THREE.b;
+        const role = roles ? roles[tPart[Math.floor(i / 9)]] : undefined;
+        const c = role ? ROLE_TINT_THREE[role] : MESH_FACE_THREE;
+        arr[i] = c.r;
+        arr[i + 1] = c.g;
+        arr[i + 2] = c.b;
       }
       return;
     }
@@ -1127,6 +1282,13 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   }
 
   // Ana sahne kurulumu — sadece geometri değiştiğinde.
+  // Crash işaretleri: panel değişince yeniden çiz (model yüklüyse).
+  const crashMarkersKey = JSON.stringify(crashMarkers);
+  useEffect(() => {
+    applyCrashMarkers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crashMarkersKey]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -1243,10 +1405,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
     function resetPartColor(entry: PartMeshEntry) {
       const colors = entry.colorAttribute.array as Float32Array;
+      const base = cadPartBaseColor(entry.partId);
       for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = BASE_COLOR.r;
-        colors[i + 1] = BASE_COLOR.g;
-        colors[i + 2] = BASE_COLOR.b;
+        colors[i] = base.r;
+        colors[i + 1] = base.g;
+        colors[i + 2] = base.b;
       }
       entry.colorAttribute.needsUpdate = true;
     }
@@ -1385,6 +1548,18 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
       const refs = sceneRefs.current;
       const currentMode = modeRef.current;
+
+      // "Modelden seç": tıklanan CAD noktası (seçim yapılmaz).
+      if (pickPointModeRef.current) {
+        const meshes = refs.partMeshes.filter((e) => e.mesh.visible).map((e) => e.mesh);
+        const hits = meshes.length ? raycaster.intersectObjects(meshes, false) : [];
+        if (hits.length > 0) {
+          const pt = hits[0].point.clone().add(refs.modelCenter);
+          const r = (v: number) => Math.round(v * 1000) / 1000;
+          onPointPickRef.current?.([r(pt.x), r(pt.y), r(pt.z)]);
+        }
+        return;
+      }
 
       if (probeEnabledRef.current && resultsPreviewRef.current) {
         const preview = resultsPreviewRef.current;
@@ -1756,6 +1931,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         applyResultsFromRefs();
         applyCadVisibility();
         applyCadOpacity();
+        applyCrashMarkers();
       },
       undefined,
       (error) => {
@@ -1953,10 +2129,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
 
     for (const entry of refs.partMeshes) {
       const colors = entry.colorAttribute.array as Float32Array;
+      const base = cadPartBaseColor(entry.partId);
       for (let i = 0; i < colors.length; i += 3) {
-        colors[i] = BASE_COLOR.r;
-        colors[i + 1] = BASE_COLOR.g;
-        colors[i + 2] = BASE_COLOR.b;
+        colors[i] = base.r;
+        colors[i + 1] = base.g;
+        colors[i + 2] = base.b;
       }
       entry.colorAttribute.needsUpdate = true;
     }
@@ -2045,6 +2222,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     meshNodePicks,
     meshSelectMode,
     showMidsideNodes,
+    crashMarkersKey,
   ]);
 
   return (

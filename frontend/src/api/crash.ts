@@ -1,5 +1,7 @@
 /** Crash (OpenRadioss) API — Faz 1.7–1.9. CalculiX `/solve` kullanmaz. */
 
+import type { MeshGenerateResponse } from "./geometry";
+
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
@@ -159,6 +161,13 @@ export interface CrashSolveRequest {
   th?: CrashThPayload;
   sections?: CrashSectionPayload[];
   filters?: CrashFilterPayload;
+  /** TODO 11.9 — kart tabanlı yükleme / tutma (bölge ya da parça hedefli). */
+  initial_velocities?: Record<string, unknown>[];
+  boundary_conditions?: Record<string, unknown>[];
+  imposed_velocities?: Record<string, unknown>[];
+  rigid_bodies?: Record<string, unknown>[];
+  /** 11.2 — Yükleme: Yerçekimi */
+  gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
 }
 
 export interface CrashSolveResponse {
@@ -287,9 +296,24 @@ export interface CrashScenarioRequest {
   model?: { law: "elastic" | "plastic" | "tabulated"; shell?: Partial<CrashShellPayload> };
 }
 
+/** Senaryonun kurulumu (yanıttaki "scenario" alanının arayüzün okuduğu kısmı). */
+export interface CrashScenarioSetup {
+  template_id?: string;
+  wall?: { point: number[]; normal: number[] };
+  use_rigid_wall?: boolean;
+  /** parça id → rol (JSON anahtarı string). */
+  part_roles?: Record<string, "moving" | "fixed" | "free">;
+  direction?: number[] | null;
+  speed_m_s?: number;
+  t_end_ms?: number;
+  [key: string]: unknown;
+}
+
 export interface CrashScenarioResponse {
   geometry_id: number;
-  scenario: Record<string, unknown>;
+  scenario: CrashScenarioSetup;
+  /** Sunucuda üretilen mesh (geometry generate_mesh yanıtı). */
+  mesh?: MeshGenerateResponse;
   crash: CrashSolveResponse;
 }
 

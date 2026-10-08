@@ -33,6 +33,7 @@ from app.solvers.crash_params import (
     CrashFilterParams,
     CrashGravityParams,
     CrashImpVelParams,
+    CrashInitVelParams,
     CrashPressureLoadParams,
     CrashSphProjectileParams,
     CrashMassParams,
@@ -78,7 +79,9 @@ class CrashPartSpec(BaseModel):
 
 class CrashSolveRequest(BaseModel):
     geometry_id: int
-    barrier: CrashBarrierParams
+    #: TODO 11.1 — varsayılan: hız 0 (yükleme başka mekanizmadan: /GRAV,
+    #: /IMPVEL, SPH, patlama). Hız yönü `barrier.direction` ile duvardan bağımsız.
+    barrier: CrashBarrierParams = Field(default_factory=lambda: CrashBarrierParams(speed_m_s=0.0))
     parts: list[CrashPartSpec] = Field(
         default_factory=list,
         description="Parça rolleri; verilmeyen parça hareketli sayılır.",
@@ -124,6 +127,10 @@ class CrashSolveRequest(BaseModel):
     )
     imposed_velocities: list[CrashImpVelParams] = Field(
         default_factory=list, description="/IMPVEL — bölge, parça ya da rijit gövdeye sabit hız (1.17c)"
+    )
+    initial_velocities: list[CrashInitVelParams] = Field(
+        default_factory=list,
+        description="/INIVEL — bölge ya da parçaya ilk hız (TODO 11.9); doluysa bariyer hızı parçalara verilmez",
     )
     filters: CrashFilterParams = Field(
         default_factory=CrashFilterParams, description="SAE J211 CFC sınıfları (1.17e); ham korunur"
@@ -333,7 +340,8 @@ def crash_solve(
     # mesh düğümleri. Yalnız istekte geçen bölgeler okunur.
     wanted_regions = {
         s.region
-        for s in [*body.added_masses, *body.rigid_bodies, *body.boundary_conditions, *body.imposed_velocities]
+        for s in [*body.added_masses, *body.rigid_bodies, *body.boundary_conditions, *body.imposed_velocities,
+                  *body.initial_velocities]
         if s.region
     }
     region_nodes: dict[str, list[int]] = {}
@@ -380,6 +388,7 @@ def crash_solve(
                 "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
                 "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
                 "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+                "initial_velocities": [v.model_dump() for v in body.initial_velocities],
                 "filters": body.filters.model_dump(),
                 "gravity": body.gravity.model_dump() if body.gravity else None,
                 "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
@@ -440,6 +449,7 @@ def crash_solve(
         "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
         "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
         "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+        "initial_velocities": [v.model_dump() for v in body.initial_velocities],
         "filters": body.filters.model_dump(),
         "gravity": body.gravity.model_dump() if body.gravity else None,
         "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
