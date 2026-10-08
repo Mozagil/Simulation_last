@@ -76,3 +76,15 @@ describe("Belgeler · PDF indir", () => {
     obs.disconnect();
   });
 });
+
+describe("Belgeler · sekmeler", () => {
+  it("ML sekmesi: kendi bölümleri ve gerçek örnekleri; LS-DYNA sütunu yok", () => {
+    render(<DocsDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ML" }));
+    expect(screen.getByText("Belgeler · ML Stüdyo (vekil model)")).toBeInTheDocument();
+    expect(screen.getByTestId("example-crash-box-doe3")).toBeInTheDocument();
+    expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Crash" }));
+    expect(screen.getAllByText("LS-DYNA ≈").length).toBeGreaterThan(0);
+  });
+});

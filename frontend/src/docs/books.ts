@@ -7,6 +7,7 @@
 import { DYNA_EQUIV } from "../lib/dynaKeywords";
 import { CRASH_DOC, CRASH_SCENARIOS, type DocScenario, type DocSection } from "./crashDoc";
 import { CRASH_TRAINING, TRAINING_RECORD, type TrainingGroup } from "./crashTraining";
+import { ML_DOC, ML_EXAMPLES } from "./mlDoc";
 
 export interface DocExample {
   id: string;
@@ -63,5 +64,24 @@ export const CRASH_BOOK: DocBook = {
   },
 };
 
+export const ML_BOOK: DocBook = {
+  id: "ml",
+  tab: "ML",
+  title: "ML Stüdyo (vekil model)",
+  subtitle: "DOE, veri seti, vekil model, CV skorları ve tahmin — durability ve crash, gerçek örneklerle.",
+  searchPlaceholder: "Ara: LHS, R², aralık dışı, korpus, kiriş…",
+  note:
+    "Vekil model FEA'nın yerini almaz; eğitildiği aralıkta hızlı tahmin verir. Skorlar ve oranlar veridir — " +
+    "modeli kullanma kararı mühendisindir.",
+  cardHeader: "API / dosya",
+  dynaColumn: false,
+  sections: ML_DOC,
+  examples: {
+    title: "Örnekler (gerçek koşulardan)",
+    intro: "Bu projede eğitilmiş modellerden sayılar — her örnekte kurulum, girdiler, hedefler, sonuçlar ve çıkarılan ders.",
+    rows: ML_EXAMPLES,
+  },
+};
+
 /** Sekme sırası; diğer kitaplar içerikleri hazır oldukça eklenir. */
-export const DOC_BOOKS: DocBook[] = [CRASH_BOOK];
+export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, ML_BOOK];
