@@ -381,7 +381,7 @@ function App() {
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
   const [scenarioJob, setScenarioJob] = useState<
-    { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null
+    { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null
   >(null);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
@@ -1137,7 +1137,7 @@ function App() {
    * koşu 5 · Sonuçlar'a, çarpma kurulumu crash paneline. */
   async function loadScenario(res: CrashScenarioResponse) {
     const geoId = res.geometry_id;
-    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, setup: res.scenario });
+    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, runId: res.crash.run_id ?? null, setup: res.scenario });
     setExpandedSteps(new Set(["results"]));
     const cadParts = await loadGeometryById(geoId, `${res.scenario.template_id ?? "senaryo"}.step`);
     const m = res.mesh;
@@ -5157,6 +5157,7 @@ function App() {
           onRunStarted={() => setExpandedSteps(new Set(["results"]))}
           onJobKey={setCrashJobKey}
           externalJob={scenarioJob}
+          onSolved={setCrashAnim}
           selectedPartIds={selectedPartIds}
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}

@@ -30,7 +30,7 @@ describe("CrashMaterialSection (3 · Material)", () => {
 });
 
 describe("CrashPanel malzeme özeti", () => {
-  it("malzeme App'ten gelirse kart yerine özet gösterir", () => {
+  it("malzeme App'ten gelirse crash panelinde ne kart ne özet (açıklama 3 · Material'da)", () => {
     const m = { ...defaultMatCard(), law: "plastic" as const };
     render(
       <CrashPanel
@@ -39,7 +39,7 @@ describe("CrashPanel malzeme özeti", () => {
         material={{ matCard: m, setMatCard: () => undefined, partCards: {}, setPartCards: () => undefined }}
       />,
     );
-    expect(screen.getByTestId("crash-mat-summary")).toHaveTextContent("elasto-plastik (LAW2) · kopma kapalı");
+    expect(screen.queryByTestId("crash-mat-summary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("crash-mat-global")).not.toBeInTheDocument();
   });
 });

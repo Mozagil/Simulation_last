@@ -7877,3 +7877,23 @@ p {
   letter-spacing: 0;
   text-transform: none;
 }
+
+.crash-expert-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.crash-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-output .crash-th-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}

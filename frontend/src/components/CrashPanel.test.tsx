@@ -377,6 +377,7 @@ describe("CrashPanel", () => {
       },
     });
     render(<CrashPanel geometryId={1} meshDimension={2} partIds={[0]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Çıktı ayarları/ }));
     fireEvent.change(screen.getByLabelText("TH aralığı (ms)"), { target: { value: "0.002" } });
     fireEvent.click(screen.getByRole("button", { name: "+ Kesit ekle" }));
     fireEvent.change(screen.getByLabelText("Kesit 1 M1 y"), { target: { value: "60" } });
@@ -499,13 +500,13 @@ describe("CrashPanel", () => {
       <CrashPanel geometryId={1} meshDimension={3} view="setup" onRunStarted={onRunStarted} onJobKey={onJobKey} />,
     );
     expect(screen.queryByLabelText("Sonuçlar")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Çıktı — kayıt aralığı/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Çıktı ayarları/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(onRunStarted).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onJobKey).toHaveBeenCalledWith("j20:rad_only"));
     rerender(<CrashPanel geometryId={1} meshDimension={3} view="results" onRunStarted={onRunStarted} onJobKey={onJobKey} />);
     expect(screen.getByLabelText("Sonuçlar")).toHaveTextContent("j20");
-    expect(screen.getByText(/Çıktı — kayıt aralığı/)).toBeInTheDocument();
+    expect(screen.getByText(/Çıktı ayarları/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ".rad üret / çöz" })).not.toBeInTheDocument();
   });
 
@@ -594,5 +595,21 @@ describe("CrashPanel", () => {
         expect.objectContaining({ wall: null, velocity: null, partRoles: { 0: "free", 1: "free" } }),
       ),
     );
+  });
+
+  it("koşu çözülünce 3B sonuç açılır (onSolved bir kez, koşu kimliğiyle)", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "s1", status: "solved" });
+    const onSolved = vi.fn();
+    render(
+      <CrashPanel
+        geometryId={3}
+        meshDimension={2}
+        view="results"
+        onSolved={onSolved}
+        externalJob={{ jobId: "s1", geometryId: 3, runId: 77 }}
+      />,
+    );
+    await waitFor(() => expect(onSolved).toHaveBeenCalledWith({ id: 77, title: "#77" }));
+    expect(onSolved).toHaveBeenCalledTimes(1);
   });
 });

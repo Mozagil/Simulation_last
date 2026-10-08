@@ -11,9 +11,9 @@ import {
   type CrashScenarioSetup,
 } from "../api/crash";
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
-import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
+import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
-import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
+import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
@@ -167,6 +167,7 @@ export default function CrashPanel({
   onRunStarted,
   onJobKey,
   externalJob = null,
+  onSolved,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -203,7 +204,9 @@ export default function CrashPanel({
   /** Koşu geçmişini yenilemek için iş anahtarı (job/status). */
   onJobKey?: (key: string) => void;
   /** Panel dışında başlatılan koşu (ör. "+ Yeni crash vakası" senaryosu) — sonuçlar burada izlenir. */
-  externalJob?: { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null;
+  externalJob?: { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null;
+  /** Koşu çözülünce (kullanıcı 2026-10-08): viewport'ta 3B sonuç (deforme şekil) açılır. */
+  onSolved?: (run: { id: number; title: string }) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -253,6 +256,7 @@ export default function CrashPanel({
   const [hgHr, setHgHr] = useState("");
   const [hgSolid, setHgSolid] = useState("");
   const [expertOpen, setExpertOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,6 +346,17 @@ export default function CrashPanel({
       ws?.close();
     };
   }, [jobId, polling]);
+
+  // pending → solved geçişinde bir kez: 3B sonucu viewport'ta aç.
+  const prevStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (status !== "solved" || prev === "solved" || prev === null) return;
+    const runId = result?.run_id ?? (externalJob?.jobId === jobId ? externalJob?.runId : null);
+    if (runId != null) onSolved?.({ id: runId, title: `#${runId}` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   useEffect(() => {
     if (jobId) onJobKey?.(`${jobId}:${status ?? ""}`);
@@ -1032,16 +1047,8 @@ export default function CrashPanel({
 
 
 
-      {material ? (
-        <div className="crash-mat-summary" data-testid="crash-mat-summary">
-          <span className="ml-k">Malzeme modeli</span>
-          <span>
-            {matCardSummary(matCard)}
-            {Object.keys(partCards).length > 0 ? ` · ${Object.keys(partCards).length} parçaya ayrı model` : ""}
-          </span>
-          <span className="crash-behavior-hint">3 · Material adımından değiştirilir.</span>
-        </div>
-      ) : (
+      {/* Kullanıcı 2026-10-08: malzeme modeli açıklaması yalnız 3 · Material'da. */}
+      {!material && (
         <CrashMaterialSection
           partIds={partOptions}
           matCard={matCard}
@@ -1145,14 +1152,37 @@ export default function CrashPanel({
           )}
         </div>
       )}
-      <details className="crash-advanced">
-        <summary>Çıktı — kayıt aralığı, kesit kuvvetleri, filtre (CFC), zaman adımı</summary>
-        <p className="crash-behavior-hint">
-          Hangi eğrilerin ne sıklıkla kaydedileceği ve kuvvet / ivme sinyallerinin filtresi. Boş = varsayılan
-          (süre/200 aralık). Sonraki koşuya uygulanır.
-        </p>
-        <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
-      </details>
+      <section className="crash-acc crash-expert" aria-label="Çıktı ayarları">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={outputOpen}
+          onClick={() => setOutputOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 13V3M2 13h12M5 10l3-4 2 2 4-5" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Çıktı ayarları</strong>
+            <span className="crash-acc-summary">
+              {outputSummary(output) || "Kayıt aralığı, filtre (CFC), kanallar, kesitler · hepsi varsayılan"}
+            </span>
+          </span>
+          <span className={outputSummary(output) ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {outputSummary(output) ? "değiştirildi" : "varsayılan"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{outputOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!outputOpen}>
+          <p className="crash-behavior-hint">
+            Koşunun hangi eğrileri ne sıklıkla kaydedeceği ve sinyallerin nasıl süzüleceği. Sonraki koşuya
+            uygulanır; boş alan = varsayılan.
+          </p>
+          <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
+        </div>
+      </section>
 
         </section>
       )}
