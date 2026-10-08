@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CRASH_DOC, CRASH_SCENARIOS, type DocItem } from "../docs/crashDoc";
 import { DYNA_EQUIV, dynaFor } from "../lib/dynaKeywords";
-import { CRASH_TRAINING, TRAINING_BASE, TRAINING_RECORD } from "../docs/crashTraining";
+import { CRASH_TRAINING, TRAINING_RECORD } from "../docs/crashTraining";
 
 const MAP_ID = "eslesme";
 const SCEN_ID = "senaryolar";
@@ -85,7 +85,7 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
               OpenRadioss ↔ LS-DYNA tablosu
             </button>
             <button type="button" className="docs-nav-train" onClick={() => go(TRAIN_ID)}>
-              Eğitim testleri (T1–T17)
+              Eğitim testleri (T1–T18)
             </button>
           </nav>
           <main className="docs-main">
@@ -210,22 +210,22 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
             </section>
 
             <section id={`doc-${TRAIN_ID}`} className="docs-section docs-training">
-              <h2>Eğitim testleri (T1–T17)</h2>
+              <h2>Eğitim testleri (T1–T18)</h2>
               <p>
-                Malzeme ve sınır koşullarındaki her özelliği küçük, karşılaştırmalı deneylerle anlamak için. Her test
-                tek bir şeyi değiştirir; sonucu bir öncekiyle karşılaştır. {TRAINING_RECORD}
+                Modele göre sıralı: her model grubun başında bir kez kurulur; ardından gelen her test bir öncekinden
+                yalnız <b>tek şeyi</b> değiştirir. {TRAINING_RECORD}
               </p>
-              <div className="docs-train-base">
-                <strong>Ortak taban — Crash box</strong>
-                <ol>
-                  {TRAINING_BASE.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ol>
-              </div>
               {CRASH_TRAINING.filter((g) => !q || g.tests.some((t) => [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))).map((g) => (
                 <div key={g.title} className="docs-train-group">
                   <h3>{g.title}</h3>
+                  <div className="docs-train-base">
+                    <strong>Modeli kur (bir kez)</strong>
+                    <ol>
+                      {g.setup.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ol>
+                  </div>
                   {g.tests
                     .filter((t) => !q || [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))
                     .map((t) => (
@@ -233,13 +233,12 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
                         <header>
                           <span className="docs-train-id">{t.id}</span>
                           <strong>{t.title}</strong>
+                          <span className="docs-chip">{t.area}</span>
                         </header>
                         <p className="docs-train-learn">{t.learn}</p>
-                        {t.setup && (
-                          <p>
-                            <b>Kurulum:</b> {t.setup}
-                          </p>
-                        )}
+                        <p className="docs-train-change">
+                          <b>Değişen:</b> {t.change}
+                        </p>
                         <ol>
                           {t.steps.map((st) => (
                             <li key={st}>{st}</li>

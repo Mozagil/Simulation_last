@@ -8496,3 +8496,9 @@ p {
   background: var(--surface-2);
   border-radius: 6px;
 }
+
+.docs-train-change {
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-radius: 6px;
+}

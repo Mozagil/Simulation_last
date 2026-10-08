@@ -39,12 +39,12 @@ describe("Belgeler sırası", () => {
 });
 
 describe("Belgeler · eğitim sayfası", () => {
-  it("son sayfa: T1–T17 kartları, ortak taban; aramada süzülür", () => {
+  it("son sayfa: T1–T18, modele göre gruplu; aramada süzülür", () => {
     render(<DocsDialog onClose={() => undefined} />);
-    expect(screen.getByRole("heading", { name: "Eğitim testleri (T1–T17)" })).toBeInTheDocument();
-    for (const id of ["T1", "T9", "T17"]) expect(screen.getByTestId(`train-${id}`)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Eğitim testleri (T1–T18)" })).toBeInTheDocument();
+    for (const id of ["T1", "T9", "T18"]) expect(screen.getByTestId(`train-${id}`)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Belgelerde ara"), { target: { value: "kızak" } });
-    expect(screen.getByTestId("train-T11")).toBeInTheDocument();
+    expect(screen.getByTestId("train-T9")).toBeInTheDocument();
     expect(screen.queryByTestId("train-T1")).toBeNull();
   });
 });
