@@ -8415,3 +8415,17 @@ p {
   color: var(--hint-ink);
   font-weight: 500;
 }
+
+/* Kullanıcı 2026-10-08: açıklama metinleri tüm adımlarda (crash + durability)
+   belirgin teal — mavi karşılıklardan (--ref-blue) ayrışır. */
+.crash-behavior-hint,
+.material-assign-hint,
+.mesh-side-hint,
+.mesh-quality-hint,
+.bc-type-hint,
+.doe-material-hint,
+.new-case-hint,
+.crash-fail-text span {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
