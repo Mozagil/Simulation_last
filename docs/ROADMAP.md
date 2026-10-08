@@ -1426,7 +1426,7 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
 İlerleme: solver log'undan iterasyon / residual (crash'teki websocket deseni).
 
 **Kullanıcıya açık sorular (başlamadan önce):**
-1. OpenFOAM dağıtımı + Docker imajı: ESI (openfoam.com, v2406/v2412 —
+1. ✅ ESI seçildi (2026-10-08). OpenFOAM dağıtımı + Docker imajı: ESI (openfoam.com, v2406/v2412 —
    resmi Docker imajı var) mı, Foundation (openfoam.org v12) mı?
 2. İlk hedef vaka: iç akış (boru/kanal — basınç düşümü) mı, dış akış
    (silindir/küre/araç — Cd/Cl) mı?
@@ -1437,10 +1437,15 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
 5. DB şeması: `cfd_runs` tablosu (crash_runs deseni) — Alembic migration.
 
 **Mikro-adımlar (her biri ayrı onay; bir adım bitince dur):**
-- 2.0 ⏳ Altyapı: OpenFOAM Docker imajı (`.env`: `OPENFOAM_DOCKER_IMAGE`),
+- 2.0 ✅ (2026-10-08) Altyapı: OpenFOAM Docker imajı (`.env`: `OPENFOAM_DOCKER_IMAGE`),
   Codespace devcontainer'a ekleme; duman testi (resmi `pitzDaily`
   öğretici vakası `simpleFoam` ile koşar, log okunur). Lisans notu
-  `LICENSING.md` (GPL, sunucu tarafı).
+  `LICENSING.md` (GPL, sunucu tarafı). **Sonuç:** ESI v2412 resmi imajı
+  (`opencfd/openfoam-default:2412`); `app/solvers/openfoam.py` (imaj, `docker
+  run` komutu, log → iterasyon + başlangıç residual), `scripts/openfoam_smoke.py`;
+  pitzDaily 281 iterasyonda yakınsadı (SIMPLE residualControl), ~13 s; test
+  `tests/test_openfoam_runtime.py` (Docker testi imaj yoksa atlanır). Codespace:
+  docker-in-docker zaten var, imaj isteğe bağlı çekilir.
 - 2.1 ⏳ Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
   `0/U`, `0/p`, (`k`, `omega`, `nut`), `constant/transportProperties` /
   `momentumTransport`, `system/controlDict|fvSchemes|fvSolution` üretimi;

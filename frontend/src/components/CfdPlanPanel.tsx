@@ -4,8 +4,8 @@
  * bağlı değil: adımların planı ve açık kararlar veri olarak gösterilir.
  * Geometri ve mesh adımları diğer analizlerle ortaktır.
  */
-const STEPS: { id: string; title: string; what: string; status: "plan" | "karar" }[] = [
-  { id: "2.0", title: "Altyapı", what: "OpenFOAM Docker imajı + Codespace; resmi pitzDaily vakasıyla duman testi.", status: "karar" },
+const STEPS: { id: string; title: string; what: string; status: "plan" | "karar" | "tamam" }[] = [
+  { id: "2.0", title: "Altyapı", what: "OpenFOAM ESI v2412 resmi Docker imajı; resmi pitzDaily vakası simpleFoam ile koştu (281 iterasyonda yakınsadı, ~13 s).", status: "tamam" },
   { id: "2.1", title: "Case yazıcı", what: "Parametrelerden 0/U, 0/p, (k, ω, νt), constant/, system/ (controlDict, fvSchemes, fvSolution).", status: "karar" },
   { id: "2.2", title: "Koşu + ilerleme", what: "Docker'da koşu; log'dan iterasyon ve residual'lar (crash'teki canlı izleme deseni).", status: "plan" },
   { id: "2.3", title: "İlk doğrulama", what: "2B kanalda laminer akış (blockMesh) — basınç düşümü analitik değerle karşılaştırılır.", status: "plan" },
@@ -17,8 +17,9 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "2.9", title: "CFD DOE + ML", what: "En sonda — crash ve durability ML tezgahı deseniyle.", status: "plan" },
 ];
 
+const DECIDED = ["OpenFOAM dağıtımı: ESI (openfoam.com) — resmi Docker imajı opencfd/openfoam-default:2412 (2026-10-08)."];
+
 const DECISIONS = [
-  "OpenFOAM dağıtımı: ESI (openfoam.com, resmi Docker imajı) ya da Foundation (openfoam.org) — dosya biçimleri farklı.",
   "İlk hedef vaka: iç akış (boru / kanal — basınç düşümü) ya da dış akış (silindir / küre — Cd, Cl).",
 ];
 
@@ -31,7 +32,15 @@ export default function CfdPlanPanel() {
         Akış analizi Faz 2'de adım adım geliyor. Şimdilik 1 · Geometry ve 2 · Mesh diğer analizlerle ortak; çözücü
         henüz bağlı değil. Aşağıdaki plan veri olarak gösterilir.
       </p>
-      <p className="crash-expert-title">Açık kararlar (başlamadan önce)</p>
+      <p className="crash-expert-title">Kararlar</p>
+      <ul className="cfd-decisions">
+        {DECIDED.map((d) => (
+          <li key={d}>
+            <span className="crash-acc-state ok">verildi</span> {d}
+          </li>
+        ))}
+      </ul>
+      <p className="crash-expert-title">Açık kararlar</p>
       <ul className="cfd-decisions">
         {DECISIONS.map((d) => (
           <li key={d}>{d}</li>
@@ -46,8 +55,12 @@ export default function CfdPlanPanel() {
               <strong>{s.title}</strong>
               <span className="crash-behavior-hint">{s.what}</span>
             </span>
-            <span className={s.status === "karar" ? "crash-acc-state warn" : "crash-acc-state muted"}>
-              {s.status === "karar" ? "karar bekliyor" : "planlandı"}
+            <span
+              className={
+                s.status === "tamam" ? "crash-acc-state ok" : s.status === "karar" ? "crash-acc-state warn" : "crash-acc-state muted"
+              }
+            >
+              {s.status === "tamam" ? "tamam" : s.status === "karar" ? "karar bekliyor" : "planlandı"}
             </span>
           </li>
         ))}
