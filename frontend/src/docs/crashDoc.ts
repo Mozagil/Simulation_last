@@ -1,0 +1,251 @@
+/**
+ * Crash (OpenRadioss) kullanıcı belgesi — navbar "Belgeler" penceresinde
+ * gösterilir (kullanıcı isteği 2026-10-08). Her özellik / düğme / kart: ne
+ * yapar, hangi senaryoda kullanılır, OpenRadioss kartı ve LS-DYNA karşılığı
+ * (≈, yalnız bilgi amaçlı ad — LS-DYNA kullanılmaz; eşleme
+ * `lib/dynaKeywords.ts`). Görseller `public/docs/crash/`.
+ *
+ * Araç mühendise karar vermez: "Ne zaman" satırları tipik kullanımı
+ * anlatır, değer önermez.
+ */
+
+export interface DocItem {
+  name: string;
+  what: string;
+  when?: string;
+  /** OpenRadioss kartı — LS-DYNA karşılığı `dynaFor(card)` ile bulunur. */
+  card?: string;
+  /** Eşleme tablosunda olmayan özel karşılık metni. */
+  dyna?: string;
+}
+
+export interface DocSection {
+  id: string;
+  title: string;
+  intro: string;
+  image?: string;
+  imageCaption?: string;
+  items?: DocItem[];
+  /** Ek görseller (bölüm sonunda). */
+  gallery?: { src: string; caption: string }[];
+}
+
+export interface DocScenario {
+  id: string;
+  title: string;
+  template: string;
+  setup: string;
+  features: string[];
+  validation: string;
+  reference: string;
+}
+
+const IMG = (f: string) => `/docs/crash/${f}`;
+
+export const CRASH_DOC: DocSection[] = [
+  {
+    id: "akis",
+    title: "Genel akış",
+    intro:
+      "Crash analizi beş adımda kurulur: 1 · Geometry → 2 · Mesh → 3 · Material → 4 · Crash → 5 · Sonuçlar. " +
+      "Solver OpenRadioss (explicit) sunucuda Docker imajında koşar; kullanıcı tarafında hiçbir CAE yazılımı gerekmez. " +
+      "Viewport'ta rijit duvar (mavi düzlem), hız oku (turuncu) ve parça rol etiketleri/renkleri kurulumla birlikte güncellenir.",
+    image: IMG("01-genel.jpg"),
+    imageCaption: "Crash box: 2D quad mesh, +X normalli rijit duvar x = −1, −X yönünde 10 m/s, parça #0 hareketli (altın).",
+    items: [
+      { name: "1 · Geometry", what: "STEP/IGES yükle ya da şablondan üret (crash box, S-kiriş, kapı, plaka–küre …). Bölgeler (Physical Group) şablondan gelir: kutu_on, kutu_arka, plaka_kenar …" },
+      { name: "2 · Mesh", what: "2D kabuk (quad) ya da 3D solid (tet). Eğri yüzeylerde quad için yüzey başına ayrı algoritma; yerel remesh (mesh üzerinden yüzey seç + boyut); “Mesh'i sil”. Mesh sonrası CAD varsayılan gizli." },
+      { name: "3 · Material", what: "Kütüphane malzemesi (E, ν, ρ, akma) + crash malzeme modeli (LAW1/2/36) ve kopma (/FAIL). Kabuk kalınlığı ürün ağacındaki bileşenden." },
+      { name: "4 · Crash", what: "Dört akordeon grubu (Çarpma, Parçalar, Temaslar, Ek tanımlar) + Uzman ayarları. Eksik bilgi varsa sayaç “x eksik” der ve Çalıştır pasif olur." },
+      { name: "5 · Sonuçlar", what: "Koşu durumu, skalerler, kuvvet–zaman grafiği, çıktı ayarları. Koşu çözülünce viewport'ta 3B deforme şekil animasyonu kendiliğinden açılır." },
+    ],
+  },
+  {
+    id: "ust",
+    title: "Üst çubuk ve viewport düğmeleri",
+    intro: "Crash ile ilgili genel düğmeler.",
+    items: [
+      { name: "SINIR KOŞ.", what: "Viewport'taki crash işaretlerini (duvar, hız oku, rol etiketleri) ve rol renklerini gösterir/gizler. Vurgulu = görünür." },
+      { name: "Solid / Surface (KENARLAR)", what: "CAD geometrisini gösterir/gizler. Mesh sonrası CAD gizli gelir; düğme vurgulanınca görünür." },
+      { name: "Rol renkleri", what: "Hareketli = altın, sabit = kırmızı, serbest = mor. Seçim vurgusu turuncu (karışmaz). 2D'de mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir." },
+      { name: "LS-DYNA karşılıkları (⇄ düğmesi)", what: "Crash panelinin ve 3 · Material'ın sağ üstünde. Açıkken OpenRadioss kart adının altında yaklaşık LS-DYNA keyword'ü görünür. Kişisel tercih, tarayıcıda hatırlanır. Yalnız ad — LS-DYNA kullanılmaz." },
+      { name: "+ Yeni crash vakası", what: "Hazır katalogdan geometri + kurulum + koşu tek seferde (bkz. Hazır senaryolar). Seçili senaryonun kendi şeması görünür." },
+      { name: "Crash geçmişi (alt dock)", what: "Bu geometrinin (ya da tüm) koşuları: durum, tepe kuvvet, ▶ animasyon, 📈 eğri, ⊘ dışla, karşılaştır (≤ 6). Üst kenardan sürüklenerek boyutlanır (≤ pencerenin %60'ı)." },
+    ],
+  },
+  {
+    id: "carpma",
+    title: "4 · Crash → 1 Çarpma",
+    intro: "Ne neye, hangi hızla çarpıyor. İki mod: rijit duvara çarpma ya da duvarsız (yalnız ilk hız).",
+    image: IMG("02-carpma.png"),
+    imageCaption: "Çarpma grubu, LS-DYNA karşılıkları açık.",
+    items: [
+      { name: "Rijit duvara çarpma", what: "Sonsuz rijit düzlem (/RWALL). Hareketli parçalar duvara doğru (normalin tersine) ilk hız alır.", when: "Crash box, S-kiriş, Taylor çubuğu, düşme (zemin).", card: "/RWALL" },
+      { name: "Duvarsız · yalnız ilk hız", what: "Duvar yazılmaz; hız yönü doğrudan seçilir. Parça–parça çarpışma temasla çözülür.", when: "Plaka–küre, kapı, iki parçalı montajlar.", card: "/INIVEL" },
+      { name: "Hız (m/s)", what: "İlk hız büyüklüğü. Çözücü kg–mm–ms biriminde: 1 m/s = 1 mm/ms.", card: "/INIVEL" },
+      { name: "Açı (°)", what: "0 = duvara dik. Eğik çarpma için hız vektörü döndürülür." },
+      { name: "Süre (ms)", what: "Simülasyon bitiş zamanı. Kızaklı ezilmede kızak durana kadar uzun olmalı (ezilme mesafesi ancak durunca hesaplanır).", card: "/RUN" },
+      { name: "Duvarın baktığı yön (+X … −Z, Özel)", what: "Duvar normali. Parça normalin tersine ilerler (ör. +X normal → −X hız).", card: "/RWALL" },
+      { name: "Duvar konumu + ⌖ Modelden seç", what: "Düzlemin geçtiği nokta (mm). “Modelden seç” ile viewport'ta tıklanan nokta yazılır.", card: "/RWALL" },
+      { name: "Yerçekimi", what: "Sabit ivme (ör. −9.81 m/s², Z).", when: "Düşme testi, FOPS. Kısa yatay çarpışmalarda etkisi ihmal edilebilir.", card: "/GRAV" },
+    ],
+  },
+  {
+    id: "parcalar",
+    title: "4 · Crash → 2 Parçalar",
+    intro: "Her parçaya tek soru: bu parça ne yapıyor?",
+    image: IMG("03-parcalar.png"),
+    imageCaption: "Parça satırı: malzeme · kalınlık ve rol seçimi.",
+    items: [
+      { name: "Hareketli", what: "Parçanın tüm düğümlerine ilk hız verilir; rijit duvarla temas eder.", when: "Crash box, çarpan küre/impaktör.", card: "/INIVEL" },
+      { name: "Sabit", what: "Tüm düğümler 6 serbestlikte kilitli (111111).", when: "Çarpma plakası, ankastre taban.", card: "/BCS" },
+      { name: "Serbest", what: "Ne ilk hız ne kilit — yalnız temasla hareket eder.", when: "Zincirleme çarpışma; kapı kirişi (uçları ayrıca Ek tanımlar'da kilitlenir)." },
+    ],
+  },
+  {
+    id: "temaslar",
+    title: "4 · Crash → 3 Temaslar",
+    intro: "Temas tanımlanmazsa parçalar birbirinin içinden geçer. Aynı parça iki tarafta = öz temas (katlanan kutu).",
+    image: IMG("04-temaslar.png"),
+    imageCaption: "TYPE7 öz temas (#0 ↔ #0) ve bayraklar.",
+    items: [
+      { name: "TYPE7", what: "Düğüm → yüzey teması (slave düğümleri master yüzeye çarpar). Genel amaçlı, hızlı.", when: "Kutunun kendi katları (öz temas), küre → plaka, impaktör → kiriş.", card: "/INTER/TYPE7" },
+      { name: "TYPE24", what: "Yüzey ↔ yüzey (kenar–kenar dahil). İnce kabuk katlanırken kenarların birbirine girmesini daha iyi yakalar.", card: "/INTER/TYPE24" },
+      { name: "Fric", what: "Coulomb sürtünme katsayısı." },
+      { name: "Stfac", what: "Temas rijitliği ölçeği." },
+      { name: "GAPmin (TYPE7) / Iedge (TYPE24)", what: "En küçük temas boşluğu (mm) / kenar teması bayrağı." },
+      { name: "Istf, Inacti", what: "Rijitlik hesap yöntemi; başlangıç penetrasyonunun ele alınışı. Boş = Radioss varsayılanı." },
+    ],
+  },
+  {
+    id: "ek",
+    title: "4 · Crash → 4 Ek tanımlar",
+    intro:
+      "Parça rolü bütün parçaya uygulanır; buradaki kartlar bir bölgeye (Physical Group) ya da parçaya ek tanım ekler. " +
+      "Kapalı kart tek satırla özetlenir (ör. “kutu_arka → rijit + 40 kg · rayda (yalnız x)”).",
+    image: IMG("05-ek-tanimlar.png"),
+    imageCaption: "Hazır kurulumlar ve dört ekleme kutusu (LS-DYNA karşılıkları açık).",
+    items: [
+      { name: "Hazır kurulum · Kızak testi", what: "Arka bölgeyi (adında “arka” olan) rijit + kütle yapar, hareket “rayda”. Kütle boş gelir — değer mühendisin." },
+      { name: "Hazır kurulum · Ankastre kenar", what: "Kenar bölgesini (adında “kenar” olan) 6 serbestlikte kilitler." },
+      { name: "Bölgeyi kilitle", what: "Seçili serbestlikleri kilitler (onay kutuları: Tx Ty Tz Rx Ry Rz; “Tamamen kilitle”, “Yalnız öteleme”).", when: "Plaka kenarı ankastre, kiriş uçları, simetri düzlemi, ROPS tabanı.", card: "/BCS" },
+      { name: "Kütle / kızak", what: "Bölgeyi tek rijit cisim yapar, ana düğüme kütle ekler. Hareket: Rayda (yalnız çarpma ekseninde öteleme serbest), Serbest, Özel DOF. “İvmeyi kaydet” HIC kanalını açar.", when: "Kızak (crash box), impaktör, araç kütlesi temsili (direk testi uçları).", card: "/RBODY" },
+      { name: "Sabit hızla it", what: "Hızı çözüm boyunca zorla sabit tutar (parça yavaşlamaz). Eksen, işaretli hız, başlangıç/bitiş (0 = sonuna kadar).", when: "ROPS yanal yavaş itme, kapı intrüzyonu silindiri, yarı-statik ezme.", card: "/IMPVEL" },
+      { name: "Parçaya ayrı ilk hız", what: "Bir bölge/parçaya ayrı başlangıç hızı. Bu kart varsa 1 · Çarpma hızı hiçbir parçaya uygulanmaz.", when: "Parçalar farklı hızlarla geliyorsa (iki araç).", card: "/INIVEL" },
+    ],
+    gallery: [{ src: IMG("06-kizak-karti.png"), caption: "Kütle / kızak kartı açık: hedef çipleri, kütle, Rayda / Serbest / Özel." }],
+  },
+  {
+    id: "uzman",
+    title: "4 · Crash → Uzman ayarları",
+    intro:
+      "Eleman formülasyonu ve hourglass. Boş alan = OpenRadioss varsayılanı; başlık değiştirilen alanları özetler. " +
+      "Son koşunun HG/IE oranı veri olarak görünür (genel ölçü: %5).",
+    image: IMG("07-uzman.png"),
+    imageCaption: "Kabuk mesh: /PROP/TYPE1 alanları ve hourglass katsayıları.",
+    items: [
+      { name: "Ishell / Ish3n", what: "Quad / üçgen kabuk formülasyonu.", card: "/PROP/TYPE1" },
+      { name: "Ismstr", what: "Küçük/büyük şekil değiştirme formülasyonu." },
+      { name: "N", what: "Kalınlık boyunca integrasyon noktası (0, 1 ya da 3…10)." },
+      { name: "Hm / Hf / Hr", what: "Hourglass katsayıları: membran, düzlem dışı, dönme (0…0.05; varsayılan 0.01). Ishell 1–4'te etkili.", card: "/PROP/TYPE1" },
+      { name: "Isolid / Ismstr / NIP / h (solid)", what: "Solid eleman formülasyonu, integrasyon noktası, hourglass viskozitesi (0…0.15; varsayılan 0.10).", card: "/PROP/TYPE14" },
+      { name: "Hourglass nedir", what: "İndirgenmiş integrasyonlu elemanlarda enerji yemeyen sahte zikzak deformasyon. HG/IE yüksekse sonuç şüphelidir; katsayı ya da formülasyon değiştirilir (karar mühendisin)." },
+    ],
+  },
+  {
+    id: "malzeme",
+    title: "3 · Material → Crash malzeme modeli",
+    intro: "Kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin nasıl davranacağı seçilir. Elle kurulan koşuda varsayılan LAW2.",
+    image: IMG("08-malzeme.png"),
+    imageCaption: "LAW seçimi ve açıklaması, LS-DYNA karşılığı.",
+    items: [
+      { name: "LAW1 elastik", what: "Doğrusal elastik; kalıcı şekil değiştirmez, enerji yutmaz (kutu ezilmez, seker).", when: "Dalga yayılımı (Hopkinson), rijit gibi davranması istenen parçalar, doğrulama (V1).", card: "/MAT/LAW1" },
+      { name: "LAW2 plastik (Johnson–Cook)", what: "σ = a + b·εₚⁿ; isteğe bağlı hız terimi (C, ε̇₀) ve kopma (εp,max). Kalıcı şekil değiştirir, enerji yutar.", when: "Ezilen/deforme olan her metal parça — crash'in standart seçimi.", card: "/MAT/LAW2" },
+      { name: "LAW36 tablo", what: "Ölçülmüş σ–ε eğrisi (hız başına ayrı eğri olabilir).", when: "Test eğrisi elindeyse.", card: "/MAT/LAW36" },
+      { name: "/FAIL/JOHNSON", what: "Johnson–Cook hasarı: kopma gerinimi gerilme durumuna, hıza, sıcaklığa bağlı (D1–D5).", when: "En gerçekçi; en çok veri isteyen.", card: "/FAIL/JOHNSON" },
+      { name: "/FAIL/TENSSTRAIN", what: "Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir. En az bir sınır girilmeli (boşsa koşu reddedilir).", when: "Basit, az veri; ölçüm yoksa ilk yaklaşım.", card: "/FAIL/TENSSTRAIN" },
+      { name: "Parça başına model", what: "Çok parçalı modelde her parçaya ayrı kart (ör. küre LAW1, plaka LAW2)." },
+    ],
+    gallery: [{ src: IMG("09-fail.png"), caption: "/FAIL kartları ve alanları." }],
+  },
+  {
+    id: "sonuclar",
+    title: "5 · Sonuçlar",
+    intro: "Koşu durumu, skalerler, grafikler ve 3B animasyon. Değerler veridir; kabul eşiği mühendisin.",
+    image: IMG("10-sonuclar.jpg"),
+    imageCaption: "Çözülen koşu: skalerler + 3B deforme şekil (kendiliğinden açılır).",
+    items: [
+      { name: "Job", what: "İş kimliği · durum (pending / solved / failed / rad_only) · mesaj. “starter .rad” girdi dosyasının bağlantısı." },
+      { name: "IE_final / KE_final", what: "Son iç enerji (deformasyonla yutulan) / kinetik enerji (J).", card: "/TH/PART" },
+      { name: "HG_final · HG/IE", what: "Hourglass enerjisi ve iç enerjiye oranı.", card: "/TH/PART" },
+      { name: "RWALL Fmax / impuls", what: "Rijit duvar tepe kuvveti (kN) ve toplam impuls (N·s). Kızakta impuls = m·Δv.", card: "/TH/RWALL" },
+      { name: "Temas kuvveti", what: "Duvarsız modellerde kuvvet temastan okunur (contact_1_force…).", card: "/TH/INTER" },
+      { name: "HIC15 / HIC36 / acc_peak_g", what: "Kafa yaralanma ölçütü ve tepe ivme — ivme kanalı (rijit gövde “İvmeyi kaydet”) varsa.", },
+      { name: "Δt_min / Silinen eleman", what: "En küçük zaman adımı; /FAIL ile silinen eleman sayısı." },
+      { name: "Kuvvet–zaman grafiği", what: "Rijit duvar / temas / kesit kuvveti; tepe değer ve zamanı." },
+      { name: "3B animasyon", what: "Deforme şekil kareleri; renk alanı (ör. plastik şekil değiştirme), ▶ oynat, eksen görünümleri, ⤢ büyüt. Çözümden sonra kendiliğinden açılır; geçmişten ▶ ile tekrar açılır.", card: "/ANIM/DT" },
+    ],
+  },
+  {
+    id: "cikti",
+    title: "5 · Sonuçlar → Çıktı ayarları",
+    intro: "Bir sonraki koşunun neyi, ne sıklıkla kaydedeceği. Başlık varsayılandan farklı alanları özetler.",
+    image: IMG("11-cikti.png"),
+    imageCaption: "Kaydedilen kanallar; kısaltmanın üzerine gelince anlamı görünür.",
+    items: [
+      { name: "TH aralığı / Animasyon", what: "Eğriler ve animasyon kareleri kaç ms'de bir (boş = süre/200, süre/20).", card: "/ANIM/DT" },
+      { name: "Kuvvet CFC / İvme CFC", what: "SAE J211 filtre sınıfı (60, 180, 600, 1000). Ham eğri korunur, süzülmüş ayrıca eklenir." },
+      { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme)." },
+      { name: "Rijit duvar kanalları", what: "FNX/FNY/FNZ normal, FTX… teğet kuvvet.", card: "/TH/RWALL" },
+      { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
+      { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
+      { name: "Kesit kanalları + Kesitler", what: "Modelin içinden geçen sanal düzlem (M, M1, M2) — oradan geçen iç kuvvet/moment.", when: "S-kiriş, ROPS (dikmelerden kuvvet), Hopkinson giriş çubuğu.", card: "/TH/SECTIO" },
+      { name: "Düğüm kanalları", what: "Seçili düğümlerin yer değiştirme / hız / ivmesi.", card: "/TH/NODE" },
+    ],
+  },
+  {
+    id: "gecmis",
+    title: "Crash geçmişi ve yeni vaka",
+    intro: "Koşuların listesi ve hazır örnekten yeni vaka.",
+    image: IMG("12-yeni-vaka.jpg"),
+    imageCaption: "+ Yeni crash vakası: seçili senaryonun şeması ve parametreleri.",
+    items: [
+      { name: "▶ (animasyon)", what: "Koşunun 3B deforme şeklini viewport'ta açar." },
+      { name: "📈 (eğri)", what: "Kuvvet–zaman eğrisini gösterir; karşılaştırmaya ekler." },
+      { name: "⊘ (dışla)", what: "Koşuyu ML korpusundan dışlar (silmez)." },
+      { name: "Karşılaştır", what: "En çok 6 koşunun eğrisini üst üste çizer." },
+      { name: "Senaryoyu koş", what: "Geometri + mesh + malzeme + kurulum + OpenRadioss koşusu tek istekte; geometri, mesh, kurulum ve roller arayüze yüklenir, koşu 5 · Sonuçlar'da izlenir." },
+    ],
+    gallery: [{ src: IMG("13-gecmis.jpg"), caption: "Alt dock: crash geçmişi." }],
+  },
+  {
+    id: "ml",
+    title: "ML Stüdyo → Crash",
+    intro: "Crash DOE ve vekil model (1.19). Ör. crash box 150 koşu: enerji R² 0.98, tepe kuvvet 0.95, ezilme 0.91, ortalama kuvvet 0.83 (5-katlı CV).",
+    items: [
+      { name: "DOE", what: "Taban senaryo + taranan alanlar (noktalı yol, ör. speed_m_s, geometry.wall, rigid_bodies.0.mass_kg) + LHS örnek sayısı. Sunucuda sırayla koşar, kaldığı yerden devam eder." },
+      { name: "Model", what: "Hedef başına Random Forest; K-fold CV metrikleri (R², MAE, MAPE). Hedefler: tepe / ortalama kuvvet, yutulan enerji, ezilme." },
+      { name: "Tahmin", what: "Girdi → hedef tahmini ± CV MAE; eğitim aralığı dışındaki girdiler işaretlenir." },
+      { name: "Doğrulama", what: "Validasyon seti V1–V18 raporu (oranlar veri; eşik mühendisin)." },
+    ],
+  },
+];
+
+/** Hazır senaryolar (katalog, 15/15) — kullanılan özellikler. */
+export const CRASH_SCENARIOS: DocScenario[] = [
+  { id: "crash_box", title: "Crash box eksenel ezilme", template: "crash_box_shell", setup: "Kabuk kutu −x ile rijit duvara (x = 0); isteğe bağlı kızak (kutu_arka rijit + kütle).", features: ["Rijit duvar", "Hareketli rol", "Kütle / kızak (rayda)", "Öz temas TYPE7", "LAW2"], validation: "V1–V3: elastik dalga ρ·c·v·A, plastik plato σy·A, Wierzbicki–Abramowicz", reference: "RD-E 1700" },
+  { id: "s_rail", title: "S-kiriş / ön kiriş", template: "s_rail_shell", setup: "Süpürülmüş kabuk tüp duvara; arka halka kızak, kılavuzlu (yalnız x).", features: ["Rijit duvar", "Kütle / kızak (rayda)", "Kesit kuvveti", "LAW2"], validation: "Momentum / enerji; ortalama kuvvet / düz tüp oranı (veri)", reference: "RD-E 0300" },
+  { id: "pole_side", title: "Direk yan çarpması", template: "pole_beam_shell", setup: "Kiriş, silindirik rijit direğe (Ø254, /RWALL/CYL); uç halkaları rijit gövde + uç kütleleri.", features: ["Silindirik rijit duvar", "Kütle (uçlar)", "LAW2"], validation: "Ortalama direk kuvveti vs 4·Mp/L", reference: "Açık literatür" },
+  { id: "head_impactor", title: "Kaput — kafa impaktörü (HIC)", template: "plate_ball_shell", setup: "Ø165 / 4.5 kg küre kabuk plakaya; küre rijit gövde + ivme kanalı.", features: ["Duvarsız", "Kütle (ivme kaydı)", "TYPE7", "HIC15 / CFC1000"], validation: "Kafa ivmesi ∫|a|dt = Δv", reference: "Yaya koruma (açık literatür)" },
+  { id: "drop_test", title: "Düşme testi", template: "drop_box_shell", setup: "Kapalı kabuk kutu zemine (z = 0); H'den v = √(2gH); /GRAV.", features: ["Rijit duvar (zemin) ya da zemin plakası", "Yerçekimi", "TYPE7 (plaka)"], validation: "Serbest düşme temas anı, momentum / enerji", reference: "RD-E 0600" },
+  { id: "door_intrusion", title: "Kapı intrüzyonu", template: "door_beam_shell", setup: "Uçları ankastre darbe kirişi; Ø305 silindir impaktör rijit gövde + sabit hızla itme. Duvar yok.", features: ["Duvarsız", "Bölgeyi kilitle (uçlar)", "Sabit hızla it", "TYPE7", "Serbest roller"], validation: "Kuvvet–intrüzyon; plato vs 8·Mp/L (veri)", reference: "FMVSS 214 mantığı" },
+  { id: "plate_perforation", title: "Plaka delinme (rijit küre)", template: "plate_ball_shell", setup: "Kenarları ankastre plaka; küre rijit gövde + −z ilk hız; küre → plaka TYPE7.", features: ["Duvarsız", "Ankastre kenar", "Kütle (küre)", "TYPE7", "/FAIL"], validation: "V4 Timoshenko; V5 Recht–Ipson", reference: "RD-E 2600; Recht & Ipson (1963)" },
+  { id: "taylor_bar", title: "Taylor çubuğu", template: "taylor_bar", setup: "Dolu silindir (solid, tet) rijit duvara.", features: ["Rijit duvar", "Solid /PROP/TYPE14", "LAW2"], validation: "V6: L1/L0 vs Wilkins–Guinan", reference: "Taylor (1948)" },
+  { id: "hopkinson_bar", title: "Hopkinson çubuğu", template: "hopkinson_bar", setup: "Çarpıcı → giriş çubuğu; LAW1; kesit kuvveti Li/4'ten. Duvar yok.", features: ["Duvarsız", "LAW1", "TYPE7", "Kesit kuvveti"], validation: "V14: ρ·c·v0·A/2 platosu, darbe süresi 2·Ls/c", reference: "RD-E 0800" },
+  { id: "blast_plate", title: "Patlama yüklü plaka", template: "blast_plate_shell", setup: "Kenarları ankastre kare plaka; Friedlander basınç darbesi.", features: ["Duvarsız", "Ankastre kenar", "Basınç yükü /PLOAD"], validation: "V15: A·∫p dt = momentum", reference: "Friedlander (açık literatür)" },
+  { id: "bird_strike", title: "Kuş çarpması (SPH)", template: "blast_plate_shell", setup: "SPH kapsül kuş plaka merkezine.", features: ["SPH mermi", "Ankastre kenar"], validation: "Wilbeck: impuls m·v, süre L/v, ρ·A·v²", reference: "RD-E 4900" },
+  { id: "underbody_blast", title: "Mayın / araç altı patlama", template: "blast_plate_shell", setup: "Ampirik PBLAST (zemin yansımalı) plaka altında.", features: ["Patlama /LOAD/PBLAST", "Ankastre kenar"], validation: "Hopkinson–Cranz ölçekleme", reference: "TM5-1300 / Kingery–Bulmash" },
+  { id: "rops", title: "ROPS portal çerçeve", template: "rops_frame_shell", setup: "Tabanlar sabit; üst büküm rijit gövde + yanal sabit hızla itme; kuvvet dikme kesitlerinden.", features: ["Duvarsız", "Bölgeyi kilitle", "Sabit hızla it", "Kesit kuvveti"], validation: "V9: plato vs 4·Mp/H", reference: "ISO 3471 mantığı" },
+  { id: "fops", title: "FOPS — tavana düşen cisim", template: "plate_ball_shell", setup: "Kabin tavanı (kenarlar sabit) üstüne rijit küre H'den düşer; /GRAV.", features: ["Duvarsız", "Ankastre kenar", "Kütle (küre)", "Yerçekimi", "TYPE7"], validation: "KE₀ = m·g·H", reference: "ISO 3449 mantığı" },
+  { id: "bucket_rock", title: "Kepçe / taş darbesi", template: "bucket_rock_shell", setup: "Kavisli taban kenarları sabit; taş rijit gövde + −z ilk hız + ivme kanalı; taş → taban TYPE7.", features: ["Duvarsız", "Bölgeyi kilitle", "Kütle (ivme kaydı)", "TYPE7"], validation: "V16: ∫|a|dt = I/m", reference: "Açık literatür" },
+];

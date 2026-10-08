@@ -1,0 +1,30 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { CRASH_DOC, CRASH_SCENARIOS } from "../docs/crashDoc";
+import { dynaFor } from "../lib/dynaKeywords";
+import DocsDialog from "./DocsDialog";
+
+describe("Belgeler penceresi", () => {
+  it("içerik tutarlı: her kartın LS-DYNA karşılığı var, 15 senaryo, görseller public/docs/crash altında", () => {
+    for (const s of CRASH_DOC) {
+      for (const it of s.items ?? []) {
+        if (it.card) expect(dynaFor(it.card), `${s.id}: ${it.card}`).not.toBeNull();
+      }
+      if (s.image) expect(s.image).toMatch(/^\/docs\/crash\//);
+    }
+    expect(CRASH_SCENARIOS).toHaveLength(15);
+  });
+
+  it("bölümler, OpenRadioss + LS-DYNA sütunları; arama süzer; Esc kapatır", () => {
+    const onClose = vi.fn();
+    render(<DocsDialog onClose={onClose} />);
+    const dlg = screen.getByRole("dialog", { name: "Belgeler" });
+    expect(within(dlg).getByRole("heading", { name: "4 · Crash → 4 Ek tanımlar" })).toBeInTheDocument();
+    expect(within(dlg).getAllByText("*BOUNDARY_SPC_SET").length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("Belgelerde ara"), { target: { value: "kızak" } });
+    expect(within(dlg).queryByRole("heading", { name: "4 · Crash → 3 Temaslar" })).toBeNull();
+    expect(within(dlg).getByRole("heading", { name: "4 · Crash → 4 Ek tanımlar" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
+});

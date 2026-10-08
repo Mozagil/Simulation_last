@@ -72,6 +72,7 @@ import type { CrashScenarioResponse, CrashScenarioSetup } from "./api/crash";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
+import DocsDialog from "./components/DocsDialog";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
@@ -380,6 +381,7 @@ function App() {
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [scenarioJob, setScenarioJob] = useState<
     { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null
   >(null);
@@ -3022,6 +3024,18 @@ function App() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
+            className="ml-studio-chip ml-studio-chip-button docs-open-button"
+            onClick={() => setShowDocs(true)}
+            title="Belgeler — crash özellikleri, kartlar, senaryolar, LS-DYNA karşılıkları"
+          >
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 3h4a2 2 0 0 1 2 2v8.5a1.5 1.5 0 0 0-1.5-1.5h-4.5z" />
+              <path d="M13.5 3h-4a2 2 0 0 0-1 .3M13.5 3v9h-4.5a1.5 1.5 0 0 0-1.5 1.5" />
+            </svg>
+            Belgeler
+          </button>
+          <button
+            type="button"
             className="ml-studio-chip ml-studio-chip-button"
             onClick={() => setWorkspace("ml")}
             title="ML Stüdyo — veri seti, DOE ve vekil model"
@@ -5311,6 +5325,7 @@ function App() {
           onAnimate={setCrashAnim}
         />
       )}
+      {showDocs && <DocsDialog onClose={() => setShowDocs(false)} />}
       {showNewCrashCase && (
         <CrashNewCaseDialog
           onClose={() => setShowNewCrashCase(false)}
