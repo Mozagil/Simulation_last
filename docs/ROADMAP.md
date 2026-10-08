@@ -1499,7 +1499,20 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   paneli (tünel boyutu, taban hücre, inceltme, katmanlar, checkMesh tablosu, y+).
   Geometri adımı ortak. Parça/bölge başına ayrı STL yüzeyi → ayrı yama → parça
   başına kuvvet (roket: burun / gövde / kanatçık / taban).
-  - 2.5a ⏳ `snappyHexMesh` (varsayılan; akademi ve yarışmalarda standart).
+  - 2.5a ✅ (2026-10-08) `snappyHexMesh` (varsayılan; akademi ve yarışmalarda standart).
+    `app/mesh/cfd_mesher.py`: STEP → Gmsh yüzey üçgenlemesi → çok-katılı STL
+    (yüzey Physical Group'u başına ayrı solid → ayrı yama; kalanı `body`; mm → m;
+    açık kenar sayısı veri), tünel kutusu (gövde boyu L'nin katları: önde 3,
+    arkada 6, yanlarda 3 — parametre; zemin isteğe bağlı), blockMeshDict,
+    surfaceFeatureExtractDict, snappyHexMeshDict (yüzey / kenar / iz kutusu
+    inceltmesi, sınır tabakası), ESI meshQualityDict; checkMesh ve snappy
+    günlüğü okuyucuları (hücre tipleri, non-orthogonality, skewness, aspect ratio,
+    yama yüzleri, seviye dağılımı, katman kapsaması). API: `POST /cfd/mesh`
+    (arka plan), `GET /cfd/mesh/{id}`; `/cfd/solve` `mesh_id` ile polyMesh'i
+    kullanır (yama adı denetimi). Case yazıcıya `slip` yaması (tünel yanları).
+    Uçtan uca: 100 mm küre, taban 50 mm, yüzey seviyesi 3 → 13 615 hücre,
+    checkMesh OK, 3 katman %100, mesh 7 s; k-ω SST 10 m/s (Re 6.7e4) 203
+    iterasyon, Cd 0.406 (kaba ağ; doğrulama 2.6). Test `tests/test_cfd_mesh.py`.
   - 2.5b ⏳ `cfMesh` (`cartesianMesh`, ESI imajında hazır; daha az ayar, sınır
     tabakasını kendisi ekler) — NLGEOM gibi seçilebilir ikinci mesh'leyici.
   - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.

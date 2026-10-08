@@ -22,7 +22,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-PatchKind = Literal["inlet", "outlet", "wall", "symmetry", "empty"]
+#: ``slip``: kaymalı duvar (tünel yanları; mesh yaması ``patch`` türünde kalır).
+PatchKind = Literal["inlet", "outlet", "wall", "slip", "symmetry", "empty"]
 TurbulenceModel = Literal["laminar", "kOmegaSST"]
 
 #: k-ω SST için ω = √k / (Cμ^¼ · L)
@@ -208,6 +209,8 @@ def _u_file(p: CfdCaseParams) -> str:
             body = {"type": "zeroGradient"}
         elif patch.kind == "wall":
             body = {"type": "noSlip"}
+        elif patch.kind == "slip":
+            body = {"type": "slip"}
         else:
             body = {"type": patch.kind}
         rows.append((patch.name, body))
@@ -219,7 +222,7 @@ def _p_file(p: CfdCaseParams) -> str:
     for patch in p.patches:
         if patch.kind == "outlet":
             body = {"type": "fixedValue", "value": f"uniform {_num(patch.pressure)}"}
-        elif patch.kind in ("inlet", "wall"):
+        elif patch.kind in ("inlet", "wall", "slip"):
             body = {"type": "zeroGradient"}
         else:
             body = {"type": patch.kind}
@@ -240,7 +243,7 @@ def _turbulence_files(p: CfdCaseParams) -> dict[str, str]:
         for patch in p.patches:
             if patch.kind == "inlet":
                 body = {"type": "fixedValue", "value": f"uniform {_num(inlets[patch.name][inlet_idx])}"}
-            elif patch.kind == "outlet":
+            elif patch.kind in ("outlet", "slip"):
                 body = {"type": "zeroGradient"}
             elif patch.kind == "wall":
                 body = {"type": wall, "value": f"uniform {_num(internal)}"}

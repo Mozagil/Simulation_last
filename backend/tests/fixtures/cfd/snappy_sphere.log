@@ -1,0 +1,31 @@
+Initial mesh : cells:3920  faces:12516  points:4725
+Snapped mesh : cells:10312  faces:33540  points:13214
+Mesh with layers : cells:12544  faces:40884  points:16100
+
+patch faces        layers        overall thickness
+              target   mesh     [m]       [%]
+----- -----    -----    ----     ---       ---
+body 744      3        3        0.00474   100     
+
+Layer mesh : cells:12544  faces:40884  points:16100
+Cells per refinement level:
+    0	3744
+    1	1104
+    2	1688
+    3	6008
+Writing mesh to time constant
+Wrote mesh in = 0.04 s.
+Layers added in = 0.16 s.
+Checking final mesh ...
+Checking faces in error :
+    non-orthogonality > 65  degrees                        : 0
+    faces with face pyramid volume < 1e-13                 : 0
+    faces with face-decomposition tet quality < 1e-15      : 0
+    faces with concavity > 80  degrees                     : 0
+    faces with skewness > 4   (internal) or 20  (boundary) : 0
+    faces with interpolation weights (0..1)  < 0.05        : 0
+    faces with volume ratio of neighbour cells < 0.01      : 0
+    faces with face twist < 0.02                           : 0
+    faces on cells with determinant < 0.001                : 0
+Finished meshing without any errors
+Finished meshing in = 1.12 s.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -24,6 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from sqlalchemy.orm import Session
 
+from app.api.cfd_mesh import mesh_dir, read_mesh_meta
 from app.api.cfd_runs import record_from_meta
 from app.db.session import SessionLocal, get_db
 from app.jobs.progress import get_hub
@@ -48,18 +50,20 @@ class CfdSolveRequest(BaseModel):
     #: Koşu adı (geçmiş listesinde) ve isteğe bağlı geometri bağı.
     name: str | None = Field(None, max_length=200)
     geometry_id: int | None = None
-    #: Mesh — ikisinden biri: parametrik kanal (2.3) ya da ham blockMeshDict metni.
-    #: Yama adları case.patches ile aynı olmalı (kanal: inlet, outlet, walls, frontAndBack).
+    #: Mesh — üçünden biri: parametrik kanal (2.3), ham blockMeshDict metni ya da
+    #: /cfd/mesh ile üretilmiş ağ (2.5, ``mesh_id``). Yama adları case.patches ile
+    #: aynı olmalı (kanal: inlet, outlet, walls, frontAndBack; tünel: mesh yama listesi).
     channel: ChannelMeshParams | None = None
     block_mesh_dict: str | None = Field(None, min_length=1)
+    mesh_id: str | None = None
     run_solver: bool = True
     #: True: istek koşu bitene kadar bekler (test / betik). False: arka plan.
     wait: bool = False
 
     @model_validator(mode="after")
     def _one_mesh(self) -> "CfdSolveRequest":
-        if (self.channel is None) == (self.block_mesh_dict is None):
-            raise ValueError("Mesh için 'channel' ya da 'block_mesh_dict' alanlarından tam biri verilmeli.")
+        if sum(x is not None for x in (self.channel, self.block_mesh_dict, self.mesh_id)) != 1:
+            raise ValueError("Mesh için 'channel', 'block_mesh_dict' ya da 'mesh_id' alanlarından tam biri verilmeli.")
         if self.channel is not None:
             mesh_patches = {"inlet", "outlet", "walls", "frontAndBack"}
             extra = sorted({p.name for p in self.case.patches} - mesh_patches)
@@ -206,18 +210,33 @@ def cfd_solve(
 ) -> dict[str, Any]:
     job_id = str(uuid.uuid4())
     case_dir = _job_dir(job_id) / "case"
+    mesh_meta: dict[str, Any] | None = None
+    if body.mesh_id is not None:
+        mesh_meta = read_mesh_meta(body.mesh_id)
+        if mesh_meta is None or mesh_meta.get("status") != "meshed":
+            raise HTTPException(status_code=422, detail=f"Mesh hazır değil ya da yok: {body.mesh_id}")
+        extra = sorted({p.name for p in body.case.patches} - set(mesh_meta.get("patches") or []))
+        if extra:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Mesh'te olmayan yama: {', '.join(extra)} (mesh: {', '.join(mesh_meta.get('patches') or [])})",
+            )
     try:
         OpenFoamAdapter().build_input({"output_dir": str(case_dir), "case": body.case.model_dump()})
     except SolverError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    bmd = channel_block_mesh_dict(body.channel) if body.channel is not None else body.block_mesh_dict
-    (case_dir / "system" / "blockMeshDict").write_text(bmd or "", encoding="utf-8", newline="\n")
+    if mesh_meta is not None:
+        src = mesh_dir(body.mesh_id or "") / "case" / "constant" / "polyMesh"
+        shutil.copytree(src, case_dir / "constant" / "polyMesh", dirs_exist_ok=True)
+    else:
+        bmd = channel_block_mesh_dict(body.channel) if body.channel is not None else body.block_mesh_dict
+        (case_dir / "system" / "blockMeshDict").write_text(bmd or "", encoding="utf-8", newline="\n")
 
     image = resolve_openfoam_image()
     meta: dict[str, Any] = {
         "job_id": job_id,
         "name": body.name,
-        "geometry_id": body.geometry_id,
+        "geometry_id": body.geometry_id if body.geometry_id is not None else (mesh_meta or {}).get("geometry_id"),
         "case": body.case.model_dump(),
         "status": "case_only",
         "message": "case yazıldı",
@@ -229,6 +248,13 @@ def cfd_solve(
         "forces": body.case.forces.model_dump() if body.case.forces is not None else None,
         "mesh": {"kind": "channel", **body.channel.model_dump(), "cells": body.channel.cell_count}
         if body.channel is not None
+        else {
+            "kind": "snappy",
+            "mesh_id": body.mesh_id,
+            "cells": (mesh_meta.get("check") or {}).get("cells"),
+            "tunnel": mesh_meta.get("tunnel"),
+        }
+        if mesh_meta is not None
         else {"kind": "block_mesh_dict"},
         "reference": _channel_reference(body),
         "openfoam_image": image,
