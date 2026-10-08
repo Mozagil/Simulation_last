@@ -1387,7 +1387,9 @@ p {
   border-radius: var(--radius-md);
   background: var(--surface);
   text-align: left;
-  overflow: hidden;
+  /* Çok parametreli şablonda (roket: 13 alan) form sığmazsa kaydırılır. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .geo-upload-columns .template-panel .material-assignments-title {
@@ -1400,8 +1402,9 @@ p {
 }
 
 .geo-upload-columns .template-schematic {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 1 0 auto;
+  /* Şema alan çoğalınca 0 yüksekliğe çökmesin (roket şablonu). */
+  min-height: 84px;
   max-height: 120px;
   margin: 0;
   padding: 4px 6px;

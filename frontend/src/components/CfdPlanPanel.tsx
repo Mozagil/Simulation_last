@@ -18,11 +18,13 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "2.9", title: "CFD DOE + ML", what: "En sonda — crash ve durability ML tezgahı deseniyle.", status: "plan" },
 ];
 
-const DECIDED = ["OpenFOAM dağıtımı: ESI (openfoam.com) — resmi Docker imajı opencfd/openfoam-default:2412 (2026-10-08)."];
-
-const DECISIONS = [
-  "İlk hedef vaka: iç akış (boru / kanal — basınç düşümü) ya da dış akış (silindir / küre — Cd, Cl).",
+const DECIDED = [
+  "OpenFOAM dağıtımı: ESI (openfoam.com) — resmi Docker imajı opencfd/openfoam-default:2412 (2026-10-08).",
+  "Kapsam: iç akış + dış akış + aerodinamik; akademik roket yarışmaları için roket modülü (R1–R6) (2026-10-08).",
+  "Çözücüler: simpleFoam · rhoSimpleFoam · rhoCentralFoam — NLGEOM gibi seçilebilir, otomatik seçim yok (2026-10-08).",
 ];
+
+const DECISIONS: string[] = [];
 
 export default function CfdPlanPanel() {
   return (
@@ -30,8 +32,9 @@ export default function CfdPlanPanel() {
       <span className="eyebrow">Faz 2 · OpenFOAM</span>
       <h1>Akış (CFD)</h1>
       <p className="lead material-lead">
-        Akış analizi Faz 2'de adım adım geliyor. Şimdilik 1 · Geometry ve 2 · Mesh diğer analizlerle ortak; çözücü
-        henüz bağlı değil. Aşağıdaki plan veri olarak gösterilir.
+        Akış analizi Faz 2'de adım adım geliyor. Sunucu tarafı çalışıyor (OpenFOAM koşusu, kanal ve rüzgâr tüneli
+        mesh'i, kuvvet / katsayı okuma, koşu kaydı); bu sekmenin çözüm adımları 2.7'de gelecek. 1 · Geometry'de roket
+        şablonu var. Plan veri olarak aşağıda.
       </p>
       <p className="crash-expert-title">Kararlar</p>
       <ul className="cfd-decisions">
@@ -41,7 +44,7 @@ export default function CfdPlanPanel() {
           </li>
         ))}
       </ul>
-      <p className="crash-expert-title">Açık kararlar</p>
+      {DECISIONS.length > 0 && <p className="crash-expert-title">Açık kararlar</p>}
       <ul className="cfd-decisions">
         {DECISIONS.map((d) => (
           <li key={d}>{d}</li>

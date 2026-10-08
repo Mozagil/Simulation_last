@@ -3,14 +3,15 @@ import { describe, expect, it } from "vitest";
 import CfdPlanPanel from "./CfdPlanPanel";
 
 describe("CfdPlanPanel (AKIŞ sekmesi iskeleti)", () => {
-  it("Faz 2 planını ve açık kararları veri olarak gösterir; çözücü bağlı değil", () => {
+  it("Faz 2 planını ve verilen kararları veri olarak gösterir", () => {
     render(<CfdPlanPanel />);
     expect(screen.getByRole("heading", { name: "Akış (CFD)" })).toBeInTheDocument();
     expect(screen.queryAllByText("karar bekliyor")).toHaveLength(0);
     expect(screen.getAllByText("tamam")).toHaveLength(7);
-    expect(screen.getByText("verildi")).toBeInTheDocument();
+    expect(screen.getAllByText("verildi")).toHaveLength(3);
     expect(screen.getByText("Case yazıcı")).toBeInTheDocument();
     expect(screen.getByText(/OpenFOAM dağıtımı: ESI/)).toBeInTheDocument();
-    expect(screen.getByText(/İlk hedef vaka/)).toBeInTheDocument();
+    expect(screen.getByText(/iç akış \+ dış akış/)).toBeInTheDocument();
+    expect(screen.queryByText("Açık kararlar")).toBeNull();
   });
 });
