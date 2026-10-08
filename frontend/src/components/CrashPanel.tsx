@@ -252,6 +252,7 @@ export default function CrashPanel({
   const [hgHf, setHgHf] = useState("");
   const [hgHr, setHgHr] = useState("");
   const [hgSolid, setHgSolid] = useState("");
+  const [expertOpen, setExpertOpen] = useState(false);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -433,6 +434,16 @@ export default function CrashPanel({
   const contactsState: GroupState = contactsMissing.length ? `${contactsMissing.length} eksik` : contacts.length ? "hazır" : "isteğe bağlı";
   const readyCount = [impactState, partsState, contactsState].filter((st) => !st.endsWith("eksik")).length;
   // --- viewport işaretleri: panel değişince App'e bildir ---
+  // Uzman ayarları özeti: yalnız değiştirilen alanlar (boş = varsayılan).
+  const expertSet = (
+    isShell
+      ? ([["Ishell", ishell], ["Ish3n", ish3n], ["Ismstr", shellIsmstr], ["N", shellNip], ["Hm", hgHm], ["Hf", hgHf], ["Hr", hgHr]] as const)
+      : ([["Isolid", isolid === "1" ? "" : isolid], ["Ismstr", ismstr], ["NIP", nip === "1" ? "" : nip], ["h", hgSolid]] as const)
+  ).filter(([, v]) => v.trim() !== "");
+  const expertChanged = expertSet.length > 0;
+  const expertSummary = expertChanged
+    ? expertSet.map(([k, v]) => `${k} ${v}`).join(" · ")
+    : "Eleman formülasyonu, hourglass · hepsi varsayılan";
   const anyMoving = partOptions.some((pid) => roleOfPart(pid) === "moving");
   const markers: CrashMarkers = {
     wall: impactMode === "wall" && wallXYZ && dirOk ? { point: wallXYZ, normal: dirVec as [number, number, number] } : null,
@@ -871,6 +882,127 @@ export default function CrashPanel({
         )}
       </section>
 
+      <section className="crash-acc crash-expert" aria-label="Uzman ayarları">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={expertOpen}
+          onClick={() => setExpertOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="8" cy="8" r="2.2" />
+              <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Uzman ayarları</strong>
+            <span className="crash-acc-summary">{expertSummary}</span>
+          </span>
+          <span className={expertChanged ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {expertChanged ? "değiştirildi" : "varsayılan"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{expertOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!expertOpen}>
+          {hgRatio != null && (
+            <div className="crash-hg-line" data-testid="crash-hg-line">
+              <span>
+                Son koşu: HG/IE <strong>%{(hgRatio * 100).toFixed(1)}</strong> (kayıtlı değer)
+              </span>
+              <button
+                type="button"
+                className="crash-link-btn"
+                onClick={() => document.getElementById("crash-expert-hourglass")?.scrollIntoView({ block: "center" })}
+              >
+                hourglass alanları ↓
+              </button>
+            </div>
+          )}
+          <p className="crash-behavior-hint">
+            Boş alan = OpenRadioss varsayılanı. Elemanın nasıl hesaplandığı ve "kum saati" (hourglass)
+            kontrolü: indirgenmiş integrasyonlu elemanlarda enerji yemeyen sahte zikzak deformasyonu bastırır.
+          </p>
+          {isShell ? (
+            <>
+              <p className="crash-expert-title">
+                Eleman · kabuk <Kw card="/PROP/TYPE1" />
+              </p>
+              <div className="crash-expert-grid cols-4">
+              <label className="crash-expert-field">
+                <span>Ishell</span>
+                <input aria-label="Ishell" placeholder="varsayılan" value={ishell} disabled={busy} onChange={(e) => setIshell(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ish3n</span>
+                <input aria-label="Ish3n" placeholder="varsayılan" value={ish3n} disabled={busy} onChange={(e) => setIsh3n(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ismstr</span>
+                <input aria-label="Ismstr (kabuk)" placeholder="varsayılan" value={shellIsmstr} disabled={busy} onChange={(e) => setShellIsmstr(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>N</span>
+                <input aria-label="N" placeholder="varsayılan" value={shellNip} disabled={busy} onChange={(e) => setShellNip(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-behavior-hint">
+                Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı). 0 = Radioss /DEF_SHELL varsayılanı.
+                N: 0, 1 ya da 3…10.
+              </p>
+              <p className="crash-expert-title" id="crash-expert-hourglass">
+                Hourglass · 0…0.05
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>Hm membran</span>
+                <input aria-label="Hourglass Hm" placeholder="0.01" value={hgHm} disabled={busy} onChange={(e) => setHgHm(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Hf düzlem dışı</span>
+                <input aria-label="Hourglass Hf" placeholder="0.01" value={hgHf} disabled={busy} onChange={(e) => setHgHf(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Hr dönme</span>
+                <input aria-label="Hourglass Hr" placeholder="0.01" value={hgHr} disabled={busy} onChange={(e) => setHgHr(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-behavior-hint">Ishell 1–4 hourglass formülasyonlarında etkili.</p>
+            </>
+          ) : (
+            <>
+              <p className="crash-expert-title">
+                Eleman · solid <Kw card="/PROP/TYPE14" />
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>Isolid</span>
+                <input aria-label="Isolid" placeholder="1" value={isolid} disabled={busy} onChange={(e) => setIsolid(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ismstr</span>
+                <input aria-label="Ismstr" placeholder="varsayılan" value={ismstr} disabled={busy} onChange={(e) => setIsmstr(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>NIP</span>
+                <input aria-label="NIP" placeholder="1" value={nip} disabled={busy} onChange={(e) => setNip(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-expert-title" id="crash-expert-hourglass">
+                Hourglass · 0…0.15
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>h viskozite</span>
+                <input aria-label="Hourglass h" placeholder="0.10" value={hgSolid} disabled={busy} onChange={(e) => setHgSolid(e.target.value)} />
+              </label>
+              </div>
+            </>
+          )}
+          <p className="crash-behavior-hint">Çıktı (kayıt aralığı, kesit kuvveti, CFC): 5 · Sonuçlar → Çıktı.</p>
+        </div>
+      </section>
+
       {blockers.length > 0 && (
         <div className="crash-blockers" role="status" data-testid="crash-blockers">
           {blockers.map((b) => (
@@ -920,91 +1052,6 @@ export default function CrashPanel({
         />
       )}
 
-      <details className="crash-advanced">
-        <summary>Uzman ayarları — eleman formülasyonu, hourglass</summary>
-        {hgRatio != null && (
-          <p className="crash-hg-line" data-testid="crash-hg-line">
-            Son koşu: HG/IE <strong>%{(hgRatio * 100).toFixed(1)}</strong> (kayıtlı değer)
-          </p>
-        )}
-        <p className="crash-behavior-hint">Boş alan = OpenRadioss varsayılanı.</p>
-        <p className="crash-behavior-hint">
-          Elemanın nasıl hesaplandığı (Ishell/Isolid) ve "kum saati" kontrolü (hourglass: indirgenmiş
-          integrasyonlu elemanlarda sahte, enerji yemeyen zikzak deformasyonu bastırır). Sonuçlarda
-          HG/IE oranı %5'i aşıyorsa buraya bakılır.
-        </p>
-      {isShell ? (
-        <>
-          <p className="material-assignments-title">Kabuk — <Kw card="/PROP/TYPE1" /></p>
-          <div className="mesh-grid">
-            <label className="mesh-field">
-              <span>Ishell</span>
-              <input placeholder="varsayılan" value={ishell} onChange={(e) => setIshell(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Ish3n</span>
-              <input placeholder="varsayılan" value={ish3n} onChange={(e) => setIsh3n(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Ismstr (kabuk)</span>
-              <input placeholder="varsayılan" value={shellIsmstr} onChange={(e) => setShellIsmstr(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>N</span>
-              <input placeholder="varsayılan" value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
-            </label>
-          </div>
-          <p className="material-assignments-title">Hourglass kontrolü — <Kw card="/PROP/TYPE1" /></p>
-          <div className="mesh-grid">
-            <label className="mesh-field">
-              <span>Hm</span>
-              <input aria-label="Hourglass Hm" placeholder="varsayılan" value={hgHm} onChange={(e) => setHgHm(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Hf</span>
-              <input aria-label="Hourglass Hf" placeholder="varsayılan" value={hgHf} onChange={(e) => setHgHf(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Hr</span>
-              <input aria-label="Hourglass Hr" placeholder="varsayılan" value={hgHr} onChange={(e) => setHgHr(e.target.value)} />
-            </label>
-          </div>
-          <p className="material-assign-hint">
-            Hm membran, Hf düzlem dışı, Hr dönme katsayısı; aralık 0…0.05, 0 = Radioss
-            varsayılanı (0.01). Ishell 1–4 hourglass formülasyonlarında etkili.
-          </p>
-          <p className="material-assign-hint">
-            Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı); burada yalnız
-            gösterilir. Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
-          </p>
-        </>
-      ) : (
-        <>
-        <p className="material-assignments-title">Eleman — <Kw card="/PROP/TYPE14" /></p>
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>Isolid</span>
-            <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Ismstr</span>
-            <input placeholder="varsayılan" value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>NIP</span>
-            <input value={nip} onChange={(e) => setNip(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>h (hourglass)</span>
-            <input aria-label="Hourglass h" placeholder="varsayılan" value={hgSolid} onChange={(e) => setHgSolid(e.target.value)} />
-          </label>
-        </div>
-        <p className="material-assign-hint">
-          h: hourglass viskozite katsayısı, aralık 0…0.15, 0 = Radioss varsayılanı (0.10).
-        </p>
-        </>
-      )}
-      </details>
 
       </>
       )}

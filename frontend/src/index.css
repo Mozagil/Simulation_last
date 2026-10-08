@@ -7713,11 +7713,97 @@ p {
 }
 
 .crash-hg-line {
-  margin: 6px 0;
-  padding: 6px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  padding: 7px 10px;
   font-size: 12px;
   color: var(--ink);
+  background: var(--doe-warn-bg, #f6ecdc);
+  border: 1px solid color-mix(in srgb, var(--doe-warn, #8a5a1f) 35%, var(--border));
+  border-radius: 6px;
+}
+
+.crash-link-btn {
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Uzman ayarları (Claude Design taslağı B) */
+.crash-acc-gear {
+  color: var(--muted);
   background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.crash-expert .crash-acc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-expert .crash-acc-body[hidden] {
+  display: none;
+}
+
+.crash-expert-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 6px 0 0;
+  font-family: "Barlow Condensed", var(--font-sans, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-expert-title code {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.crash-expert-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.crash-expert-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.crash-expert-grid.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.crash-expert-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-expert-field input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -7782,4 +7868,12 @@ p {
 .kw-toggle.active .kw-toggle-state {
   background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
+}
+
+.crash-expert-title .kw {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
 }
