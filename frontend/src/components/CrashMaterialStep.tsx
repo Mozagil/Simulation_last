@@ -140,6 +140,9 @@ export default function CrashMaterialStep({
               OpenRadioss malzeme kartına giden değerler. Davranış modeli (3. grup) bunları kullanır; LAW2'de σy boşsa
               buradaki akma alınır.
             </p>
+            <button type="button" className="crash-law-jump" onClick={() => setOpen(3)}>
+              Malzeme modeli (LAW1 / LAW2 / LAW36) → 3. grupta seç · şu an: {behaviorSummary}
+            </button>
             <label className="crash-expert-field">
               <span>Malzeme</span>
               <select
@@ -236,8 +239,8 @@ export default function CrashMaterialStep({
         )}
       </section>
 
-      <section className="crash-acc" aria-label="Davranış ve kopma">
-        <Head n={3} title="Davranış ve kopma" summary={behaviorSummary} state="hazır" open={open === 3} onToggle={() => toggle(3)} />
+      <section className="crash-acc" aria-label="Malzeme modeli ve kopma">
+        <Head n={3} title="Malzeme modeli (LAW) ve kopma" summary={behaviorSummary} state="hazır" open={open === 3} onToggle={() => toggle(3)} />
         {open === 3 && (
           <div className="crash-acc-body">
             <CrashMaterialSection

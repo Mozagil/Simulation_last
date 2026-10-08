@@ -56,8 +56,8 @@ describe("CrashMaterialStep (3 · Material, BC gibi akordeon)", () => {
 
   it("davranış grubu malzeme modeli kartını içerir (varsayılan LAW2)", () => {
     render(<Harness assignments={[]} onAssign={() => undefined} />);
-    expect(screen.getByRole("button", { name: /Davranış ve kopma/ })).toHaveTextContent("elasto-plastik (LAW2) · kopma kapalı");
-    fireEvent.click(screen.getByRole("button", { name: /Davranış ve kopma/ }));
+    expect(screen.getByRole("button", { name: /Malzeme modeli \(LAW\) ve kopma/ })).toHaveTextContent("elasto-plastik (LAW2) · kopma kapalı");
+    fireEvent.click(screen.getByRole("button", { name: /Malzeme modeli \(LAW\) ve kopma/ }));
     expect(screen.getByRole("button", { name: "LAW2 plastik" })).toBeInTheDocument();
   });
 

@@ -17,7 +17,7 @@ import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
-import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
+import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -63,6 +63,13 @@ const DIR_PRESETS: { id: DirPreset; v: number[] }[] = [
   { id: "-Z", v: [0, 0, -1] },
   { id: "custom", v: [0, 0, 1] },
 ];
+
+/** Ürün ağacı (kullanıcı 2026-10-08: "sınır koşullarının hepsi ürün ağacında
+ * görünmeli"): 4 · Crash'teki tanımlar grup grup, tek satırlık özetlerle. */
+export interface CrashTreeGroup {
+  title: string;
+  rows: { label: string; value: string }[];
+}
 
 export const ROLE_OPTIONS: { id: PartRole; label: string; short: string; hint: string }[] = [
   { id: "moving", label: "Hareketli", short: "hareketli", hint: "Çarpma hızını alır; rijit duvarla temas eder." },
@@ -162,6 +169,7 @@ export default function CrashPanel({
   regions = [],
   material,
   onMarkersChange,
+  onTreeChange,
   onRequestPointPick,
   pickingPoint = false,
   view = "both",
@@ -195,6 +203,8 @@ export default function CrashPanel({
   };
   /** Viewport işaretleri (duvar düzlemi, hız oku, parça rol etiketleri). */
   onMarkersChange?: (markers: CrashMarkers | null) => void;
+  /** Ürün ağacına sınır koşulu satırları (çarpma, roller, temaslar, ek tanımlar). */
+  onTreeChange?: (groups: CrashTreeGroup[] | null) => void;
   /** "Modelden seç": viewport'ta tıklanan nokta geri verilir. */
   onRequestPointPick?: (done: (p: [number, number, number]) => void) => void;
   pickingPoint?: boolean;
@@ -485,6 +495,42 @@ export default function CrashPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markersKey]);
   useEffect(() => () => onMarkersChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const treeGroups: CrashTreeGroup[] = [
+    {
+      title: "Çarpma",
+      rows: [
+        {
+          label: impactMode === "wall" ? "Rijit duvar" : "Duvarsız",
+          value: impactMode === "wall" ? wallLabel(dirVec, wallXYZ) : "yalnız ilk hız",
+        },
+        ...(anyMoving ? [{ label: "İlk hız", value: `${speed} m/s · ${vecLabel(impactMode === "wall" ? approachDir : dirVec)}` }] : []),
+        { label: "Süre", value: `${tEnd} ms` },
+        ...(gravOn ? [{ label: "Yerçekimi", value: `${gravAccel} m/s² · ${gravDir}` }] : []),
+      ],
+    },
+    {
+      title: "Parça rolleri",
+      rows: partOptions.map((pid) => ({ label: `Parça #${pid}`, value: ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short })),
+    },
+    {
+      title: "Temaslar",
+      rows: contacts.map((c) => ({
+        label: `TYPE${c.type}`,
+        value: c.master === c.slave ? `#${c.master} kendi kendine` : `#${c.slave} → #${c.master}`,
+      })),
+    },
+    {
+      title: "Ek tanımlar",
+      rows: loadCards.map((c) => ({ label: CARD_LABEL[c.kind], value: cardSummary(c, impactAxis) })),
+    },
+  ];
+  const treeKey = JSON.stringify(treeGroups);
+  useEffect(() => {
+    onTreeChange?.(JSON.parse(treeKey) as CrashTreeGroup[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeKey]);
+  useEffect(() => () => onTreeChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const blockers = [
     ...(meshDimension !== 2 && meshDimension !== 3 ? ["Önce mesh üretin (2 · Mesh)"] : []),

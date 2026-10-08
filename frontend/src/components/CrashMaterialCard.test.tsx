@@ -81,3 +81,17 @@ describe("CrashMaterialCard", () => {
     expect(() => matCardPayload(s, "Parça #1")).toThrow(/Parça #1 c/);
   });
 });
+
+describe("CrashMaterialCard · LAW seçici (kullanıcı 2026-10-08)", () => {
+  it("seçili model ✓ ve 'Seçili:' satırıyla görünür; tıklayınca değişir", () => {
+    render(<Harness onState={() => undefined} />);
+    const law2 = screen.getByRole("button", { name: "LAW2 plastik" });
+    expect(law2).toHaveAttribute("aria-pressed", "true");
+    expect(law2).toHaveTextContent("✓");
+    expect(screen.getByTestId("crash-law-selected")).toHaveTextContent("Seçili: LAW2 elasto-plastik");
+    fireEvent.click(screen.getByRole("button", { name: "LAW1 elastik" }));
+    expect(screen.getByRole("button", { name: "LAW1 elastik" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "LAW2 plastik" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("crash-law-selected")).toHaveTextContent("Seçili: LAW1 elastik");
+  });
+});

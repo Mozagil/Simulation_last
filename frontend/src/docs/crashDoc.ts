@@ -64,11 +64,14 @@ export const CRASH_DOC: DocSection[] = [
     id: "ust",
     title: "Üst çubuk ve viewport düğmeleri",
     intro: "Crash ile ilgili genel düğmeler.",
+    image: IMG("14-agac-bc.jpg"),
+    imageCaption: "Ürün ağacı: Malzeme modeli ve Sınır koşulları (Çarpma · Parça rolleri · Temaslar · Ek tanımlar) — 4 · Crash ile birlikte güncellenir.",
     items: [
       { name: "SINIR KOŞ.", what: "Viewport'taki crash işaretlerini (duvar, hız oku, rol etiketleri) ve rol renklerini gösterir/gizler. Vurgulu = görünür." },
       { name: "Solid / Surface (KENARLAR)", what: "CAD geometrisini gösterir/gizler. Mesh sonrası CAD gizli gelir; düğme vurgulanınca görünür." },
       { name: "Rol renkleri", what: "Hareketli = altın, sabit = kırmızı, serbest = mor. Seçim vurgusu turuncu (karışmaz). 2D'de mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir." },
       { name: "LS-DYNA karşılıkları (⇄ düğmesi)", what: "Crash panelinin ve 3 · Material'ın sağ üstünde. Açıkken OpenRadioss kart adının altında yaklaşık LS-DYNA keyword'ü görünür. Kişisel tercih, tarayıcıda hatırlanır. Yalnız ad — LS-DYNA kullanılmaz." },
+      { name: "Ürün ağacı (sol)", what: "Geometri, bölgeler, parçalar ve mesh yanında crash kurulumunun tamamı: Malzeme modeli (ortak + parça başına LAW ve kopma) ve Sınır koşulları — Çarpma (rijit duvar / duvarsız, ilk hız, süre, yerçekimi), Parça rolleri, Temaslar, Ek tanımlar (kilit, kütle/kızak, sabit hız, ayrı ilk hız). 4 · Crash'te değişen her tanım ağaçta anında görünür; uzun satırın tamamı üzerine gelince." },
       { name: "+ Yeni crash vakası", what: "Hazır katalogdan geometri + kurulum + koşu tek seferde (bkz. Hazır senaryolar). Seçili senaryonun kendi şeması görünür." },
       { name: "Crash geçmişi (alt dock)", what: "Bu geometrinin (ya da tüm) koşuları: durum, tepe kuvvet, ▶ animasyon, 📈 eğri, ⊘ dışla, karşılaştır (≤ 6). Üst kenardan sürüklenerek boyutlanır (≤ pencerenin %60'ı)." },
     ],
@@ -78,7 +81,9 @@ export const CRASH_DOC: DocSection[] = [
     title: "3 · Material (crash)",
     intro:
       "Crash sekmesinde 3 · Material, BC paneli gibi üç akordeon grubudur: 1 Kütüphane malzemesi, 2 Parçalara ata, " +
-      "3 Davranış ve kopma. Sayaç eksik atamayı / kalınlığı gösterir; geometri ve mesh yokken atama grubu “bekliyor” der. " +
+      "3 Malzeme modeli (LAW) ve kopma. Sayaç eksik atamayı / kalınlığı gösterir; geometri ve mesh yokken atama grubu “bekliyor” der. " +
+      "Malzeme modeli 3. grupta üç kutucuktan biri tıklanarak seçilir; seçili kutu dolu renk ve ✓ ile, altındaki “Seçili:” satırıyla gösterilir. " +
+      "Seçim grup başlığında, 1. gruptaki “Malzeme modeli → 3. grupta seç” satırında ve ürün ağacındaki “Malzeme modeli” düğümünde de görünür. " +
       "Yalnız explicit'te kullanılan değerler gösterilir — çekme dayanımı (Rm), uzama ve S-N durability'nin malzeme adımındadır. " +
       "Elle kurulan koşuda varsayılan LAW2.",
     image: IMG("08b-kutuphane.png"),
@@ -91,6 +96,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "LAW36 eğrileri", what: "Kütüphane malzemesine kaydedilen ölçülmüş σ–ε eğrileri; LAW36 seçilince kullanılır.", card: "/MAT/LAW36" },
       { name: "+ Özel malzeme", what: "Yeni kütüphane malzemesi: ad, E, ν, ρ, akma. Crash'te Rm / S-N sorulmaz." },
       { name: "2 · Parçalara ata", what: "Parça satırı: atanan malzeme ve kabuk kalınlığı; “… ata” seçili kütüphane malzemesini o parçaya atar, “Tüm parçalara ata” hepsine. Altında bileşen (kalınlık / malzeme) düzenleme." },
+      { name: "Malzeme modeli seçici", what: "3. grupta LAW1 · LAW2 · LAW36 kutucukları; tıklanan seçilir (✓). “Seçili: LAW2 elasto-plastik” satırı ve ürün ağacı seçimi doğrular. Çok parçalı modelde Global / Ayrı ile parça başına ayrı model." },
       { name: "LAW1 elastik", what: "Doğrusal elastik; kalıcı şekil değiştirmez, enerji yutmaz (kutu ezilmez, seker).", when: "Dalga yayılımı (Hopkinson), rijit gibi davranması istenen parçalar, doğrulama (V1).", card: "/MAT/LAW1" },
       { name: "LAW2 plastik (Johnson–Cook)", what: "σ = a + b·εₚⁿ; isteğe bağlı hız terimi (C, ε̇₀) ve kopma (εp,max). Kalıcı şekil değiştirir, enerji yutar.", when: "Ezilen/deforme olan her metal parça — crash'in standart seçimi.", card: "/MAT/LAW2" },
       { name: "LAW36 tablo", what: "Ölçülmüş σ–ε eğrisi (hız başına ayrı eğri olabilir).", when: "Test eğrisi elindeyse.", card: "/MAT/LAW36" },
@@ -99,7 +105,8 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Parça başına model", what: "Çok parçalı modelde her parçaya ayrı kart (ör. küre LAW1, plaka LAW2)." },
     ],
     gallery: [
-      { src: IMG("08-malzeme.png"), caption: "3 Davranış ve kopma · LAW2: aç/kapa bölümler (Akma ve pekleşme, Hız etkisi, Sıcaklık, Basit kopma, Kopma / hasar); kapalıyken değiştirilen alanlar başlıkta özetlenir." },
+      { src: IMG("08c-law-secici.jpg"), caption: "3 Malzeme modeli (LAW) ve kopma: üç kutucuk, seçili olan ✓ ve “Seçili:” satırı; altında aç/kapa bölümler." },
+      { src: IMG("08-malzeme.png"), caption: "3 Malzeme modeli ve kopma · LAW2: aç/kapa bölümler (Akma ve pekleşme, Hız etkisi, Sıcaklık, Basit kopma, Kopma / hasar); kapalıyken değiştirilen alanlar başlıkta özetlenir." },
       { src: IMG("09-fail.png"), caption: "Kopma / hasar: Johnson–Cook ve çekme gerinimi kartları; seçili kart mavi çerçeveli, alanları altında." },
     ],
   },

@@ -77,6 +77,8 @@ import CrashMaterialStep from "./components/CrashMaterialStep";
 import CfdPlanPanel from "./components/CfdPlanPanel";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
+import { matCardSummary } from "./components/CrashMaterialSection";
+import type { CrashTreeGroup } from "./components/CrashPanel";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
 import CrashModelPanel from "./components/CrashModelPanel";
@@ -379,6 +381,7 @@ function App() {
   const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
   // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
+  const [crashTree, setCrashTree] = useState<CrashTreeGroup[] | null>(null);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
@@ -3491,6 +3494,67 @@ function App() {
             {meshResult ? `${meshResult.element_scheme} · ${meshResult.element_size} mm` : "—"}
           </span>
         </div>
+        {analysisTab === "crash" && (
+          <>
+            <div className="model-tree-row model-tree-depth-1">
+              <span>Malzeme modeli</span>
+            </div>
+            <div className="model-tree-row model-tree-depth-2" title={matCardSummary(crashMatCard)}>
+              <span className="model-tree-leaf">{Object.keys(crashPartCards).length ? "Ortak" : "Tüm parçalar"}</span>
+              <span className="model-tree-value model-tree-value-fit" data-testid="tree-crash-law">
+                {matCardSummary(crashMatCard)}
+              </span>
+            </div>
+            {Object.entries(crashPartCards).map(([pid, card]) => (
+              <div className="model-tree-row model-tree-depth-2" key={pid} title={matCardSummary(card)}>
+                <span className="model-tree-leaf">Parça #{pid}</span>
+                <span className="model-tree-value model-tree-value-fit">{matCardSummary(card)}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {(() => {
+          // Kullanıcı 2026-10-08: sınır koşullarının hepsi ürün ağacında.
+          const groups: CrashTreeGroup[] =
+            analysisTab === "crash"
+              ? (crashTree ?? [])
+              : analysisTab === "cfd"
+                ? []
+                : [{ title: "", rows: bcList.map((b) => ({ label: BC_KIND_LABELS[b.kind] ?? b.kind, value: b.summary })) }];
+          const count = groups.reduce((n, g) => n + g.rows.length, 0);
+          if (analysisTab === "cfd") return null;
+          return (
+            <>
+              <div className="model-tree-row model-tree-depth-1">
+                <span>Sınır koşulları</span>
+                <span className="model-tree-value" data-testid="tree-bc-count">{count || "—"}</span>
+              </div>
+              {groups.map((g) =>
+                g.title ? (
+                  <div key={g.title}>
+                    <div className="model-tree-row model-tree-depth-2">
+                      <span className="model-tree-leaf">{g.title}</span>
+                      <span className="model-tree-value">{g.rows.length || "—"}</span>
+                    </div>
+                    {g.rows.map((row, i) => (
+                      <div className="model-tree-row model-tree-depth-3" key={i} title={`${row.label} · ${row.value}`}>
+                        <span className="model-tree-leaf">{row.label}</span>
+                        <span className="model-tree-value model-tree-value-fit">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  g.rows.map((row, i) => (
+                    <div className="model-tree-row model-tree-depth-2" key={i} title={row.value}>
+                      <span className="model-tree-leaf">{row.label}</span>
+                      <span className="model-tree-value model-tree-value-fit">{row.value}</span>
+                    </div>
+                  ))
+                ),
+              )}
+            </>
+          );
+        })()}
       </div>
       <div
         className="resize-handle resize-handle-bottom"
@@ -5255,6 +5319,7 @@ function App() {
           onPartHover={setHoverPartId}
           regions={physicalGroups.map((g) => g.name)}
           onMarkersChange={setCrashMarkers}
+          onTreeChange={setCrashTree}
           pickingPoint={pickingPoint}
           onRequestPointPick={(done) => {
             pointPickDoneRef.current = done;

@@ -552,6 +552,20 @@ describe("CrashPanel", () => {
     );
   });
 
+  it("ürün ağacı: çarpma, parça rolleri, temaslar ve ek tanımlar bildirilir", async () => {
+    const onTreeChange = vi.fn();
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} onTreeChange={onTreeChange} />);
+    await waitFor(() => expect(onTreeChange).toHaveBeenCalled());
+    const groups = onTreeChange.mock.calls.at(-1)![0] as { title: string; rows: { label: string; value: string }[] }[];
+    expect(groups.map((g) => g.title)).toEqual(["Çarpma", "Parça rolleri", "Temaslar", "Ek tanımlar"]);
+    expect(groups[0].rows[0].label).toBe("Rijit duvar");
+    expect(groups[0].rows).toContainEqual({ label: "İlk hız", value: expect.stringContaining("10 m/s") });
+    expect(groups[1].rows).toEqual([
+      { label: "Parça #0", value: "hareketli" },
+      { label: "Parça #1", value: "hareketli" },
+    ]);
+  });
+
   it("dışarıda başlatılan senaryo koşusunu sonuç görünümünde izler", async () => {
     vi.mocked(fetchCrashJob).mockResolvedValue({
       job_id: "scn1",

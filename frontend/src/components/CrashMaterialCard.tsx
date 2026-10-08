@@ -1,6 +1,5 @@
 import { Fragment, useState, type ReactNode } from "react";
 import type { CrashModelPayload } from "../api/crash";
-import ButtonGroup from "./ButtonGroup";
 import { KwRef } from "./Kw";
 
 /** Malzeme kartı (1.14e): LAW1 / LAW2 (+ Johnson-Cook hız/sıcaklık) / LAW36 tablo
@@ -210,6 +209,12 @@ type ScalarKey = {
 }[keyof MatCardState];
 
 /** Kullanıcı 2026-10-07: "kopma / FAIL nedir, hangi senaryoda" — düz Türkçe açıklamalar. */
+const LAW_OPTIONS: { id: CrashLaw; card: string; name: string; aria: string }[] = [
+  { id: "elastic", card: "LAW1", name: "elastik", aria: "LAW1 elastik" },
+  { id: "plastic", card: "LAW2", name: "elasto-plastik", aria: "LAW2 plastik" },
+  { id: "tabulated", card: "LAW36", name: "tablolu eğri", aria: "LAW36 tablo" },
+];
+
 const LAW_HINT: Record<CrashLaw, string> = {
   elastic:
     "Elastik: malzeme yalnız yaylanır, yük kalkınca eski haline döner; kalıcı ezilme olmaz. Doğrulama koşuları ya da gerçekten esnek kalan parçalar (ör. rijit sayılan çarpıcı) için.",
@@ -309,14 +314,29 @@ export default function CrashMaterialCard({
 
   return (
     <div className="crash-mat-card" data-testid={testId}>
-      <ButtonGroup
-        title="LAW"
-        items={[
-          { key: "elastic", label: "LAW1 elastik", active: law === "elastic", disabled, onClick: () => set({ law: "elastic" }) },
-          { key: "plastic", label: "LAW2 plastik", active: law === "plastic", disabled, onClick: () => set({ law: "plastic" }) },
-          { key: "tabulated", label: "LAW36 tablo", active: law === "tabulated", disabled, onClick: () => set({ law: "tabulated" }) },
-        ]}
-      />
+      <p className="crash-expert-title">Malzeme modeli — birini seç</p>
+      <div className="crash-law-pick" role="group" aria-label="Malzeme modeli (LAW)">
+        {LAW_OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={law === o.id ? "crash-law-tile active" : "crash-law-tile"}
+            aria-label={o.aria}
+            aria-pressed={law === o.id}
+            disabled={disabled}
+            onClick={() => set({ law: o.id })}
+          >
+            <span className="crash-law-tile-check" aria-hidden="true">
+              {law === o.id ? "✓" : ""}
+            </span>
+            <strong>{o.card}</strong>
+            <span>{o.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="crash-law-selected" data-testid="crash-law-selected">
+        Seçili: <strong>{LAW_OPTIONS.find((o) => o.id === law)!.card}</strong> {LAW_OPTIONS.find((o) => o.id === law)!.name}
+      </p>
       <p className="crash-behavior-hint" data-testid="crash-law-hint">{LAW_HINT[law]}</p>
       <KwRef card={law === "elastic" ? "/MAT/LAW1" : law === "plastic" ? "/MAT/LAW2" : "/MAT/LAW36"} />
 

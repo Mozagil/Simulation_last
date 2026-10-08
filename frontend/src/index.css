@@ -390,6 +390,25 @@ p {
   color: var(--muted);
 }
 
+.model-tree-depth-3 {
+  padding-left: 52px;
+  color: var(--muted);
+}
+
+.model-tree-depth-3 .model-tree-leaf {
+  flex-shrink: 0;
+}
+
+/* Uzun özetler (sınır koşulu, malzeme modeli): satıra sığar, tamamı title'da. */
+.model-tree-value.model-tree-value-fit {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .model-tree-leaf {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8604,4 +8623,73 @@ p {
   flex-direction: column;
   gap: 2px;
   font-size: 13px;
+}
+
+/* Crash malzeme modeli seçici (kullanıcı 2026-10-08): üç kutucuk, seçili olan ✓ ile */
+.crash-law-pick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.crash-law-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+}
+
+.crash-law-tile strong {
+  font-size: 14px;
+}
+
+.crash-law-tile:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.crash-law-tile.active {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.crash-law-tile-check {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.crash-law-selected {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.crash-law-jump {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--hint-ink);
+  cursor: pointer;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
 }
