@@ -8502,3 +8502,28 @@ p {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   border-radius: 6px;
 }
+
+.docs-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.docs-pdf:hover {
+  background: var(--accent-hover);
+}
+
+.docs-pdf-warn {
+  font-size: 12px;
+  color: var(--hint-ink);
+}

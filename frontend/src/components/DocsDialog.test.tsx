@@ -48,3 +48,31 @@ describe("Belgeler · eğitim sayfası", () => {
     expect(screen.queryByTestId("train-T1")).toBeNull();
   });
 });
+
+describe("Belgeler · PDF indir", () => {
+  it("tam belge HTML'i: Türkçe, utf-8, taban adres, bölünmez görsel/kart kuralları, eğitim ve eşleme sayfaları", async () => {
+    const { buildDocsPdfHtml } = await import("./DocsDialog");
+    const html = buildDocsPdfHtml("http://localhost:5173");
+    expect(html).toContain('<html lang="tr">');
+    expect(html).toContain('<meta charset="utf-8">');
+    expect(html).toContain('<base href="http://localhost:5173/">');
+    expect(html).toContain("Eğitim testleri (T1–T18)");
+    expect(html).toContain("OpenRadioss ↔ LS-DYNA tablosu");
+    expect(html).toContain("page-break-inside: avoid");
+    expect(html).toContain("/docs/crash/01-genel.jpg");
+  });
+
+  it("gizli çerçevede yazdır başlatılır (açılır pencere yok)", async () => {
+    const { openDocsPdf } = await import("./DocsDialog");
+    const printSpy = vi.fn();
+    const before = document.querySelectorAll("iframe").length;
+    const obs = new MutationObserver(() => {
+      const f = document.querySelector("iframe");
+      if (f?.contentWindow) f.contentWindow.print = printSpy;
+    });
+    obs.observe(document.body, { childList: true });
+    expect(openDocsPdf()).toBe(true);
+    expect(document.querySelectorAll("iframe").length).toBe(before + 1);
+    obs.disconnect();
+  });
+});
