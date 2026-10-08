@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import type { CrashModelPayload } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
 import { KwRef } from "./Kw";
@@ -219,6 +219,39 @@ const LAW_HINT: Record<CrashLaw, string> = {
     "Tablolu eğri: ölçülmüş gerilme–plastik gerinim eğrilerini (farklı hızlarda) doğrudan kullanır. Elinde test eğrisi varsa.",
 };
 
+/** Aç / kapa bölüm (kullanıcı 2026-10-08: yer kaplamasın). Kapalıyken
+ * değiştirilen alanlar başlıkta özetlenir. İçerik DOM'da kalır (gizli). */
+function Fold({
+  title,
+  formula,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  formula?: string;
+  summary: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={open ? "crash-fold open" : "crash-fold"}>
+      <button type="button" className="crash-fold-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="crash-fold-chev" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        <strong>{title}</strong>
+        {formula && <span className="crash-formula">{formula}</span>}
+        <span className="crash-fold-summary">{summary}</span>
+      </button>
+      <div className="crash-fold-body" hidden={!open}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function CrashMaterialCard({
   value,
   onChange,
@@ -231,6 +264,12 @@ export default function CrashMaterialCard({
   testId?: string;
 }) {
   const set = (patch: Partial<MatCardState>) => onChange({ ...value, ...patch });
+  /** Varsayılandan farklı alanlar: "c 0.014 · ε̇₀ 1"; hiçbiri yoksa "varsayılan". */
+  const changed = (pairs: [ScalarKey, string][]) => {
+    const d = defaultMatCard();
+    const out = pairs.filter(([k]) => value[k].trim() !== "" && value[k] !== d[k]).map(([k, l]) => `${l} ${value[k]}`);
+    return out.length ? out.join(" · ") : "varsayılan";
+  };
   const field = (key: ScalarKey, label: string) => (
     <label className="mesh-field">
       <span>{label}</span>
@@ -283,7 +322,12 @@ export default function CrashMaterialCard({
 
       {law === "plastic" && (
         <div className="crash-law-sections">
-          <p className="crash-expert-title">Akma ve pekleşme <span className="crash-formula">σ = a + b·εₚⁿ</span></p>
+          <Fold
+            title="Akma ve pekleşme"
+            formula="σ = a + b·εₚⁿ"
+            summary={changed([["sigmaY", "a"], ["hardenB", "b"], ["hardenN", "n"], ["sigMax0", "SIG_max0"]])}
+            defaultOpen
+          >
           <p className="crash-behavior-hint">
             a = akma (boşsa kütüphane malzemesinin Rp0.2'si); b, n pekleşme — b büyüdükçe ezildikçe daha çok
             sertleşir. SIG_max0: gerilme tavanı (boş = yok).
@@ -294,8 +338,13 @@ export default function CrashMaterialCard({
             {xf("hardenB", "LAW2 b (MPa)", "b · pekleşme", "MPa")}
             {xf("hardenN", "LAW2 n", "n · üs")}
           </div>
+          </Fold>
 
-          <p className="crash-expert-title">Hız etkisi <span className="crash-formula">σ·(1 + c·ln(ε̇/ε̇₀))</span></p>
+          <Fold
+            title="Hız etkisi"
+            formula="σ·(1 + c·ln(ε̇/ε̇₀))"
+            summary={changed([["jcC", "c"], ["jcEps0", "ε̇₀"], ["jcIcc", "ICC"], ["jcFsmooth", "Fsmooth"], ["jcFcut", "F_cut"], ["jcChard", "Chard"]])}
+          >
           <p className="crash-behavior-hint">
             Metaller hızlı yüklemede sertleşir: σ × (1 + c·ln(ε̇/ε̇₀)). c = 0 → hız etkisi yok. Fsmooth / F_cut
             şekil değiştirme hızını süzer.
@@ -308,8 +357,9 @@ export default function CrashMaterialCard({
             {xf("jcFcut", "F_cut (Hz)", "F_cut", "Hz")}
             {xf("jcChard", "Chard", "Chard")}
           </div>
+          </Fold>
 
-          <p className="crash-expert-title">Sıcaklık etkisi</p>
+          <Fold title="Sıcaklık etkisi" summary={changed([["jcM", "m"], ["jcTmelt", "T_melt"], ["jcTr", "T_r"], ["jcRhoCp", "ρCp"]])}>
           <p className="crash-behavior-hint">
             Plastik iş ısıya döner, malzeme yumuşar: m üssü, erime ve referans sıcaklığı, ρ·Cp. Boş = sıcaklık
             etkisi yok.
@@ -320,14 +370,16 @@ export default function CrashMaterialCard({
             {xf("jcTr", "T_r (K)", "T_r · referans", "K")}
             {xf("jcRhoCp", "ρCp (J/m³K)", "ρ·Cp", "J/m³K")}
           </div>
+          </Fold>
 
-          <p className="crash-expert-title">Basit kopma sınırı</p>
+          <Fold title="Basit kopma sınırı" summary={changed([["epsPMax", "EPS_p_max"]])}>
           <p className="crash-behavior-hint">
             Bu plastik gerinime ulaşan eleman silinir (boş = kapalı). Daha ayrıntılı kopma için aşağıdaki /FAIL kartları.
           </p>
           <div className="crash-expert-grid cols-2">
             {xf("epsPMax", "EPS_p_max", "EPS_p_max · kopma gerinimi")}
           </div>
+          </Fold>
         </div>
       )}
 
@@ -412,9 +464,11 @@ export default function CrashMaterialCard({
       )}
 
       <div className="crash-law-sections">
-        <p className="crash-expert-title">
-          Kopma / hasar · /FAIL{failCount > 0 ? ` · ${failCount} kriter` : " · kapalı"}
-        </p>
+        <Fold
+          title="Kopma / hasar · /FAIL"
+          summary={failCount > 0 ? `${failCount} kriter: ${[j && "Johnson–Cook", t && "çekme gerinimi"].filter(Boolean).join(" + ")}` : "kapalı"}
+          defaultOpen={failCount > 0}
+        >
         <p className="crash-behavior-hint" data-testid="crash-fail-intro">
           Kapalıyken malzeme ne kadar uzarsa uzasın kopmaz — sac yırtılmaz, mermi delmez; yalnız ezilir ve
           bükülür. Açıkken kriteri sağlayan eleman silinir; silinen eleman sayısı sonuçlarda yazar. Tipik:
@@ -480,6 +534,7 @@ export default function CrashMaterialCard({
           )}
         </div>
         <p className="material-assign-hint">S_Flag: 0, 1, 11, 21 · Ifail: 0, 1, 2 (Radioss bayrakları; boş = varsayılan).</p>
+        </Fold>
       </div>
     </div>
   );
