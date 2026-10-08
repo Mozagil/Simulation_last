@@ -10,6 +10,7 @@
  * girer; öneri yok.
  */
 import { useState } from "react";
+import Kw from "./Kw";
 
 export type CardKind = "inivel" | "bcs" | "impvel" | "rbody";
 export type RbMotion = "rail" | "free" | "custom";
@@ -206,6 +207,7 @@ function KindIcon({ kind }: { kind: CardKind }) {
 }
 
 const ADD_ORDER: CardKind[] = ["bcs", "rbody", "impvel", "inivel"];
+const KIND_CARD: Record<CardKind, string> = { bcs: "/BCS", rbody: "/RBODY", impvel: "/IMPVEL", inivel: "/INIVEL" };
 
 export default function CrashLoadCards({
   cards,
@@ -333,6 +335,7 @@ export default function CrashLoadCards({
               {CARD_LABEL[k]}
             </span>
             <span className="crash-add-tile-when">{CARD_WHEN[k]}</span>
+            <Kw card={KIND_CARD[k]} />
           </button>
         ))}
       </div>

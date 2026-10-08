@@ -69,7 +69,11 @@ o an sunulabilir kalitede tasarlanır, "sonra güzelleştiririz" diye ertelenmez
    arayüz bunu soyutlar, üst katmanlar farkı bilmez. Aynı desen mesh aracı için de geçerli:
    `MesherAdapter` — bkz. `docs/ARCHITECTURE.md#geometri-ve-mesh`.
 2. **Ticari CAE yazılımı yok.** ANSYS, HyperMesh, LS-DYNA bu projede hiçbir yerde
-   kullanılmaz/önerilmez — ne kod içinde ne dokümantasyonda. Tamamen açık kaynak yığın.
+   kullanılmaz, kurulmaz, çağrılmaz, bağımlılık ya da girdi/çıktı formatı olmaz ve
+   önerilmez. Tamamen açık kaynak yığın. **Tek istisna (kullanıcı kararı 2026-10-08):**
+   arayüzde ve dokümanda OpenRadioss kartının yanında bilgi amaçlı, yaklaşık ("≈")
+   LS-DYNA keyword adı gösterilebilir (`frontend/src/lib/dynaKeywords.ts`, kullanıcı
+   tercihiyle açılıp kapanır) — yalnız ad, işlev değil.
    Kod hiçbir noktada "kullanıcının makinesinde X kurulu" varsayımı yapmaz. Solver/mesh
    çağrıları sadece backend/worker sürecinde, sunucu tarafında olur. Detay: `docs/LICENSING.md`
    (özellikle OpenRadioss'un AGPL lisansının SaaS kullanımdaki etkisi için).

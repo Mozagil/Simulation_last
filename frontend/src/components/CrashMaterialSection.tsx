@@ -5,6 +5,7 @@
  */
 import type { Dispatch, SetStateAction } from "react";
 import CrashMaterialCard, { type MatCardState } from "./CrashMaterialCard";
+import { DynaToggle } from "./Kw";
 
 const LAW_NAME: Record<MatCardState["law"], string> = {
   elastic: "elastik (LAW1)",
@@ -42,6 +43,7 @@ export default function CrashMaterialSection({
         Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
         nasıl davranacağı seçilir: akınca ne olur, kopar mı.
       </p>
+      <DynaToggle />
       {partIds.length > 1 && (
         <div className="crash-mat-toggles">
           {partIds.map((pid) => (

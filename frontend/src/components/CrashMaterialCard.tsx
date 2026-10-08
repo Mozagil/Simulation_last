@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import type { CrashModelPayload } from "../api/crash";
 import ButtonGroup from "./ButtonGroup";
+import { KwRef } from "./Kw";
 
 /** Malzeme kartı (1.14e): LAW1 / LAW2 (+ Johnson-Cook hız/sıcaklık) / LAW36 tablo
  * ve /FAIL kriterleri. Alanlar ham metin; sayıya gönderimde çevrilir. Öneri yok:
@@ -267,6 +268,7 @@ export default function CrashMaterialCard({
         ]}
       />
       <p className="crash-behavior-hint" data-testid="crash-law-hint">{LAW_HINT[law]}</p>
+      <KwRef card={law === "elastic" ? "/MAT/LAW1" : law === "plastic" ? "/MAT/LAW2" : "/MAT/LAW36"} />
 
       {law === "plastic" && (
         <>
@@ -406,6 +408,7 @@ export default function CrashMaterialCard({
             onChange={(e) => set({ failJohnson: e.target.checked ? { ...JOHNSON_DEFAULT } : null })}
           />
           /FAIL/JOHNSON
+          <KwRef card="/FAIL/JOHNSON" />
         </label>
         <p className="crash-behavior-hint">
           Johnson-Cook hasarı: kopma gerinimi gerilme durumuna (çekme / kesme / bası), hıza ve sıcaklığa
@@ -432,6 +435,7 @@ export default function CrashMaterialCard({
             onChange={(e) => set({ failTens: e.target.checked ? { ...TENS_DEFAULT } : null })}
           />
           /FAIL/TENSSTRAIN
+          <KwRef card="/FAIL/TENSSTRAIN" />
         </label>
         <p className="crash-behavior-hint">
           Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir (çekme deneyindeki kopma uzaması).

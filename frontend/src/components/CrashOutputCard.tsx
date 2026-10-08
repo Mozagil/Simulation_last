@@ -1,4 +1,5 @@
 import type { CrashEnginePayload, CrashFilterPayload, CrashSectionPayload, CrashThPayload } from "../api/crash";
+import { KwRef } from "./Kw";
 
 /** Çıktı ve kontrol kartı (1.15d): engine aralıkları + zaman adımı (1.15a),
  * /TH grupları (1.15b), /SECT/PARAL kesitleri (1.15c). Alanlar ham metin;
@@ -174,6 +175,13 @@ function VarChips({
   );
 }
 
+const GROUP_CARD: Record<GroupKey, string> = {
+  rwall: "/TH/RWALL",
+  inter: "/TH/INTER",
+  part: "/TH/PART",
+  sect: "/TH/SECTIO",
+};
+
 const GROUP_LABELS: Record<GroupKey, string> = {
   rwall: "Rijit duvar — /TH/RWALL",
   inter: "Temas — /TH/INTER",
@@ -280,6 +288,7 @@ export default function CrashOutputCard({
                 onChange={(e) => setGroup(k, { enabled: e.target.checked })}
               />
               {GROUP_LABELS[k]}
+              <KwRef card={GROUP_CARD[k]} />
             </label>
             {value.groups[k].enabled && (
               <VarChips

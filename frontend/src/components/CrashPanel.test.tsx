@@ -93,8 +93,8 @@ describe("CrashPanel", () => {
     render(
       <CrashPanel geometryId={1} meshDimension={2} partIds={[0, 1]} componentThickness={{ 0: 3, 1: null }} />,
     );
-    expect(screen.getByText("Kabuk — /PROP/TYPE1")).toBeInTheDocument();
-    expect(screen.queryByText("Eleman — /PROP/TYPE14")).not.toBeInTheDocument();
+    expect(screen.getByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent === "Kabuk — /PROP/TYPE1"))).toBeInTheDocument();
+    expect(screen.queryByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent === "Eleman — /PROP/TYPE14"))).not.toBeInTheDocument();
     // kalınlık yalnız gösterilir (tek kaynak: ürün ağacı); girdi yok
     openGroup("Parçalar");
     expect(screen.getByTestId("crash-parts")).toHaveTextContent("t 3 mm");
@@ -122,7 +122,7 @@ describe("CrashPanel", () => {
       cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
     });
     render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} />);
-    expect(screen.getByText("Eleman — /PROP/TYPE14")).toBeInTheDocument();
+    expect(screen.getByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent === "Eleman — /PROP/TYPE14"))).toBeInTheDocument();
     expect(screen.queryByLabelText("Parça 0 t")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));

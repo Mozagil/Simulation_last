@@ -15,6 +15,7 @@ import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
+import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
@@ -567,6 +568,7 @@ export default function CrashPanel({
         Üç adım: her parçanın ne yaptığını seç, neye çarptığını seç, çalıştır. Önce mesh ve her
         parçaya malzeme gerekir (2 · Mesh, 3 · Material).
       </p>
+      <DynaToggle />
       {meshDimension !== 2 && meshDimension !== 3 && (
         <p className="material-assign-hint">Mesh yok — crash 3D (solid) ya da 2D (kabuk) mesh ister.</p>
       )}
@@ -609,7 +611,7 @@ export default function CrashPanel({
             </div>
             <div className="crash-field-label">
               <span>{impactMode === "wall" ? "Duvarın baktığı yön" : "Hız yönü"}</span>
-              <code>{impactMode === "wall" ? "/RWALL normal" : "/INIVEL"}</code>
+              {impactMode === "wall" ? <Kw card="/RWALL" text="/RWALL normal" /> : <Kw card="/INIVEL" />}
             </div>
             <div className="crash-dir-buttons" role="radiogroup" aria-label={impactMode === "wall" ? "Duvarın baktığı yön" : "Hız yönü"}>
               {DIR_PRESETS.map((d) => (
@@ -649,7 +651,7 @@ export default function CrashPanel({
               <>
                 <div className="crash-field-label">
                   <span>Duvar konumu</span>
-                  <code>/RWALL nokta</code>
+                  <Kw card="/RWALL" text="/RWALL nokta" />
                 </div>
                 <div className="crash-unit-row">
                   <UnitField label="Duvar konumu" hideLabel unit="mm" wide value={wallPoint} onChange={setWallPoint} disabled={busy} placeholder="0, 0, 0" />
@@ -669,6 +671,7 @@ export default function CrashPanel({
             <label className="crash-grav-check">
               <input type="checkbox" checked={gravOn} disabled={busy} onChange={(e) => setGravOn(e.target.checked)} />
               <span>yerçekimi</span>
+              <KwRef card="/GRAV" />
             </label>
             {gravOn && (
               <div className="crash-unit-row">
@@ -796,6 +799,7 @@ export default function CrashPanel({
                             </button>
                           ))}
                         </span>
+                        <KwRef card={`/INTER/TYPE${c.type}`} />
                         <button
                           type="button"
                           className="crash-contact-remove"
@@ -931,7 +935,7 @@ export default function CrashPanel({
         </p>
       {isShell ? (
         <>
-          <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
+          <p className="material-assignments-title">Kabuk — <Kw card="/PROP/TYPE1" /></p>
           <div className="mesh-grid">
             <label className="mesh-field">
               <span>Ishell</span>
@@ -950,7 +954,7 @@ export default function CrashPanel({
               <input placeholder="varsayılan" value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
             </label>
           </div>
-          <p className="material-assignments-title">Hourglass kontrolü — /PROP/TYPE1</p>
+          <p className="material-assignments-title">Hourglass kontrolü — <Kw card="/PROP/TYPE1" /></p>
           <div className="mesh-grid">
             <label className="mesh-field">
               <span>Hm</span>
@@ -976,7 +980,7 @@ export default function CrashPanel({
         </>
       ) : (
         <>
-        <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
+        <p className="material-assignments-title">Eleman — <Kw card="/PROP/TYPE14" /></p>
         <div className="mesh-grid">
           <label className="mesh-field">
             <span>Isolid</span>
