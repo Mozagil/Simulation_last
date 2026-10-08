@@ -237,7 +237,50 @@ class OpenFoamAdapter(SolverAdapter):
         log_path = Path(job.work_dir) / f"log.{app}"
         if not log_path.is_file():
             raise SolverError(f"Solver log'u yok: {log_path}")
-        return residual_result(parse_solver_log(log_path.read_text(encoding="utf-8", errors="replace")), log_path)
+        res = residual_result(parse_solver_log(log_path.read_text(encoding="utf-8", errors="replace")), log_path)
+        res.scalars.update(read_monitors(job.work_dir))
+        return res
+
+
+def _last_data_row(path: Path) -> list[str] | None:
+    rows = [ln for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip() and not ln.startswith("#")]
+    return rows[-1].split("	") if rows else None
+
+
+def read_monitors(case_dir: Path) -> dict[str, float]:
+    """İzleme fonksiyonlarının son değerleri (case yazıcının ``functions`` bloğu).
+
+    ``pAvg_<yama>`` → ``p_avg_<yama>`` (kinematik, m²/s²); ``uMax`` → ``u_max``.
+    Yeniden başlatmada birden çok zaman klasörü olursa en sonuncusu okunur.
+    """
+    out: dict[str, float] = {}
+    root = Path(case_dir) / "postProcessing"
+    if not root.is_dir():
+        return out
+    for fo in sorted(root.iterdir()):
+        times = sorted((d for d in fo.iterdir() if d.is_dir()), key=lambda d: float(d.name) if _is_float(d.name) else -1.0)
+        if not times:
+            continue
+        latest = times[-1]
+        if fo.name.startswith("pAvg_"):
+            f = latest / "surfaceFieldValue.dat"
+            row = _last_data_row(f) if f.is_file() else None
+            if row and len(row) >= 2:
+                out[f"p_avg_{fo.name[5:]}"] = float(row[1])
+        elif fo.name == "uMax":
+            f = latest / "fieldMinMax.dat"
+            row = _last_data_row(f) if f.is_file() else None
+            if row and len(row) >= 5:
+                out["u_max"] = float(row[4])
+    return out
+
+
+def _is_float(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
 
 
 def case_application(case_dir: Path) -> str:

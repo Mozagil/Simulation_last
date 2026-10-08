@@ -1468,8 +1468,15 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   iterasyon + residual'lar, 382 iterasyonda yakınsadı (~12 s). Yüzde = iterasyon /
   iterasyon sınırı (yakınsayınca erken biter). DB kaydı yok (2.4, ayrı onay).
   Test `tests/test_cfd_api.py` (sahte süreç + gerçek Docker).
-- 2.3 ⏳ İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
+- 2.3 ✅ (2026-10-08) İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
   basınç düşümü analitik değerle karşılaştırılır (V-C1, veri olarak).
+  **Sonuç:** `app/mesh/cfd_blockmesh.py` (parametrik kanal: L, H, D, nx/ny/nz, 2B/3B,
+  duvara sıklaşma; yamalar inlet/outlet/walls/frontAndBack; Poiseuille referansı),
+  case yazıcıda izleme fonksiyonları (`pAvg_<yama>` alan ortalaması p, `uMax`),
+  `read_monitors`; `/cfd/solve` `channel` alanı → Δp (kinematik + Pa) ve
+  `reference` (analitik / CFD / % fark). V-C1 (Re 10, L = 20H, 200×20 hücre,
+  643 iterasyon, ~7 s): Δp %+2.9 (girişteki gelişme bölgesi dahil, L_e ≈ 0.5H),
+  u_max %−0.5. Test `tests/test_cfd_channel.py`.
 - 2.4 ⏳ Sonuç okuma (`parse_results`): function object çıktıları (forces /
   forceCoeffs, patch ortalama basınç / debi), residual geçmişi →
   `ResultSet`; `cfd_runs` kaydı (şema ayrı onay).

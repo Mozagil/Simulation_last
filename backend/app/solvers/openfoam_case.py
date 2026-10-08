@@ -90,6 +90,8 @@ class CfdCaseParams(BaseModel):
     control: CfdControl = Field(default_factory=CfdControl)
     #: İç alanın başlangıç hızı (m/s)
     initial_velocity_m_s: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    #: Alan ortalaması basıncı izlenecek yamalar (2.3; ör. inlet, outlet → Δp).
+    monitor_patches: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _patches_ok(self) -> "CfdCaseParams":
@@ -97,6 +99,9 @@ class CfdCaseParams(BaseModel):
         dup = sorted({n for n in names if names.count(n) > 1})
         if dup:
             raise ValueError(f"Yama adları tekrar ediyor: {', '.join(dup)}")
+        unknown = sorted(set(self.monitor_patches) - set(names))
+        if unknown:
+            raise ValueError(f"İzlenen yama mesh yama listesinde yok: {', '.join(unknown)}")
         kinds = {p.kind for p in self.patches}
         if "inlet" not in kinds or "outlet" not in kinds:
             raise ValueError("En az bir giriş (inlet) ve bir çıkış (outlet) yaması gerekli.")
@@ -259,7 +264,43 @@ def _control_dict(p: CfdCaseParams) -> str:
         "timeFormat      general;\n"
         "timePrecision   6;\n"
         "runTimeModifiable true;\n"
+        f"{_functions(p)}"
     )
+
+
+def _functions(p: CfdCaseParams) -> str:
+    """İzleme fonksiyonları → postProcessing/<ad>/0/*.dat (sonuç okuma).
+
+    ``pAvg_<yama>``: yama alan ortalaması basınç; ``uMax``: alandaki en büyük |U|.
+    """
+    blocks = []
+    for name in p.monitor_patches:
+        blocks.append(
+            f"    pAvg_{name}\n    {{\n"
+            "        type            surfaceFieldValue;\n"
+            "        libs            (fieldFunctionObjects);\n"
+            "        writeControl    timeStep;\n"
+            "        writeInterval   1;\n"
+            "        log             false;\n"
+            "        writeFields     false;\n"
+            "        regionType      patch;\n"
+            f"        name            {name};\n"
+            "        operation       areaAverage;\n"
+            "        fields          (p);\n"
+            "    }"
+        )
+    blocks.append(
+        "    uMax\n    {\n"
+        "        type            fieldMinMax;\n"
+        "        libs            (fieldFunctionObjects);\n"
+        "        writeControl    timeStep;\n"
+        "        writeInterval   1;\n"
+        "        log             false;\n"
+        "        mode            magnitude;\n"
+        "        fields          (U);\n"
+        "    }"
+    )
+    return "\nfunctions\n{\n" + "\n\n".join(blocks) + "\n}\n"
 
 
 def _fv_schemes(p: CfdCaseParams) -> str:

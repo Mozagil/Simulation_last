@@ -1,12 +1,12 @@
 """CFD (OpenFOAM) koşu API'si — Faz 2.2.
 
-POST /cfd/solve    case parametreleri + blockMeshDict → iş klasörü, arka planda koşu
-GET  /cfd/jobs/{id} job.json + canlı residual geçmişi
+POST /cfd/solve    case parametreleri + mesh (kanal | blockMeshDict) → iş klasörü, arka planda koşu
+GET  /cfd/jobs/{id} job.json + canlı residual geçmişi (+ kanal: Poiseuille karşılaştırması)
 WS   /cfd/jobs/{id}/ws  ilerleme (iterasyon, yüzde, son residual'lar)
 
 Durability `/solve` ve crash yollarına dokunulmaz. Koşu kaydı (DB, `cfd_runs`)
 2.4'te ayrı onayla; şimdilik iş durumu `uploads/cfd/<job_id>/job.json`.
-Mesh şimdilik ham ``blockMeshDict`` metni olarak gelir — parametrik kanal 2.3'te,
+Mesh: parametrik kanal (2.3, ``channel``) ya da ham ``blockMeshDict`` metni;
 STEP → snappyHexMesh 2.5'te.
 """
 
@@ -20,9 +20,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.jobs.progress import get_hub
+from app.mesh.cfd_blockmesh import ChannelMeshParams, channel_block_mesh_dict, poiseuille_reference
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.openfoam import OpenFoamAdapter, SolverLog, residual_result, resolve_openfoam_image
 from app.solvers.openfoam_case import CfdCaseParams
@@ -40,11 +41,26 @@ _live: dict[str, dict[str, Any]] = {}
 
 class CfdSolveRequest(BaseModel):
     case: CfdCaseParams
-    #: Ham OpenFOAM blockMeshDict metni (yama adları case.patches ile aynı olmalı).
-    block_mesh_dict: str = Field(min_length=1)
+    #: Mesh — ikisinden biri: parametrik kanal (2.3) ya da ham blockMeshDict metni.
+    #: Yama adları case.patches ile aynı olmalı (kanal: inlet, outlet, walls, frontAndBack).
+    channel: ChannelMeshParams | None = None
+    block_mesh_dict: str | None = Field(None, min_length=1)
     run_solver: bool = True
     #: True: istek koşu bitene kadar bekler (test / betik). False: arka plan.
     wait: bool = False
+
+    @model_validator(mode="after")
+    def _one_mesh(self) -> "CfdSolveRequest":
+        if (self.channel is None) == (self.block_mesh_dict is None):
+            raise ValueError("Mesh için 'channel' ya da 'block_mesh_dict' alanlarından tam biri verilmeli.")
+        if self.channel is not None:
+            mesh_patches = {"inlet", "outlet", "walls", "frontAndBack"}
+            extra = sorted({p.name for p in self.case.patches} - mesh_patches)
+            if extra:
+                raise ValueError(
+                    f"Kanal mesh'inde olmayan yama: {', '.join(extra)} (kanal: {', '.join(sorted(mesh_patches))})"
+                )
+        return self
 
 
 def _job_dir(job_id: str) -> Path:
@@ -72,6 +88,31 @@ def _live_snapshot(log: SolverLog, end_iter: int) -> dict[str, Any]:
         "residuals": {k: list(v) for k, v in log.initial_residuals.items()},
         "iterations": list(log.iterations),
     }
+
+
+def _channel_reference(body: CfdSolveRequest) -> dict[str, Any] | None:
+    """Laminer kanal → Poiseuille analitik değerleri (veri; karşılaştırma koşu sonunda)."""
+    if body.channel is None or body.case.turbulence.model != "laminar":
+        return None
+    inlet = next((p for p in body.case.patches if p.kind == "inlet"), None)
+    if inlet is None or inlet.velocity_m_s is None:
+        return None
+    ref = poiseuille_reference(body.channel, float(inlet.velocity_m_s[0]), body.case.nu_m2_s)
+    return {"kind": "poiseuille_2d", "analytic": ref}
+
+
+def _compare_reference(meta: dict[str, Any], scalars: dict[str, float]) -> None:
+    ref = meta.get("reference")
+    if not ref:
+        return
+    a = ref["analytic"]
+    cfd: dict[str, float] = {}
+    if "dp_kinematic" in scalars:
+        cfd["dp_kinematic"] = scalars["dp_kinematic"]
+    if "u_max" in scalars:
+        cfd["u_max_m_s"] = scalars["u_max"]
+    ref["cfd"] = cfd
+    ref["diff_percent"] = {k: 100.0 * (v - a[k]) / a[k] for k, v in cfd.items() if a.get(k)}
 
 
 def _complete_cfd_job(job_id: str) -> None:
@@ -103,9 +144,15 @@ def _complete_cfd_job(job_id: str) -> None:
             + ("yakınsadı" if res.scalars.get("converged") else "iterasyon sınırına ulaştı")
         )
         meta["solver_ran"] = True
+        rho = float(meta.get("rho_kg_m3") or 1.0)
+        if "p_avg_inlet" in res.scalars and "p_avg_outlet" in res.scalars:
+            dp = res.scalars["p_avg_inlet"] - res.scalars["p_avg_outlet"]
+            res.scalars["dp_kinematic"] = dp
+            res.scalars["dp_pa"] = rho * dp
         meta["scalars"] = res.scalars
         meta["curves"] = res.curves
         meta["diagnostics"] = res.diagnostics
+        _compare_reference(meta, res.scalars)
         _write_job(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
@@ -134,7 +181,8 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
         OpenFoamAdapter().build_input({"output_dir": str(case_dir), "case": body.case.model_dump()})
     except SolverError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    (case_dir / "system" / "blockMeshDict").write_text(body.block_mesh_dict, encoding="utf-8", newline="\n")
+    bmd = channel_block_mesh_dict(body.channel) if body.channel is not None else body.block_mesh_dict
+    (case_dir / "system" / "blockMeshDict").write_text(bmd or "", encoding="utf-8", newline="\n")
 
     image = resolve_openfoam_image()
     meta: dict[str, Any] = {
@@ -145,6 +193,11 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
         "application": "simpleFoam",
         "end_iterations": body.case.control.iterations,
         "turbulence": body.case.turbulence.model,
+        "rho_kg_m3": body.case.rho_kg_m3,
+        "mesh": {"kind": "channel", **body.channel.model_dump(), "cells": body.channel.cell_count}
+        if body.channel is not None
+        else {"kind": "block_mesh_dict"},
+        "reference": _channel_reference(body),
         "openfoam_image": image,
         "solver_ran": False,
         "scalars": {},
@@ -178,7 +231,13 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
     if body.wait:
         _complete_cfd_job(job_id)
         done = _read_job(job_id) or meta
-        return {**result, "status": done.get("status"), "message": done.get("message"), "scalars": done.get("scalars") or {}}
+        return {
+            **result,
+            "status": done.get("status"),
+            "message": done.get("message"),
+            "scalars": done.get("scalars") or {},
+            "reference": done.get("reference"),
+        }
     background_tasks.add_task(_complete_cfd_job, job_id)
     return {**result, "status": "pending", "message": meta["message"]}
 
