@@ -39,13 +39,17 @@ export default function CrashMaterialSection({
 }) {
   return (
     <section className="crash-mat-section-wrap" aria-label="Crash malzeme modeli">
-      <p className="material-assignments-title">
-        {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — ortak" : "Crash malzeme modeli"}
-      </p>
-      <p className="crash-behavior-hint">
-        Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
-        nasıl davranacağı seçilir: akınca ne olur, kopar mı.
-      </p>
+      {!hideToggle && (
+        <>
+        <p className="material-assignments-title">
+          {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — ortak" : "Crash malzeme modeli"}
+        </p>
+        <p className="crash-behavior-hint">
+          Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
+          nasıl davranacağı seçilir: akınca ne olur, kopar mı.
+        </p>
+          </>
+      )}
       {!hideToggle && <DynaToggle />}
       {partIds.length > 1 && (
         <div className="crash-mat-toggles">

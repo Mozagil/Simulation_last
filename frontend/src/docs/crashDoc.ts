@@ -178,8 +178,8 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Parça başına model", what: "Çok parçalı modelde her parçaya ayrı kart (ör. küre LAW1, plaka LAW2)." },
     ],
     gallery: [
-      { src: IMG("08-malzeme.png"), caption: "3 Davranış ve kopma: LAW seçimi, açıklaması ve LS-DYNA karşılığı." },
-      { src: IMG("09-fail.png"), caption: "/FAIL kartları ve alanları." },
+      { src: IMG("08-malzeme.png"), caption: "3 Davranış ve kopma · LAW2: akma ve pekleşme (σ = a + b·εₚⁿ), hız etkisi (Johnson–Cook), sıcaklık, basit kopma sınırı — birimli alanlar." },
+      { src: IMG("09-fail.png"), caption: "Kopma / hasar: Johnson–Cook ve çekme gerinimi kartları; açık kart kırmızı çerçeveli, alanları altında." },
     ],
   },
   {
