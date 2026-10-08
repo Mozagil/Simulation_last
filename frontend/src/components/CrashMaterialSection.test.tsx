@@ -19,6 +19,8 @@ function Harness() {
 describe("CrashMaterialSection (3 · Material)", () => {
   it("LAW ve kopma açıklamaları; özet seçimi izler", () => {
     render(<Harness />);
+    // Varsayılan LAW2; LAW1 seçilince açıklama değişir.
+    fireEvent.click(screen.getByRole("button", { name: "LAW1 elastik" }));
     expect(screen.getByTestId("crash-law-hint")).toHaveTextContent("Elastik");
     expect(screen.getByTestId("crash-fail-intro")).toHaveTextContent("Kapalıyken malzeme ne kadar uzarsa uzasın kopmaz");
     fireEvent.click(screen.getByRole("button", { name: "LAW2 plastik" }));

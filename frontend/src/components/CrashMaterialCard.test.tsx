@@ -32,8 +32,9 @@ describe("CrashMaterialCard", () => {
     expect(() => parseCurvePoints("a 235", "e")).toThrow(/sayı geçersiz/);
   });
 
-  it("LAW1 yalnız temel alanları, /FAIL kapalıyken fail göndermez", () => {
-    const p = matCardPayload(defaultMatCard());
+  it("varsayılan LAW2 plastik; LAW1 yalnız temel alanları, /FAIL kapalıyken fail göndermez", () => {
+    expect(defaultMatCard().law).toBe("plastic");
+    const p = matCardPayload({ ...defaultMatCard(), law: "elastic" });
     expect(p).toEqual({ law: "elastic", sigma_y_pa: null, harden_b_mpa: 0, harden_n: 1 });
   });
 

@@ -73,7 +73,9 @@ function newCurve(): TabCurveRow {
 
 export function defaultMatCard(): MatCardState {
   return {
-    law: "elastic",
+    // Kullanıcı 2026-10-08: elle kurulan crash koşusu LAW2 (elasto-plastik) ile
+    // başlar — hızlı senaryo / DOE ile aynı. LAW1 elastikte kutu ezilmez, seker.
+    law: "plastic",
     sigmaY: "",
     hardenB: "0",
     hardenN: "1",

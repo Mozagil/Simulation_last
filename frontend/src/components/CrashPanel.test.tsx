@@ -157,7 +157,7 @@ describe("CrashPanel", () => {
         run_solver: false,
         barrier: expect.objectContaining({ speed_m_s: 15, wall: { point: [0, 0, 0], normal: [0, 0, 1] } }),
         model: expect.objectContaining({
-          law: "elastic",
+          law: "plastic",
           isolid: 1,
           nip: 1,
         }),
