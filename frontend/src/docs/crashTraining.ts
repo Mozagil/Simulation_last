@@ -33,7 +33,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
   {
     title: "Model 1 — Crash box (3 mm), rijit duvara 10 m/s",
     setup: [
-      "Crash sekmesi → 1 · Geometry → şablon “Crash box — kabuk (orta yüzey)” → Model üret → (pencerede) Modeli üret",
+      "Crash sekmesi → 1 · Geometry → şablon “Crash box — kabuk (orta yüzey)” → parametreler (varsayılan): Box Length L 300 · Box Height h 50 · Box Width b 40 · Wall t 3 (mm) → Model üret → (pencerede) Modeli üret",
       "2 · Mesh → 5 mm · 2D shell · quad → Mesh üret",
       "3 · Material → 1 Kütüphane: S235 → 2 Parçalara ata: “S235 ata”",
       "4 · Crash → Çarpma: Rijit duvara · Hız 10 · Süre 3 · yön +X · konum -1, 25, 20 → Parçalar: #0 Hareketli → “OpenRadioss çalıştır” ✓",
@@ -110,7 +110,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
   {
     title: "Model 2 — Crash box (2 mm) + raylı kızak, uzun ezilme",
     setup: [
-      "1 · Geometry → şablon “Crash box — kabuk” → et kalınlığı (wall) 2 → Model üret",
+      "1 · Geometry → şablon “Crash box — kabuk (orta yüzey)” → parametreler: Box Length L 300 · Box Height h 50 · Box Width b 40 · Wall t 2 (yalnız t değişti; mm) → Model üret → Modeli üret",
       "2 · Mesh → 5 mm · 2D shell · quad → Mesh üret; 3 · Material → S235 ata, LAW2",
       "4 · Crash → Çarpma: Rijit duvara · Hız 12 · Süre 30 · yön +X · konum -1, 25, 20; #0 Hareketli",
       "4 Ek tanımlar → Hazır kurulum “Kızak testi” → Ek kütle 50 kg (hareket: Rayda)",
@@ -149,7 +149,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
   {
     title: "Model 3 — İki parça: kutu + çarpma plakası (3D solid)",
     setup: [
-      "1 · Geometry → şablon “Crash box + çarpma plakası (iki parça)” → Model üret",
+      "1 · Geometry → şablon “Crash box + çarpma plakası (iki parça)” → parametreler (varsayılan): Box Length L 200 · Box Height h 50 · Box Width b 40 · Wall t 2 · Plate Thickness tp 10 · Plate Margin m 20 · Gap g 1 (mm) → Model üret → Modeli üret",
       "2 · Mesh → 10 mm · 3D solid → Mesh üret; 3 · Material → Tüm parçalara S235 ata, LAW2",
       "4 · Crash → Çarpma: Duvarsız · yalnız ilk hız · Hız 10 · yön −X · Süre 3",
     ],

@@ -18,7 +18,7 @@ export const DURABILITY_TRAINING: TrainingGroup[] = [
   {
     title: "Model 1 — Ankastre kiriş, 3D solid tet, S235, uçtan 500 N",
     setup: [
-      "Sol ray ANALİZ TİPİ → DURABILITY → 1 · GEOMETRY → Şablondan üret: “Ankastre kiriş (dikdörtgen kesit)” (L 500 · T 10 · W 50 · r 0) → Model üret → pencerede Fy −500 → Modeli üret (BC listesine Fixed · ankastre_uc ve yük · yuk_yuzeyi gelir)",
+      "Sol ray ANALİZ TİPİ → DURABILITY → 1 · GEOMETRY → Şablondan üret: “Ankastre kiriş (dikdörtgen kesit)” parametreler: Length L 500 · Thickness T 10 · Width W 50 · Root Fillet r 0 · Wall Thickness tw 20 · Wall Margin m 20 (mm, varsayılan) → Model üret → pencerede Fx 0 · Fy −500 · Fz 0 → Modeli üret (BC listesine Fixed · ankastre_uc ve yük · yuk_yuzeyi gelir)",
       "2 · MESH → Eleman boyutu 5 · 3D solid · Eleman tipi tet → Mesh üret",
       "3 · MATERIAL → Kütüphane S235 → Parça modunda kirişe tıkla → ATA",
       "4 · BOUNDARY CONDITIONS → BC LİSTESİ'nde 2 kayıt → ccx çalıştır ✓ → Case adı “D0 taban” → .inp üret / çöz",
@@ -157,7 +157,7 @@ export const DURABILITY_TRAINING: TrainingGroup[] = [
   {
     title: "Model 3 — Kabuk kiriş (2D shell, orta yüzey, t = 10 mm)",
     setup: [
-      "🔄 Yeni Case Başlat → Model 1'in şablonu (Fy −500) → Modeli üret",
+      "🔄 Yeni Case Başlat → “Ankastre kiriş (dikdörtgen kesit)” · L 500 · T 10 · W 50 · r 0 · tw 20 · m 20 (Model 1 ile aynı) → Model üret → pencerede Fy −500 → Modeli üret",
       "Parça modunda kirişi seç → MİD (orta yüzey y = 5 düzleminde, 500 × 50)",
       "2 · MESH → 5 · 2D shell · quad → Mesh üret (S4)",
       "3 · MATERIAL → S235 → mesh elemanına tıkla → ATA → ▸ Gelişmiş: Property shell · Kalınlık 10 → Component güncelle",
@@ -197,7 +197,7 @@ export const DURABILITY_TRAINING: TrainingGroup[] = [
   {
     title: "Model 4 — Basit mesnetli kiriş, 3D solid tet, S235, ortadan 500 N",
     setup: [
-      "🔄 Yeni Case Başlat → 1 · GEOMETRY → “Basit mesnetli kiriş (dikdörtgen kesit)” (L 500 · T 10 · W 50) → Model üret → Modeli üret",
+      "🔄 Yeni Case Başlat → 1 · GEOMETRY → “Basit mesnetli kiriş (dikdörtgen kesit)” parametreler: Length L 500 · Thickness T 10 · Width W 50 (mm, varsayılan) → Model üret → Modeli üret",
       "2 · MESH → 5 · 3D solid · tet → Mesh üret · 3 · MATERIAL → S235 → ATA",
       "BC LİSTESİ (şablondan): Displacement 0,0,0 · mesnet_sol (x = 0 yüzü) · Displacement Uy = Uz = 0 · mesnet_sag (x = L yüzü) · yük Fy −500 · yuk_orta (üst orta kenar) → çöz (taban “D-SS”)",
       "Taban beklenen: sol yüzün tüm düğümlerinde Ux = 0 → sol uç dönemez (ankastre–basit mesnet): δ_orta = 7·F·L³/(768·E·I) ≈ 0,65 mm; Analitik referans (FL³/48EI = 1,49 mm) ile sapma büyük",
