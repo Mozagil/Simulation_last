@@ -39,7 +39,7 @@ donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 **FAZ 2 — CFD / akış (OpenFOAM) BAŞLADI (kullanıcı onayı 2026-10-08)** —
 sıra değişikliği 2026-10-07 (kompozit Faz 3'e kaydı). Arayüzde "AKIŞ" sekmesi
 iskeleti var; **2.0 TAMAM (2026-10-08): ESI v2412 resmi Docker imajı** (`OPENFOAM_DOCKER_IMAGE`), pitzDaily duman testi; **2.1 TAMAM: case yazıcı** (`openfoam_case.py`, laminer / k-ω SST).
-**2.2 TAMAM: koşu + canlı ilerleme** (`/cfd/solve`, `/cfd/jobs`, ws). **2.3 TAMAM: parametrik kanal + Poiseuille (V-C1).** **2.4 TAMAM: kuvvet/katsayı okuma + `cfd_runs` tablosu.** **2.5a TAMAM: STEP → rüzgâr tüneli + snappyHexMesh (`/cfd/mesh`).** Kapsam: iç + dış akış + aero; roket modülü R1–R6 (R4: üç çözücü seçilebilir)
+**2.2 TAMAM: koşu + canlı ilerleme** (`/cfd/solve`, `/cfd/jobs`, ws). **2.3 TAMAM: parametrik kanal + Poiseuille (V-C1).** **2.4 TAMAM: kuvvet/katsayı okuma + `cfd_runs` tablosu.** **2.5a TAMAM: STEP → rüzgâr tüneli + snappyHexMesh (`/cfd/mesh`).** **R1 TAMAM: parametrik roket şablonu (`rocket`).** Kapsam: iç + dış akış + aero; roket modülü R1–R6 (R4: üç çözücü seçilebilir)
 (`docs/ROADMAP.md` Faz 2, 2.0–2.9). Durability
 (CalculiX `/solve`, modal, DOE, surrogate) ve crash yolları dokunulmaz; yeni
 CFD yolu eklenir. ML en sonda (2.9).

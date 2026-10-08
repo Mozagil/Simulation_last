@@ -1552,11 +1552,25 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   `cfd_runs` için (2.4 kaydı ile).
 
 **Roket modülü (R1–R6; her biri ayrı onay, Faz 2 içinde):**
-- R1 ⏳ Parametrik roket şablonu (Gmsh OCC): burun konisi (konik / ogive /
+- R1 ✅ (2026-10-09) Parametrik roket şablonu (Gmsh OCC): burun konisi (konik / ogive /
   elips / von Kármán; boy, çap), gövde tüpü (boy, çap), kanatçıklar (adet,
   kök/uç veter, açıklık, ok açısı, kalınlık), isteğe bağlı boat-tail;
   bölgeler: burun, gövde, kanatçık, taban. Gerçek roket STEP'i de aynı akışa
   girer (bölgeler elle).
+  **Sonuç:** `app/templates/rocket.py` (`rocket`, etiket `cfd`): burun konik /
+  ogive / elips / von Kármán (formüller docstring'de), gövde, 2–8 kanatçık (kök /
+  uç veteri, açıklık, ok, kalınlık, firar konumu), boat-tail; eksen +x, burun ucu
+  x = 0. Bölgeler `burun`, `govde`, `kanatcik`, `taban` (boat-tail yüzeyi `body`
+  yamasına düşer). Kurulum: profil eğrileri döndürülüp dikişli kabuktan hacim
+  (yüzey döndürme iç dikiş yüzü bırakıyordu), kanatçıklar birleştirilir. STL
+  dışa aktarımı: ikiz düğümler 10 nm ızgarada birleştirilir; dikişsiz okumada
+  açık kenar kalırsa dikişli okuma (yüz merkezi + alanla bölge eşleme) — 4 burun ×
+  boat-tail'li/siz hepsi kapalı. Arayüz: AKIŞ sekmesi şablon listesi yalnız `cfd`
+  etiketlileri gösterir (durability görmez), roket şeması. Uçtan uca: ogive roket,
+  tünel 2/4/1 × L, taban 0.15 m, seviye 3–5, 2 katman → 142 346 hücre, checkMesh
+  OK (mesh 124 s); k-ω SST 50 m/s: Cd 0.53 (power-off, kaba ağ), yama başına Fx:
+  taban 2.32 N · kanatçık 2.16 · gövde 1.55 · burun 0.36 (toplam 6.40). Test
+  `tests/test_template_rocket.py` (+ Docker'da kaba tünel).
 - R2 ⏳ Analitik referans: Barrowman (sesaltı) — basınç merkezi (CP) ve CNα;
   durability'deki "analitik referans tablosu" deseni, CFD sonucunun yanında
   veri olarak.

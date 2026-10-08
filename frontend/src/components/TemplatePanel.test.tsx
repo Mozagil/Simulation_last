@@ -229,4 +229,12 @@ describe("templatesForKind", () => {
     expect(templatesForKind(list, "crash").map((t) => t.id)).toEqual(["crash_box_shell", "plate_ball_shell"]);
     expect(templatesForKind(list, "durability").map((t) => t.id)).toEqual(["cantilever_beam"]);
   });
+
+  it("akış (cfd) sekmesi yalnız cfd etiketli şablonları (roket) görür; durability görmez", () => {
+    const mk = (id: string, tags: string[]) => ({ id, tags }) as unknown as Parameters<typeof templatesForKind>[0][number];
+    const list = [mk("cantilever_beam", ["grup1"]), mk("rocket", ["cfd", "roket"]), mk("crash_box_shell", ["crash"])];
+    expect(templatesForKind(list, "cfd").map((t) => t.id)).toEqual(["rocket"]);
+    expect(templatesForKind(list, "durability").map((t) => t.id)).toEqual(["cantilever_beam"]);
+    expect(templatesForKind(list, "crash").map((t) => t.id)).toEqual(["crash_box_shell"]);
+  });
 });

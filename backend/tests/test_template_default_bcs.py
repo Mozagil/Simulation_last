@@ -20,7 +20,12 @@ CONSTRAINT_TYPES = {"fixed", "displacement", "sliding"}
 LOAD_TYPES = {"cload", "pressure", "gravity", "bearing"}
 
 
-@pytest.mark.parametrize("template", list_templates(), ids=lambda t: t.id)
+#: Yapısal (durability / crash) şablonlar. CFD şablonlarının (``cfd`` etiketi,
+#: ör. roket) sınır koşulları yapısal BC değil, akış yamalarıdır (R1).
+STRUCTURAL = [t for t in list_templates() if "cfd" not in t.tags]
+
+
+@pytest.mark.parametrize("template", STRUCTURAL, ids=lambda t: t.id)
 def test_every_template_has_constraint_and_load(template):
     types = {bc["type"] for bc in template.default_bcs}
     assert types & CONSTRAINT_TYPES, f"{template.id}: kısıt yok"

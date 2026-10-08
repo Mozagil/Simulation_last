@@ -11,6 +11,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "2.3", title: "İlk doğrulama", what: "2B kanal (blockMesh), laminer Re 10: Δp analitikten %+2.9 (giriş bölgesi dahil), u_max %−0.5.", status: "tamam" },
   { id: "2.4", title: "Sonuç okuma", what: "Cd / Cl / Cm, CdA, yama başına kuvvet ve moment, kuvvet geçmişi (son N ortalama + std); cfd_runs koşu kaydı ve /cfd/runs.", status: "tamam" },
   { id: "2.5", title: "CFD mesh", what: "STEP → bölge başına STL → sanal rüzgâr tüneli → snappyHexMesh + checkMesh verisi (2.5a tamam). cfMesh seçeneği (2.5b) sırada.", status: "tamam" },
+  { id: "R1", title: "Roket şablonu", what: "Burun (konik / ogive / elips / von Kármán), gövde, kanatçık, boat-tail; bölgeler ayrı yama. Ogive roket 50 m/s: Cd 0.53, yama başına kuvvet.", status: "tamam" },
   { id: "2.6", title: "Dış akış doğrulaması", what: "Silindir Cd (Re 20/40), pitzDaily yeniden bağlanma uzunluğu.", status: "plan" },
   { id: "2.7", title: "Arayüz adımları", what: "1 Geometry · 2 Mesh · 3 Akışkan (ρ, ν) · 4 Sınır koşulları (giriş, çıkış, duvar, simetri, türbülans) · 5 Sonuçlar.", status: "plan" },
   { id: "2.8", title: "Alan görselleştirme", what: "Yüzey basıncı ve kesit hız alanı viewport'ta.", status: "plan" },

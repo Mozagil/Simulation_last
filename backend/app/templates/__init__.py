@@ -44,6 +44,7 @@ from app.templates.door_beam_shell import DOOR_BEAM_SHELL
 from app.templates.hopkinson_bar import HOPKINSON_BAR
 from app.templates.blast_plate_shell import BLAST_PLATE_SHELL
 from app.templates.bucket_rock_shell import BUCKET_ROCK_SHELL
+from app.templates.rocket import ROCKET
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -74,6 +75,7 @@ _ALL: tuple[GeometryTemplate, ...] = (
     HOPKINSON_BAR,
     BLAST_PLATE_SHELL,
     BUCKET_ROCK_SHELL,
+    ROCKET,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}

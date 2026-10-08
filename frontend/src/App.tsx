@@ -4129,7 +4129,7 @@ function App() {
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
-          kind={analysisTab === "crash" ? "crash" : "durability"}
+          kind={analysisTab === "crash" ? "crash" : analysisTab === "cfd" ? "cfd" : "durability"}
         />
         </div>
           </div>

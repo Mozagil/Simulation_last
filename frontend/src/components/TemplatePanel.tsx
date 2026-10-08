@@ -28,11 +28,20 @@ interface TemplatePanelProps {
   /** Analiz sekmesi: crash → yalnız `crash` etiketli şablonlar, durability /
    * modal → crash olmayanlar (kullanıcı 2026-10-04: crash'te durability
    * şablonları görünüyordu). */
-  kind?: "durability" | "crash";
+  kind?: TemplateKind;
 }
 
-export function templatesForKind(list: GeometryTemplateInfo[], kind: "durability" | "crash"): GeometryTemplateInfo[] {
-  return list.filter((t) => (t.tags ?? []).includes("crash") === (kind === "crash"));
+export type TemplateKind = "durability" | "crash" | "cfd";
+
+/** Sekmeye göre şablonlar: crash ve cfd (akış, ör. roket — R1) kendi etiketleriyle;
+ * durability ikisini de görmez. */
+export function templatesForKind(list: GeometryTemplateInfo[], kind: TemplateKind): GeometryTemplateInfo[] {
+  return list.filter((t) => {
+    const tags = t.tags ?? [];
+    if (kind === "crash") return tags.includes("crash");
+    if (kind === "cfd") return tags.includes("cfd");
+    return !tags.includes("crash") && !tags.includes("cfd");
+  });
 }
 
 export default function TemplatePanel({

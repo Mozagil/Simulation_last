@@ -89,6 +89,9 @@ export default function TemplateSchematic({ templateId }: TemplateSchematicProps
   if (templateId === "bucket_rock_shell") {
     return <BucketRockSchematic />;
   }
+  if (templateId === "rocket") {
+    return <RocketSchematic />;
+  }
   return null;
 }
 
@@ -915,6 +918,37 @@ function BucketRockSchematic() {
         <polygon points="150,42 146,34 154,34" className="template-schematic-load-head" />
         <text x="158" y="24" className="template-schematic-label">v₀</text>
         <text x="150" y="142" textAnchor="middle" className="template-schematic-caption">kavisli kepçe tabanı (W genişlik) + rijit taş</text>
+      </svg>
+    </figure>
+  );
+}
+
+/* Akış (CFD) şablonu — R1 roket: yan görünüş, akış +x (soldan). */
+function RocketSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg
+        viewBox="0 0 300 150"
+        role="img"
+        aria-label="Roket: Ln boyunda burun, D çaplı Lb boyunda gövde tüpü, kök veteri Cr, uç veteri Ct, açıklığı s olan kanatçıklar; akış soldan sağa"
+      >
+        {/* Burun (ogive) + gövde */}
+        <path d="M 40 75 Q 62 58 92 61 L 92 89 Q 62 92 40 75 Z" className="template-schematic-face-top" />
+        <rect x="92" y="61" width="160" height="28" className="template-schematic-face-side" />
+        {/* Kanatçıklar (üst ve alt) */}
+        <polygon points="212,61 252,61 252,35 236,35" className="template-schematic-face-end" />
+        <polygon points="212,89 252,89 252,115 236,115" className="template-schematic-face-end" />
+        <text x="66" y="54" textAnchor="middle" className="template-schematic-label">Ln</text>
+        <text x="160" y="104" textAnchor="middle" className="template-schematic-label">Lb</text>
+        <text x="258" y="79" className="template-schematic-label">D</text>
+        <text x="232" y="130" textAnchor="middle" className="template-schematic-label">Cr</text>
+        <text x="244" y="30" textAnchor="middle" className="template-schematic-label">Ct</text>
+        <text x="262" y="50" className="template-schematic-label">s</text>
+        <text x="40" y="128" className="template-schematic-caption">burun</text>
+        <text x="132" y="128" className="template-schematic-caption">govde</text>
+        <text x="180" y="22" className="template-schematic-caption">kanatcik</text>
+        <text x="262" y="100" className="template-schematic-caption">taban</text>
+        <ImpactArrow x1={4} x2={34} y={75} label="U" />
       </svg>
     </figure>
   );

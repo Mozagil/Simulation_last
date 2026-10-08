@@ -117,44 +117,26 @@ def export_surface_stl(
     gmsh.initialize(interruptible=False)
     try:
         gmsh.option.setNumber("General.Terminal", 0)
-        gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
-        gmsh.model.add("cfd_surface")
-        gmsh.open(str(cad_file))
-        gmsh.model.occ.synchronize()
         if size_mm is not None:
             gmsh.option.setNumber("Mesh.MeshSizeMax", size_mm)
             gmsh.option.setNumber("Mesh.MeshSizeMin", size_mm / 10.0)
-        gmsh.model.mesh.generate(2)
-        node_tags, coords, _ = gmsh.model.mesh.getNodes()
-        xyz = {
-            int(t): (float(coords[3 * i]) * scale, float(coords[3 * i + 1]) * scale, float(coords[3 * i + 2]) * scale)
-            for i, t in enumerate(node_tags)
-        }
-        face_region: dict[int, str] = {}
-        for name, tags in regions.items():
-            for t in tags:
-                face_region[int(t)] = name
-        tris: dict[str, list[tuple[int, int, int]]] = {}
-        for _, tag in gmsh.model.getEntities(2):
-            name = face_region.get(int(tag), BODY)
-            etypes, _, enodes = gmsh.model.mesh.getElements(2, tag)
-            for et, nodes in zip(etypes, enodes):
-                if int(et) != 2:  # yalnız 3 düğümlü üçgen
-                    continue
-                lst = tris.setdefault(name, [])
-                for k in range(0, len(nodes), 3):
-                    lst.append((int(nodes[k]), int(nodes[k + 1]), int(nodes[k + 2])))
+        # Önce dikişsiz (uygulamanın yüz numaraları); yüzey açık kalırsa
+        # dikişli okuma denenir ve daha kapalı olan seçilir. Dikişli okuma
+        # periyodik yüzeylerde (küre) mesh'lenemeyebiliyor — o zaman ilki kalır.
+        xyz, tris = _mesh_surface(cad_file, regions, scale, sew=False)
+        open_edges = _merge_and_count(xyz, tris)
+        if open_edges > 0:
+            try:
+                xyz2, tris2 = _mesh_surface(cad_file, regions, scale, sew=True)
+            except Exception:  # noqa: BLE001 — dikişli yol isteğe bağlı
+                xyz2 = None
+            if xyz2 is not None:
+                open2 = _merge_and_count(xyz2, tris2)
+                if open2 < open_edges:
+                    xyz, tris, open_edges = xyz2, tris2, open2
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
-
-    edges: dict[tuple[int, int], int] = {}
-    for lst in tris.values():
-        for a, b, c in lst:
-            for e in ((a, b), (b, c), (c, a)):
-                key = (min(e), max(e))
-                edges[key] = edges.get(key, 0) + 1
-    open_edges = sum(1 for n in edges.values() if n == 1)
 
     out_stl.parent.mkdir(parents=True, exist_ok=True)
     pts = [xyz[n] for lst in tris.values() for tri in lst for n in tri]
@@ -185,6 +167,110 @@ def export_surface_stl(
         open_edges=open_edges,
         triangles_per_region={k: len(v) for k, v in tris.items()},
     )
+
+
+def _mesh_surface(
+    cad_file: Path, regions: dict[str, list[int]], scale: float, sew: bool
+) -> tuple[dict[int, tuple[float, float, float]], dict[str, list[tuple[int, int, int]]]]:
+    """Yüzey üçgenlemesi (gmsh oturumu açık): düğüm koordinatları (m) + bölge → üçgenler."""
+    import gmsh
+
+    gmsh.clear()
+    if sew:
+        face_region = _sewn_face_regions(cad_file, regions)
+    else:
+        gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
+        gmsh.model.add("cfd_surface")
+        gmsh.open(str(cad_file))
+        gmsh.model.occ.synchronize()
+        face_region = {int(t): name for name, tags in regions.items() for t in tags}
+    gmsh.model.mesh.generate(2)
+    node_tags, coords, _ = gmsh.model.mesh.getNodes()
+    xyz = {
+        int(t): (float(coords[3 * i]) * scale, float(coords[3 * i + 1]) * scale, float(coords[3 * i + 2]) * scale)
+        for i, t in enumerate(node_tags)
+    }
+    tris: dict[str, list[tuple[int, int, int]]] = {}
+    for _, tag in gmsh.model.getEntities(2):
+        name = face_region.get(int(tag), BODY)
+        etypes, _, enodes = gmsh.model.mesh.getElements(2, tag)
+        for et, nodes in zip(etypes, enodes):
+            if int(et) != 2:  # yalnız 3 düğümlü üçgen
+                continue
+            lst = tris.setdefault(name, [])
+            for k in range(0, len(nodes), 3):
+                lst.append((int(nodes[k]), int(nodes[k + 1]), int(nodes[k + 2])))
+    return xyz, tris
+
+
+def _merge_and_count(
+    xyz: dict[int, tuple[float, float, float]], tris: dict[str, list[tuple[int, int, int]]]
+) -> int:
+    """Aynı noktadaki ikiz düğümleri tek koordinata birleştirir (``xyz`` yerinde), açık kenar sayısını döner.
+
+    Açık kenar KOORDİNATLA sayılır: Gmsh periyodik dikişlerde (döndürülmüş
+    yüzeyler) ve dejenere uçlarda aynı noktaya ayrı düğüm koyar; düğüm
+    numarasıyla sayınca kapalı yüzey açık görünüyordu (ölçüldü: roket 96).
+    1e-13 m'lik farkla duran ikizler STL'ye farklı rakamlarla yazılıp yüzeyi
+    açık bırakıyordu (ölçüldü: elips burun 42); 10 nm ızgarada birleştirilir.
+    """
+    grid = 1e-8
+    canon: dict[tuple[int, int, int], tuple[float, float, float]] = {}
+    cell_of: dict[int, tuple[int, int, int]] = {}
+    for n, (x, y, z) in xyz.items():
+        cell = (round(x / grid), round(y / grid), round(z / grid))
+        xyz[n] = canon.setdefault(cell, (x, y, z))
+        cell_of[n] = cell
+    edges: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
+    for lst in tris.values():
+        for a, b, c in lst:
+            for e0, e1 in ((a, b), (b, c), (c, a)):
+                ka, kb = cell_of[e0], cell_of[e1]
+                if ka == kb:
+                    continue  # dejenere (uçta çökmüş) kenar
+                key = (min(ka, kb), max(ka, kb))
+                edges[key] = edges.get(key, 0) + 1
+    return sum(1 for n in edges.values() if n == 1)
+
+
+def _face_key(tag: int) -> tuple[float, ...]:
+    import gmsh
+
+    cx, cy, cz = gmsh.model.occ.getCenterOfMass(2, tag)
+    return (round(cx, 3), round(cy, 3), round(cz, 3), round(gmsh.model.occ.getMass(2, tag), 3))
+
+
+def _sewn_face_regions(cad_file: Path, regions: dict[str, list[int]]) -> dict[int, str]:
+    """STEP'i DİKİŞLİ açar (gmsh oturumu açık) ve bölgeleri yeni yüz numaralarına taşır.
+
+    Uygulama yüz numaralarını dikişsiz okumadan (OCCSewFaces=0) verir; ama
+    dikişsiz okumada döndürülmüş kapalı yüzeylerin ortak çemberi çift eğri
+    kalabiliyor ve yüzey açık mesh'leniyordu (ölçüldü: roket von Kármán +
+    boat-tail'de 42 açık kenar; dikişli okumada 0). Bölgeler yüzlerin kütle
+    merkezi + alanıyla eşlenir. Eşleme tam tutmazsa (dikiş yüzleri birleştirdiyse)
+    hata verir; çağıran dikişsiz sonuçla kalır.
+    """
+    import gmsh
+
+    gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
+    gmsh.model.add("cfd_surface_ref")
+    gmsh.open(str(cad_file))
+    gmsh.model.occ.synchronize()
+    plain = {int(t): name for name, tags in regions.items() for t in tags}
+    ref_faces = [int(t) for _, t in gmsh.model.getEntities(2)]
+    key_region = {_face_key(t): plain.get(t, BODY) for t in ref_faces}
+
+    gmsh.clear()
+    gmsh.option.setNumber("Geometry.OCCSewFaces", 1)
+    gmsh.model.add("cfd_surface")
+    gmsh.open(str(cad_file))
+    gmsh.model.occ.synchronize()
+    gmsh.option.setNumber("Geometry.OCCSewFaces", 0)
+    sewn = [int(t) for _, t in gmsh.model.getEntities(2)]
+    mapped = {t: key_region.get(_face_key(t)) for t in sewn}
+    if len(sewn) != len(ref_faces) or any(v is None for v in mapped.values()):
+        raise ValueError("Dikişli okumada yüzler dikişsizle eşlenemedi.")
+    return {t: v for t, v in mapped.items() if v is not None}
 
 
 # --------------------------------------------------------------------------- tünel
