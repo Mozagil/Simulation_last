@@ -74,6 +74,7 @@ import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import DocsDialog from "./components/DocsDialog";
 import CrashMaterialStep from "./components/CrashMaterialStep";
+import CfdPlanPanel from "./components/CfdPlanPanel";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import CrashDoePanel from "./components/CrashDoePanel";
@@ -316,12 +317,12 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "modal" | "results";
+  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "modal" | "results" | "flow";
   // Üst düzey analiz sekmesi — Durability (mevcut statik BC/sonuç akışı) ve
   // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
   // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
   // sekmede de aynı).
-  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash">("durability");
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "cfd">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -345,7 +346,9 @@ function App() {
       ? ["geometry", "mesh", "material", "modal", "results"]
       : analysisTab === "crash"
         ? ["geometry", "mesh", "material", "bc", "results"]
-        : ["geometry", "mesh", "material", "bc", "results"];
+        : analysisTab === "cfd"
+          ? ["geometry", "mesh", "flow"]
+          : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
     stepOrder.find((s) => expandedSteps.has(s)) ?? stepOrder[0];
@@ -2956,7 +2959,7 @@ function App() {
             ◆
           </span>
           <span className="toolbar-title">
-            CALCULIX · DURABILITY{fileName ? ` / ${fileName}` : ""}
+            {analysisTab === "crash" ? "OPENRADIOSS · CRASH" : analysisTab === "cfd" ? "OPENFOAM · AKIŞ" : analysisTab === "modal" ? "CALCULIX · MODAL" : "CALCULIX · DURABILITY"}{fileName ? ` / ${fileName}` : ""}
           </span>
         </div>
         <div className="toolbar-actions">
@@ -3085,6 +3088,17 @@ function App() {
           <span className="analysis-tab-label">CRASH</span>
           <span className="analysis-tab-meta">OpenRadioss · dinamik</span>
         </button>
+        <button
+          type="button"
+          className={analysisTab === "cfd" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => {
+            setAnalysisTab("cfd");
+            setExpandedSteps(new Set(["flow"]));
+          }}
+        >
+          <span className="analysis-tab-label">AKIŞ</span>
+          <span className="analysis-tab-meta">OpenFOAM · Faz 2</span>
+        </button>
       <div className="step-tab-strip">
       <button
         type="button"
@@ -3100,6 +3114,7 @@ function App() {
       >
         2 · MESH
       </button>
+      {analysisTab !== "cfd" && (
       <button
         type="button"
         className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
@@ -3107,6 +3122,16 @@ function App() {
       >
         3 · MATERIAL
       </button>
+      )}
+      {analysisTab === "cfd" && (
+      <button
+        type="button"
+        className={expandedSteps.has("flow") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("flow")}
+      >
+        3 · AKIŞ (FAZ 2)
+      </button>
+      )}
       {analysisTab === "durability" && (
       <button
         type="button"
@@ -3143,7 +3168,7 @@ function App() {
         5 · SONUÇLAR
       </button>
       )}
-      {analysisTab !== "crash" && (
+      {(analysisTab === "durability" || analysisTab === "modal") && (
       <button
         type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
@@ -4407,6 +4432,7 @@ function App() {
       </div>
       )}
 
+      {analysisTab === "cfd" && expandedSteps.has("flow") && <CfdPlanPanel />}
       {expandedSteps.has("material") && (
       <div className="panel material-panel">
         <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>
@@ -5386,7 +5412,7 @@ function App() {
           onJobStarted={(res) => void loadScenario(res)}
         />
       )}
-      {analysisTab !== "crash" && (
+      {(analysisTab === "durability" || analysisTab === "modal") && (
       <HistoryFooter
         runs={runsHistory}
         compareSelection={compareSelection}

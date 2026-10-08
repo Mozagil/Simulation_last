@@ -36,9 +36,11 @@ viewport işaretleri + rol renkleri, 5 · Sonuçlar, geçmiş dock'u, yeni vaka
 penceresi) bitti. Tam ALE ayrı faz. Solver: OpenRadioss artık kapalı kaynak;
 donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 
-**Sıradaki: FAZ 2 — CFD / akış (OpenFOAM)** — sıra değişikliği 2026-10-07
-(kompozit Faz 3'e kaydı). Durum: **plan** (`docs/ROADMAP.md` Faz 2, 2.0–2.9);
-açık sorular yanıtlanıp kullanıcı onay vermeden kod yazılmaz. Durability
+**FAZ 2 — CFD / akış (OpenFOAM) BAŞLADI (kullanıcı onayı 2026-10-08)** —
+sıra değişikliği 2026-10-07 (kompozit Faz 3'e kaydı). Arayüzde "AKIŞ" sekmesi
+iskeleti var; 2.0 (Docker imajı) ve 2.1 (case yazıcı) OpenFOAM dağıtımı
+(ESI / Foundation) ve ilk vaka (iç / dış akış) kararını bekler
+(`docs/ROADMAP.md` Faz 2, 2.0–2.9). Durability
 (CalculiX `/solve`, modal, DOE, surrogate) ve crash yolları dokunulmaz; yeni
 CFD yolu eklenir. ML en sonda (2.9).
 

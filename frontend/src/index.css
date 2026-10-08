@@ -8527,3 +8527,81 @@ p {
   font-size: 12px;
   color: var(--hint-ink);
 }
+
+/* Belgeler sekmeleri (Crash · Durability · ML) */
+.docs-tabs {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.docs-tab {
+  min-height: 32px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.docs-tab.active {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.docs-example ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+/* AKIŞ (CFD) — Faz 2 plan paneli */
+.cfd-decisions {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+
+.cfd-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cfd-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.cfd-step-id {
+  flex: none;
+  min-width: 34px;
+  padding: 1px 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.cfd-step-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}

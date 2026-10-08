@@ -5,15 +5,17 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CRASH_DOC, CRASH_SCENARIOS, type DocItem } from "../docs/crashDoc";
-import { DYNA_EQUIV, dynaFor } from "../lib/dynaKeywords";
-import { CRASH_TRAINING, TRAINING_RECORD } from "../docs/crashTraining";
+import type { DocItem } from "../docs/crashDoc";
+import { dynaFor } from "../lib/dynaKeywords";
+import { CRASH_BOOK, DOC_BOOKS, type DocBook } from "../docs/books";
 
 const MAP_ID = "eslesme";
 const SCEN_ID = "senaryolar";
 const TRAIN_ID = "egitim";
+const EX_ID = "ornekler";
 
-function itemDyna(it: DocItem): string | null {
+function itemDyna(it: DocItem, book: DocBook = CRASH_BOOK): string | null {
+  if (!book.dynaColumn) return null;
   return it.dyna ?? (it.card ? dynaFor(it.card) : null);
 }
 
@@ -23,29 +25,42 @@ function matches(it: DocItem, q: string): boolean {
   return hay.includes(q);
 }
 
+const low = (x: string) => x.toLocaleLowerCase("tr");
+
 /** Arama süzgeci (boş q = tümü). */
-function filterDocs(q: string) {
-  const sections = CRASH_DOC.map((s) => ({ ...s, items: (s.items ?? []).filter((it) => matches(it, q)) })).filter(
-    (s) => !q || s.items.length > 0 || s.title.toLocaleLowerCase("tr").includes(q),
+function filterDocs(book: DocBook, q: string) {
+  const sections = book.sections
+    .map((s) => ({ ...s, items: (s.items ?? []).filter((it) => matches(it, q)) }))
+    .filter((s) => !q || s.items.length > 0 || low(s.title + " " + s.intro).includes(q));
+  const scenarios = (book.scenarios?.rows ?? []).filter(
+    (s) => !q || low([s.title, s.setup, s.features.join(" "), s.template].join(" ")).includes(q),
   );
-  const scenarios = CRASH_SCENARIOS.filter(
-    (s) => !q || [s.title, s.setup, s.features.join(" "), s.template].join(" ").toLocaleLowerCase("tr").includes(q),
+  const mapRows = Object.entries(book.dynaMap ?? {}).filter(([c, d]) => !q || low(c).includes(q) || low(d).includes(q));
+  const examples = (book.examples?.rows ?? []).filter(
+    (e) => !q || low([e.title, e.setup, ...e.inputs, ...e.targets, ...e.results, e.lesson].join(" ")).includes(q),
   );
-  const mapRows = Object.entries(DYNA_EQUIV).filter(
-    ([c, d]) => !q || c.toLocaleLowerCase("tr").includes(q) || d.toLocaleLowerCase("tr").includes(q),
-  );
-  return { sections, scenarios, mapRows };
+  const testHay = (t: { id: string; title: string; learn: string; expect: string; steps: string[] }) =>
+    low([t.id, t.title, t.learn, t.expect, ...t.steps].join(" "));
+  const groups = (book.training?.groups ?? [])
+    .map((g) => ({ ...g, tests: g.tests.filter((t) => !q || testHay(t).includes(q)) }))
+    .filter((g) => g.tests.length > 0);
+  return { sections, scenarios, mapRows, examples, groups };
 }
 
 /** Belge içeriği — pencerede ve PDF baskısında aynı bileşen. */
-export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: string; caption: string }) => void }) {
-  const { sections, scenarios, mapRows } = filterDocs(q);
+export function DocsContent({
+  q,
+  onZoom,
+  book = CRASH_BOOK,
+}: {
+  q: string;
+  onZoom: (z: { src: string; caption: string }) => void;
+  book?: DocBook;
+}) {
+  const { sections, scenarios, mapRows, examples, groups } = filterDocs(book, q);
   return (
     <>
-    <p className="docs-note">
-      LS-DYNA sütunu yaklaşık eşdeğer keyword adıdır (≈), yalnız bilgi amaçlı — bu projede LS-DYNA
-      kullanılmaz. “Ne zaman” satırları tipik kullanımı anlatır; değer ve karar mühendisindir.
-    </p>
+    <p className="docs-note">{book.note}</p>
     {sections.map((s) => (
       <section key={s.id} id={`doc-${s.id}`} className="docs-section">
         <h2>{s.title}</h2>
@@ -65,8 +80,8 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
                 <tr>
                   <th>Öğe</th>
                   <th>Ne yapar · ne zaman</th>
-                  <th>OpenRadioss</th>
-                  <th>LS-DYNA ≈</th>
+                  <th>{book.cardHeader}</th>
+                  {book.dynaColumn && <th>LS-DYNA ≈</th>}
                 </tr>
               </thead>
               <tbody>
@@ -78,7 +93,7 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
                       {it.when && <span className="docs-when">Ne zaman: {it.when}</span>}
                     </td>
                     <td>{it.card ? <code>{it.card}</code> : "—"}</td>
-                    <td className="docs-dyna">{itemDyna(it) ?? "—"}</td>
+                    {book.dynaColumn && <td className="docs-dyna">{itemDyna(it, book) ?? "—"}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -96,9 +111,10 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
       </section>
     ))}
 
+    {book.scenarios && (
     <section id={`doc-${SCEN_ID}`} className="docs-section">
-      <h2>Hazır senaryolar (+ Yeni crash vakası)</h2>
-      <p>Katalogdaki 15 örnek; her birinin kurulumu, kullandığı özellikler ve doğrulama ölçütü.</p>
+      <h2>{book.scenarios.title}</h2>
+      <p>{book.scenarios.intro}</p>
       <div className="docs-table-wrap">
         <table className="docs-table">
           <thead>
@@ -136,7 +152,9 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
         </table>
       </div>
     </section>
+    )}
 
+    {book.dynaMap && (
     <section id={`doc-${MAP_ID}`} className="docs-section">
       <h2>OpenRadioss ↔ LS-DYNA tablosu</h2>
       <p>Arayüzde kullanılan tüm kartlar ve yaklaşık LS-DYNA karşılıkları (frontend/src/lib/dynaKeywords.ts).</p>
@@ -161,14 +179,43 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
         </table>
       </div>
     </section>
+    )}
 
+    {book.examples && examples.length > 0 && (
+    <section id={`doc-${EX_ID}`} className="docs-section">
+      <h2>{book.examples.title}</h2>
+      <p>{book.examples.intro}</p>
+      {examples.map((e) => (
+        <article key={e.id} className="docs-train-card docs-example" data-testid={`example-${e.id}`}>
+          <header>
+            <span className="docs-train-id">{e.domain === "crash" ? "Crash" : "Durability"}</span>
+            <strong>{e.title}</strong>
+          </header>
+          <p>
+            <b>Kurulum:</b> {e.setup}
+          </p>
+          <p>
+            <b>Girdiler:</b> {e.inputs.join(" · ")}
+          </p>
+          <p>
+            <b>Hedefler:</b> {e.targets.join(" · ")}
+          </p>
+          <ul>
+            {e.results.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+          <p className="docs-train-answer">Ders: {e.lesson}</p>
+        </article>
+      ))}
+    </section>
+    )}
+
+    {book.training && (
     <section id={`doc-${TRAIN_ID}`} className="docs-section docs-training">
-      <h2>Eğitim testleri (T1–T18)</h2>
-      <p>
-        Modele göre sıralı: her model grubun başında bir kez kurulur; ardından gelen her test bir öncekinden
-        yalnız <b>tek şeyi</b> değiştirir. {TRAINING_RECORD}
-      </p>
-      {CRASH_TRAINING.filter((g) => !q || g.tests.some((t) => [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))).map((g) => (
+      <h2>{book.training.title}</h2>
+      <p>{book.training.intro}</p>
+      {groups.map((g) => (
         <div key={g.title} className="docs-train-group">
           <h3>{g.title}</h3>
           <div className="docs-train-base">
@@ -179,9 +226,7 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
               ))}
             </ol>
           </div>
-          {g.tests
-            .filter((t) => !q || [t.id, t.title, t.learn, t.expect, ...t.steps].join(" ").toLocaleLowerCase("tr").includes(q))
-            .map((t) => (
+          {g.tests.map((t) => (
               <article key={t.id} className="docs-train-card" data-testid={`train-${t.id}`}>
                 <header>
                   <span className="docs-train-id">{t.id}</span>
@@ -211,6 +256,7 @@ export function DocsContent({ q, onZoom }: { q: string; onZoom: (z: { src: strin
         </div>
       ))}
     </section>
+    )}
     </>
   );
 }
@@ -261,22 +307,22 @@ code, .docs-dyna, .docs-tpl { font-family: "IBM Plex Mono", Consolas, monospace;
 `;
 
 /** Baskı sayfasının tam HTML'i (arama süzgeci olmadan tüm belge). */
-export function buildDocsPdfHtml(origin: string): string {
-  const html = renderToStaticMarkup(<DocsContent q="" onZoom={() => undefined} />);
+export function buildDocsPdfHtml(origin: string, book: DocBook = CRASH_BOOK): string {
+  const html = renderToStaticMarkup(<DocsContent q="" onZoom={() => undefined} book={book} />);
   const date = new Date().toLocaleDateString("tr-TR");
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8">
 <base href="${origin}/">
-<title>SimSurrogate — Crash Belgeleri</title>
+<title>SimSurrogate — ${book.tab} Belgeleri</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>${PRINT_CSS}</style></head><body>
-<header class="cover"><h1>Crash (OpenRadioss) — Belgeler</h1>
-<p>SimSurrogate · her özellik, düğme ve kart: ne yapar, hangi senaryoda, OpenRadioss kartı ve LS-DYNA karşılığı · ${date}</p></header>
+<header class="cover"><h1>${book.title} — Belgeler</h1>
+<p>SimSurrogate · ${book.subtitle} · ${date}</p></header>
 <main class="docs-main">${html}</main></body></html>`;
 }
 
 /** Tüm belgeyi gizli bir çerçevede hazırlar ve tarayıcının yazdır penceresini
  * açar — "PDF olarak kaydet" ile indirilir. Açılır pencere engelinden etkilenmez. */
-export function openDocsPdf(): boolean {
+export function openDocsPdf(book: DocBook = CRASH_BOOK): boolean {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
@@ -287,7 +333,7 @@ export function openDocsPdf(): boolean {
     return false;
   }
   w.document.open();
-  w.document.write(buildDocsPdfHtml(window.location.origin));
+  w.document.write(buildDocsPdfHtml(window.location.origin, book));
   w.document.close();
   const ready = async () => {
     const imgs = Array.from(w.document.images);
@@ -321,7 +367,9 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, zoom]);
 
-  const { sections, scenarios } = useMemo(() => filterDocs(q), [q]);
+  const [bookId, setBookId] = useState<DocBook["id"]>("crash");
+  const book = DOC_BOOKS.find((b) => b.id === bookId) ?? CRASH_BOOK;
+  const { sections, scenarios, examples, groups } = useMemo(() => filterDocs(book, q), [book, q]);
   const [pdfBlocked, setPdfBlocked] = useState(false);
 
   const go = (id: string) => document.getElementById(`doc-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -331,13 +379,29 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
       <div className="docs-dialog" role="dialog" aria-label="Belgeler" onClick={(e) => e.stopPropagation()}>
         <header className="docs-head">
           <div className="docs-head-title">
-            <strong>Belgeler · Crash (OpenRadioss)</strong>
-            <span>Her özellik, düğme ve kart: ne yapar, hangi senaryoda, OpenRadioss kartı ve LS-DYNA karşılığı.</span>
+            <strong>Belgeler · {book.title}</strong>
+            <span>{book.subtitle}</span>
           </div>
+          {DOC_BOOKS.length > 1 && (
+            <div className="docs-tabs" role="tablist" aria-label="Belge">
+              {DOC_BOOKS.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={b.id === book.id}
+                  className={b.id === book.id ? "docs-tab active" : "docs-tab"}
+                  onClick={() => setBookId(b.id)}
+                >
+                  {b.tab}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             className="docs-search"
             type="search"
-            placeholder="Ara: kızak, TYPE7, hourglass, *RIGIDWALL…"
+            placeholder={book.searchPlaceholder}
             aria-label="Belgelerde ara"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -346,7 +410,7 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
             type="button"
             className="docs-pdf"
             title="Tüm belgeyi PDF olarak indir (yazdır penceresinde “PDF olarak kaydet”)"
-            onClick={() => setPdfBlocked(!openDocsPdf())}
+            onClick={() => setPdfBlocked(!openDocsPdf(book))}
           >
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10" />
@@ -365,18 +429,29 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
                 {s.title}
               </button>
             ))}
-            <button type="button" onClick={() => go(SCEN_ID)}>
-              Hazır senaryolar ({scenarios.length})
-            </button>
-            <button type="button" onClick={() => go(MAP_ID)}>
-              OpenRadioss ↔ LS-DYNA tablosu
-            </button>
-            <button type="button" className="docs-nav-train" onClick={() => go(TRAIN_ID)}>
-              Eğitim testleri (T1–T18)
-            </button>
+            {book.scenarios && (
+              <button type="button" onClick={() => go(SCEN_ID)}>
+                Hazır senaryolar ({scenarios.length})
+              </button>
+            )}
+            {book.dynaMap && (
+              <button type="button" onClick={() => go(MAP_ID)}>
+                OpenRadioss ↔ LS-DYNA tablosu
+              </button>
+            )}
+            {book.examples && examples.length > 0 && (
+              <button type="button" onClick={() => go(EX_ID)}>
+                {book.examples.title}
+              </button>
+            )}
+            {book.training && groups.length > 0 && (
+              <button type="button" className="docs-nav-train" onClick={() => go(TRAIN_ID)}>
+                {book.training.title}
+              </button>
+            )}
           </nav>
           <main className="docs-main">
-            <DocsContent q={q} onZoom={setZoom} />
+            <DocsContent q={q} onZoom={setZoom} book={book} />
           </main>
         </div>
         {zoom && (

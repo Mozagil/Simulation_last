@@ -1413,8 +1413,9 @@ ortalama kuvvet …) mühendisten.
 ## Faz 2 — CFD / akış (OpenFOAM)
 
 **Sıra değişikliği (kullanıcı, 2026-10-07):** Faz 2 artık OpenFOAM ile akış;
-kompozit Faz 3'e kaydı. **Durum: PLAN — başlamak için kullanıcı onayı
-bekleniyor.** Faz 0 (CalculiX `/solve`) ve Faz 1 (crash) yollarına dokunulmaz;
+kompozit Faz 3'e kaydı. **Durum: BAŞLADI (kullanıcı onayı 2026-10-08)** —
+arayüzde "AKIŞ · OpenFOAM" sekmesi iskeleti (plan + açık kararlar, çözücü
+bağlı değil). 2.0 / 2.1 aşağıdaki açık soruların 1 ve 2'sinin cevabını bekliyor. Faz 0 (CalculiX `/solve`) ve Faz 1 (crash) yollarına dokunulmaz;
 yeni CFD yolu eklenir. Solver/mesh çağrıları yalnız sunucuda (Docker imajı).
 ML en sonda (2.9), crash'teki sırayla aynı.
 
