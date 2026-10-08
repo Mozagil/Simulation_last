@@ -5148,7 +5148,9 @@ function App() {
 
       {analysisTab === "crash" && (
       <>
-      {(expandedSteps.has("bc") || expandedSteps.has("results")) && (
+      {/* Kullanıcı 2026-10-08: adım değişince kurulum kaybolmasın — panel hep
+          bağlı kalır, 4 · Crash / 5 · Sonuçlar dışında yalnız gizlenir. */}
+      <div hidden={!(expandedSteps.has("bc") || expandedSteps.has("results"))} data-testid="crash-panel-host">
         <CrashPanel
           geometryId={geometryId}
           view={expandedSteps.has("results") ? "results" : "setup"}
@@ -5185,7 +5187,7 @@ function App() {
               .map((it) => [it.part_id, it.thickness]),
           )}
         />
-      )}
+      </div>
       </>
       )}
 

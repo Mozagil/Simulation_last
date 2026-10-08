@@ -210,7 +210,7 @@ export default function CrashPanel({
   // "bu parça ne yapıyor?". Hız yalnız buradan girilir.
   const [partRoles, setPartRoles] = useState<Record<number, PartRole>>({});
   // Claude Design "Crash BC Sidebar" (2026-10-07): üç akordeon grubu.
-  const [openGroup, setOpenGroup] = useState<1 | 2 | 3 | null>(1);
+  const [openGroup, setOpenGroup] = useState<1 | 2 | 3 | 4 | null>(1);
   const [impactMode, setImpactMode] = useState<"wall" | "free">("wall");
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
@@ -260,6 +260,13 @@ export default function CrashPanel({
   // 2D mesh → kabuk parçalar (/SHELL, /SH3N, /PROP/TYPE1); 3D → solid (TYPE14).
   const isShell = meshDimension === 2;
   const jobId = result?.job_id ?? snapshot?.job_id ?? null;
+  // Uzman ayarları: son koşunun hourglass / iç enerji oranı (veri; eşik yok).
+  const hgRatio = (() => {
+    const sc = snapshot?.scalars ?? result?.scalars;
+    const hg = sc?.hourglass_energy_final;
+    const ie = sc?.internal_energy_final;
+    return hg != null && ie ? hg / ie : null;
+  })();
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
 
@@ -379,11 +386,17 @@ export default function CrashPanel({
     };
   }
 
-  const toggleGroup = (g: 1 | 2 | 3) => setOpenGroup((cur) => (cur === g ? null : g));
+  const toggleGroup = (g: 1 | 2 | 3 | 4) => setOpenGroup((cur) => (cur === g ? null : g));
   // Yön: duvar modunda düğme duvar normalidir (parça tersine gider); duvarsızda doğrudan hız yönü.
   const dirVec: number[] =
     dirPreset === "custom" ? customDir.map(Number) : DIR_PRESETS.find((d) => d.id === dirPreset)!.v;
   const approachDir = dirVec.map((c) => (c === 0 ? 0 : -c));
+  // Ek tanımlar "rayda": çarpma (hız) vektörünün baskın ekseni.
+  const impactAxis: "X" | "Y" | "Z" = (() => {
+    const v = (impactMode === "wall" ? approachDir : dirVec).map((c) => Math.abs(Number(c) || 0));
+    const i = v.indexOf(Math.max(...v));
+    return (["X", "Y", "Z"] as const)[i < 0 ? 0 : i];
+  })();
   const wallXYZ = parseTriple(wallPoint);
 
   // --- grup özetleri / hazır durumu (öneri değil: eksik bilginin listesi) ---
@@ -494,7 +507,7 @@ export default function CrashPanel({
         ),
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
-        ...cardsPayload(loadCards),
+        ...cardsPayload(loadCards, impactAxis),
         model: modelFor(matCard, "Global"),
         ...outputPayload(output),
       });
@@ -822,6 +835,32 @@ export default function CrashPanel({
         )}
       </section>
 
+      <section className="crash-acc" aria-label="Ek tanımlar">
+        <AccHead
+          n={4}
+          title="Ek tanımlar"
+          summary={loadCards.length ? `${loadCards.length} tanım · rollerin yetmediği yerler` : "rollerin yetmediği yerler"}
+          state="isteğe bağlı"
+          open={openGroup === 4}
+          onToggle={() => toggleGroup(4)}
+        />
+        {openGroup === 4 && (
+          <div className="crash-acc-body">
+            <p className="crash-behavior-hint">
+              Parça rolü bütün parçaya uygulanır. Buradakiler bir bölgeye ya da parçaya ek tanım ekler.
+            </p>
+            <CrashLoadCards
+              cards={loadCards}
+              onChange={setLoadCards}
+              partIds={partOptions}
+              regions={regions}
+              disabled={busy}
+              impactAxis={impactAxis}
+            />
+          </div>
+        )}
+      </section>
+
       {blockers.length > 0 && (
         <div className="crash-blockers" role="status" data-testid="crash-blockers">
           {blockers.map((b) => (
@@ -850,24 +889,6 @@ export default function CrashPanel({
 
 
 
-      <p className="crash-q-title crash-other-title">Diğer ayarlar</p>
-      <p className="crash-behavior-hint">Çoğu koşuda dokunulmaz. Boş alan = OpenRadioss varsayılanı.</p>
-      <details className="crash-advanced">
-        <summary>Ek tanımlar — yüzey kilitleme, ek kütle, rijit gövde, parça başına hız</summary>
-        <p className="material-assign-hint">
-          Parçanın tamamı yukarıda tanımlanır. Buradaki kartlar bir bölgeye (yüzey grubu) ya da parçaya
-          ek tanım ekler: ör. yalnız taban yüzeyini kilitlemek, kızak kütlesi eklemek.
-        </p>
-        <CrashLoadCards
-          cards={loadCards}
-          onChange={setLoadCards}
-          partIds={partOptions}
-          regions={regions}
-          roles={{}}
-          disabled={busy}
-          showCoverage={false}
-        />
-      </details>
 
       {material ? (
         <div className="crash-mat-summary" data-testid="crash-mat-summary">
@@ -890,7 +911,13 @@ export default function CrashPanel({
       )}
 
       <details className="crash-advanced">
-        <summary>Çözücü ayarları — eleman formülasyonu, hourglass</summary>
+        <summary>Uzman ayarları — eleman formülasyonu, hourglass</summary>
+        {hgRatio != null && (
+          <p className="crash-hg-line" data-testid="crash-hg-line">
+            Son koşu: HG/IE <strong>%{(hgRatio * 100).toFixed(1)}</strong> (kayıtlı değer)
+          </p>
+        )}
+        <p className="crash-behavior-hint">Boş alan = OpenRadioss varsayılanı.</p>
         <p className="crash-behavior-hint">
           Elemanın nasıl hesaplandığı (Ishell/Isolid) ve "kum saati" kontrolü (hourglass: indirgenmiş
           integrasyonlu elemanlarda sahte, enerji yemeyen zikzak deformasyonu bastırır). Sonuçlarda

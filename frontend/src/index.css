@@ -6842,20 +6842,85 @@ p {
   margin: 12px 0;
 }
 
-.crash-cards-add {
+/* 4 · Ek tanımlar (Claude Design taslağı 2026-10-08) */
+.crash-cards-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-presets {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
-.crash-card {
+.crash-cards-add {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.crash-add-tile {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+  min-height: 64px;
   padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  cursor: pointer;
+}
+
+.crash-add-tile:hover:not(:disabled) {
+  border-color: var(--accent, #3f5f8a);
+}
+
+.crash-add-tile:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.crash-add-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.crash-add-tile-when {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.crash-card {
+  --card-tint: #8a94a0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--card-tint) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-tint) 8%, var(--surface));
+}
+
+.crash-card-bcs { --card-tint: #c94a4a; }
+.crash-card-rbody { --card-tint: #d9a62e; }
+.crash-card-impvel { --card-tint: #3f5f8a; }
+.crash-card-inivel { --card-tint: #d9a62e; }
+
+.crash-card.open {
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, var(--card-tint) 75%, var(--border));
 }
 
 .crash-card-head {
@@ -6864,32 +6929,146 @@ p {
   gap: 8px;
 }
 
-.crash-card-head select {
+.crash-card-text {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
-  font: inherit;
-  font-size: 12px;
 }
 
 .crash-card-kind {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
+}
+
+.crash-card-summary {
+  font-size: 12px;
+  color: var(--ink);
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.crash-card-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .crash-card-body {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crash-card-targets {
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  align-items: center;
+  gap: 6px;
+}
+
+.crash-card-sub {
+  width: 100%;
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .crash-card-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 11.5px;
   color: var(--muted);
+}
+
+.crash-card-input {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-right: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.crash-card-input input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  background: none;
+  border: none;
+}
+
+.crash-card-unit {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-card-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.crash-radio-row.active {
+  border: 1.5px solid var(--accent, #3f5f8a);
+}
+
+.crash-radio-row > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.crash-dof {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-dof-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crash-dof-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.crash-dof-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .crash-card-field input,
@@ -7531,4 +7710,14 @@ p {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.crash-hg-line {
+  margin: 6px 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
