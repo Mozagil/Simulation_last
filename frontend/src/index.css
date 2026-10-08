@@ -8275,8 +8275,8 @@ p {
 }
 
 .crash-fail-tile.active {
-  border: 1.5px solid color-mix(in srgb, #c94a4a 60%, var(--border));
-  background: color-mix(in srgb, #c94a4a 5%, var(--surface));
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
 .crash-fail-head {
@@ -8395,7 +8395,8 @@ p {
 /* Kullanıcı 2026-10-08: açıklamalar kırmızı, başlıklar kalın, karşılıklar mavi */
 .crash-mat-step .crash-behavior-hint,
 .crash-mat-step .material-assign-hint {
-  color: var(--hint-red);
+  color: var(--hint-ink);
+  font-weight: 500;
 }
 
 .crash-expert-title {
@@ -8411,5 +8412,6 @@ p {
 }
 
 .crash-mat-step .crash-fail-text span {
-  color: var(--hint-red);
+  color: var(--hint-ink);
+  font-weight: 500;
 }

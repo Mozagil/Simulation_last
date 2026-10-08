@@ -179,7 +179,7 @@ export const CRASH_DOC: DocSection[] = [
     ],
     gallery: [
       { src: IMG("08-malzeme.png"), caption: "3 Davranış ve kopma · LAW2: aç/kapa bölümler (Akma ve pekleşme, Hız etkisi, Sıcaklık, Basit kopma, Kopma / hasar); kapalıyken değiştirilen alanlar başlıkta özetlenir." },
-      { src: IMG("09-fail.png"), caption: "Kopma / hasar: Johnson–Cook ve çekme gerinimi kartları; açık kart kırmızı çerçeveli, alanları altında." },
+      { src: IMG("09-fail.png"), caption: "Kopma / hasar: Johnson–Cook ve çekme gerinimi kartları; seçili kart mavi çerçeveli, alanları altında." },
     ],
   },
   {
