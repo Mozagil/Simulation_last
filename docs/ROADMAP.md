@@ -1478,6 +1478,56 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   (mesh önizleme JSON deseni; gerekirse PyVista — onay).
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
 
+**Kapsam ve hedef (kullanıcı, 2026-10-08):** Akışta hem iç hem dış akış ve
+aerodinamik olacak. Ek hedef: akademik yarışmalar — savunma sanayii roket
+yarışmaları. Bunun için hazır şablon mantığımızın rokete özel ayrı bir modülü
+(aşağıda **Roket modülü R1–R6**): parametrik roket şablonu ya da gerçek roketin
+STEP modeli ile dış akış çözümü. Referans ürünler (yalnız fikir; kod/veri
+alınmaz): AirShaper (bulut "sanal rüzgâr tüneli": Cd/Cl, parça başına kuvvet,
+Cp haritası, akım çizgileri, tasarım karşılaştırma) ve OpenRocket (parametrik
+parça ağacı, Barrowman, kararlılık; GPL — kodu kullanılmaz, formüller
+literatürden). AirShaper'ın "AI tasarım önerisi / morphing" özellikleri
+alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil model.
+
+**Mevcut adımlara eklenenler (2026-10-08):**
+- 2.4'e: CdA (sürükleme alanı), yama/parça başına kuvvet ve moment kırılımı,
+  kuvvet katsayısının iterasyon geçmişi (son N iterasyon ortalaması ve salınımı
+  — yalnız veri), basınç merkezi için moment (CofR mühendisten).
+- 2.5'e: "sanal rüzgâr tüneli" — akış alanı geometrinin sınır kutusundan
+  (önde/arkada/yanda kaç boy: parametre), zemin var/yok, hız + hücum (α) /
+  sapma (β) açısı; STL kapalılık (watertight) kontrolü veri olarak.
+- 2.6'ya: Ahmed gövdesi (otomotiv benchmark'ı) ve roket benchmark'ı
+  "Basic Finner" (deneysel Cd / CNα / CP verisi Mach'a göre literatürde).
+- 2.8'e: akım çizgileri (ESI `streamLine`), yüzey Cp haritası.
+- Karşılaştırma / PDF: durability ve crash'teki geçmiş–karşılaştır–PDF deseni
+  `cfd_runs` için (2.4 kaydı ile).
+
+**Roket modülü (R1–R6; her biri ayrı onay, Faz 2 içinde):**
+- R1 ⏳ Parametrik roket şablonu (Gmsh OCC): burun konisi (konik / ogive /
+  elips / von Kármán; boy, çap), gövde tüpü (boy, çap), kanatçıklar (adet,
+  kök/uç veter, açıklık, ok açısı, kalınlık), isteğe bağlı boat-tail;
+  bölgeler: burun, gövde, kanatçık, taban. Gerçek roket STEP'i de aynı akışa
+  girer (bölgeler elle).
+- R2 ⏳ Analitik referans: Barrowman (sesaltı) — basınç merkezi (CP) ve CNα;
+  durability'deki "analitik referans tablosu" deseni, CFD sonucunun yanında
+  veri olarak.
+- R3 ⏳ Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
+  mühendisten) → sonuçta CP, CN, CA, Cd, Cm ve kararlılık payı
+  (CP − CG)/D kalibre cinsinden — yalnız veri.
+- R4 ⏳ Sıkıştırılabilir çözücü (**karar gerekli**): roketler transonik /
+  süpersonik uçar; `simpleFoam` sıkıştırılamazdır (Mach ≲ 0.3).
+  Aday: `rhoSimpleFoam` (daimi, sesaltı sıkıştırılabilir) ve
+  `rhoCentralFoam` (süpersonik, şok yakalayan). Mach sayısı sonuçta veri
+  olarak gösterilir; hangi çözücünün seçileceği mühendisin.
+- R5 ⏳ Mach × α taraması (DOE altyapısıyla) → aerodinamik tablo (Cd(M),
+  CNα(M), CP(M)) CSV dışa aktarım (uçuş simülasyonu araçlarına girdi olarak).
+- R6 ⏳ (isteğe bağlı) OpenRocket `.ork` içe aktarma: zip içindeki XML'den
+  parça ölçüleri → R1 şablonu (yeni bağımlılık yok: zipfile + xml).
+
+**Sonraya (ayrı adım/faz):** zamana bağlı çözüm (`pimpleFoam` — girdap
+kopması, kuvvet salınımı), dönen tekerlek / hareketli zemin (MRF), kapalı
+olmayan geometri desteği.
+
 ## Faz 3 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
 
 Ön koşul: Faz 0 ve Faz 1 tamamlanmış olmalı (sıra değişikliği 2026-10-07: CFD önce). **Bu faz yeni bir solver eklemez** —
