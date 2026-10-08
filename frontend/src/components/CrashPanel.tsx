@@ -417,7 +417,10 @@ export default function CrashPanel({
   const partsSummary = partOptions.map((pid) => `#${pid} ${ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short}`).join(" · ");
   const noMaterial = partOptions.filter((pid) => materialAssignments.length > 0 && !materialAssignments.some((a) => a.part_id === pid && a.material_name));
   const partsMissing = [
-    !partOptions.some((pid) => roleOfPart(pid) === "moving") && !gravOn && "Parçalar: hareketli parça yok",
+    !partOptions.some((pid) => roleOfPart(pid) === "moving") &&
+      !gravOn &&
+      !loadCards.some((c) => c.kind === "inivel" || c.kind === "impvel") &&
+      "Parçalar: hareketli parça yok",
     noMaterial.length > 0 && `Parçalar: malzemesiz ${noMaterial.map((p) => "#" + p).join(", ")}`,
   ].filter(Boolean) as string[];
   const partsState: GroupState = partsMissing.length ? `${partsMissing.length} eksik` : "hazır";
@@ -429,10 +432,13 @@ export default function CrashPanel({
   const contactsState: GroupState = contactsMissing.length ? `${contactsMissing.length} eksik` : contacts.length ? "hazır" : "isteğe bağlı";
   const readyCount = [impactState, partsState, contactsState].filter((st) => !st.endsWith("eksik")).length;
   // --- viewport işaretleri: panel değişince App'e bildir ---
+  const anyMoving = partOptions.some((pid) => roleOfPart(pid) === "moving");
   const markers: CrashMarkers = {
     wall: impactMode === "wall" && wallXYZ && dirOk ? { point: wallXYZ, normal: dirVec as [number, number, number] } : null,
+    // Hız oku yalnız ilk hız alan bir parça varsa (hareketli rol): ör. kapı
+    // senaryosunda iki parça serbest, impaktör dayatılmış hızla itilir — ok yok.
     velocity:
-      speedOk && dirOk
+      speedOk && dirOk && anyMoving
         ? { dir: (impactMode === "wall" ? approachDir : dirVec) as [number, number, number], label: `${speed} m/s` }
         : null,
     partLabels: Object.fromEntries(

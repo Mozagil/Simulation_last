@@ -572,4 +572,27 @@ describe("CrashPanel", () => {
     expect(screen.getByLabelText("Duvar konumu")).toHaveValue("0, 25, 20");
     expect(screen.getByLabelText("Süre")).toHaveValue("4");
   });
+
+  it("hareketli parça yoksa hız oku çizilmez; duvarsız senaryoda duvar yok (kapı)", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "door", status: "solved" });
+    const onMarkersChange = vi.fn();
+    render(
+      <CrashPanel
+        geometryId={9}
+        meshDimension={2}
+        partIds={[0, 1]}
+        onMarkersChange={onMarkersChange}
+        externalJob={{
+          jobId: "door",
+          geometryId: 9,
+          setup: { use_rigid_wall: false, wall: { point: [0, 0, 0], normal: [0, 0, 1] }, part_roles: { 0: "free", 1: "free" } },
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(onMarkersChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ wall: null, velocity: null, partRoles: { 0: "free", 1: "free" } }),
+      ),
+    );
+  });
 });

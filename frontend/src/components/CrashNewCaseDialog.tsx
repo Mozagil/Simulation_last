@@ -6,7 +6,6 @@
 import type { CrashScenarioResponse } from "../api/crash";
 import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
-import CrashSchematic from "./CrashSchematic";
 
 export default function CrashNewCaseDialog({
   onClose,
@@ -36,8 +35,8 @@ export default function CrashNewCaseDialog({
         </div>
         <div className="crash-newcase-body">
           <div>
-            <CrashSchematic />
-            <CrashScenarioCard onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} />
+            <CrashScenarioCard
+              showSchematic onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} />
           </div>
           <div>
             <CrashCatalog />

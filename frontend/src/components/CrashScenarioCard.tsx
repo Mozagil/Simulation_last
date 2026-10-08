@@ -9,6 +9,7 @@ import {
 } from "../api/crash";
 import { fetchMaterials, type Material } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
+import TemplateSchematic from "./TemplateSchematic";
 
 /** Hızlı senaryo (1.17g-7 → K0): katalogdaki "hazır" örneklerden tek çağrıda
  * koşu (POST /crash/scenario) — geometri yüklemeden. Şablon listesi katalogdan,
@@ -226,7 +227,10 @@ export default function CrashScenarioCard({
   onDone,
   onGeometry,
   onJobStarted,
+  showSchematic = false,
 }: {
+  /** Seçili örneğin kendi şeması (yeni vaka penceresi). */
+  showSchematic?: boolean;
   onDone?: () => void;
   /** Senaryo koşusu başladı — App bunu 5 · Sonuçlar paneline bağlar. */
   onJobStarted?: (res: CrashScenarioResponse) => void;
@@ -345,8 +349,13 @@ export default function CrashScenarioCard({
   );
 
   return (
-    <details className="crash-mat-section crash-scenario" data-testid="crash-scenario">
+    <details className="crash-mat-section crash-scenario" data-testid="crash-scenario" open={showSchematic || undefined}>
       <summary>Hızlı senaryo{entry ? ` — ${entry.title}` : ""}</summary>
+      {showSchematic && entry?.template_id && (
+        <div className="template-schematic-wrap" data-testid="crash-scenario-schematic">
+          <TemplateSchematic templateId={entry.template_id} />
+        </div>
+      )}
       <label className="mesh-field">
         <span>Katalog örneği</span>
         <select
