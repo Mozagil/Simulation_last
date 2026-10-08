@@ -80,6 +80,35 @@ class CfdControl(BaseModel):
     relax_other: float = Field(0.9, gt=0, le=1)
 
 
+class CfdForces(BaseModel):
+    """Kuvvet / moment / katsayılar (2.4). Referans değerler mühendisindir.
+
+    Cd = Fd / (½·ρ·U²·A), Cl benzer; Cm = M / (½·ρ·U²·A·l). Moment ``cofr_m``
+    noktasına göre (basınç merkezi için). Sıkıştırılamazda ρ = case ρ.
+    """
+
+    patches: list[str] = Field(min_length=1)
+    #: Birden çok yamada her yama için ayrı kuvvet (roket: burun / gövde / kanatçık).
+    per_patch: bool = True
+    cofr_m: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    drag_dir: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    lift_dir: tuple[float, float, float] = (0.0, 1.0, 0.0)
+    pitch_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    u_ref_m_s: float = Field(gt=0)
+    l_ref_m: float = Field(gt=0)
+    a_ref_m2: float = Field(gt=0)
+    #: Kuvvet geçmişinin son N iterasyonunun ortalaması ve salınımı (veri).
+    average_last: int = Field(50, gt=0)
+
+    @model_validator(mode="after")
+    def _dirs_ok(self) -> "CfdForces":
+        for name in ("drag_dir", "lift_dir", "pitch_axis"):
+            v = getattr(self, name)
+            if not all(math.isfinite(c) for c in v) or math.hypot(*v) < 1e-12:
+                raise ValueError(f"{name} sıfır olmayan sonlu bir vektör olmalı.")
+        return self
+
+
 class CfdCaseParams(BaseModel):
     #: Kinematik viskozite ν (m²/s)
     nu_m2_s: float = Field(gt=0)
@@ -92,6 +121,8 @@ class CfdCaseParams(BaseModel):
     initial_velocity_m_s: tuple[float, float, float] = (0.0, 0.0, 0.0)
     #: Alan ortalaması basıncı izlenecek yamalar (2.3; ör. inlet, outlet → Δp).
     monitor_patches: list[str] = Field(default_factory=list)
+    #: Kuvvet / katsayı izleme (2.4) — dış akışta gövde yamaları.
+    forces: CfdForces | None = None
 
     @model_validator(mode="after")
     def _patches_ok(self) -> "CfdCaseParams":
@@ -100,6 +131,8 @@ class CfdCaseParams(BaseModel):
         if dup:
             raise ValueError(f"Yama adları tekrar ediyor: {', '.join(dup)}")
         unknown = sorted(set(self.monitor_patches) - set(names))
+        if self.forces is not None:
+            unknown += sorted(set(self.forces.patches) - set(names))
         if unknown:
             raise ValueError(f"İzlenen yama mesh yama listesinde yok: {', '.join(unknown)}")
         kinds = {p.kind for p in self.patches}
@@ -300,6 +333,8 @@ def _functions(p: CfdCaseParams) -> str:
         "        fields          (U);\n"
         "    }"
     )
+    if p.forces is not None:
+        blocks.extend(_force_blocks(p))
     return "\nfunctions\n{\n" + "\n\n".join(blocks) + "\n}\n"
 
 
@@ -387,3 +422,49 @@ def write_case(params: CfdCaseParams, case_dir: Path) -> list[Path]:
         path.write_text(text, encoding="utf-8", newline="\n")
         written.append(path)
     return written
+
+
+def _force_blocks(p: CfdCaseParams) -> list[str]:
+    """``coeffs`` (forceCoeffs, tüm gövde), ``forces_total`` ve yama başına ``forces_<yama>``."""
+    f = p.forces
+    assert f is not None
+    rho = _num(p.rho_kg_m3)
+
+    def forces(name: str, patches: list[str]) -> str:
+        return (
+            f"    {name}\n    {{\n"
+            "        type            forces;\n"
+            "        libs            (forces);\n"
+            "        writeControl    timeStep;\n"
+            "        writeInterval   1;\n"
+            "        log             false;\n"
+            f"        patches         ({' '.join(patches)});\n"
+            "        rho             rhoInf;\n"
+            f"        rhoInf          {rho};\n"
+            f"        CofR            {_vec(f.cofr_m)};\n"
+            "    }"
+        )
+
+    out = [
+        "    coeffs\n    {\n"
+        "        type            forceCoeffs;\n"
+        "        libs            (forces);\n"
+        "        writeControl    timeStep;\n"
+        "        writeInterval   1;\n"
+        "        log             false;\n"
+        f"        patches         ({' '.join(f.patches)});\n"
+        "        rho             rhoInf;\n"
+        f"        rhoInf          {rho};\n"
+        f"        CofR            {_vec(f.cofr_m)};\n"
+        f"        liftDir         {_vec(f.lift_dir)};\n"
+        f"        dragDir         {_vec(f.drag_dir)};\n"
+        f"        pitchAxis       {_vec(f.pitch_axis)};\n"
+        f"        magUInf         {_num(f.u_ref_m_s)};\n"
+        f"        lRef            {_num(f.l_ref_m)};\n"
+        f"        Aref            {_num(f.a_ref_m2)};\n"
+        "    }",
+        forces("forces_total", f.patches),
+    ]
+    if f.per_patch and len(f.patches) > 1:
+        out.extend(forces(f"forces_{name}", [name]) for name in f.patches)
+    return out

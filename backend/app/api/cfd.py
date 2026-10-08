@@ -19,9 +19,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, model_validator
 
+from sqlalchemy.orm import Session
+
+from app.api.cfd_runs import record_from_meta
+from app.db.session import SessionLocal, get_db
 from app.jobs.progress import get_hub
 from app.mesh.cfd_blockmesh import ChannelMeshParams, channel_block_mesh_dict, poiseuille_reference
 from app.solvers.base import InputArtifact, SolverError
@@ -41,6 +45,9 @@ _live: dict[str, dict[str, Any]] = {}
 
 class CfdSolveRequest(BaseModel):
     case: CfdCaseParams
+    #: Koşu adı (geçmiş listesinde) ve isteğe bağlı geometri bağı.
+    name: str | None = Field(None, max_length=200)
+    geometry_id: int | None = None
     #: Mesh — ikisinden biri: parametrik kanal (2.3) ya da ham blockMeshDict metni.
     #: Yama adları case.patches ile aynı olmalı (kanal: inlet, outlet, walls, frontAndBack).
     channel: ChannelMeshParams | None = None
@@ -115,6 +122,18 @@ def _compare_reference(meta: dict[str, Any], scalars: dict[str, float]) -> None:
     ref["diff_percent"] = {k: 100.0 * (v - a[k]) / a[k] for k, v in cfd.items() if a.get(k)}
 
 
+def _sync_run(meta: dict[str, Any]) -> None:
+    """job.json durumunu cfd_runs'a yansıt (arka plan işi kendi oturumuyla)."""
+    db = SessionLocal()
+    try:
+        record_from_meta(db, meta)
+    except Exception as exc:  # noqa: BLE001 — kayıt hatası çözümü düşürmesin
+        logger.warning("cfd_runs güncellenemedi job_id=%s: %s", meta.get("job_id"), exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _complete_cfd_job(job_id: str) -> None:
     meta = _read_job(job_id)
     if meta is None:
@@ -137,7 +156,13 @@ def _complete_cfd_job(job_id: str) -> None:
     adapter = OpenFoamAdapter()
     try:
         handle = adapter.submit(InputArtifact(path=Path(meta["case_dir"]), kind="directory"), progress_cb=_cb)
+        forces = meta.get("forces") or {}
+        handle._average_last = int(forces.get("average_last") or 50)  # type: ignore[attr-defined]
         res = adapter.parse_results(handle)
+        a_ref = forces.get("a_ref_m2")
+        if a_ref and "Cd" in res.scalars:
+            res.scalars["CdA_m2"] = res.scalars["Cd"] * float(a_ref)
+            res.scalars["CdA_mean_m2"] = res.scalars["Cd_mean"] * float(a_ref)
         meta["status"] = "solved"
         meta["message"] = (
             f"{app} bitti · {int(res.scalars.get('iterations', 0))} iterasyon · "
@@ -154,6 +179,7 @@ def _complete_cfd_job(job_id: str) -> None:
         meta["diagnostics"] = res.diagnostics
         _compare_reference(meta, res.scalars)
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
         logger.warning("cfd job başarısız job_id=%s: %s", job_id, exc)
@@ -167,6 +193,7 @@ def _complete_cfd_job(job_id: str) -> None:
         meta["message"] = str(exc)
         meta["solver_ran"] = False
         _write_job(meta)
+        _sync_run(meta)
         hub.update(job_id, state="failed", message=str(exc))
     finally:
         with _live_lock:
@@ -174,7 +201,9 @@ def _complete_cfd_job(job_id: str) -> None:
 
 
 @router.post("/solve")
-def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+def cfd_solve(
+    body: CfdSolveRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+) -> dict[str, Any]:
     job_id = str(uuid.uuid4())
     case_dir = _job_dir(job_id) / "case"
     try:
@@ -187,6 +216,9 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
     image = resolve_openfoam_image()
     meta: dict[str, Any] = {
         "job_id": job_id,
+        "name": body.name,
+        "geometry_id": body.geometry_id,
+        "case": body.case.model_dump(),
         "status": "case_only",
         "message": "case yazıldı",
         "case_dir": str(case_dir),
@@ -194,6 +226,7 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
         "end_iterations": body.case.control.iterations,
         "turbulence": body.case.turbulence.model,
         "rho_kg_m3": body.case.rho_kg_m3,
+        "forces": body.case.forces.model_dump() if body.case.forces is not None else None,
         "mesh": {"kind": "channel", **body.channel.model_dump(), "cells": body.channel.cell_count}
         if body.channel is not None
         else {"kind": "block_mesh_dict"},
@@ -205,6 +238,12 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
     }
     hub = get_hub()
     hub.create(job_id)
+
+    def save() -> None:
+        _write_job(meta)
+        run = record_from_meta(db, meta)
+        result["run_id"] = run.id
+
     result: dict[str, Any] = {
         "job_id": job_id,
         "progress_url": f"/cfd/jobs/{job_id}",
@@ -214,19 +253,19 @@ def cfd_solve(body: CfdSolveRequest, background_tasks: BackgroundTasks) -> dict[
     }
 
     if not body.run_solver:
-        _write_job(meta)
+        save()
         hub.update(job_id, state="done", percent=0.0, message="case_only")
         return {**result, "status": meta["status"], "message": meta["message"]}
     if image is None:
         meta["status"] = "failed"
         meta["message"] = "OpenFOAM yapılandırılmamış (OPENFOAM_DOCKER_IMAGE)"
-        _write_job(meta)
+        save()
         hub.update(job_id, state="failed", message=meta["message"])
         return {**result, "status": meta["status"], "message": meta["message"]}
 
     meta["status"] = "pending"
     meta["message"] = "simpleFoam kuyrukta"
-    _write_job(meta)
+    save()
     hub.update(job_id, state="running", percent=0.0, message=meta["message"])
     if body.wait:
         _complete_cfd_job(job_id)

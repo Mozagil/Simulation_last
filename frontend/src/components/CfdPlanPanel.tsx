@@ -9,7 +9,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "2.1", title: "Case yazıcı", what: "Parametrelerden 0/U, 0/p, (k, ω, νt), constant/, system/ — laminer ya da k-ω SST. pitzDaily ağında k-ω SST 382 iterasyonda yakınsadı.", status: "tamam" },
   { id: "2.2", title: "Koşu + ilerleme", what: "Docker'da koşu; canlı iterasyon ve residual'lar (/cfd/solve, /cfd/jobs, ws). pitzDaily 382 iterasyonda yakınsadı (~12 s).", status: "tamam" },
   { id: "2.3", title: "İlk doğrulama", what: "2B kanal (blockMesh), laminer Re 10: Δp analitikten %+2.9 (giriş bölgesi dahil), u_max %−0.5.", status: "tamam" },
-  { id: "2.4", title: "Sonuç okuma", what: "Kuvvet / Cd / Cl, ortalama basınç, debi, residual geçmişi; koşu kaydı (DB şeması ayrı onay).", status: "plan" },
+  { id: "2.4", title: "Sonuç okuma", what: "Cd / Cl / Cm, CdA, yama başına kuvvet ve moment, kuvvet geçmişi (son N ortalama + std); cfd_runs koşu kaydı ve /cfd/runs.", status: "tamam" },
   { id: "2.5", title: "CFD mesh", what: "STEP → Gmsh yüzey → snappyHexMesh (inceltme ve sınır tabakası değerleri mühendisin); checkMesh verisi.", status: "plan" },
   { id: "2.6", title: "Dış akış doğrulaması", what: "Silindir Cd (Re 20/40), pitzDaily yeniden bağlanma uzunluğu.", status: "plan" },
   { id: "2.7", title: "Arayüz adımları", what: "1 Geometry · 2 Mesh · 3 Akışkan (ρ, ν) · 4 Sınır koşulları (giriş, çıkış, duvar, simetri, türbülans) · 5 Sonuçlar.", status: "plan" },

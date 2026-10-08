@@ -1477,9 +1477,18 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   `reference` (analitik / CFD / % fark). V-C1 (Re 10, L = 20H, 200×20 hücre,
   643 iterasyon, ~7 s): Δp %+2.9 (girişteki gelişme bölgesi dahil, L_e ≈ 0.5H),
   u_max %−0.5. Test `tests/test_cfd_channel.py`.
-- 2.4 ⏳ Sonuç okuma (`parse_results`): function object çıktıları (forces /
+- 2.4 ✅ (2026-10-08) Sonuç okuma (`parse_results`): function object çıktıları (forces /
   forceCoeffs, patch ortalama basınç / debi), residual geçmişi →
   `ResultSet`; `cfd_runs` kaydı (şema ayrı onay).
+  **Sonuç:** case yazıcıda `forces` bloğu (`CfdForces`: gövde yamaları, CofR,
+  sürükleme/kaldırma/yunuslama yönleri, U_ref, l_ref, A_ref, son N iterasyon) →
+  `forceCoeffs` (`coeffs`) + `forces_total` + yama başına `forces_<yama>`;
+  `read_forces`: Cd/Cl/Cs/Cm son değer + son N ortalama ve std, kuvvet/moment
+  toplam/basınç/viskoz bileşenleri, katsayı geçmişi; API'de CdA. **`cfd_runs`
+  tablosu** (kullanıcı onayı 2026-10-08; migration `b8c9d0e1f2a3`, geometri
+  bağı isteğe bağlı) + `/cfd/runs` (liste, ayrıntı + eğriler, karşılaştır, ad /
+  dışla). Canlı: pitzDaily duvarları Cd 0.318 (son 50 ort. 0.320, std 0.003),
+  toplam = yamaların toplamı. Test `tests/test_cfd_forces_runs.py`.
 - 2.5 ⏳ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
   blockMesh kutusu, yüzey/bölge inceltme, sınır tabakası katmanları —
   değerler mühendisten); `checkMesh` çıktısı veri olarak.

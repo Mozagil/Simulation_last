@@ -232,13 +232,17 @@ class OpenFoamAdapter(SolverAdapter):
         return JobStatus(state="failed", exit_code=exit_code, message="OpenFOAM hata")
 
     def parse_results(self, job: JobHandle) -> ResultSet:
-        """2.2: yalnız residual geçmişi ve yakınsama; kuvvet / Δp 2.4'te."""
+        """Residual geçmişi + yakınsama (2.2), izleme değerleri (2.3), kuvvet /
+        moment / katsayılar ve geçmişleri (2.4)."""
         app = getattr(job, "_application", None) or case_application(job.work_dir)
         log_path = Path(job.work_dir) / f"log.{app}"
         if not log_path.is_file():
             raise SolverError(f"Solver log'u yok: {log_path}")
         res = residual_result(parse_solver_log(log_path.read_text(encoding="utf-8", errors="replace")), log_path)
         res.scalars.update(read_monitors(job.work_dir))
+        f_scalars, f_curves = read_forces(job.work_dir, int(getattr(job, "_average_last", 50)))
+        res.scalars.update(f_scalars)
+        res.curves.update(f_curves)
         return res
 
 
@@ -309,3 +313,85 @@ def residual_result(log: SolverLog, log_path: Path | None = None) -> ResultSet:
         raw_result_path=log_path,
         diagnostics={"finished": log.finished, "fatal_error": log.fatal_error},
     )
+
+
+_COEFF_KEYS = ("Cd", "Cl", "Cs", "CmPitch", "CmRoll", "CmYaw")
+
+
+def _data_rows(path: Path) -> tuple[list[str], list[list[float]]]:
+    """``# Time ...`` başlıklı .dat → (sütun adları, sayısal satırlar).
+
+    Sütunlar boşluk/sekme karışık ayrılır; ``(x y z)`` grupları kullanılmaz.
+    """
+    header: list[str] = []
+    rows: list[list[float]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("#"):
+            if line[1:].strip().startswith("Time"):
+                header = line[1:].split()
+            continue
+        if not line.strip():
+            continue
+        try:
+            rows.append([float(x) for x in line.replace("(", " ").replace(")", " ").split()])
+        except ValueError:
+            continue
+    return header, rows
+
+
+def _latest_dir(fo_dir: Path) -> Path | None:
+    times = [d for d in fo_dir.iterdir() if d.is_dir() and _is_float(d.name)]
+    return max(times, key=lambda d: float(d.name)) if times else None
+
+
+def read_forces(case_dir: Path, average_last: int = 50) -> tuple[dict[str, float], dict[str, Any]]:
+    """Kuvvet fonksiyonlarının çıktısı (2.4) → (skalerler, eğriler).
+
+    ``coeffs`` (forceCoeffs): son değerler + son N iterasyonun ortalaması ve
+    standart sapması (``Cd_mean``, ``Cd_std`` …) — yakınsama verisi, yorum yok.
+    ``forces_total`` / ``forces_<yama>``: kuvvet (N) toplam / basınç / viskoz
+    ve moment (N·m, CofR'ye göre).
+    """
+    scalars: dict[str, float] = {}
+    curves: dict[str, Any] = {}
+    root = Path(case_dir) / "postProcessing"
+    if not root.is_dir():
+        return scalars, curves
+    coeff_dir = root / "coeffs"
+    latest = _latest_dir(coeff_dir) if coeff_dir.is_dir() else None
+    if latest is not None and (latest / "coefficient.dat").is_file():
+        header, rows = _data_rows(latest / "coefficient.dat")
+        if rows and header:
+            idx = {name: i for i, name in enumerate(header)}
+            tail = rows[-average_last:]
+            hist: dict[str, list[float]] = {"iteration": [r[0] for r in rows]}
+            for key in _COEFF_KEYS:
+                if key not in idx:
+                    continue
+                col = [r[idx[key]] for r in rows]
+                last = [r[idx[key]] for r in tail]
+                mean = sum(last) / len(last)
+                scalars[key] = col[-1]
+                scalars[f"{key}_mean"] = mean
+                scalars[f"{key}_std"] = (sum((v - mean) ** 2 for v in last) / len(last)) ** 0.5
+                hist[key] = col
+            scalars["coeff_average_window"] = float(len(tail))
+            curves["force_coeffs"] = hist
+    for fo in sorted(root.glob("forces_*")):
+        latest = _latest_dir(fo)
+        if latest is None:
+            continue
+        tag = fo.name[len("forces_"):]
+        for fname, prefix in (("force.dat", "force"), ("moment.dat", "moment")):
+            path = latest / fname
+            if not path.is_file():
+                continue
+            _, rows = _data_rows(path)
+            if not rows or len(rows[-1]) < 10:
+                continue
+            last = rows[-1]
+            for j, part in enumerate(("total", "pressure", "viscous")):
+                for k, axis in enumerate("xyz"):
+                    name = f"{prefix}_{tag}_{axis}" if part == "total" else f"{prefix}_{tag}_{part}_{axis}"
+                    scalars[name] = last[1 + 3 * j + k]
+    return scalars, curves
