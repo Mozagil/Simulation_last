@@ -1514,11 +1514,18 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
 - R3 ⏳ Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
   mühendisten) → sonuçta CP, CN, CA, Cd, Cm ve kararlılık payı
   (CP − CG)/D kalibre cinsinden — yalnız veri.
-- R4 ⏳ Sıkıştırılabilir çözücü (**karar gerekli**): roketler transonik /
-  süpersonik uçar; `simpleFoam` sıkıştırılamazdır (Mach ≲ 0.3).
-  Aday: `rhoSimpleFoam` (daimi, sesaltı sıkıştırılabilir) ve
-  `rhoCentralFoam` (süpersonik, şok yakalayan). Mach sayısı sonuçta veri
-  olarak gösterilir; hangi çözücünün seçileceği mühendisin.
+- R4 ⏳ Çözücü seçimi (**karar verildi 2026-10-08:** üçü de bulunur, NLGEOM gibi
+  kullanıcı seçer; otomatik seçim yok — Mach sayısı yalnız veri olarak
+  gösterilir). Case yazıcıda `solver` alanı: `simpleFoam` (sıkıştırılamaz,
+  Mach ≲ 0.3, iç akış) | `rhoSimpleFoam` | `rhoCentralFoam`; üst katmanlar
+  değişmez (adaptör deseni). Her çözücünün doğrulandığı Mach aralığı belgede veri.
+  Not: hesaplanan Cd motor kapalı (power-off); y+ veri olarak gösterilir.
+  - R4a ⏳ `rhoSimpleFoam` (daimi, sıkıştırılabilir, `transonic` seçeneği;
+    Mach ~0.3–0.8): `0/T`, `thermophysicalProperties` (hava, mükemmel gaz),
+    ESI şemaları. Doğrulama: Basic Finner M 0.5 / 0.8 + R2 Barrowman.
+  - R4b ⏳ `rhoCentralFoam` (yoğunluk tabanlı, şok yakalayan, zamana bağlı;
+    Mach ~0.8 üstü) + paralel koşu (`decomposePar` + `mpirun`, çekirdek
+    sayısı parametre). Doğrulama: Basic Finner M 1.5 / 2.0.
 - R5 ⏳ Mach × α taraması (DOE altyapısıyla) → aerodinamik tablo (Cd(M),
   CNα(M), CP(M)) CSV dışa aktarım (uçuş simülasyonu araçlarına girdi olarak).
 - R6 ⏳ (isteğe bağlı) OpenRocket `.ork` içe aktarma: zip içindeki XML'den
