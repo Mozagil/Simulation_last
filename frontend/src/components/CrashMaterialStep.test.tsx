@@ -69,4 +69,33 @@ describe("CrashMaterialStep (3 · Material, BC gibi akordeon)", () => {
     expect(props).not.toHaveTextContent("Rm");
     expect(props).not.toHaveTextContent("uzama");
   });
+
+  it("geometri / mesh yokken atama grubu 'eksik' değil 'bekliyor'; sayaç 2 grup üzerinden", () => {
+    render(
+      <CrashMaterialStep
+        materials={MATS}
+        selectedMaterialId={1}
+        onSelectMaterial={() => undefined}
+        partIds={[]}
+        assignments={[]}
+        thicknessByPart={{}}
+        isShell={false}
+        hasModel={false}
+        busy={false}
+        onAssign={() => undefined}
+        onCustom={() => undefined}
+        matCard={defaultMatCard()}
+        setMatCard={() => undefined}
+        partCards={{}}
+        setPartCards={() => undefined}
+      />,
+    );
+    const head = screen.getByRole("button", { name: /Parçalara ata/ });
+    expect(head).toHaveTextContent("bekliyor");
+    expect(head).not.toHaveTextContent("eksik");
+    expect(screen.getByTestId("crash-mat-ready")).toHaveTextContent("2 / 2 hazır");
+    fireEvent.click(head);
+    expect(screen.getByTestId("crash-mat-no-model")).toBeInTheDocument();
+    expect(screen.queryByTestId("crash-mat-part-0")).toBeNull();
+  });
 });

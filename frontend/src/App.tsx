@@ -4426,6 +4426,7 @@ function App() {
                   (productTree?.items ?? []).map((it) => [it.part_id, it.thickness]),
                 )}
                 isShell={meshResult?.dimension === 2}
+                hasModel={geometryId !== null && meshResult !== null}
                 busy={busyAction !== null}
                 onAssign={(ids) => void handleAssignMaterial(ids)}
                 onCustom={() => setShowCustomMaterialForm((prev) => !prev)}

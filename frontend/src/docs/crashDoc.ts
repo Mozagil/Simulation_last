@@ -154,14 +154,22 @@ export const CRASH_DOC: DocSection[] = [
   },
   {
     id: "malzeme",
-    title: "3 · Material → Crash malzeme modeli",
+    title: "3 · Material (crash)",
     intro:
-      "3 · Material adımı BC paneli gibi üç akordeon grubundan oluşur: 1 Kütüphane malzemesi (E, ν, ρ, akma; LAW36 eğrileri; özel malzeme), " +
-      "2 Parçalara ata (parça başına malzeme + kabuk kalınlığı, “Tüm parçalara ata”), 3 Davranış ve kopma (LAW + /FAIL). " +
-      "Sayaç eksik atamayı / kalınlığı gösterir. Elle kurulan koşuda varsayılan LAW2.",
-    image: IMG("08-malzeme.png"),
-    imageCaption: "LAW seçimi ve açıklaması, LS-DYNA karşılığı.",
+      "Crash sekmesinde 3 · Material, BC paneli gibi üç akordeon grubudur: 1 Kütüphane malzemesi, 2 Parçalara ata, " +
+      "3 Davranış ve kopma. Sayaç eksik atamayı / kalınlığı gösterir; geometri ve mesh yokken atama grubu “bekliyor” der. " +
+      "Yalnız explicit'te kullanılan değerler gösterilir — çekme dayanımı (Rm), uzama ve S-N durability'nin malzeme adımındadır. " +
+      "Elle kurulan koşuda varsayılan LAW2.",
+    image: IMG("08b-kutuphane.png"),
+    imageCaption: "1 Kütüphane malzemesi: OpenRadioss'a giden dört değer ve gittikleri kart alanı.",
     items: [
+      { name: "E · elastisite modülü", what: "Malzeme kartının elastik modülü (/MAT kartı, her LAW).", dyna: "*MAT_… E" },
+      { name: "ν · Poisson", what: "Malzeme kartının Poisson oranı.", dyna: "*MAT_… PR" },
+      { name: "ρ · yoğunluk", what: "Kütle ve zaman adımı buradan (kg/m³ → deck'te kg/mm³).", dyna: "*MAT_… RO" },
+      { name: "σy · akma (Rp0.2)", what: "LAW2'nin a parametresi — davranış kartında σy boş bırakılırsa bu değer kullanılır.", card: "/MAT/LAW2", dyna: "*MAT_024 SIGY / *MAT_015 A" },
+      { name: "LAW36 eğrileri", what: "Kütüphane malzemesine kaydedilen ölçülmüş σ–ε eğrileri; LAW36 seçilince kullanılır.", card: "/MAT/LAW36" },
+      { name: "+ Özel malzeme", what: "Yeni kütüphane malzemesi: ad, E, ν, ρ, akma. Crash'te Rm / S-N sorulmaz." },
+      { name: "2 · Parçalara ata", what: "Parça satırı: atanan malzeme ve kabuk kalınlığı; “… ata” seçili kütüphane malzemesini o parçaya atar, “Tüm parçalara ata” hepsine. Altında bileşen (kalınlık / malzeme) düzenleme." },
       { name: "LAW1 elastik", what: "Doğrusal elastik; kalıcı şekil değiştirmez, enerji yutmaz (kutu ezilmez, seker).", when: "Dalga yayılımı (Hopkinson), rijit gibi davranması istenen parçalar, doğrulama (V1).", card: "/MAT/LAW1" },
       { name: "LAW2 plastik (Johnson–Cook)", what: "σ = a + b·εₚⁿ; isteğe bağlı hız terimi (C, ε̇₀) ve kopma (εp,max). Kalıcı şekil değiştirir, enerji yutar.", when: "Ezilen/deforme olan her metal parça — crash'in standart seçimi.", card: "/MAT/LAW2" },
       { name: "LAW36 tablo", what: "Ölçülmüş σ–ε eğrisi (hız başına ayrı eğri olabilir).", when: "Test eğrisi elindeyse.", card: "/MAT/LAW36" },
@@ -169,7 +177,10 @@ export const CRASH_DOC: DocSection[] = [
       { name: "/FAIL/TENSSTRAIN", what: "Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir. En az bir sınır girilmeli (boşsa koşu reddedilir).", when: "Basit, az veri; ölçüm yoksa ilk yaklaşım.", card: "/FAIL/TENSSTRAIN" },
       { name: "Parça başına model", what: "Çok parçalı modelde her parçaya ayrı kart (ör. küre LAW1, plaka LAW2)." },
     ],
-    gallery: [{ src: IMG("09-fail.png"), caption: "/FAIL kartları ve alanları." }],
+    gallery: [
+      { src: IMG("08-malzeme.png"), caption: "3 Davranış ve kopma: LAW seçimi, açıklaması ve LS-DYNA karşılığı." },
+      { src: IMG("09-fail.png"), caption: "/FAIL kartları ve alanları." },
+    ],
   },
   {
     id: "sonuclar",

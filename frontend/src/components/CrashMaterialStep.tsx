@@ -56,6 +56,7 @@ export default function CrashMaterialStep({
   assignments,
   thicknessByPart,
   isShell,
+  hasModel = true,
   busy,
   onAssign,
   onCustom,
@@ -74,6 +75,8 @@ export default function CrashMaterialStep({
   /** Kabuk kalınlığı (ürün ağacı), parça → mm. */
   thicknessByPart: Record<number, number | null | undefined>;
   isShell: boolean;
+  /** Geometri + mesh var mı — yoksa atama grubu "eksik" değil "bekliyor". */
+  hasModel?: boolean;
   busy: boolean;
   /** Seçili kütüphane malzemesini bu parçalara ata. */
   onAssign: (partIds: number[]) => void;
@@ -100,8 +103,10 @@ export default function CrashMaterialStep({
     ? `${sel.name} · E ${gpa(sel.youngs_modulus)} · σy ${mpa(sel.yield_strength)} · ρ ${sel.density.toFixed(0)}`
     : "kütüphaneden malzeme seçin";
   const assignMissing = unassigned.length + noThickness.length;
-  const assignState = assignMissing ? `${assignMissing} eksik` : "hazır";
-  const assignSummary = parts
+  const assignState = !hasModel ? "bekliyor" : assignMissing ? `${assignMissing} eksik` : "hazır";
+  const assignSummary = !hasModel
+    ? "önce geometri yükle ve mesh üret (1 · Geometry, 2 · Mesh)"
+    : parts
     .map((pid) => {
       const a = assignedOf(pid);
       const t = thicknessByPart[pid];
@@ -112,6 +117,7 @@ export default function CrashMaterialStep({
     matCardSummary(matCard) +
     (Object.keys(partCards).length ? ` · ${Object.keys(partCards).length} parçaya ayrı model` : "");
   const ready = [libState, assignState, "hazır"].filter((s) => s === "hazır").length;
+  const total = hasModel ? 3 : 2;
 
   return (
     <div className="crash-mat-step" data-testid="crash-material-step">
@@ -121,8 +127,8 @@ export default function CrashMaterialStep({
       <DynaToggle />
       <div className="crash-acc-head">
         <span className="crash-q-title">Malzeme</span>
-        <span className={ready === 3 ? "crash-acc-count ok" : "crash-acc-count"} data-testid="crash-mat-ready">
-          {ready} / 3 hazır
+        <span className={ready === total ? "crash-acc-count ok" : "crash-acc-count"} data-testid="crash-mat-ready">
+          {ready} / {total} hazır
         </span>
       </div>
 
@@ -185,6 +191,12 @@ export default function CrashMaterialStep({
               Seçili kütüphane malzemesi ({sel?.name ?? "—"}) parçaya atanır.
               {isShell ? " Kabuk kalınlığı ürün ağacındaki bileşenden gelir (aşağıda düzenlenir)." : ""}
             </p>
+            {!hasModel && (
+              <p className="doe-empty" data-testid="crash-mat-no-model">
+                Henüz parça yok. 1 · Geometry'de model yükle, 2 · Mesh'te mesh üret; parçalar burada listelenir.
+              </p>
+            )}
+            {hasModel && (
             <div className="crash-mat-parts">
               {parts.map((pid) => {
                 const a = assignedOf(pid);
@@ -208,7 +220,8 @@ export default function CrashMaterialStep({
                 );
               })}
             </div>
-            {parts.length > 1 && (
+            )}
+            {hasModel && parts.length > 1 && (
               <button
                 type="button"
                 className="doe-btn doe-btn-ghost"
