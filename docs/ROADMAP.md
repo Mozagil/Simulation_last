@@ -1513,8 +1513,17 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     Uçtan uca: 100 mm küre, taban 50 mm, yüzey seviyesi 3 → 13 615 hücre,
     checkMesh OK, 3 katman %100, mesh 7 s; k-ω SST 10 m/s (Re 6.7e4) 203
     iterasyon, Cd 0.406 (kaba ağ; doğrulama 2.6). Test `tests/test_cfd_mesh.py`.
-  - 2.5b ⏳ `cfMesh` (`cartesianMesh`, ESI imajında hazır; daha az ayar, sınır
+  - 2.5b ✅ (2026-10-09) `cfMesh` (`cartesianMesh`; daha az ayar, sınır
     tabakasını kendisi ekler) — NLGEOM gibi seçilebilir ikinci mesh'leyici.
+    **Düzeltme:** resmi ESI imajında cfMesh YOK (önce "hazır" denmişti, yanlıştı).
+    Kullanıcı kararı 2026-10-09 ("ikisini de yap"): `backend/docker/openfoam/Dockerfile`
+    resmi imajın üzerine ESI cfMesh modülünü (GPL, v2406 etiketi) derler →
+    `simsurrogate-openfoam:2412-cfmesh` (derleme ~2 dk); snappy ve geri kalanı aynı.
+    `cfd_mesher.py`: tünel kutusu + gövde tek STL (`domain.stl`), `meshDict`
+    (snappy ayarlarıyla aynı anlam: gövde hücresi = taban/2^seviye_maks, iz kutusu,
+    katman sayısı + büyüme oranı, `renameBoundary` ile yama türleri). `/cfd/mesh`
+    `mesher: snappy | cfmesh` (otomatik seçim yok). Küre: cfMesh 17 094 hücre,
+    checkMesh OK, max non-orthogonality 24.6° (snappy 13 615 hücre, 34.5°). Ogive roket (aynı tünel, taban 0.15 m): cfMesh 27 s'de 328 233 hücre (snappy 124 s / 142 346), checkMesh 1 kontrol başarısız (max non-orth 71°, skewness 4.1); 50 m/s k-ω SST salınımlı (Cd 0.78, son 100 ort. 0.70, std 0.12) — snappy ile karşılaştırma için ayar eşlemesi ve ağ yakınsaması 2.6'da (veri, yorum yok). Test `tests/test_cfd_cfmesh.py`.
   - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.
 - 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
   `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3).

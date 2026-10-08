@@ -1,4 +1,4 @@
-"""CFD mesh API'si — Faz 2.5a (sanal rüzgâr tüneli + snappyHexMesh).
+"""CFD mesh API'si — Faz 2.5 (sanal rüzgâr tüneli + snappyHexMesh | cfMesh).
 
 POST /cfd/mesh            geometri + tünel + snappy ayarları → mesh işi (arka plan)
 GET  /cfd/mesh/{mesh_id}  durum + checkMesh / snappy verisi + yama listesi
@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -26,6 +27,7 @@ from app.api.geometry import UPLOAD_DIR, _get_geometry_or_404
 from app.db.session import get_db
 from app.jobs.progress import get_hub
 from app.mesh.cfd_mesher import (
+    CFMESH_SCRIPT,
     MESH_SCRIPT,
     SnappyParams,
     TunnelParams,
@@ -33,6 +35,7 @@ from app.mesh.cfd_mesher import (
     parse_check_mesh,
     parse_snappy_log,
     tunnel_patches,
+    write_cfmesh_case,
     write_tunnel_case,
 )
 from app.models.geometry import PhysicalGroup
@@ -99,6 +102,9 @@ solvers {}
 
 class CfdMeshRequest(BaseModel):
     geometry_id: int
+    #: Mesh'leyici (NLGEOM gibi seçim; otomatik seçim yok). cfMesh için
+    #: OPENFOAM_DOCKER_IMAGE cfMesh derlenmiş imaj olmalı (backend/docker/openfoam).
+    mesher: Literal["snappy", "cfmesh"] = "snappy"
     tunnel: TunnelParams
     snappy: SnappyParams = Field(default_factory=SnappyParams)
     #: Ayrı yama olacak yüzey bölgeleri (Physical Group adları); None = tüm yüzey bölgeleri.
@@ -134,19 +140,32 @@ def _run_mesh(mesh_id: str) -> None:
         image = resolve_openfoam_image()
         if image is None:
             raise RuntimeError("OpenFOAM yapılandırılmamış (OPENFOAM_DOCKER_IMAGE)")
+        cfmesh = meta.get("mesher") == "cfmesh"
+        script = CFMESH_SCRIPT if cfmesh else MESH_SCRIPT
         proc = subprocess.run(
-            docker_command(image, case, MESH_SCRIPT), capture_output=True, text=True, encoding="utf-8", errors="replace"
+            docker_command(image, case, script), capture_output=True, text=True, encoding="utf-8", errors="replace"
         )
-        snappy_log = case / "log.snappyHexMesh"
         check_log = case / "log.checkMesh"
-        meta["snappy"] = parse_snappy_log(snappy_log.read_text(encoding="utf-8", errors="replace")) if snappy_log.is_file() else {}
         meta["check"] = parse_check_mesh(check_log.read_text(encoding="utf-8", errors="replace")) if check_log.is_file() else {}
-        ok = (case / "constant" / "polyMesh" / "owner").is_file() and bool(meta["snappy"].get("finished"))
+        if cfmesh:
+            cf_log = case / "log.cartesianMesh"
+            text = cf_log.read_text(encoding="utf-8", errors="replace") if cf_log.is_file() else ""
+            meta["cfmesh"] = {
+                "finished": "Finished renaming boundary patches" in text,
+                "layer_cells_added": sum(int(n) for n in re.findall(r"Number of newly generated cells (\d+)", text)),
+            }
+            if "command not found" in text or "cartesianMesh: command not found" in proc.stdout:
+                raise RuntimeError("Bu imajda cartesianMesh (cfMesh) yok — backend/docker/openfoam imajını kullanın.")
+            finished = bool(meta["cfmesh"]["finished"])
+            logs = ("log.cartesianMesh", "log.checkMesh")
+        else:
+            snappy_log = case / "log.snappyHexMesh"
+            meta["snappy"] = parse_snappy_log(snappy_log.read_text(encoding="utf-8", errors="replace")) if snappy_log.is_file() else {}
+            finished = bool(meta["snappy"].get("finished"))
+            logs = ("log.blockMesh", "log.surfaceFeatureExtract", "log.snappyHexMesh")
+        ok = (case / "constant" / "polyMesh" / "owner").is_file() and finished
         if not ok:
-            failed = next(
-                (n for n in ("log.blockMesh", "log.surfaceFeatureExtract", "log.snappyHexMesh") if "FOAM FATAL" in _tail(case / n)),
-                None,
-            )
+            failed = next((n for n in logs if "FOAM FATAL" in _tail(case / n)), None)
             detail = _tail(case / failed, 600) if failed else proc.stdout[-600:]
             raise RuntimeError(f"Mesh üretilemedi ({failed or 'bilinmiyor'}): {detail}")
         cells = meta["check"].get("cells")
@@ -194,10 +213,14 @@ def cfd_mesh(body: CfdMeshRequest, background_tasks: BackgroundTasks, db: Sessio
     (case / "system").mkdir(parents=True, exist_ok=True)
     for name, text in (("controlDict", _CONTROL_DICT), ("fvSchemes", _FV_SCHEMES), ("fvSolution", _FV_SOLUTION)):
         (case / "system" / name).write_text(text, encoding="utf-8", newline="\n")
-    box = write_tunnel_case(case, stl, body.tunnel, body.snappy)
+    if body.mesher == "cfmesh":
+        box = write_cfmesh_case(case, stl, body.tunnel, body.snappy)
+    else:
+        box = write_tunnel_case(case, stl, body.tunnel, body.snappy)
     meta: dict[str, Any] = {
         "mesh_id": mesh_id,
         "geometry_id": geo.id,
+        "mesher": body.mesher,
         "case_dir": str(case),
         "status": "pending",
         "message": "mesh kuyrukta",

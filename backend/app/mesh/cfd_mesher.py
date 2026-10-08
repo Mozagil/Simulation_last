@@ -533,3 +533,108 @@ def parse_snappy_log(text: str) -> dict[str, Any]:
     out["finished"] = "Finished meshing without any errors" in text
     return out
 
+
+
+# ---------------------------------------------------------------- cfMesh (2.5b)
+
+#: Kullanıcı 2026-10-09 ("ikisini de yap"): cfMesh, snappyHexMesh'e seçilebilir
+#: ikinci mesh'leyici. Resmi ESI imajında yok; ``backend/docker/openfoam``
+#: (ESI cfMesh modülü derlenmiş imaj) gerekir.
+CFMESH_SCRIPT = (
+    "set -o pipefail; "
+    "cartesianMesh > log.cartesianMesh 2>&1 && "
+    "checkMesh -constant > log.checkMesh 2>&1; "
+    "echo \"MESH_EXIT=$?\""
+)
+
+
+def _box_faces(box: TunnelBox, ground: bool) -> dict[str, list[tuple[tuple[float, float, float], ...]]]:
+    """Tünel kutusunun dış yüzleri (dışa bakan normallerle iki üçgen) → yama adı."""
+    (x0, y0, z0), (x1, y1, z1) = box.lo, box.hi
+    quads = {
+        "inlet": [((x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0))],
+        "outlet": [((x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1))],
+        "sides": [
+            ((x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)),
+            ((x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)),
+            ((x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)),
+        ],
+    }
+    bottom = ((x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0))
+    if ground:
+        quads["ground"] = [bottom]
+    else:
+        quads["sides"].append(bottom)
+    return {name: [t for a, b, c, d in qs for t in ((a, b, c), (a, c, d))] for name, qs in quads.items()}
+
+
+def domain_stl(box: TunnelBox, ground: bool, body_stl_text: str) -> str:
+    """cfMesh yüzey dosyası: tünel kutusu + gövde tek STL'de (her biri ayrı solid)."""
+    out = []
+    for name, tris in _box_faces(box, ground).items():
+        out.append(f"solid {name}\n")
+        for a, b, c in tris:
+            u = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+            v = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+            n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+            ln = math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2) or 1.0
+            out.append(f"  facet normal {n[0] / ln:.6e} {n[1] / ln:.6e} {n[2] / ln:.6e}\n    outer loop\n")
+            for p in (a, b, c):
+                out.append(f"      vertex {p[0]:.9e} {p[1]:.9e} {p[2]:.9e}\n")
+            out.append("    endloop\n  endfacet\n")
+        out.append(f"endsolid {name}\n")
+    return "".join(out) + body_stl_text
+
+
+def cfmesh_dict(box: TunnelBox, bbox_m: tuple[float, ...], regions: list[str], ground: bool, base_cell_m: float, p: SnappyParams) -> str:
+    """cartesianMesh ``meshDict``. snappy ayarlarıyla aynı anlamda eşleme:
+    gövde hücresi = taban / 2^surface_level_max, iz kutusu = taban / 2^wake_level,
+    sınır tabakası katman sayısı ve büyüme oranı aynı."""
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox_m
+    body_cell = base_cell_m / 2**p.surface_level_max
+    regex = "(" + "|".join(regions) + ")"
+    wake = ""
+    if p.wake_level > 0:
+        pad = 0.25 * box.body_length_m
+        lo = (xmin - pad, ymin - pad, zmin - pad)
+        hi = (xmax + p.wake_length * box.body_length_m, ymax + pad, zmax + pad)
+        centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+        wake = (
+            "objectRefinements\n{\n    wake\n    {\n        type        box;\n"
+            f"        cellSize    {_n(base_cell_m / 2**p.wake_level)};\n"
+            f"        centre      {_vec(centre)};\n"
+            f"        lengthX     {_n(hi[0] - lo[0])};\n        lengthY     {_n(hi[1] - lo[1])};\n        lengthZ     {_n(hi[2] - lo[2])};\n"
+            "    }\n}\n\n"
+        )
+    layers = ""
+    if p.n_layers > 0:
+        layers = (
+            "boundaryLayers\n{\n    patchBoundaryLayers\n    {\n"
+            f'        "{regex}"\n        {{\n            nLayers {p.n_layers};\n            thicknessRatio {_n(p.expansion_ratio)};\n        }}\n'
+            "    }\n    optimiseLayer 1;\n}\n\n"
+        )
+    names = [("inlet", "patch"), ("outlet", "patch"), ("sides", "patch")]
+    if ground:
+        names.append(("ground", "wall"))
+    names += [(r, "wall") for r in regions]
+    rename = "".join(f"        {n}\n        {{\n            type    {t};\n            newName {n};\n        }}\n" for n, t in names)
+    return _header("meshDict") + (
+        'surfaceFile "constant/triSurface/domain.stl";\n\n'
+        f"maxCellSize {_n(base_cell_m)};\n\n"
+        f'localRefinement\n{{\n    "{regex}"\n    {{\n        cellSize {_n(body_cell)};\n    }}\n}}\n\n'
+        f"{wake}{layers}"
+        f"renameBoundary\n{{\n    defaultName body;\n    defaultType wall;\n    newPatchNames\n    {{\n{rename}    }}\n}}\n"
+    )
+
+
+def write_cfmesh_case(case_dir: Path, stl: SurfaceExport, tunnel: TunnelParams, p: SnappyParams) -> TunnelBox:
+    """cfMesh sözlüklerini yazar (``constant/triSurface/body.stl`` hazır olmalı)."""
+    box = tunnel_box(stl.bbox_m, tunnel)
+    tri = Path(case_dir) / "constant" / "triSurface"
+    (tri / "domain.stl").write_text(
+        domain_stl(box, tunnel.ground, (tri / "body.stl").read_text(encoding="ascii")), encoding="ascii", newline="\n"
+    )
+    path = Path(case_dir) / "system" / "meshDict"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(cfmesh_dict(box, stl.bbox_m, stl.regions, tunnel.ground, tunnel.base_cell_m, p), encoding="utf-8", newline="\n")
+    return box

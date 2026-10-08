@@ -1,0 +1,40 @@
+Finished smoothing internal hair vectors
+Starting smoothing the mesh
+Starting untangling the mesh
+Iteration 0. Number of bad faces is 0
+Finished untangling the mesh
+Finished smoothing the mesh
+Starting untangling the mesh
+Iteration 0. Number of bad faces is 0
+Finished untangling the mesh
+Finished optimising boundary layer
+Starting untangling the mesh
+Iteration 0. Number of bad faces is 0
+Finished untangling the mesh
+Starting refining boundary layers
+Found 2904 boundary faces 
+Found 0 corners at the surface of the volume mesh
+Found 96 edge points at the surface of the volume mesh
+Detecting layers
+Analysing mesh for bnd layer existence
+Generating hair edges
+Finished with bnd layer detection
+Finished refining boundary - layer faces 
+Number of newly generated cells 2720
+Finished generating new cells 
+Finished refining boundary layers
+Found 2904 boundary faces 
+Found 0 corners at the surface of the volume mesh
+Found 96 edge points at the surface of the volume mesh
+Iteration 0. Number of bad faces is 0
+Starting untangling the mesh
+Iteration 0. Number of bad faces is 0
+Finished untangling the mesh
+Renumbering the mesh
+Finished renumbering the mesh
+Renaming boundary patches
+Finished renaming boundary patches
+ExecutionTime = 30.77 s  ClockTime = 3 s
+
+End
+

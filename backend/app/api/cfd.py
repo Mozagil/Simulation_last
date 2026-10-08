@@ -249,7 +249,7 @@ def cfd_solve(
         "mesh": {"kind": "channel", **body.channel.model_dump(), "cells": body.channel.cell_count}
         if body.channel is not None
         else {
-            "kind": "snappy",
+            "kind": mesh_meta.get("mesher") or "snappy",
             "mesh_id": body.mesh_id,
             "cells": (mesh_meta.get("check") or {}).get("cells"),
             "tunnel": mesh_meta.get("tunnel"),

@@ -49,3 +49,9 @@ kullanıcıya OpenFOAM dağıtılmaz, lisans sunucusu yok. GPL, ikiliyi dağıtm
 sunucuda çalıştırmayı serbest bırakır; imaj değiştirilip dağıtılırsa kaynak
 verme yükümlülüğü doğar. "OpenFOAM" OpenCFD Ltd.'nin tescilli markasıdır —
 ürün adında kullanılmaz, yalnız "OpenFOAM ile çözülür" şeklinde anılır.
+
+**cfMesh (Faz 2.5b, kullanıcı kararı 2026-10-09):** resmi imajda yok; ESI'nin
+topluluk modülü (https://develop.openfoam.com/Community/integration-cfmesh, GPL v3)
+`backend/docker/openfoam/Dockerfile` ile resmi imajın üzerine derlenir
+(`simsurrogate-openfoam:2412-cfmesh`). İmaj yalnız sunucuda koşar, dağıtılmaz;
+dağıtılırsa GPL kaynak verme yükümlülüğü (Dockerfile + modül kaynağı) doğar.
