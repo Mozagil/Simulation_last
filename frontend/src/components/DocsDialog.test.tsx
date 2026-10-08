@@ -88,3 +88,14 @@ describe("Belgeler · sekmeler", () => {
     expect(screen.getAllByText("LS-DYNA ≈").length).toBeGreaterThan(0);
   });
 });
+
+describe("Belgeler · Durability sekmesi", () => {
+  it("bölümler, şablonlar ve D eğitim testleri; LS-DYNA sütunu yok", () => {
+    render(<DocsDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Durability" }));
+    expect(screen.getByText("Belgeler · Durability (CalculiX)")).toBeInTheDocument();
+    expect(screen.getAllByText("Durability şablonları").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/D1\b/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
+  });
+});

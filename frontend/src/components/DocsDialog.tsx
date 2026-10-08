@@ -431,7 +431,7 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
             ))}
             {book.scenarios && (
               <button type="button" onClick={() => go(SCEN_ID)}>
-                Hazır senaryolar ({scenarios.length})
+                {book.id === "crash" ? "Hazır senaryolar" : book.scenarios.title} ({scenarios.length})
               </button>
             )}
             {book.dynaMap && (

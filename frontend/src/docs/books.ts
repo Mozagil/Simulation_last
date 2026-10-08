@@ -8,6 +8,8 @@ import { DYNA_EQUIV } from "../lib/dynaKeywords";
 import { CRASH_DOC, CRASH_SCENARIOS, type DocScenario, type DocSection } from "./crashDoc";
 import { CRASH_TRAINING, TRAINING_RECORD, type TrainingGroup } from "./crashTraining";
 import { ML_DOC, ML_EXAMPLES } from "./mlDoc";
+import { DURABILITY_DOC, DURABILITY_TEMPLATES } from "./durabilityDoc";
+import { DURABILITY_TRAINING, DURABILITY_TRAINING_RECORD } from "./durabilityTraining";
 
 export interface DocExample {
   id: string;
@@ -64,6 +66,37 @@ export const CRASH_BOOK: DocBook = {
   },
 };
 
+export const DURABILITY_BOOK: DocBook = {
+  id: "durability",
+  tab: "Durability",
+  title: "Durability (CalculiX)",
+  subtitle: "Her adım, düğme ve kart: ne yapar, hangi durumda, CalculiX girdi kartı — statik, NLGEOM, plastisite ve modal.",
+  searchPlaceholder: "Ara: NLGEOM, *CLOAD, Jacobian, S-N, modal…",
+  note:
+    "Kart sütunu CalculiX .inp dosyasına yazılan karttır. “Ne zaman” satırları tipik kullanımı anlatır; değer ve karar mühendisindir.",
+  cardHeader: "CalculiX",
+  dynaColumn: false,
+  sections: DURABILITY_DOC,
+  scenarios: {
+    title: "Durability şablonları",
+    intro: "Kayıtlı şablonlar: ne modelledikleri, gelen bölgeler, varsayılan sınır koşulları ve analitik referans.",
+    rows: DURABILITY_TEMPLATES.map((t) => ({
+      id: t.id,
+      title: t.title,
+      template: t.group,
+      setup: t.models,
+      features: t.regions,
+      validation: t.defaultBcs,
+      reference: t.reference,
+    })),
+  },
+  training: {
+    title: "Eğitim testleri (D1–D16)",
+    intro: `Modele göre sıralı: her model grubun başında bir kez kurulur; ardından gelen her test bir öncekinden yalnız tek şeyi değiştirir. ${DURABILITY_TRAINING_RECORD}`,
+    groups: DURABILITY_TRAINING,
+  },
+};
+
 export const ML_BOOK: DocBook = {
   id: "ml",
   tab: "ML",
@@ -84,4 +117,4 @@ export const ML_BOOK: DocBook = {
 };
 
 /** Sekme sırası; diğer kitaplar içerikleri hazır oldukça eklenir. */
-export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, ML_BOOK];
+export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, DURABILITY_BOOK, ML_BOOK];
