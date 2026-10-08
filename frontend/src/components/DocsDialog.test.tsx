@@ -28,3 +28,12 @@ describe("Belgeler penceresi", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("Belgeler sırası", () => {
+  it("bölümler arayüzdeki adım sırasını izler (3 · Material, 4 · Crash'ten önce; Sonuçlar en sonda)", () => {
+    const ids = CRASH_DOC.map((s) => s.id);
+    expect(ids.indexOf("malzeme")).toBeLessThan(ids.indexOf("carpma"));
+    expect(ids.indexOf("cikti")).toBeLessThan(ids.indexOf("sonuclar"));
+    expect(ids.indexOf("uzman")).toBeLessThan(ids.indexOf("cikti"));
+  });
+});
