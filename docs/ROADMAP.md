@@ -1476,6 +1476,17 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
 - 2.5 ⏳ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
   blockMesh kutusu, yüzey/bölge inceltme, sınır tabakası katmanları —
   değerler mühendisten); `checkMesh` çıktısı veri olarak.
+  **Mesh kurgusu (kullanıcı 2026-10-08):** CFD mesh'i FEA mesh'inden ayrıdır —
+  parçanın değil akışkan hacminin sonlu hacim ağı (hex ağırlıklı, duvarda sınır
+  tabakası, adlandırılmış yamalar). `MesherAdapter`'ın CFD uygulaması
+  (`mesh/cfd_mesher.py`); AKIŞ sekmesinde FEA mesh panelinden ayrı bir CFD mesh
+  paneli (tünel boyutu, taban hücre, inceltme, katmanlar, checkMesh tablosu, y+).
+  Geometri adımı ortak. Parça/bölge başına ayrı STL yüzeyi → ayrı yama → parça
+  başına kuvvet (roket: burun / gövde / kanatçık / taban).
+  - 2.5a ⏳ `snappyHexMesh` (varsayılan; akademi ve yarışmalarda standart).
+  - 2.5b ⏳ `cfMesh` (`cartesianMesh`, ESI imajında hazır; daha az ayar, sınır
+    tabakasını kendisi ekler) — NLGEOM gibi seçilebilir ikinci mesh'leyici.
+  - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.
 - 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
   `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3).
 - 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
