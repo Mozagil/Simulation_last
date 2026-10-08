@@ -155,7 +155,10 @@ export const CRASH_DOC: DocSection[] = [
   {
     id: "malzeme",
     title: "3 · Material → Crash malzeme modeli",
-    intro: "Kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin nasıl davranacağı seçilir. Elle kurulan koşuda varsayılan LAW2.",
+    intro:
+      "3 · Material adımı BC paneli gibi üç akordeon grubundan oluşur: 1 Kütüphane malzemesi (E, ν, ρ, akma; LAW36 eğrileri; özel malzeme), " +
+      "2 Parçalara ata (parça başına malzeme + kabuk kalınlığı, “Tüm parçalara ata”), 3 Davranış ve kopma (LAW + /FAIL). " +
+      "Sayaç eksik atamayı / kalınlığı gösterir. Elle kurulan koşuda varsayılan LAW2.",
     image: IMG("08-malzeme.png"),
     imageCaption: "LAW seçimi ve açıklaması, LS-DYNA karşılığı.",
     items: [

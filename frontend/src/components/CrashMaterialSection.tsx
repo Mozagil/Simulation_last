@@ -26,6 +26,7 @@ export default function CrashMaterialSection({
   partCards,
   setPartCards,
   disabled = false,
+  hideToggle = false,
 }: {
   partIds: number[];
   matCard: MatCardState;
@@ -33,6 +34,8 @@ export default function CrashMaterialSection({
   partCards: Record<number, MatCardState>;
   setPartCards: Dispatch<SetStateAction<Record<number, MatCardState>>>;
   disabled?: boolean;
+  /** Üst bileşen LS-DYNA düğmesini zaten gösteriyorsa. */
+  hideToggle?: boolean;
 }) {
   return (
     <section className="crash-mat-section-wrap" aria-label="Crash malzeme modeli">
@@ -43,7 +46,7 @@ export default function CrashMaterialSection({
         Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
         nasıl davranacağı seçilir: akınca ne olur, kopar mı.
       </p>
-      <DynaToggle />
+      {!hideToggle && <DynaToggle />}
       {partIds.length > 1 && (
         <div className="crash-mat-toggles">
           {partIds.map((pid) => (

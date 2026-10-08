@@ -73,8 +73,8 @@ import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import DocsDialog from "./components/DocsDialog";
+import CrashMaterialStep from "./components/CrashMaterialStep";
 import type { CrashMarkers } from "./components/GeometryViewer";
-import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
@@ -2022,6 +2022,15 @@ function App() {
 
   const selectedMaterial =
     materials.find((m) => m.id === selectedMaterialId) ?? null;
+  // Crash malzeme adımı: 2D'de mesh parça no, 3D'de hacim parçaları.
+  const crashMaterialPartIds =
+    meshResult?.dimension === 2
+      ? uniquePartIdsFromPreview(meshPreview).length
+        ? uniquePartIdsFromPreview(meshPreview)
+        : [0]
+      : volumePartIds.length
+        ? volumePartIds
+        : [0];
 
   const meshPartIds = [...new Set(meshPicks.map((p) => p.partId))];
   // Atama 2D'de mesh parça numarasıyla yapılır; CAD seçimini çevir.
@@ -2042,13 +2051,14 @@ function App() {
 
   const canCreateComponent = geometryId !== null && meshPartIds.length > 0;
 
-  async function handleAssignMaterial() {
+  async function handleAssignMaterial(explicitPartIds?: number[]) {
     const partIds =
-      meshPartIds.length > 0
+      explicitPartIds ??
+      (meshPartIds.length > 0
         ? meshPartIds
         : assignPartId !== null
           ? [assignPartId]
-          : [];
+          : []);
     if (!geometryId || selectedMaterialId === null || partIds.length === 0) {
       return;
     }
@@ -2066,7 +2076,7 @@ function App() {
       }
       const tree = await fetchProductTree(geometryId, 0);
       setProductTree(tree);
-      ensureStepExpanded("bc");
+      if (!explicitPartIds) ensureStepExpanded("bc");
       setInfoMessage(
         last
           ? `Malzeme atandı: parça #${partIds.join(", #")} → ${last.material_name}.`
@@ -4397,12 +4407,63 @@ function App() {
 
       {expandedSteps.has("material") && (
       <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · Malzeme</span>
+        <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>
         <h1>Malzeme</h1>
         {materials.length === 0 ? (
           <p className="filename">Malzeme listesi yükleniyor…</p>
         ) : (
           <>
+            {analysisTab === "crash" ? (
+              <CrashMaterialStep
+                materials={materials}
+                selectedMaterialId={selectedMaterialId}
+                onSelectMaterial={setSelectedMaterialId}
+                partIds={crashMaterialPartIds}
+                assignments={materialAssignments}
+                thicknessByPart={Object.fromEntries(
+                  (productTree?.items ?? []).map((it) => [it.part_id, it.thickness]),
+                )}
+                isShell={meshResult?.dimension === 2}
+                busy={busyAction !== null}
+                onAssign={(ids) => void handleAssignMaterial(ids)}
+                onCustom={() => setShowCustomMaterialForm((prev) => !prev)}
+                crashCurves={
+                  selectedMaterial && (
+                    <MaterialCrashCurves
+                      material={selectedMaterial}
+                      onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
+                    />
+                  )
+                }
+                treeEditor={
+                  productTree && productTree.items.filter((i) => i.component).length > 0 ? (
+                    <div className="product-tree">
+                      <p className="material-assignments-title">Bileşenler (kalınlık / malzeme)</p>
+                      <ul className="product-tree-list">
+                        {productTree.items
+                          .filter((i) => i.component)
+                          .map((item) => (
+                            <ProductTreeRow
+                              key={item.component?.id ?? item.part_id}
+                              item={item}
+                              materials={materials}
+                              busy={busyAction !== null}
+                              onSave={(componentId, thickness, materialId) =>
+                                void handlePatchTreeComponent(componentId, thickness, materialId)
+                              }
+                            />
+                          ))}
+                      </ul>
+                    </div>
+                  ) : null
+                }
+                matCard={crashMatCard}
+                setMatCard={setCrashMatCard}
+                partCards={crashPartCards}
+                setPartCards={setCrashPartCards}
+              />
+            ) : (
+            <>
             <label className="mesh-field material-field">
               <span>Kütüphane</span>
               <select
@@ -4485,23 +4546,6 @@ function App() {
                 + ÖZEL
               </button>
             </div>
-            {analysisTab === "crash" && (
-              <CrashMaterialSection
-                partIds={
-                  meshResult?.dimension === 2
-                    ? uniquePartIdsFromPreview(meshPreview).length
-                      ? uniquePartIdsFromPreview(meshPreview)
-                      : [0]
-                    : volumePartIds.length
-                      ? volumePartIds
-                      : [0]
-                }
-                matCard={crashMatCard}
-                setMatCard={setCrashMatCard}
-                partCards={crashPartCards}
-                setPartCards={setCrashPartCards}
-              />
-            )}
             <button
               type="button"
               className="material-advanced-toggle"
@@ -4600,6 +4644,8 @@ function App() {
                   ))}
                 </ul>
               </div>
+            )}
+            </>
             )}
             {showCustomMaterialForm && (
             <div className="material-custom">
