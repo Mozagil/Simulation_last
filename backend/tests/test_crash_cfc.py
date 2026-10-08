@@ -89,3 +89,35 @@ def test_parser_adds_filtered_curves_keeps_raw(tmp_path):
     assert s["acc_peak_g_cfc1000"] < s["acc_peak_g"]  # tek örnek tepe süzülünce düşer
     assert s["hic15_cfc1000"] <= s["hic15"]
     assert s["sample_ratio_cfc600"] == pytest.approx(1 / 0.002e-3 / 600)
+
+
+def test_refilter_endpoint_after_run(tmp_path, monkeypatch):
+    """Koşu sonrası yeniden süzme: kayıtlı ham TH'den başka CFC; çözücü yok."""
+    from fastapi.testclient import TestClient
+
+    import app.api.crash as crash_api
+    from app.main import app
+
+    job = tmp_path / "jobx"
+    job.mkdir()
+    n = 400
+    t = [i * 0.002 for i in range(n)]
+    imp = [min(1.0, max(0.0, (x - 0.1) / 0.05)) * 10.0 for x in t]
+    header = ['"time"', '"barrier_th 1 barrier var 25"', '"barrier_th 1 barrier var 26"', '"barrier_th 1 barrier var 27"']
+    rows = [",".join(str(v) for v in (t[i], imp[i], 0, 0)) for i in range(n)]
+    (job / "crashT01.csv").write_text("\n".join([",".join(header), *rows]) + "\n", encoding="utf-8")
+    (job / "th_spec.json").write_text(json.dumps({"groups": [
+        {"kind": "rwall", "title": "barrier_th", "objects": [1], "vars": ["FNX", "FNY", "FNZ"]},
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(crash_api, "CRASH_DIR", tmp_path)
+    client = TestClient(app)
+    r = client.get("/crash/jobs/jobx/cfc", params={"force_cfc": 60})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert "rwall_force_cfc60" in d["curves"] and "rwall_force" not in d["curves"]
+    assert d["scalars"]["rwall_force_max_cfc60"] > 0
+    # 180 daha az süzer → tepe 60'tan büyük ya da eşit
+    d180 = client.get("/crash/jobs/jobx/cfc", params={"force_cfc": 180}).json()
+    assert d180["scalars"]["rwall_force_max_cfc180"] >= d["scalars"]["rwall_force_max_cfc60"]
+    assert client.get("/crash/jobs/jobx/cfc", params={"force_cfc": 77}).status_code == 422
+    assert client.get("/crash/jobs/yok/cfc", params={"force_cfc": 60}).status_code == 404

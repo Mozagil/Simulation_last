@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import {
   crashJobWsUrl,
   fetchCrashJob,
+  fetchCrashRefilter,
   postCrashSolve,
   type CrashContactSpec,
   type CrashJobSnapshot,
@@ -257,6 +258,11 @@ export default function CrashPanel({
   const [hgSolid, setHgSolid] = useState("");
   const [expertOpen, setExpertOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
+  // 5 · Sonuçlar — koşu sonrası CFC (post-process)
+  const [postForceCfc, setPostForceCfc] = useState("");
+  const [postAccCfc, setPostAccCfc] = useState("");
+  const [cfcBusy, setCfcBusy] = useState(false);
+  const [cfcError, setCfcError] = useState<string | null>(null);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -558,6 +564,24 @@ export default function CrashPanel({
       setError(e instanceof Error ? e.message : "Crash isteği başarısız.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyPostCfc() {
+    if (!jobId) return;
+    setCfcBusy(true);
+    setCfcError(null);
+    try {
+      const r = await fetchCrashRefilter(jobId, postForceCfc ? Number(postForceCfc) : null, postAccCfc ? Number(postAccCfc) : null);
+      setSnapshot((prev) =>
+        prev
+          ? { ...prev, curves: { ...(prev.curves ?? {}), ...r.curves }, scalars: { ...(prev.scalars ?? {}), ...r.scalars } }
+          : prev,
+      );
+    } catch (e) {
+      setCfcError(e instanceof Error ? e.message : "Süzme yapılamadı.");
+    } finally {
+      setCfcBusy(false);
     }
   }
 
@@ -1018,6 +1042,38 @@ export default function CrashPanel({
         </div>
       </section>
 
+      <section className="crash-acc crash-expert" aria-label="Çıktı ayarları">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={outputOpen}
+          onClick={() => setOutputOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 13V3M2 13h12M5 10l3-4 2 2 4-5" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Çıktı ayarları</strong>
+            <span className="crash-acc-summary">
+              {outputSummary(output) || "Kayıt aralığı, zaman adımı, kanallar, kesitler · hepsi varsayılan"}
+            </span>
+          </span>
+          <span className={outputSummary(output) ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {outputSummary(output) ? "değiştirildi" : "varsayılan"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{outputOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!outputOpen}>
+          <p className="crash-behavior-hint">
+            Preprocess: koşudan önce deck'e yazılır — hangi eğriler ne sıklıkla kaydedilir, zaman adımı, kesitler.
+            Boş alan = varsayılan. Filtre (CFC) koşudan sonra 5 · Sonuçlar'da uygulanır.
+          </p>
+          <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} showCfc={false} />
+        </div>
+      </section>
+
       {blockers.length > 0 && (
         <div className="crash-blockers" role="status" data-testid="crash-blockers">
           {blockers.map((b) => (
@@ -1150,39 +1206,46 @@ export default function CrashPanel({
           {curves?.time && forceSeries.length > 0 && (
             <CrashForceChart time={curves.time} series={forceSeries} />
           )}
+          {jobId && status === "solved" && (
+            <div className="crash-cfc-post" data-testid="crash-cfc-post">
+              <p className="crash-expert-title">Filtre · CFC (SAE J211) · post-process</p>
+              <p className="crash-behavior-hint">
+                Ham kuvvet / ivme sinyali gürültülü; tepe değeri okumak için süzülür. Kayıtlı ham eğriden hesaplanır —
+                çözücü yeniden koşmaz, ham eğri korunur. Kuvvet için genelde 60–600, kafa ivmesi (HIC) için 1000.
+              </p>
+              <div className="crash-expert-grid cols-3">
+                {(
+                  [
+                    ["Kuvvet CFC", postForceCfc, setPostForceCfc],
+                    ["İvme CFC", postAccCfc, setPostAccCfc],
+                  ] as const
+                ).map(([lab, v, setV]) => (
+                  <label key={lab} className="crash-expert-field">
+                    <span>{lab}</span>
+                    <select aria-label={`Sonuç ${lab}`} value={v} onChange={(e) => setV(e.target.value)}>
+                      <option value="">Yok (ham)</option>
+                      {[60, 180, 600, 1000].map((c) => (
+                        <option key={c} value={String(c)}>
+                          CFC {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  className="doe-btn crash-cfc-apply"
+                  disabled={cfcBusy || (!postForceCfc && !postAccCfc)}
+                  onClick={() => void applyPostCfc()}
+                >
+                  {cfcBusy ? "Süzülüyor…" : "Uygula"}
+                </button>
+              </div>
+              {cfcError && <p className="material-assign-hint">{cfcError}</p>}
+            </div>
+          )}
         </div>
       )}
-      <section className="crash-acc crash-expert" aria-label="Çıktı ayarları">
-        <button
-          type="button"
-          className="crash-acc-toggle"
-          aria-expanded={outputOpen}
-          onClick={() => setOutputOpen((v) => !v)}
-        >
-          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M2 13V3M2 13h12M5 10l3-4 2 2 4-5" />
-            </svg>
-          </span>
-          <span className="crash-acc-text">
-            <strong>Çıktı ayarları</strong>
-            <span className="crash-acc-summary">
-              {outputSummary(output) || "Kayıt aralığı, filtre (CFC), kanallar, kesitler · hepsi varsayılan"}
-            </span>
-          </span>
-          <span className={outputSummary(output) ? "crash-acc-state ok" : "crash-acc-state muted"}>
-            {outputSummary(output) ? "değiştirildi" : "varsayılan"}
-          </span>
-          <span className="crash-acc-chev" aria-hidden="true">{outputOpen ? "▴" : "▾"}</span>
-        </button>
-        <div className="crash-acc-body" hidden={!outputOpen}>
-          <p className="crash-behavior-hint">
-            Koşunun hangi eğrileri ne sıklıkla kaydedeceği ve sinyallerin nasıl süzüleceği. Sonraki koşuya
-            uygulanır; boş alan = varsayılan.
-          </p>
-          <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
-        </div>
-      </section>
 
         </section>
       )}

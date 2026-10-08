@@ -6,6 +6,7 @@ vi.mock("../api/crash", () => ({
   CrashApiError: class CrashApiError extends Error {},
   postCrashSolve: vi.fn(),
   fetchCrashJob: vi.fn(),
+  fetchCrashRefilter: vi.fn(),
   crashJobWsUrl: vi.fn(() => "ws://localhost/crash/jobs/j1/ws"),
   fetchCrashRuns: vi.fn(() => Promise.resolve([])),
   patchCrashRun: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock("../api/crash", () => ({
 vi.mock("../api/materials", () => ({ fetchMaterials: vi.fn(() => Promise.resolve([])) }));
 vi.mock("../api/templates", () => ({ fetchTemplates: vi.fn(() => new Promise(() => undefined)) }));
 
-import { fetchCrashJob, postCrashSolve } from "../api/crash";
+import { fetchCrashJob, fetchCrashRefilter, postCrashSolve } from "../api/crash";
 
 /** Akordeon grubunu aç (Çarpma açık başlar; Parçalar / Temaslar kapalı). */
 const openGroup = (title: string) =>
@@ -392,17 +393,24 @@ describe("CrashPanel", () => {
     expect(await screen.findByText(/Kesit 1 Fmax 123\.9 kN · impuls 13\.420 N·s/)).toBeInTheDocument();
     expect(screen.getByTestId("crash-timestep")).toHaveTextContent("Δt_min 1.000e-3 ms · eklenen kütle %56.5");
   });
-  it("1.17e: CFC sınıfı gönderilir, süzülmüş tepeler gösterilir", async () => {
+  it("CFC koşu sonrası post-process: kurulumda yok, sonuçta seçilip uygulanır, süzülmüş tepe gösterilir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j13", geometry_id: 1, status: "solved", message: "", starter_url: "", engine_url: "",
       progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: true,
-      scalars: { rwall_force_max: 130.9, rwall_force_max_cfc600: 101.2, sample_ratio_cfc600: 833 },
+      scalars: { rwall_force_max: 130.9 },
+    });
+    vi.mocked(fetchCrashRefilter).mockResolvedValue({
+      curves: { rwall_force_cfc600: [0, 1] },
+      scalars: { rwall_force_max_cfc600: 101.2, sample_ratio_cfc600: 833 },
     });
     render(<CrashPanel geometryId={1} meshDimension={2} />);
-    fireEvent.change(screen.getByLabelText("Kuvvet CFC"), { target: { value: "600" } });
+    expect(screen.queryByLabelText("Kuvvet CFC")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(postCrashSolve).mock.calls[0][0].filters).toEqual({ force_cfc: 600, acc_cfc: null });
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].filters).toEqual({ force_cfc: null, acc_cfc: null });
+    fireEvent.change(await screen.findByLabelText("Sonuç Kuvvet CFC"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Uygula" }));
+    await waitFor(() => expect(fetchCrashRefilter).toHaveBeenCalledWith("j13", 600, null));
     const peaks = await screen.findAllByTestId("crash-cfc-peak");
     expect(peaks.map((p) => p.textContent)).toEqual(["rwall_force_max CFC600 101.2"]);
   });
@@ -500,13 +508,14 @@ describe("CrashPanel", () => {
       <CrashPanel geometryId={1} meshDimension={3} view="setup" onRunStarted={onRunStarted} onJobKey={onJobKey} />,
     );
     expect(screen.queryByLabelText("Sonuçlar")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Çıktı ayarları/)).not.toBeInTheDocument();
+    // çıktı ayarları preprocess: kurulumda (Çalıştır'dan önce)
+    expect(screen.getByRole("button", { name: /Çıktı ayarları/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(onRunStarted).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onJobKey).toHaveBeenCalledWith("j20:rad_only"));
     rerender(<CrashPanel geometryId={1} meshDimension={3} view="results" onRunStarted={onRunStarted} onJobKey={onJobKey} />);
     expect(screen.getByLabelText("Sonuçlar")).toHaveTextContent("j20");
-    expect(screen.getByText(/Çıktı ayarları/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Çıktı ayarları/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ".rad üret / çöz" })).not.toBeInTheDocument();
   });
 

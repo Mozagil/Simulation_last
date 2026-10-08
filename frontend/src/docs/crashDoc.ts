@@ -153,6 +153,25 @@ export const CRASH_DOC: DocSection[] = [
     ],
   },
   {
+    id: "cikti",
+    title: "4 · Crash → Çıktı ayarları (preprocess)",
+    intro:
+      "Koşudan ÖNCE deck'e yazılan kayıt ayarları: hangi eğriler ne sıklıkla kaydedilir, zaman adımı, kesitler. " +
+      "Uzman ayarlarının altında, Çalıştır'dan önce; başlık varsayılandan farklı alanları özetler. " +
+      "Koşudan sonra değiştirmek o koşuyu etkilemez. Filtre (CFC) post-process'tir: 5 · Sonuçlar'da uygulanır.",
+    image: IMG("11-cikti.png"),
+    imageCaption: "Çıktı ayarları 4 · Crash'te: kayıt aralığı, zaman adımı (kanallar ve kesitler aşağıda).",
+    items: [
+      { name: "TH aralığı / Animasyon", what: "Eğriler ve animasyon kareleri kaç ms'de bir (boş = süre/200, süre/20). Kısa tepe kaçıyorsa TH aralığı küçültülür.", card: "/ANIM/DT" },
+      { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme)." },
+      { name: "Rijit duvar kanalları", what: "FNX/FNY/FNZ normal, FTX… teğet kuvvet.", card: "/TH/RWALL" },
+      { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
+      { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
+      { name: "Kesit kanalları + Kesitler", what: "Modelin içinden geçen sanal düzlem (M, M1, M2) — oradan geçen iç kuvvet/moment.", when: "S-kiriş, ROPS (dikmelerden kuvvet), Hopkinson giriş çubuğu.", card: "/TH/SECTIO" },
+      { name: "Düğüm kanalları", what: "Seçili düğümlerin yer değiştirme / hız / ivmesi.", card: "/TH/NODE" },
+    ],
+  },
+  {
     id: "malzeme",
     title: "3 · Material (crash)",
     intro:
@@ -188,6 +207,7 @@ export const CRASH_DOC: DocSection[] = [
     intro: "Koşu durumu, skalerler, grafikler ve 3B animasyon. Değerler veridir; kabul eşiği mühendisin.",
     image: IMG("10-sonuclar.jpg"),
     imageCaption: "Çözülen koşu: skalerler + 3B deforme şekil (kendiliğinden açılır).",
+    gallery: [{ src: IMG("10b-cfc.png"), caption: "Kuvvet grafiği altında post-process CFC: ham ve süzülmüş tepe yan yana." }],
     items: [
       { name: "Job", what: "İş kimliği · durum (pending / solved / failed / rad_only) · mesaj. “starter .rad” girdi dosyasının bağlantısı." },
       { name: "IE_final / KE_final", what: "Son iç enerji (deformasyonla yutulan) / kinetik enerji (J).", card: "/TH/PART" },
@@ -197,24 +217,8 @@ export const CRASH_DOC: DocSection[] = [
       { name: "HIC15 / HIC36 / acc_peak_g", what: "Kafa yaralanma ölçütü ve tepe ivme — ivme kanalı (rijit gövde “İvmeyi kaydet”) varsa.", },
       { name: "Δt_min / Silinen eleman", what: "En küçük zaman adımı; /FAIL ile silinen eleman sayısı." },
       { name: "Kuvvet–zaman grafiği", what: "Rijit duvar / temas / kesit kuvveti; tepe değer ve zamanı." },
+      { name: "Filtre · CFC (post-process)", what: "Koşu bittikten sonra kayıtlı ham eğriden SAE J211 süzme (60, 180, 600, 1000): sınıfı seç, Uygula. Çözücü yeniden koşmaz; ham eğri korunur, süzülmüş eğri grafiğe ve tepe değerlerine eklenir (ör. ham 122 kN → CFC 60 65.4 kN).", when: "Kuvvet tepesi okumadan önce (60–600); kafa ivmesi / HIC için 1000." },
       { name: "3B animasyon", what: "Deforme şekil kareleri; renk alanı (ör. plastik şekil değiştirme), ▶ oynat, eksen görünümleri, ⤢ büyüt. Çözümden sonra kendiliğinden açılır; geçmişten ▶ ile tekrar açılır.", card: "/ANIM/DT" },
-    ],
-  },
-  {
-    id: "cikti",
-    title: "5 · Sonuçlar → Çıktı ayarları",
-    intro: "Bir sonraki koşunun neyi, ne sıklıkla kaydedeceği. Başlık varsayılandan farklı alanları özetler.",
-    image: IMG("11-cikti.png"),
-    imageCaption: "Kaydedilen kanallar; kısaltmanın üzerine gelince anlamı görünür.",
-    items: [
-      { name: "TH aralığı / Animasyon", what: "Eğriler ve animasyon kareleri kaç ms'de bir (boş = süre/200, süre/20).", card: "/ANIM/DT" },
-      { name: "Kuvvet CFC / İvme CFC", what: "SAE J211 filtre sınıfı (60, 180, 600, 1000). Ham eğri korunur, süzülmüş ayrıca eklenir." },
-      { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme)." },
-      { name: "Rijit duvar kanalları", what: "FNX/FNY/FNZ normal, FTX… teğet kuvvet.", card: "/TH/RWALL" },
-      { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
-      { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
-      { name: "Kesit kanalları + Kesitler", what: "Modelin içinden geçen sanal düzlem (M, M1, M2) — oradan geçen iç kuvvet/moment.", when: "S-kiriş, ROPS (dikmelerden kuvvet), Hopkinson giriş çubuğu.", card: "/TH/SECTIO" },
-      { name: "Düğüm kanalları", what: "Seçili düğümlerin yer değiştirme / hız / ivmesi.", card: "/TH/NODE" },
     ],
   },
   {

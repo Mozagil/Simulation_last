@@ -240,11 +240,14 @@ export default function CrashOutputCard({
   onChange,
   partOptions,
   disabled = false,
+  showCfc = true,
 }: {
   value: OutputState;
   onChange: (next: OutputState) => void;
   partOptions: number[];
   disabled?: boolean;
+  /** CFC koşu öncesi değil, 5 · Sonuçlar'da post-process (kullanıcı 2026-10-08). */
+  showCfc?: boolean;
 }) {
   const set = (patch: Partial<OutputState>) => onChange({ ...value, ...patch });
   const setGroup = (k: GroupKey, patch: Partial<{ enabled: boolean; vars: string[] }>) =>
@@ -271,6 +274,8 @@ export default function CrashOutputCard({
         {text("Animasyon (ms)", value.animDt, (v) => set({ animDt: v }), "süre / 20")}
       </div>
 
+      {showCfc && (
+      <>
       <p className="crash-expert-title">Filtre · CFC (SAE J211)</p>
       <p className="crash-behavior-hint">
         Explicit çözümün ham kuvvet / ivme sinyali çok gürültülü; tepe değeri okumak için süzülür. Ham eğri
@@ -296,6 +301,8 @@ export default function CrashOutputCard({
           </label>
         ))}
       </div>
+      </>
+      )}
 
       <p className="crash-expert-title">Zaman adımı</p>
       <div className="crash-var-chips" role="group" aria-label="Zaman adımı kartı">
