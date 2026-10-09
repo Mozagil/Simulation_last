@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CfdSolvePanel from "./CfdSolvePanel";
-import { fetchCfdJob, postCfdSolve, type CfdJobSnapshot, type CfdMeshMeta } from "../api/cfd";
+import { fetchCfdJob, postBarrowman, postCfdSolve, postRocketSolve, type CfdJobSnapshot, type CfdMeshMeta } from "../api/cfd";
 
 vi.mock("../api/cfd", async (orig) => {
   const mod = await orig<typeof import("../api/cfd")>();
-  return { ...mod, postCfdSolve: vi.fn(), fetchCfdJob: vi.fn() };
+  return { ...mod, postCfdSolve: vi.fn(), fetchCfdJob: vi.fn(), postRocketSolve: vi.fn(), postBarrowman: vi.fn() };
 });
 
 const mesh: CfdMeshMeta = {
@@ -71,5 +71,54 @@ describe("CfdSolvePanel (AKIŞ · 3 · Akış)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Çalıştır/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("çıkış kodu 136");
     expect(vi.mocked(postCfdSolve).mock.calls[0][0].case.forces).toBeNull();
+  });
+});
+
+const BARROWMAN = {
+  cn_alpha: 10.81,
+  x_cp_mm: 1176.6,
+  x_cp_calibers: 11.8,
+  stability_calibers: 2.77,
+  reference_diameter_mm: 100,
+  components: [
+    { name: "burun", cn_alpha: 2, x_mm: 138.7 },
+    { name: "kanatcik", cn_alpha: 8.81, x_mm: 1412 },
+  ],
+  notes: [],
+};
+
+describe("CfdSolvePanel · roket rüzgâr tüneli modu (R3)", () => {
+  const rocketMesh: CfdMeshMeta = { ...mesh, patches: ["inlet", "outlet", "sides", "burun", "govde", "kanatcik", "taban"] };
+  const rocketJob: CfdJobSnapshot = {
+    ...solved,
+    scalars: { ...solved.scalars, force_burun_x: 0.3, force_burun_pressure_x: 0.05, force_burun_viscous_x: 0.25, force_burun_z: 0.1 },
+    rocket_aero: {
+      CA: 0.54, CN: 1.1, CD: 0.61, CL: 1.06, Cm: -3.5, x_cp_m: 1.2206, x_cp_calibers: 12.2, CN_alpha_per_rad: 15.8, stability_calibers: 3.2,
+      barrowman: { cn_alpha_barrowman: 10.81, x_cp_barrowman_m: 1.1766, cn_alpha_diff_percent: 46.0, x_cp_diff_calibers: 0.44 },
+    },
+  };
+
+  beforeEach(() => {
+    vi.mocked(postRocketSolve).mockReset().mockResolvedValue({ job_id: "r1", status: "pending", message: "kuyrukta", mach: 0.147, barrowman: BARROWMAN });
+    vi.mocked(postBarrowman).mockReset().mockResolvedValue(BARROWMAN);
+    vi.mocked(postCfdSolve).mockClear();
+    vi.mocked(fetchCfdJob).mockReset().mockResolvedValue(rocketJob);
+  });
+
+  it("roket yamalarında roket modu açılır; Barrowman ön izleme ve koşu → katsayılar + Barrowman yan yana", async () => {
+    render(<CfdSolvePanel mesh={rocketMesh} geometryId={9} pollMs={1} />);
+    expect(screen.getByRole("button", { name: "Roket rüzgâr tüneli" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByLabelText("Ağırlık merkezi (burun ucundan)"), { target: { value: "900" } });
+    expect(screen.getByTestId("cfd-mach")).toHaveTextContent("0.147");
+    fireEvent.click(screen.getByRole("button", { name: /Barrowman/ }));
+    expect(await screen.findByTestId("cfd-barrowman")).toHaveTextContent("kararlılık 2.77 kal.");
+    expect(vi.mocked(postBarrowman).mock.calls[0][0]).toEqual({ geometry_id: 9, cg_mm: 900 });
+    fireEvent.click(screen.getByRole("button", { name: "Roket koşusunu çalıştır" }));
+    expect(await screen.findByTestId("cfd-rocket-aero")).toHaveTextContent("1220.6 mm");
+    const body = vi.mocked(postRocketSolve).mock.calls[0][0];
+    expect(body).toMatchObject({ mesh_id: "m1", speed_m_s: 50, alpha_deg: 4, cg_mm: 900 });
+    expect(screen.getByTestId("cfd-rocket-barrowman")).toHaveTextContent("%46.0");
+    expect(screen.getByTestId("cfd-patch-forces")).toHaveTextContent("burun");
+    expect(vi.mocked(postCfdSolve)).not.toHaveBeenCalled();
   });
 });

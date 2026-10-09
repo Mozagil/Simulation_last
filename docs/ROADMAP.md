@@ -1541,7 +1541,7 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     kaba ağ, residual hedefe inmedi). Betik `scripts/cfd_validation_ahmed.py`, test
     `tests/test_template_ahmed.py`. **2.6 kapandı**; V-C5 Basic Finner
     (sıkıştırılabilir) R4 ile.
-- 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
+- 2.7 ✅ (2026-10-09) Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
   1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·
   4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,
   türbülans modeli) · 5 Sonuçlar (residual grafiği, Cd/Cl, Δp). İşlevle
@@ -1559,6 +1559,16 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     Çalıştır → `/cfd/solve` + `/cfd/jobs` yoklama, canlı residual grafiği (log ölçek,
     `CfdResidualChart`), özet (iterasyon, Cd ± std, Cl, CdA, Fx). Tarayıcı: roket kaba ağ
     50 m/s → 202 iterasyon, Cd 0.247 (kaba ağ, yalnız arayüz denemesi).
+  - 2.7c ✅ Sonuçlar (`CfdResults`): özet (Cd/Cl/Cm, CdA, toplam ve basınç/viskoz
+    kuvvet, Δp), yama başına kuvvet tablosu, katsayı geçmişi (doğrusal grafik). Roket
+    modu (roket yamaları varsa, `Genel akış | Roket rüzgâr tüneli`): hız, α, CG,
+    sıcaklık → Mach verisi, Barrowman ön izleme (bileşen tablosu + kararlılık),
+    `/cfd/rocket/solve`; sonuçta CA/CN, CD/CL, Cm, basınç merkezi, CNα, kararlılık
+    payı ve Barrowman ile yan yana. Tarayıcı: kaba ağ α 4°, CG 900 → CNα 13.86
+    (Barrowman 10.81), x_cp 1159.6 mm (1176.6), kararlılık 2.60 kal.
+  - 2.7d ✅ Koşu geçmişi (`CfdRunsPanel`, `cfd_runs`): bu geometri / tümü, en çok 6
+    koşuyu yan yana (Cd, Cl, CdA, Fx, Δp, roket CN / CNα / x_cp / kararlılık), dışla /
+    geri al; çözüm bitince liste yenilenir. PDF raporu ve Belgeler'de AKIŞ kitabı ayrı adım.
 - 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
   (mesh önizleme JSON deseni; gerekirse PyVista — onay).
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.

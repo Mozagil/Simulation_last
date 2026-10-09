@@ -8775,3 +8775,8 @@ p {
 .cfd-run {
   margin-top: 8px;
 }
+
+.cfd-run-excluded td {
+  color: var(--muted);
+  text-decoration: line-through;
+}

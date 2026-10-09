@@ -6,12 +6,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCfdJob,
+  postBarrowman,
   postCfdSolve,
+  postRocketSolve,
+  type BarrowmanResult,
   type CfdJobSnapshot,
   type CfdMeshMeta,
   type CfdPatchKind,
 } from "../api/cfd";
 import CfdResidualChart from "./CfdResidualChart";
+import CfdResults from "./CfdResults";
 
 const KIND_LABEL: Record<CfdPatchKind, string> = {
   inlet: "Giriş (hız)",
@@ -24,6 +28,7 @@ const KIND_LABEL: Record<CfdPatchKind, string> = {
 };
 const KINDS = Object.keys(KIND_LABEL) as CfdPatchKind[];
 const TUNNEL = new Set(["inlet", "outlet", "sides", "ground"]);
+const ROCKET_PATCHES = ["burun", "govde", "kanatcik"];
 
 function defaultKind(name: string): CfdPatchKind {
   if (name === "inlet") return "inlet";
@@ -84,6 +89,11 @@ export default function CfdSolvePanel({
   const [forcePatches, setForcePatches] = useState<string[]>([]);
   const [ref, setRef] = useState({ a: "", l: "", avg: "100" });
   const [name, setName] = useState("");
+  // Roket rüzgâr tüneli modu (R3): hız, α, CG → /cfd/rocket/solve; Barrowman ön izleme.
+  const isRocket = ROCKET_PATCHES.every((p) => patches.includes(p));
+  const [mode, setMode] = useState<"general" | "rocket">("general");
+  const [rk, setRk] = useState({ speed: "50", alpha: "4", cg: "", temp: "288.15" });
+  const [barrowman, setBarrowman] = useState<BarrowmanResult | null>(null);
   const [open, setOpen] = useState<1 | 2 | 3 | 4 | null>(1);
   const [job, setJob] = useState<CfdJobSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,6 +104,8 @@ export default function CfdSolvePanel({
     setKinds(Object.fromEntries(patches.map((p) => [p, defaultKind(p)])));
     setForcePatches(patches.filter((p) => !TUNNEL.has(p)));
     setJob(null);
+    setBarrowman(null);
+    setMode(ROCKET_PATCHES.every((p) => patches.includes(p)) ? "rocket" : "general");
   }, [patches]);
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -123,8 +135,52 @@ export default function CfdSolvePanel({
     }, pollMs);
   }
 
+  async function runBarrowman() {
+    if (!mesh) return;
+    setError(null);
+    try {
+      setBarrowman(await postBarrowman({ geometry_id: geometryId ?? mesh.geometry_id, cg_mm: rk.cg.trim() ? num(rk.cg) : null }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function runRocket() {
+    if (!mesh) return;
+    setBusy(true);
+    setError(null);
+    setJob(null);
+    try {
+      const res = await postRocketSolve({
+        mesh_id: mesh.mesh_id,
+        speed_m_s: num(rk.speed),
+        alpha_deg: num(rk.alpha),
+        cg_mm: rk.cg.trim() ? num(rk.cg) : null,
+        rho_kg_m3: num(fluid.rho),
+        nu_m2_s: num(fluid.nu),
+        temperature_k: num(rk.temp),
+        turbulence_model: turb.model,
+        iterations: num(ctl.iterations),
+        relax_u: num(ctl.relax_u),
+        relax_other: num(ctl.relax_other),
+        name: name.trim() || null,
+      });
+      setBarrowman(res.barrowman);
+      setJob({ job_id: res.job_id, status: res.status as CfdJobSnapshot["status"], message: res.message });
+      setOpen(null);
+      poll(res.job_id);
+    } catch (e) {
+      setBusy(false);
+      setError((e as Error).message);
+    }
+  }
+
   async function run() {
     if (!mesh) return;
+    if (mode === "rocket") {
+      await runRocket();
+      return;
+    }
     setBusy(true);
     setError(null);
     setJob(null);
@@ -186,7 +242,6 @@ export default function CfdSolvePanel({
 
   const residuals = job?.curves?.residuals ?? {};
   const its = job?.curves?.iteration ?? [];
-  const sc = job?.scalars ?? {};
 
   return (
     <div className="panel material-panel" data-testid="cfd-solve-panel">
@@ -197,6 +252,56 @@ export default function CfdSolvePanel({
         sıkıştırılamaz (Mach ≲ 0.3 için).
       </p>
 
+      {isRocket && (
+        <span className="doe-seg" role="group" aria-label="Koşu türü">
+          {(["general", "rocket"] as const).map((m) => (
+            <button key={m} type="button" className={mode === m ? "doe-seg-opt active" : "doe-seg-opt"} aria-pressed={mode === m} disabled={busy} onClick={() => setMode(m)}>
+              {m === "general" ? "Genel akış" : "Roket rüzgâr tüneli"}
+            </button>
+          ))}
+        </span>
+      )}
+
+      {mode === "rocket" && (
+        <section className="crash-acc" aria-label="Roket koşusu">
+          <div className="crash-acc-body">
+            <p className="crash-behavior-hint">
+              Tünel sınırları serbest akım; U∞ = V·(cos α, 0, sin α). Gövde yamaları kuvvet, moment CG'ye (boşsa burun ucuna) göre.
+            </p>
+            <div className="crash-expert-grid cols-3">
+              <Field label="Hız V" unit="m/s" value={rk.speed} disabled={busy} onChange={(v) => setRk((x) => ({ ...x, speed: v }))} />
+              <Field label="Hücum açısı α" unit="°" value={rk.alpha} disabled={busy} onChange={(v) => setRk((x) => ({ ...x, alpha: v }))} />
+              <Field label="Ağırlık merkezi (burun ucundan)" unit="mm" value={rk.cg} disabled={busy} onChange={(v) => setRk((x) => ({ ...x, cg: v }))} />
+              <Field label="Sıcaklık (Mach için)" unit="K" value={rk.temp} disabled={busy} onChange={(v) => setRk((x) => ({ ...x, temp: v }))} />
+            </div>
+            <p className="crash-behavior-hint" data-testid="cfd-mach">
+              Mach = {(num(rk.speed) / Math.sqrt(1.4 * 287.05 * num(rk.temp))).toFixed(3)} (simpleFoam sıkıştırılamaz)
+            </p>
+            <button type="button" className="doe-btn doe-btn-ghost" disabled={busy} onClick={() => void runBarrowman()}>
+              Barrowman (analitik CP, CNα)
+            </button>
+            {barrowman && (
+              <table className="cfd-table" data-testid="cfd-barrowman">
+                <thead>
+                  <tr><th>Bileşen</th><th>CNα</th><th>X (mm)</th></tr>
+                </thead>
+                <tbody>
+                  {barrowman.components.map((c) => (
+                    <tr key={c.name}><td>{c.name}</td><td>{c.cn_alpha.toPrecision(4)}</td><td>{c.x_mm.toPrecision(5)}</td></tr>
+                  ))}
+                  <tr>
+                    <td><strong>Toplam</strong></td>
+                    <td>{barrowman.cn_alpha.toPrecision(4)}</td>
+                    <td>{barrowman.x_cp_mm.toPrecision(5)}{barrowman.stability_calibers !== undefined ? ` · kararlılık ${barrowman.stability_calibers.toFixed(2)} kal.` : ""}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+      )}
+
+      {mode === "general" && (
       <Acc n={1} title="Yamalar (sınır koşulları)" summary={patches.map((p) => `${p}: ${KIND_LABEL[kindOf(p)]}`).join(" · ")} open={open === 1} onToggle={() => toggle(1)}>
         <table className="cfd-table">
           <tbody>
@@ -223,6 +328,7 @@ export default function CfdSolvePanel({
           ))}
         </div>
       </Acc>
+      )}
 
       <Acc n={2} title="Akışkan ve türbülans" summary={`ν ${fluid.nu} m²/s · ρ ${fluid.rho} kg/m³ · ${turb.model === "laminar" ? "laminer" : "k-ω SST"}`} open={open === 2} onToggle={() => toggle(2)}>
         <div className="crash-expert-grid cols-3">
@@ -258,6 +364,7 @@ export default function CfdSolvePanel({
         </div>
       </Acc>
 
+      {mode === "general" && (
       <Acc n={4} title="Kuvvet ve katsayılar" summary={forcePatches.length ? `${forcePatches.join(", ")} · A ${ref.a || "—"} m² · l ${ref.l || "—"} m` : "kuvvet okunmaz"} open={open === 4} onToggle={() => toggle(4)}>
         <p className="crash-behavior-hint">Seçili yamaların toplam kuvveti; Cd = F/(½ρU²A). A ve l boşsa kuvvet okunmaz.</p>
         <span className="docs-chips">
@@ -280,6 +387,7 @@ export default function CfdSolvePanel({
           <Field label="Ortalama son N" unit="iterasyon" value={ref.avg} disabled={busy} onChange={(v) => setRef((r) => ({ ...r, avg: v }))} />
         </div>
       </Acc>
+      )}
 
       <label className="crash-unit-field wide">
         <span>Koşu adı</span>
@@ -288,7 +396,7 @@ export default function CfdSolvePanel({
         </span>
       </label>
       <button type="button" className="material-assign-button" disabled={busy} onClick={() => void run()}>
-        {busy ? "Çözülüyor…" : "Çalıştır (simpleFoam)"}
+        {busy ? "Çözülüyor…" : mode === "rocket" ? "Roket koşusunu çalıştır" : "Çalıştır (simpleFoam)"}
       </button>
       {error && <p className="error-message" role="alert">{error}</p>}
 
@@ -298,17 +406,7 @@ export default function CfdSolvePanel({
             {job.status === "solved" || job.status === "failed" ? job.message : `iterasyon ${job.iteration ?? 0} / ${ctl.iterations}`}
           </p>
           <CfdResidualChart iterations={its} residuals={residuals} />
-          {job.status === "solved" && (
-            <table className="cfd-table" data-testid="cfd-solve-summary">
-              <tbody>
-                <tr><th>İterasyon</th><td>{sc.iterations} · {sc.converged ? "yakınsadı" : "iterasyon sınırı"}</td></tr>
-                {sc.Cd !== undefined && <tr><th>Cd (son / ort. ± std)</th><td>{sc.Cd.toPrecision(4)} / {sc.Cd_mean?.toPrecision(4)} ± {sc.Cd_std?.toPrecision(2)}</td></tr>}
-                {sc.Cl !== undefined && <tr><th>Cl (ort.)</th><td>{sc.Cl_mean?.toPrecision(4)}</td></tr>}
-                {sc.CdA_m2 !== undefined && <tr><th>CdA</th><td>{sc.CdA_m2.toPrecision(4)} m²</td></tr>}
-                {sc.force_total_x !== undefined && <tr><th>Toplam Fx</th><td>{sc.force_total_x.toPrecision(4)} N</td></tr>}
-              </tbody>
-            </table>
-          )}
+          {job.status === "solved" && <CfdResults job={job} />}
         </section>
       )}
     </div>

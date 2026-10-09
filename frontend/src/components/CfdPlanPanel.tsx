@@ -17,7 +17,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "R2", title: "Barrowman referansı", what: "Basınç merkezi (CP) ve CNα — burun / boat-tail / kanatçık bileşenleri; CG verilirse kararlılık payı (kalibre).", status: "tamam" },
   { id: "R3", title: "Roket rüzgâr tüneli", what: "Hız, hücum açısı α, CG → CA, CN, CD, CL, Cm, basınç merkezi, kararlılık payı (Barrowman ile yan yana). Serbest akım sınırları.", status: "tamam" },
   { id: "2.6", title: "Dış akış doğrulaması", what: "Küre Re 20/40/100: standart eğriye +%1.4–1.9. pitzDaily (SST): yeniden bağlanma 7.89h (deney 7.0h). Ahmed 25° (217k hücre): Cd 0.367 (deney 0.285). Basic Finner R4 ile.", status: "tamam" },
-  { id: "2.7", title: "Arayüz adımları", what: "1 Geometry · 2 Mesh · 3 Akışkan (ρ, ν) · 4 Sınır koşulları (giriş, çıkış, duvar, simetri, türbülans) · 5 Sonuçlar.", status: "plan" },
+  { id: "2.7", title: "Arayüz adımları", what: "AKIŞ: Geometry (şablon / STEP) · Mesh (tünel, snappy / cfMesh, checkMesh) · Akış (yamalar, akışkan, türbülans, canlı residual, sonuçlar, roket modu, koşu geçmişi).", status: "tamam" },
   { id: "2.8", title: "Alan görselleştirme", what: "Yüzey basıncı ve kesit hız alanı viewport'ta.", status: "plan" },
   { id: "2.9", title: "CFD DOE + ML", what: "En sonda — crash ve durability ML tezgahı deseniyle.", status: "plan" },
 ];
@@ -37,8 +37,8 @@ export default function CfdPlanPanel({ mesh = null }: { mesh?: CfdMeshMeta | nul
       <h1>Akış (CFD)</h1>
       <p className="lead material-lead">
         Akış analizi Faz 2'de adım adım geliyor. Sunucu tarafı çalışıyor (OpenFOAM koşusu, kanal ve rüzgâr tüneli
-        mesh'i, kuvvet / katsayı okuma, koşu kaydı); bu sekmenin çözüm adımları 2.7'de gelecek. 1 · Geometry'de roket
-        şablonu var. Plan veri olarak aşağıda.
+        mesh'i, kuvvet / katsayı okuma, koşu kaydı) ve bu sekmenin adımları hazır: 2 · Mesh akışkan ağını, 3 · Akış
+        çözümü ve sonuçları gösterir. Plan veri olarak aşağıda.
       </p>
       {mesh && (
         <p className="crash-behavior-hint" data-testid="cfd-plan-mesh">

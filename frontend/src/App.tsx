@@ -77,6 +77,7 @@ import CrashMaterialStep from "./components/CrashMaterialStep";
 import CfdPlanPanel from "./components/CfdPlanPanel";
 import CfdMeshPanel from "./components/CfdMeshPanel";
 import CfdSolvePanel from "./components/CfdSolvePanel";
+import CfdRunsPanel from "./components/CfdRunsPanel";
 import type { CfdMeshMeta } from "./api/cfd";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
@@ -387,6 +388,7 @@ function App() {
   const [crashTree, setCrashTree] = useState<CrashTreeGroup[] | null>(null);
   // AKIŞ (CFD) — 2.7a: son hazır CFD mesh'i (çözüm adımı yamaları buradan alır).
   const [cfdMesh, setCfdMesh] = useState<CfdMeshMeta | null>(null);
+  const [cfdRunsKey, setCfdRunsKey] = useState(0);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
@@ -4506,7 +4508,10 @@ function App() {
 
       {analysisTab === "cfd" && expandedSteps.has("flow") && (
         <>
-          <CfdSolvePanel mesh={cfdMesh} geometryId={geometryId} />
+          <CfdSolvePanel mesh={cfdMesh} geometryId={geometryId} onSolved={() => setCfdRunsKey((k) => k + 1)} />
+          <div className="panel material-panel">
+            <CfdRunsPanel geometryId={geometryId} refreshKey={cfdRunsKey} />
+          </div>
           <CfdPlanPanel mesh={cfdMesh} />
         </>
       )}

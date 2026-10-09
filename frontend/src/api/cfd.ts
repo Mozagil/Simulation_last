@@ -171,3 +171,75 @@ export function postCfdSolve(body: { case: CfdCase; mesh_id: string; name?: stri
 export function fetchCfdJob(jobId: string): Promise<CfdJobSnapshot> {
   return getJson<CfdJobSnapshot>(`${API_BASE_URL}/cfd/jobs/${jobId}`);
 }
+
+// ------------------------------------------------------------- roket (R2, R3)
+
+export interface BarrowmanComponent {
+  name: string;
+  cn_alpha: number;
+  x_mm: number;
+}
+
+export interface BarrowmanResult {
+  cn_alpha: number;
+  x_cp_mm: number;
+  x_cp_calibers: number;
+  stability_calibers?: number;
+  reference_diameter_mm: number;
+  components: BarrowmanComponent[];
+  notes: string[];
+}
+
+export function postBarrowman(body: { geometry_id: number; cg_mm?: number | null }): Promise<BarrowmanResult> {
+  return postJson<BarrowmanResult>("/cfd/rocket/barrowman", body);
+}
+
+export interface RocketSolveBody {
+  mesh_id: string;
+  speed_m_s: number;
+  alpha_deg: number;
+  cg_mm?: number | null;
+  rho_kg_m3: number;
+  nu_m2_s: number;
+  temperature_k: number;
+  turbulence_model: "laminar" | "kOmegaSST";
+  iterations: number;
+  relax_u: number;
+  relax_other: number;
+  name?: string | null;
+}
+
+export function postRocketSolve(body: RocketSolveBody): Promise<CfdSolveResponse & { mach: number; barrowman: BarrowmanResult }> {
+  return postJson("/cfd/rocket/solve", { ...body, wait: false });
+}
+
+// ------------------------------------------------------------- koşu geçmişi (2.4)
+
+export interface CfdRunSummary {
+  id: number;
+  job_id: string;
+  geometry_id: number | null;
+  name: string | null;
+  created_at: string | null;
+  application: string | null;
+  turbulence: string | null;
+  mesh_kind: string | null;
+  status: string;
+  message: string | null;
+  scalars: Record<string, number>;
+  reference: Record<string, unknown> | null;
+  excluded: boolean;
+}
+
+export function fetchCfdRuns(geometryId?: number | null): Promise<{ count: number; runs: CfdRunSummary[] }> {
+  const q = geometryId != null ? `?geometry_id=${geometryId}` : "";
+  return getJson(`${API_BASE_URL}/cfd/runs${q}`);
+}
+
+export function patchCfdRun(id: number, body: { name?: string; excluded?: boolean }): Promise<CfdRunSummary> {
+  return getJson(`${API_BASE_URL}/cfd/runs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
