@@ -1553,6 +1553,12 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     non-orthogonality, skewness, aspect ratio, checkMesh), katman kapsaması, yama
     listesi. `api/cfd.ts`, `CfdMeshPanel.tsx` (+ test). Tarayıcı: roket, taban 0.3 m,
     seviye 2–3 → 56 298 hücre, Mesh OK.
+  - 2.7b ✅ (2026-10-09) Çözüm paneli (AKIŞ · 3 · Akış): yama rolleri (mesh yamalarından;
+    giriş / çıkış / duvar / kaymalı / serbest akım / simetri / boş), hız vektörü, ν, ρ,
+    laminer | k-ω SST, Re verisi, iterasyon / residual / gevşetme, kuvvet yamaları + A, l;
+    Çalıştır → `/cfd/solve` + `/cfd/jobs` yoklama, canlı residual grafiği (log ölçek,
+    `CfdResidualChart`), özet (iterasyon, Cd ± std, Cl, CdA, Fx). Tarayıcı: roket kaba ağ
+    50 m/s → 202 iterasyon, Cd 0.247 (kaba ağ, yalnız arayüz denemesi).
 - 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
   (mesh önizleme JSON deseni; gerekirse PyVista — onay).
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.

@@ -108,3 +108,66 @@ export function postCfdMesh(body: CfdMeshRequest): Promise<CfdMeshMeta> {
 export function fetchCfdMesh(meshId: string): Promise<CfdMeshMeta> {
   return getJson<CfdMeshMeta>(`${API_BASE_URL}/cfd/mesh/${meshId}`);
 }
+
+// ------------------------------------------------------------- çözüm (2.2–2.4)
+
+export type CfdPatchKind = "inlet" | "outlet" | "wall" | "slip" | "farfield" | "symmetry" | "empty";
+
+export interface CfdPatchSpec {
+  name: string;
+  kind: CfdPatchKind;
+  velocity_m_s?: [number, number, number];
+  pressure?: number;
+}
+
+export interface CfdCase {
+  nu_m2_s: number;
+  rho_kg_m3: number;
+  patches: CfdPatchSpec[];
+  turbulence: { model: "laminar" | "kOmegaSST"; intensity: number; length_scale_m: number };
+  control: {
+    iterations: number;
+    write_interval: number;
+    residual_p: number;
+    residual_u: number;
+    relax_u: number;
+    relax_other: number;
+  };
+  initial_velocity_m_s?: [number, number, number];
+  forces?: {
+    patches: string[];
+    cofr_m: [number, number, number];
+    u_ref_m_s: number;
+    l_ref_m: number;
+    a_ref_m2: number;
+    average_last: number;
+  } | null;
+}
+
+export interface CfdSolveResponse {
+  job_id: string;
+  run_id?: number;
+  status: string;
+  message: string;
+}
+
+export interface CfdJobSnapshot {
+  job_id: string;
+  status: "case_only" | "pending" | "solved" | "failed";
+  message: string;
+  hub_state?: string;
+  percent?: number;
+  iteration?: number;
+  end_iterations?: number;
+  scalars?: Record<string, number>;
+  curves?: { iteration?: number[]; residuals?: Record<string, number[]>; force_coeffs?: Record<string, number[]> };
+  rocket_aero?: Record<string, unknown> | null;
+}
+
+export function postCfdSolve(body: { case: CfdCase; mesh_id: string; name?: string | null; geometry_id?: number | null }): Promise<CfdSolveResponse> {
+  return postJson<CfdSolveResponse>("/cfd/solve", { ...body, wait: false });
+}
+
+export function fetchCfdJob(jobId: string): Promise<CfdJobSnapshot> {
+  return getJson<CfdJobSnapshot>(`${API_BASE_URL}/cfd/jobs/${jobId}`);
+}

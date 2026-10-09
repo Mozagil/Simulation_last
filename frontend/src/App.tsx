@@ -76,6 +76,7 @@ import DocsDialog from "./components/DocsDialog";
 import CrashMaterialStep from "./components/CrashMaterialStep";
 import CfdPlanPanel from "./components/CfdPlanPanel";
 import CfdMeshPanel from "./components/CfdMeshPanel";
+import CfdSolvePanel from "./components/CfdSolvePanel";
 import type { CfdMeshMeta } from "./api/cfd";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
@@ -4503,7 +4504,12 @@ function App() {
       </div>
       )}
 
-      {analysisTab === "cfd" && expandedSteps.has("flow") && <CfdPlanPanel mesh={cfdMesh} />}
+      {analysisTab === "cfd" && expandedSteps.has("flow") && (
+        <>
+          <CfdSolvePanel mesh={cfdMesh} geometryId={geometryId} />
+          <CfdPlanPanel mesh={cfdMesh} />
+        </>
+      )}
       {expandedSteps.has("material") && (
       <div className="panel material-panel">
         <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>

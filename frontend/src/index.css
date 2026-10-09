@@ -8731,3 +8731,47 @@ p {
   font-weight: 600;
   color: var(--danger);
 }
+
+.cfd-chart {
+  margin: 6px 0;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.cfd-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cfd-chart-grid {
+  stroke: var(--border-soft);
+  stroke-width: 0.6;
+}
+
+.cfd-chart-tick {
+  font-size: 8px;
+  fill: var(--muted);
+}
+
+.cfd-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cfd-chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.cfd-run {
+  margin-top: 8px;
+}
