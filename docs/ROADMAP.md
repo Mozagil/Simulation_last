@@ -1580,9 +1580,17 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   OK (mesh 124 s); k-ω SST 50 m/s: Cd 0.53 (power-off, kaba ağ), yama başına Fx:
   taban 2.32 N · kanatçık 2.16 · gövde 1.55 · burun 0.36 (toplam 6.40). Test
   `tests/test_template_rocket.py` (+ Docker'da kaba tünel).
-- R2 ⏳ Analitik referans: Barrowman (sesaltı) — basınç merkezi (CP) ve CNα;
+- R2 ✅ (2026-10-09) Analitik referans: Barrowman (sesaltı) — basınç merkezi (CP) ve CNα;
   durability'deki "analitik referans tablosu" deseni, CFD sonucunun yanında
   veri olarak.
+  **Sonuç:** `app/postprocess/barrowman.py`: burun (ince gövde: CNα = 2, X = Ln −
+  V/A — her profil sayısal integralle; koni 0.667·Ln, ogive 0.46, elips 0.333, von
+  Kármán 0.5), gövde (0), boat-tail (konik geçiş), kanatçık (4N(s/d)², gövde
+  etkileşimi K = 1 + R/(s+R), orta veter çizgisi), toplam CNα ve X_cp, CG
+  verilirse kararlılık payı (kalibre). N > 4 kanatçıkta not düşülür. API
+  `POST /cfd/rocket/barrowman` (params ya da roket şablonundan geometry_id).
+  Varsayılan roket: CNα 10.81 /rad, X_cp 1177 mm (ogive). Test `tests/test_barrowman.py`.
+  Arayüzde gösterim 2.7'de.
 - R3 ⏳ Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
   mühendisten) → sonuçta CP, CN, CA, Cd, Cm ve kararlılık payı
   (CP − CG)/D kalibre cinsinden — yalnız veri.
