@@ -1526,7 +1526,14 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     checkMesh OK, max non-orthogonality 24.6° (snappy 13 615 hücre, 34.5°). Ogive roket (aynı tünel, taban 0.15 m): cfMesh 27 s'de 328 233 hücre (snappy 124 s / 142 346), checkMesh 1 kontrol başarısız (max non-orth 71°, skewness 4.1); 50 m/s k-ω SST salınımlı (Cd 0.78, son 100 ort. 0.70, std 0.12) — snappy ile karşılaştırma için ayar eşlemesi ve ağ yakınsaması 2.6'da (veri, yorum yok). Test `tests/test_cfd_cfmesh.py`.
   - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.
 - 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
-  `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3).
+  `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3). Sonuçlar `docs/CFD_VALIDATION.md`.
+  - 2.6a ✅ (2026-10-09) V-C2 küre (silindir yerine 3B küre — mevcut tünel akışı):
+    şablon `cfd_sphere`, Re 20/40/100 laminer, snappy seviye 2/3/4 + cfMesh; referans
+    Schiller–Naumann ve Clift–Grace–Weber. En ince ağ CGW'ye +%1.4–1.9, seviye 3→4
+    değişim ≤ %0.8; cfMesh snappy s3'ten %0.2–0.9 farklı. Betik
+    `scripts/cfd_validation_sphere.py`, test `tests/test_cfd_sphere_validation.py`.
+  - 2.6b ⏳ V-C3 pitzDaily yeniden bağlanma · 2.6c ⏳ V-C4 Ahmed gövdesi ·
+    V-C5 Basic Finner (sıkıştırılabilir, R4 ile).
 - 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
   1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·
   4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,

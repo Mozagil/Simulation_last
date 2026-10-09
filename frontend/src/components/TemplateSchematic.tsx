@@ -92,6 +92,9 @@ export default function TemplateSchematic({ templateId }: TemplateSchematicProps
   if (templateId === "rocket") {
     return <RocketSchematic />;
   }
+  if (templateId === "cfd_sphere") {
+    return <CfdSphereSchematic />;
+  }
   return null;
 }
 
@@ -949,6 +952,22 @@ function RocketSchematic() {
         <text x="180" y="22" className="template-schematic-caption">kanatcik</text>
         <text x="262" y="100" className="template-schematic-caption">taban</text>
         <ImpactArrow x1={4} x2={34} y={75} label="U" />
+      </svg>
+    </figure>
+  );
+}
+
+/* Akış (CFD) doğrulama şablonu — küre (V-C2). */
+function CfdSphereSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Küre: D çaplı küre, akış soldan sağa; Re = U·D/ν">
+        <circle cx="160" cy="75" r="38" className="template-schematic-face-side" />
+        <line x1="122" y1="125" x2="198" y2="125" className="template-schematic-dim" />
+        <text x="160" y="140" textAnchor="middle" className="template-schematic-label">D</text>
+        <text x="206" y="40" className="template-schematic-caption">kure</text>
+        <ImpactArrow x1={30} x2={110} y={75} label="U" />
+        <text x="250" y="80" textAnchor="middle" className="template-schematic-caption">Re = U·D/ν</text>
       </svg>
     </figure>
   );
