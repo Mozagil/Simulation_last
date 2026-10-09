@@ -23,7 +23,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 #: ``slip``: kaymalı duvar (tünel yanları; mesh yaması ``patch`` türünde kalır).
-PatchKind = Literal["inlet", "outlet", "wall", "slip", "symmetry", "empty"]
+#: ``farfield``: serbest akım sınırı (R3, hücum açılı dış akış): akış içeri girerken
+#: serbest akım hızı, çıkarken sıfır gradyan (``freestreamVelocity`` /
+#: ``freestreamPressure``). Hız ``velocity_m_s`` ile verilir.
+PatchKind = Literal["inlet", "outlet", "wall", "slip", "farfield", "symmetry", "empty"]
 TurbulenceModel = Literal["laminar", "kOmegaSST"]
 
 #: k-ω SST için ω = √k / (Cμ^¼ · L)
@@ -51,7 +54,7 @@ class CfdPatch(BaseModel):
 
     @model_validator(mode="after")
     def _inlet_velocity(self) -> "CfdPatch":
-        if self.kind == "inlet":
+        if self.kind in ("inlet", "farfield"):
             if self.velocity_m_s is None:
                 raise ValueError(f"'{self.name}' girişinde hız (velocity_m_s) gerekli.")
             if not all(math.isfinite(c) for c in self.velocity_m_s):
@@ -137,8 +140,8 @@ class CfdCaseParams(BaseModel):
         if unknown:
             raise ValueError(f"İzlenen yama mesh yama listesinde yok: {', '.join(unknown)}")
         kinds = {p.kind for p in self.patches}
-        if "inlet" not in kinds or "outlet" not in kinds:
-            raise ValueError("En az bir giriş (inlet) ve bir çıkış (outlet) yaması gerekli.")
+        if "farfield" not in kinds and ("inlet" not in kinds or "outlet" not in kinds):
+            raise ValueError("En az bir giriş (inlet) ve bir çıkış (outlet) yaması ya da serbest akım (farfield) yaması gerekli.")
         return self
 
     @property
@@ -211,6 +214,9 @@ def _u_file(p: CfdCaseParams) -> str:
             body = {"type": "noSlip"}
         elif patch.kind == "slip":
             body = {"type": "slip"}
+        elif patch.kind == "farfield":
+            fs = f"uniform {_vec(patch.velocity_m_s)}"  # type: ignore[arg-type]
+            body = {"type": "freestreamVelocity", "freestreamValue": fs, "value": fs}
         else:
             body = {"type": patch.kind}
         rows.append((patch.name, body))
@@ -224,6 +230,9 @@ def _p_file(p: CfdCaseParams) -> str:
             body = {"type": "fixedValue", "value": f"uniform {_num(patch.pressure)}"}
         elif patch.kind in ("inlet", "wall", "slip"):
             body = {"type": "zeroGradient"}
+        elif patch.kind == "farfield":
+            fs = f"uniform {_num(patch.pressure)}"
+            body = {"type": "freestreamPressure", "freestreamValue": fs, "value": fs}
         else:
             body = {"type": patch.kind}
         rows.append((patch.name, body))
@@ -231,7 +240,7 @@ def _p_file(p: CfdCaseParams) -> str:
 
 
 def _turbulence_files(p: CfdCaseParams) -> dict[str, str]:
-    inlets = {pt.name: inlet_turbulence(math.hypot(*pt.velocity_m_s), p.turbulence) for pt in p.patches if pt.kind == "inlet"}  # type: ignore[misc]
+    inlets = {pt.name: inlet_turbulence(math.hypot(*pt.velocity_m_s), p.turbulence) for pt in p.patches if pt.kind in ("inlet", "farfield")}  # type: ignore[misc]
     k0 = max(k for k, _ in inlets.values())
     w0 = max(w for _, w in inlets.values())
     files: dict[str, str] = {}
@@ -243,6 +252,9 @@ def _turbulence_files(p: CfdCaseParams) -> dict[str, str]:
         for patch in p.patches:
             if patch.kind == "inlet":
                 body = {"type": "fixedValue", "value": f"uniform {_num(inlets[patch.name][inlet_idx])}"}
+            elif patch.kind == "farfield":
+                v = f"uniform {_num(inlets[patch.name][inlet_idx])}"
+                body = {"type": "inletOutlet", "inletValue": v, "value": v}
             elif patch.kind in ("outlet", "slip"):
                 body = {"type": "zeroGradient"}
             elif patch.kind == "wall":

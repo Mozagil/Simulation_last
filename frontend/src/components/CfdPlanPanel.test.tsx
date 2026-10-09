@@ -7,7 +7,7 @@ describe("CfdPlanPanel (AKIŞ sekmesi iskeleti)", () => {
     render(<CfdPlanPanel />);
     expect(screen.getByRole("heading", { name: "Akış (CFD)" })).toBeInTheDocument();
     expect(screen.queryAllByText("karar bekliyor")).toHaveLength(0);
-    expect(screen.getAllByText("tamam")).toHaveLength(8);
+    expect(screen.getAllByText("tamam")).toHaveLength(9);
     expect(screen.getAllByText("verildi")).toHaveLength(3);
     expect(screen.getByText("Case yazıcı")).toBeInTheDocument();
     expect(screen.getByText(/OpenFOAM dağıtımı: ESI/)).toBeInTheDocument();

@@ -45,6 +45,19 @@ _live_lock = threading.Lock()
 _live: dict[str, dict[str, Any]] = {}
 
 
+class RocketRun(BaseModel):
+    """Roket rüzgâr tüneli koşusu (R3) — ``/cfd/rocket/solve`` doldurur; koşu sonunda
+    kuvvet/momentten CN, CA, CD, CL, Cm, x_cp hesaplanır (``rocket_aero``)."""
+
+    speed_m_s: float = Field(gt=0)
+    alpha_deg: float
+    diameter_m: float = Field(gt=0)
+    x_ref_m: float
+    cg_given: bool = False
+    mach: float | None = None
+    barrowman: dict[str, Any] | None = None
+
+
 class CfdSolveRequest(BaseModel):
     case: CfdCaseParams
     #: Koşu adı (geçmiş listesinde) ve isteğe bağlı geometri bağı.
@@ -59,6 +72,8 @@ class CfdSolveRequest(BaseModel):
     run_solver: bool = True
     #: True: istek koşu bitene kadar bekler (test / betik). False: arka plan.
     wait: bool = False
+    #: Roket koşusu bilgisi (R3; ``/cfd/rocket/solve`` doldurur).
+    rocket: RocketRun | None = None
 
     @model_validator(mode="after")
     def _one_mesh(self) -> "CfdSolveRequest":
@@ -138,6 +153,33 @@ def _sync_run(meta: dict[str, Any]) -> None:
         db.close()
 
 
+def _rocket_results(meta: dict[str, Any], scalars: dict[str, float]) -> None:
+    """R3: roket koşusunda katsayılar + Barrowman ile yan yana (veri)."""
+    rk = meta.get("rocket")
+    if not rk:
+        return
+    from app.postprocess.rocket_aero import rocket_aero
+
+    aero = rocket_aero(
+        scalars,
+        speed_m_s=rk["speed_m_s"],
+        alpha_deg=rk["alpha_deg"],
+        rho_kg_m3=float(meta.get("rho_kg_m3") or 1.0),
+        diameter_m=rk["diameter_m"],
+        x_ref_m=rk["x_ref_m"],
+        cg_given=bool(rk.get("cg_given")),
+    )
+    b = rk.get("barrowman")
+    if aero and b:
+        cmp: dict[str, Any] = {"cn_alpha_barrowman": b["cn_alpha"], "x_cp_barrowman_m": b["x_cp_mm"] / 1000.0}
+        if "CN_alpha_per_rad" in aero:
+            cmp["cn_alpha_diff_percent"] = 100.0 * (aero["CN_alpha_per_rad"] - b["cn_alpha"]) / b["cn_alpha"]
+        if "x_cp_m" in aero:
+            cmp["x_cp_diff_calibers"] = (aero["x_cp_m"] - b["x_cp_mm"] / 1000.0) / rk["diameter_m"]
+        aero["barrowman"] = cmp
+    meta["rocket_aero"] = aero
+
+
 def _complete_cfd_job(job_id: str) -> None:
     meta = _read_job(job_id)
     if meta is None:
@@ -182,6 +224,7 @@ def _complete_cfd_job(job_id: str) -> None:
         meta["curves"] = res.curves
         meta["diagnostics"] = res.diagnostics
         _compare_reference(meta, res.scalars)
+        _rocket_results(meta, res.scalars)
         _write_job(meta)
         _sync_run(meta)
         hub.update(job_id, state="done", percent=100.0, message=meta["message"])
@@ -257,6 +300,7 @@ def cfd_solve(
         if mesh_meta is not None
         else {"kind": "block_mesh_dict"},
         "reference": _channel_reference(body),
+        "rocket": body.rocket.model_dump() if body.rocket is not None else None,
         "openfoam_image": image,
         "solver_ran": False,
         "scalars": {},
@@ -302,6 +346,7 @@ def cfd_solve(
             "message": done.get("message"),
             "scalars": done.get("scalars") or {},
             "reference": done.get("reference"),
+            "rocket_aero": done.get("rocket_aero"),
         }
     background_tasks.add_task(_complete_cfd_job, job_id)
     return {**result, "status": "pending", "message": meta["message"]}

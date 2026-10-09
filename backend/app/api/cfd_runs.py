@@ -26,7 +26,7 @@ router = APIRouter(prefix="/cfd/runs", tags=["cfd"])
 CFD_DIR = Path("uploads") / "cfd"
 
 #: job.json'dan isteğin girdi anlık görüntüsüne giren alanlar.
-REQUEST_KEYS = ("case", "mesh", "forces", "rho_kg_m3", "end_iterations", "turbulence", "application")
+REQUEST_KEYS = ("case", "mesh", "forces", "rho_kg_m3", "end_iterations", "turbulence", "application", "rocket")
 
 
 def record_from_meta(db: Session, meta: dict[str, Any]) -> CfdRun:
@@ -48,7 +48,9 @@ def record_from_meta(db: Session, meta: dict[str, Any]) -> CfdRun:
     run.solver_ran = bool(meta.get("solver_ran"))
     run.request = {k: meta[k] for k in REQUEST_KEYS if k in meta}
     run.scalars = dict(meta.get("scalars") or {})
-    run.reference = meta.get("reference")
+    run.reference = meta.get("reference") or (
+        {"kind": "rocket_r3", "aero": meta["rocket_aero"]} if meta.get("rocket_aero") else None
+    )
     run.diagnostics = dict(meta.get("diagnostics") or {})
     db.commit()
     db.refresh(run)

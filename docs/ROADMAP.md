@@ -1591,9 +1591,21 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   `POST /cfd/rocket/barrowman` (params ya da roket şablonundan geometry_id).
   Varsayılan roket: CNα 10.81 /rad, X_cp 1177 mm (ogive). Test `tests/test_barrowman.py`.
   Arayüzde gösterim 2.7'de.
-- R3 ⏳ Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
+- R3 ✅ (2026-10-09) Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
   mühendisten) → sonuçta CP, CN, CA, Cd, Cm ve kararlılık payı
   (CP − CG)/D kalibre cinsinden — yalnız veri.
+  **Sonuç:** case yazıcıya `farfield` yaması (`freestreamVelocity` /
+  `freestreamPressure`, k/ω `inletOutlet`) — hücum açısında tünel sınırları serbest
+  akım. `POST /cfd/rocket/solve` (mesh_id roket şablonundan; hız, α, CG, ρ, ν, T,
+  türbülans, iterasyon, gevşetme): U∞ = V(cos α, 0, sin α), gövde yamaları kuvvet,
+  moment CG'ye göre. Koşu sonunda `rocket_aero`: CA, CN (gövde), CD, CL (rüzgâr), Cm,
+  x_cp = x_ref − M_y/F_z, CNα = CN/α, kararlılık payı, Barrowman ile fark; Mach veri
+  (a = √γRT). Kayıt `cfd_runs.reference.kind = rocket_r3`. Gerçek koşu (ogive, 142k
+  hücre, 50 m/s, Mach 0.147, CG 900 mm): α 0° → CA 0.531, CN 0.002; α 4° gevşetme
+  0.9/0.9 ile ıraksadı (k, ω negatif, çıkış 136), 0.5/0.3 ile 113 iterasyon: CN 1.10,
+  CNα 15.8/rad (Barrowman 10.8, %+46), x_cp 1.221 m (Barrowman 1.177, +0.44 kal.),
+  kararlılık 3.21 kal. Kaba ağ + varsayılan p residual 1e-2 — doğrulama değil (2.6).
+  Test `tests/test_rocket_r3.py`.
 - R4 ⏳ Çözücü seçimi (**karar verildi 2026-10-08:** üçü de bulunur, NLGEOM gibi
   kullanıcı seçer; otomatik seçim yok — Mach sayısı yalnız veri olarak
   gösterilir). Case yazıcıda `solver` alanı: `simpleFoam` (sıkıştırılamaz,
