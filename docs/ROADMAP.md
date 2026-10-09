@@ -1546,6 +1546,13 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,
   türbülans modeli) · 5 Sonuçlar (residual grafiği, Cd/Cl, Δp). İşlevle
   birlikte sunulabilir kalitede; öneri/uyarı mekanizması yok.
+  - 2.7a ✅ (2026-10-09) CFD mesh paneli (AKIŞ · 2 · Mesh, FEA panelinden ayrı):
+    tünel (önde / arkada / yan × L, taban hücre, zemin + açıklık), mesh'leyici
+    snappyHexMesh | cfMesh, yüzey / kenar / iz seviyeleri, katmanlar; "Mesh üret" →
+    `/cfd/mesh` arka plan + yoklama; sonuç tablosu (yüzey, tünel, hücre tipleri,
+    non-orthogonality, skewness, aspect ratio, checkMesh), katman kapsaması, yama
+    listesi. `api/cfd.ts`, `CfdMeshPanel.tsx` (+ test). Tarayıcı: roket, taban 0.3 m,
+    seviye 2–3 → 56 298 hücre, Mesh OK.
 - 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
   (mesh önizleme JSON deseni; gerekirse PyVista — onay).
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.

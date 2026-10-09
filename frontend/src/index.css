@@ -8696,3 +8696,38 @@ p {
   border: 1px dashed var(--border);
   border-radius: 6px;
 }
+
+/* AKIŞ (CFD) — 2.7 mesh / sonuç tabloları */
+.cfd-table {
+  width: 100%;
+  margin: 4px 0 8px;
+  font-size: 12.5px;
+  border-collapse: collapse;
+}
+
+.cfd-table th,
+.cfd-table td {
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.cfd-table th {
+  width: 42%;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cfd-table thead th {
+  width: auto;
+}
+
+.cfd-ok {
+  font-weight: 600;
+  color: var(--success);
+}
+
+.cfd-warn {
+  font-weight: 600;
+  color: var(--danger);
+}

@@ -1,3 +1,5 @@
+import type { CfdMeshMeta } from "../api/cfd";
+
 /**
  * AKIŞ (CFD · OpenFOAM) sekmesi — Faz 2 iskeleti (kullanıcı 2026-10-08:
  * "ui'de ayrı sekme olarak yavaştan akışı da getirelim"). Henüz çözücü
@@ -28,7 +30,7 @@ const DECIDED = [
 
 const DECISIONS: string[] = [];
 
-export default function CfdPlanPanel() {
+export default function CfdPlanPanel({ mesh = null }: { mesh?: CfdMeshMeta | null }) {
   return (
     <div className="panel material-panel cfd-plan" data-testid="cfd-plan">
       <span className="eyebrow">Faz 2 · OpenFOAM</span>
@@ -38,6 +40,12 @@ export default function CfdPlanPanel() {
         mesh'i, kuvvet / katsayı okuma, koşu kaydı); bu sekmenin çözüm adımları 2.7'de gelecek. 1 · Geometry'de roket
         şablonu var. Plan veri olarak aşağıda.
       </p>
+      {mesh && (
+        <p className="crash-behavior-hint" data-testid="cfd-plan-mesh">
+          Hazır mesh: {mesh.check.cells ?? "—"} hücre · {mesh.mesher === "cfmesh" ? "cfMesh" : "snappyHexMesh"} · yamalar{" "}
+          {mesh.patches.join(", ")}
+        </p>
+      )}
       <p className="crash-expert-title">Kararlar</p>
       <ul className="cfd-decisions">
         {DECIDED.map((d) => (

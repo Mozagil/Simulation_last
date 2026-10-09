@@ -75,6 +75,8 @@ import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import DocsDialog from "./components/DocsDialog";
 import CrashMaterialStep from "./components/CrashMaterialStep";
 import CfdPlanPanel from "./components/CfdPlanPanel";
+import CfdMeshPanel from "./components/CfdMeshPanel";
+import type { CfdMeshMeta } from "./api/cfd";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import { matCardSummary } from "./components/CrashMaterialSection";
@@ -382,6 +384,8 @@ function App() {
   // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
   const [crashTree, setCrashTree] = useState<CrashTreeGroup[] | null>(null);
+  // AKIŞ (CFD) — 2.7a: son hazır CFD mesh'i (çözüm adımı yamaları buradan alır).
+  const [cfdMesh, setCfdMesh] = useState<CfdMeshMeta | null>(null);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
@@ -4263,7 +4267,10 @@ function App() {
       </div>
       )}
 
-      {expandedSteps.has("mesh") && (
+      {analysisTab === "cfd" && expandedSteps.has("mesh") && (
+        <CfdMeshPanel geometryId={geometryId} onMeshReady={setCfdMesh} />
+      )}
+      {analysisTab !== "cfd" && expandedSteps.has("mesh") && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Mesh</span>
         <h1>Mesh</h1>
@@ -4496,7 +4503,7 @@ function App() {
       </div>
       )}
 
-      {analysisTab === "cfd" && expandedSteps.has("flow") && <CfdPlanPanel />}
+      {analysisTab === "cfd" && expandedSteps.has("flow") && <CfdPlanPanel mesh={cfdMesh} />}
       {expandedSteps.has("material") && (
       <div className="panel material-panel">
         <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>

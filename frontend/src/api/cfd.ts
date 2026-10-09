@@ -1,0 +1,110 @@
+/** CFD (OpenFOAM) API — Faz 2.2–2.6 uçları; arayüz 2.7. */
+
+const API_BASE_URL: string =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
+
+export class CfdApiError extends Error {}
+
+function detailMessage(payload: unknown, status: number): string {
+  const detail = (payload as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d) => (typeof d === "object" && d && "msg" in d ? String((d as { msg: unknown }).msg) : String(d))).join("; ");
+  }
+  return `HTTP ${status}`;
+}
+
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CfdApiError(detailMessage(payload, response.status));
+  return payload as T;
+}
+
+function postJson<T>(path: string, body: unknown): Promise<T> {
+  return getJson<T>(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ------------------------------------------------------------------ mesh (2.5)
+
+export type CfdMesher = "snappy" | "cfmesh";
+
+export interface CfdTunnelParams {
+  upstream: number;
+  downstream: number;
+  lateral: number;
+  ground: boolean;
+  ground_clearance_m: number;
+  base_cell_m: number;
+}
+
+export interface CfdSnappyParams {
+  surface_level_min: number;
+  surface_level_max: number;
+  feature_level: number;
+  wake_level: number;
+  wake_length: number;
+  n_layers: number;
+  expansion_ratio: number;
+  final_layer_thickness: number;
+  stl_size_mm: number | null;
+}
+
+export interface CfdMeshRequest {
+  geometry_id: number;
+  mesher: CfdMesher;
+  tunnel: CfdTunnelParams;
+  snappy: CfdSnappyParams;
+  regions?: string[] | null;
+}
+
+export interface CfdCheckMesh {
+  cells?: number;
+  points?: number;
+  faces?: number;
+  hexahedra?: number;
+  polyhedra?: number;
+  non_orthogonality_max?: number;
+  non_orthogonality_avg?: number;
+  skewness_max?: number;
+  aspect_ratio_max?: number;
+  min_volume?: number;
+  failed_checks?: number;
+  mesh_ok?: boolean;
+  patch_faces?: Record<string, number>;
+}
+
+export interface CfdLayerCoverage {
+  faces: number;
+  target_layers: number;
+  layers: number;
+  thickness_m: number;
+  thickness_percent: number;
+}
+
+export interface CfdMeshMeta {
+  mesh_id: string;
+  geometry_id: number;
+  mesher: CfdMesher;
+  status: "pending" | "meshed" | "failed";
+  message: string;
+  patches: string[];
+  surface: { regions: string[]; triangles: number; triangles_per_region: Record<string, number>; open_edges: number; bbox_m: number[] };
+  domain: { min_m: number[]; max_m: number[]; background_cells: number[]; body_length_m: number };
+  check: CfdCheckMesh;
+  snappy?: { background_cells?: number; snapped_cells?: number; layer_cells?: number; cells_per_level?: Record<string, number>; layers?: Record<string, CfdLayerCoverage>; seconds?: number };
+  cfmesh?: { finished: boolean; layer_cells_added: number };
+  hub_state?: string;
+}
+
+export function postCfdMesh(body: CfdMeshRequest): Promise<CfdMeshMeta> {
+  return postJson<CfdMeshMeta>("/cfd/mesh", { ...body, wait: false });
+}
+
+export function fetchCfdMesh(meshId: string): Promise<CfdMeshMeta> {
+  return getJson<CfdMeshMeta>(`${API_BASE_URL}/cfd/mesh/${meshId}`);
+}
