@@ -85,6 +85,7 @@ import { matCardSummary } from "./components/CrashMaterialSection";
 import type { CrashTreeGroup } from "./components/CrashPanel";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
+import CfdMlPanel from "./components/CfdMlPanel";
 import CrashModelPanel from "./components/CrashModelPanel";
 import CrashPredictPanel from "./components/CrashPredictPanel";
 import CrashValidation from "./components/CrashValidation";
@@ -539,7 +540,7 @@ function App() {
   const [mlStage, setMlStage] = useState<MlStage>("doe");
   // Stüdyo alanı: durability (CalculiX) ya da crash (OpenRadioss, 1.19f) —
   // ayrı korpus, ayrı model; crash kendi panellerini taşır.
-  const [mlDomain, setMlDomain] = useState<"durability" | "crash">("durability");
+  const [mlDomain, setMlDomain] = useState<"durability" | "crash" | "cfd">("durability");
   const [crashMlStage, setCrashMlStage] = useState<CrashMlStage>("doe");
   // Stüdyonun şablonu: tezgahtaki seçimden başlar, üst şerit çipleriyle
   // değişir; tezgaha geri yazmaz (geometri seçimi ayrı iş).
@@ -2846,7 +2847,7 @@ function App() {
             </span>
             <span className="app-brand-divider" />
             <span className="ml-domain-switch" role="group" aria-label="Analiz alanı">
-              {(["durability", "crash"] as const).map((d) => (
+              {(["durability", "crash", "cfd"] as const).map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -2854,7 +2855,7 @@ function App() {
                   aria-pressed={mlDomain === d}
                   onClick={() => setMlDomain(d)}
                 >
-                  {d === "durability" ? "Durability" : "Crash"}
+                  {d === "durability" ? "Durability" : d === "crash" ? "Crash" : "Akış"}
                 </button>
               ))}
             </span>
@@ -2883,7 +2884,11 @@ function App() {
           </div>
         </div>
 
-        {mlDomain === "crash" ? (
+        {mlDomain === "cfd" ? (
+          <div className="ml-studio-body">
+            <CfdMlPanel />
+          </div>
+        ) : mlDomain === "crash" ? (
           <>
             <CrashMlNav stage={crashMlStage} onSelect={setCrashMlStage} />
             <div className="ml-studio-body">

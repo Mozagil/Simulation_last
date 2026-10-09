@@ -1568,7 +1568,11 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     (Barrowman 10.81), x_cp 1159.6 mm (1176.6), kararlılık 2.60 kal.
   - 2.7d ✅ Koşu geçmişi (`CfdRunsPanel`, `cfd_runs`): bu geometri / tümü, en çok 6
     koşuyu yan yana (Cd, Cl, CdA, Fx, Δp, roket CN / CNα / x_cp / kararlılık), dışla /
-    geri al; çözüm bitince liste yenilenir. PDF raporu ve Belgeler'de AKIŞ kitabı ayrı adım.
+    geri al; çözüm bitince liste yenilenir.
+  - 2.7e ✅ (2026-10-09) Koşu başına PDF rapor (`GET /cfd/runs/{id}/report.pdf`,
+    `cfd_report.py`, reportlab: kurulum, yamalar, katsayılar ort.±std, yama kuvvetleri,
+    roket / Barrowman, residual (log) + Cd grafikleri; Türkçe TTF) ve Belgeler'de
+    "Akış" kitabı (`docs/cfdDoc.ts`: 8 bölüm + 3 şablon, görsel `public/docs/cfd/`).
 - 2.8 ✅ Alan görselleştirme (2026-10-09; yeni bağımlılık yok, PyVista gerekmedi):
   case yazıcıda `CfdViz` → controlDict'e `surfaces` (raw: gövde yamaları p/U +
   `cuttingPlane` kesit) ve `streamLine` (düz metin eski VTK) fonksiyon nesneleri,
@@ -1579,7 +1583,20 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   önbelleği. Arayüz `CfdFieldViewer` (three.js; katman aç/kapa, min–max aralığı).
   Roket 56k hücre, 40 m/s, α 4°: 384 gövde, 2249 kesit noktası, 25 akım çizgisi.
   Testler `test_openfoam_viz.py`, `CfdFieldViewer.test.tsx`.
-- 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
+- 2.9 ✅ CFD DOE + vekil model (2026-10-09; crash 1.19 deseni, yeni bağımlılık /
+  DB şeması yok): `POST /cfd/ml/doe` — roket şablonu, taranan değişkenler sayısal
+  şablon parametreleri ve/veya mach / alpha_deg (LHS, tohumlu); her örnek şablondan
+  geometri → tünel mesh'i → R3 koşusu (aynı çözücü), sıralı, örnek hatası taramayı
+  durdurmaz; durum `uploads/cfd_doe/<id>/doe.json`. Korpus `app/ml/cfd/corpus.py`
+  (cfd_runs roket koşuları, çözücü başına; girdiler flow.mach / alpha_deg / x_ref_m +
+  geom.*; hedefler CD, CL, CA, CN, Cm, x_cp), eğitim / tahmin crash RF + K-fold
+  koduyla (`/cfd/ml/corpus|train|models|predict`, model `uploads/models/cfd/rocket/`).
+  Arayüz: ML Stüdyo → "Akış" (`CfdMlPanel`: DOE, model + CV tablosu, tahmin + aralık
+  dışı). Deneme: 10 örnek (kanatçık açıklığı 70–130 mm × M 0.1–0.3 × α 0–6°),
+  53–57k hücre, simpleFoam, 10/10 çözüldü, 630 s. 5-kat CV R²: CN 0.63, CL 0.62,
+  CD 0.49, CA 0.15, Cm −0.20, x_cp −0.42 (10 örnek; küçük α'da x_cp = −Cm/CN oranı
+  oynak — örn. α 1.46°'de 0.56 m). Veri; örnek sayısı mühendisin kararı.
+  Testler `test_cfd_ml.py`, `CfdMlPanel.test.tsx`.
 
 **Kapsam ve hedef (kullanıcı, 2026-10-08):** Akışta hem iç hem dış akış ve
 aerodinamik olacak. Ek hedef: akademik yarışmalar — savunma sanayii roket

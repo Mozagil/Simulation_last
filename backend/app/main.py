@@ -35,6 +35,7 @@ from app.api.cfd_runs import router as cfd_runs_router
 from app.api.cfd_mesh import router as cfd_mesh_router
 from app.api.cfd_rocket import router as cfd_rocket_router
 from app.api.cfd_sweep import router as cfd_sweep_router
+from app.api.cfd_ml import router as cfd_ml_router
 
 # Uvicorn kendi logger'larını (uvicorn.*) yapılandırıyor ama uygulama
 # modüllerimizin (app.*) logger.info çağrıları root logger WARNING
@@ -89,6 +90,7 @@ app.include_router(cfd_runs_router)  # /cfd/runs (Faz 2.4)
 app.include_router(cfd_mesh_router)  # /cfd/mesh (Faz 2.5)
 app.include_router(cfd_rocket_router)  # /cfd/rocket (R2)
 app.include_router(cfd_sweep_router)  # /cfd/rocket/sweep (R5)
+app.include_router(cfd_ml_router)  # /cfd/ml (Faz 2.9)
 app.include_router(cfd_router)  # /cfd (Faz 2.2)
 
 # Üretilen tessellation (STL) ve FEA mesh (.msh) dosyalarını HTTP ile sun.

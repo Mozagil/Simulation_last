@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -153,3 +153,24 @@ def patch_cfd_run(run_id: int, body: CfdRunPatch, db: Session = Depends(get_db))
     db.commit()
     db.refresh(run)
     return _summary(run)
+
+
+@router.get("/{run_id}/report.pdf")
+def cfd_run_report_pdf(run_id: int, db: Session = Depends(get_db)) -> Response:
+    """Paylaşılabilir PDF özet: kurulum, katsayılar, yama kuvvetleri, roket / Barrowman, grafikler."""
+    from app.postprocess.cfd_report import build_cfd_report_pdf
+
+    run = _get_or_404(db, run_id)
+    path = CFD_DIR / run.job_id / "job.json"
+    job: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            job = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            job = {}
+    pdf = build_cfd_report_pdf({**_summary(run), "created_at": run.created_at}, job)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="cfd_run{run.id}_report.pdf"'},
+    )

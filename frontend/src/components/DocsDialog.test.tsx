@@ -99,3 +99,14 @@ describe("Belgeler · Durability sekmesi", () => {
     expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
   });
 });
+
+describe("Belgeler · Akış sekmesi", () => {
+  it("CFD bölümleri, roket modülü ve akış şablonları; LS-DYNA sütunu yok", () => {
+    render(<DocsDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Akış" }));
+    expect(screen.getByText("Belgeler · Akış (OpenFOAM)")).toBeInTheDocument();
+    expect(screen.getAllByText(/rhoCentralFoam/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Akış şablonları").length).toBeGreaterThan(0);
+    expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
+  });
+});

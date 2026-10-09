@@ -331,3 +331,8 @@ export async function postRocketOrk(file: File): Promise<OrkImport> {
   fd.append("file", file);
   return getJson<OrkImport>(`${API_BASE_URL}/cfd/rocket/ork`, { method: "POST", body: fd });
 }
+
+/** CFD koşusu PDF raporu (kurulum, katsayılar, roket / Barrowman, grafikler). */
+export function cfdRunReportUrl(runId: number): string {
+  return `${API_BASE_URL}/cfd/runs/${runId}/report.pdf`;
+}

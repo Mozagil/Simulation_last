@@ -8,6 +8,7 @@ import { DYNA_EQUIV } from "../lib/dynaKeywords";
 import { CRASH_DOC, CRASH_SCENARIOS, type DocScenario, type DocSection } from "./crashDoc";
 import { CRASH_TRAINING, TRAINING_RECORD, type TrainingGroup } from "./crashTraining";
 import { ML_DOC, ML_EXAMPLES } from "./mlDoc";
+import { CFD_DOC, CFD_TEMPLATES } from "./cfdDoc";
 import { DURABILITY_DOC, DURABILITY_TEMPLATES } from "./durabilityDoc";
 import { DURABILITY_TRAINING, DURABILITY_TRAINING_RECORD } from "./durabilityTraining";
 
@@ -23,7 +24,7 @@ export interface DocExample {
 }
 
 export interface DocBook {
-  id: "crash" | "durability" | "ml";
+  id: "crash" | "durability" | "cfd" | "ml";
   /** Sekme adı */
   tab: string;
   title: string;
@@ -116,5 +117,24 @@ export const ML_BOOK: DocBook = {
   },
 };
 
+export const CFD_BOOK: DocBook = {
+  id: "cfd",
+  tab: "Akış",
+  title: "Akış (OpenFOAM)",
+  subtitle: "Tünel mesh'i, yamalar, üç çözücü, sonuçlar ve alan görselleştirme, roket modülü (R1–R6), DOE + vekil model ve doğrulama.",
+  searchPlaceholder: "Ara: snappyHexMesh, farfield, rhoCentralFoam, Barrowman, Cp…",
+  note:
+    "Kart sütunu OpenFOAM sözlüğü / dosyası ya da API ucudur. “Ne zaman” satırları tipik kullanımı anlatır; çözücü, mesh ve " +
+    "gevşetme değerleri mühendisindir.",
+  cardHeader: "OpenFOAM / API",
+  dynaColumn: false,
+  sections: CFD_DOC,
+  scenarios: {
+    title: "Akış şablonları",
+    intro: "AKIŞ sekmesindeki şablonlar: ne modelledikleri, bölgeleri ve karşılaştırıldıkları referans.",
+    rows: CFD_TEMPLATES,
+  },
+};
+
 /** Sekme sırası; diğer kitaplar içerikleri hazır oldukça eklenir. */
-export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, DURABILITY_BOOK, ML_BOOK];
+export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, DURABILITY_BOOK, CFD_BOOK, ML_BOOK];

@@ -3,7 +3,7 @@
  * eskiye; en çok 6 koşu seçilip temel skalerleri yan yana. Dışlama silmez.
  */
 import { useEffect, useState } from "react";
-import { fetchCfdRuns, patchCfdRun, type CfdRunSummary } from "../api/cfd";
+import { cfdRunReportUrl, fetchCfdRuns, patchCfdRun, type CfdRunSummary } from "../api/cfd";
 
 const MAX_COMPARE = 6;
 
@@ -107,6 +107,11 @@ export default function CfdRunsPanel({ geometryId = null, refreshKey = 0 }: { ge
                     <button type="button" className="doe-btn doe-btn-ghost" onClick={() => void toggleExcluded(r)}>
                       {r.excluded ? "geri al" : "dışla"}
                     </button>
+                    {r.status === "solved" && (
+                      <a className="doe-btn doe-btn-ghost" href={cfdRunReportUrl(r.id)} download aria-label={`PDF rapor ${r.id}`}>
+                        PDF
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}
