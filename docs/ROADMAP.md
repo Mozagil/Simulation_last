@@ -1532,7 +1532,11 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     Schiller–Naumann ve Clift–Grace–Weber. En ince ağ CGW'ye +%1.4–1.9, seviye 3→4
     değişim ≤ %0.8; cfMesh snappy s3'ten %0.2–0.9 farklı. Betik
     `scripts/cfd_validation_sphere.py`, test `tests/test_cfd_sphere_validation.py`.
-  - 2.6b ⏳ V-C3 pitzDaily yeniden bağlanma · 2.6c ⏳ V-C4 Ahmed gövdesi ·
+  - 2.6b ✅ (2026-10-09) V-C3 pitzDaily: k-ω SST, öğretici ağı → x_r/h 7.89 (deney
+    7.0, %+12.7); residual ~1e-4'te plato; yeniden bağlanma daralma başlangıcına
+    (206 mm) yakın. `app/postprocess/openfoam_fields.py` (yama değerleri, τ_x işaret
+    değişimi), betik `scripts/cfd_validation_pitzdaily.py`, test `tests/test_openfoam_fields.py`.
+  - 2.6c ⏳ V-C4 Ahmed gövdesi ·
     V-C5 Basic Finner (sıkıştırılabilir, R4 ile).
 - 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
   1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·

@@ -42,8 +42,28 @@ Re 100 −%0.4. Seviye 2 (yüzeyde 12.5 mm hücre) belirgin biçimde düşük.
 **En ince ağ (seviye 4) Clift–Grace–Weber'e göre:** +%1.5, +%1.4, +%1.9.
 **cfMesh (seviye 3 karşılığı)** snappy seviye 3'ten %0.2–0.9 farklı.
 
+## V-C3 — pitzDaily geri basamak, yeniden bağlanma (Faz 2.6b, 2026-10-09)
+
+**Kurulum:** resmi pitzDaily ağı (12 225 hücre, alt duvarda 250 yüz), case
+yazıcımız: k-ω SST, U = 10 m/s, ν = 1e-5 (Re_h ≈ 25 400, h = 25.4 mm), residual
+hedefi p 1e-5, U 1e-6, 4000 iterasyon. Koşu sonrası `wallShearStress` ve yüz
+merkezleri; alt duvarda 0 < x < 206 mm aralığında τ_x'in son işaret değişimi.
+Betik: `backend/scripts/cfd_validation_pitzdaily.py` → `uploads/reports/cfd_validation_pitzdaily.json`.
+
+**Referans:** Pitz & Daily (1983) deneyi x_r/h ≈ 7.0.
+
+| | x_r (mm) | x_r/h | deney | fark |
+|---|---|---|---|---|
+| k-ω SST, öğretici ağı | 200.3 | 7.89 | 7.0 | +%12.7 |
+
+**Veri notları:** τ_x profili: basamaktan önce ileri akış (τ_x < 0, OpenFOAM
+işaret kuralı), ~0–40 mm köşe girdabı, ~45–197 mm ana geri dönüş bölgesi
+(τ_x > 0), ~201 mm'den sonra ileri akış. Yeniden bağlanma noktası alt duvarın
+daralmaya başladığı x = 206 mm'ye yakın — daralma etkisi ayrıştırılmadı.
+Residual'lar 4000 iterasyonda hedefe inmedi, ~1e-4 – 7e-4'te plato (Ux 2.8e-5,
+Uy 2.5e-4, p 7.4e-4). Ağ yakınsaması yapılmadı (tek, öğretici ağı).
+
 ## Sırada
 
-- V-C3: pitzDaily yeniden bağlanma uzunluğu (k-ω SST).
 - V-C4: Ahmed gövdesi (otomotiv; geometri şablonu gerekiyor).
 - V-C5: Basic Finner (roket; sıkıştırılabilir rejim — R4 ile).
