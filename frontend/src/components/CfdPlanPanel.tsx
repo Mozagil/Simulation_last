@@ -14,7 +14,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "R1", title: "Roket şablonu", what: "Burun (konik / ogive / elips / von Kármán), gövde, kanatçık, boat-tail; bölgeler ayrı yama. Ogive roket 50 m/s: Cd 0.53, yama başına kuvvet.", status: "tamam" },
   { id: "R2", title: "Barrowman referansı", what: "Basınç merkezi (CP) ve CNα — burun / boat-tail / kanatçık bileşenleri; CG verilirse kararlılık payı (kalibre).", status: "tamam" },
   { id: "R3", title: "Roket rüzgâr tüneli", what: "Hız, hücum açısı α, CG → CA, CN, CD, CL, Cm, basınç merkezi, kararlılık payı (Barrowman ile yan yana). Serbest akım sınırları.", status: "tamam" },
-  { id: "2.6", title: "Dış akış doğrulaması", what: "Küre Re 20/40/100: en ince ağ standart eğriye +%1.4–1.9. pitzDaily (SST): yeniden bağlanma 7.89h, deney 7.0h. Sırada Ahmed, Basic Finner.", status: "plan" },
+  { id: "2.6", title: "Dış akış doğrulaması", what: "Küre Re 20/40/100: standart eğriye +%1.4–1.9. pitzDaily (SST): yeniden bağlanma 7.89h (deney 7.0h). Ahmed 25° (217k hücre): Cd 0.367 (deney 0.285). Basic Finner R4 ile.", status: "tamam" },
   { id: "2.7", title: "Arayüz adımları", what: "1 Geometry · 2 Mesh · 3 Akışkan (ρ, ν) · 4 Sınır koşulları (giriş, çıkış, duvar, simetri, türbülans) · 5 Sonuçlar.", status: "plan" },
   { id: "2.8", title: "Alan görselleştirme", what: "Yüzey basıncı ve kesit hız alanı viewport'ta.", status: "plan" },
   { id: "2.9", title: "CFD DOE + ML", what: "En sonda — crash ve durability ML tezgahı deseniyle.", status: "plan" },

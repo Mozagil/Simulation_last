@@ -63,7 +63,28 @@ daralmaya başladığı x = 206 mm'ye yakın — daralma etkisi ayrıştırılma
 Residual'lar 4000 iterasyonda hedefe inmedi, ~1e-4 – 7e-4'te plato (Ux 2.8e-5,
 Uy 2.5e-4, p 7.4e-4). Ağ yakınsaması yapılmadı (tek, öğretici ağı).
 
+## V-C4 — Ahmed gövdesi, φ = 25° (Faz 2.6c, 2026-10-09)
+
+**Kurulum:** şablon `ahmed_body` (özgün ölçüler 1044 × 389 × 288 mm, R 100, S 222,
+G 50; **bacaklar yok**); zeminli tünel (önde 2L, arkada 4L, yan/üst 1.5L; zemin
+sabit duvar), taban 160 mm, yüzey seviyesi 4–5 (10 / 5 mm), iz kutusu seviye 2,
+3 sınır tabakası; k-ω SST, U = 40 m/s (Re_L ≈ 2.8·10⁶), gevşetme 0.7 / 0.5,
+1500 iterasyon; Cd = son 200 iterasyon ortalaması, A_ref = W·H = 0.112 m².
+Betik: `backend/scripts/cfd_validation_ahmed.py [açı…]` → `uploads/reports/cfd_validation_ahmed.json`.
+
+**Referans:** Ahmed, Ramm & Faltin (1984) deneyi (60 m/s, bacaklı): φ 25° → Cd 0.285.
+
+| φ | Hücre | Katman kapsaması | Cd (ort.) | std | deney | fark | Süre |
+|---|---|---|---|---|---|---|---|
+| 25° | 216 959 | %87 (2.71 / 3) | 0.367 | 0.004 | 0.285 | +%29 | mesh 70 s, çözüm 714 s |
+
+**Veri notları:** ağ bu gövde için kaba (literatürdeki çalışmalar 5–20 milyon
+hücre); 1500 iterasyonda residual hedefine inmedi (iterasyon sınırı); bacaklar ve
+hız farkı (40 / 60 m/s) modellenmedi; 25° eğim RANS modelleri için bilinen zor
+durum (ayrılma / yeniden bağlanma eşiğine yakın). Ağ yakınsaması ve diğer açılar
+(0°, 12.5°, 35°) yapılmadı — betik açıları argüman olarak alıyor. Cl sütunu yanal
+(y) kuvvettir; düşey kaldırma için lift_dir (0, 0, 1) verilmeli.
+
 ## Sırada
 
-- V-C4: Ahmed gövdesi (otomotiv; geometri şablonu gerekiyor).
 - V-C5: Basic Finner (roket; sıkıştırılabilir rejim — R4 ile).

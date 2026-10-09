@@ -1536,8 +1536,11 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     7.0, %+12.7); residual ~1e-4'te plato; yeniden bağlanma daralma başlangıcına
     (206 mm) yakın. `app/postprocess/openfoam_fields.py` (yama değerleri, τ_x işaret
     değişimi), betik `scripts/cfd_validation_pitzdaily.py`, test `tests/test_openfoam_fields.py`.
-  - 2.6c ⏳ V-C4 Ahmed gövdesi ·
-    V-C5 Basic Finner (sıkıştırılabilir, R4 ile).
+  - 2.6c ✅ (2026-10-09) V-C4 Ahmed gövdesi: şablon `ahmed_body` (φ 0–40°, bacaksız),
+    zeminli tünel, φ 25°: 217k hücre, k-ω SST 40 m/s → Cd 0.367 (deney 0.285, %+29;
+    kaba ağ, residual hedefe inmedi). Betik `scripts/cfd_validation_ahmed.py`, test
+    `tests/test_template_ahmed.py`. **2.6 kapandı**; V-C5 Basic Finner
+    (sıkıştırılabilir) R4 ile.
 - 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
   1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·
   4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,

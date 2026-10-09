@@ -46,6 +46,7 @@ from app.templates.blast_plate_shell import BLAST_PLATE_SHELL
 from app.templates.bucket_rock_shell import BUCKET_ROCK_SHELL
 from app.templates.rocket import ROCKET
 from app.templates.cfd_sphere import CFD_SPHERE
+from app.templates.ahmed_body import AHMED_BODY
 
 _ALL: tuple[GeometryTemplate, ...] = (
     CANTILEVER_BEAM,
@@ -78,6 +79,7 @@ _ALL: tuple[GeometryTemplate, ...] = (
     BUCKET_ROCK_SHELL,
     ROCKET,
     CFD_SPHERE,
+    AHMED_BODY,
 )
 
 TEMPLATES: dict[str, GeometryTemplate] = {}

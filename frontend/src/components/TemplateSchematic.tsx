@@ -95,6 +95,9 @@ export default function TemplateSchematic({ templateId }: TemplateSchematicProps
   if (templateId === "cfd_sphere") {
     return <CfdSphereSchematic />;
   }
+  if (templateId === "ahmed_body") {
+    return <AhmedSchematic />;
+  }
   return null;
 }
 
@@ -968,6 +971,25 @@ function CfdSphereSchematic() {
         <text x="206" y="40" className="template-schematic-caption">kure</text>
         <ImpactArrow x1={30} x2={110} y={75} label="U" />
         <text x="250" y="80" textAnchor="middle" className="template-schematic-caption">Re = U·D/ν</text>
+      </svg>
+    </figure>
+  );
+}
+
+/* Akış (CFD) doğrulama şablonu — Ahmed gövdesi (V-C4): yan görünüş, zemin altta. */
+function AhmedSchematic() {
+  return (
+    <figure className="template-schematic">
+      <svg viewBox="0 0 300 150" role="img" aria-label="Ahmed gövdesi: L boyunda H yüksekliğinde gövde, önde R yarıçap, arkada φ açılı S eğik yüzey, zeminden G yukarıda; akış soldan sağa">
+        <rect x="10" y="128" width="280" height="8" className="template-schematic-wall" />
+        <path d="M 70 118 L 70 72 Q 70 52 90 52 L 214 52 L 250 70 L 250 118 Z" className="template-schematic-face-side" />
+        <text x="160" y="90" textAnchor="middle" className="template-schematic-label">L</text>
+        <text x="258" y="98" className="template-schematic-label">H</text>
+        <text x="76" y="64" className="template-schematic-label">R</text>
+        <text x="236" y="54" className="template-schematic-label">φ, S</text>
+        <text x="74" y="127" className="template-schematic-caption">G</text>
+        <text x="150" y="146" textAnchor="middle" className="template-schematic-caption">zemin</text>
+        <ImpactArrow x1={10} x2={60} y={85} label="U" />
       </svg>
     </figure>
   );
