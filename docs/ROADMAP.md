@@ -1704,7 +1704,10 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   von_karman), bodytube'lar toplam boy + ilk çap, ilk trapezoidfinset (N, Cr, Ct,
   s, Xs, t; `axialoffset`/`position` bottom → Xf), son tüpten sonra daralan
   transition → boat-tail. Arayüz: roket şablonunda "OpenRocket .ork içe aktar"
-  formu doldurur. Gerçek OpenRocket dosyasıyla deneme kullanıcıda (elde örnek yok).
+  formu doldurur. 2026-10-10: OpenRocket deposundaki 6 örnek (.ork) ile denendi → 6/6 şablon
+  doğrulamasından geçti ve geometri üretildi; düzeltmeler: tüm kademeler fırlatma
+  konfigürasyonunda birleşir, kanatçık en arkadaki tüpten, çap kanatçık tüpünden,
+  aynı geometrideki tek kanatçıklı setler toplanır (tüp kanatçık: not, varsayılan).
   Test `test_rocket_ork.py`, `TemplatePanel.test.tsx`.
 
 **Sonraya (ayrı adım/faz):** zamana bağlı çözüm (`pimpleFoam` — girdap

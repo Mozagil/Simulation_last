@@ -65,3 +65,30 @@ def test_endpoint():
 def test_axialoffset_new_format():
     xml = ORK.replace(b'<position type="bottom">-0.02</position>', b'<axialoffset method="bottom">-0.03</axialoffset><position type="bottom">-0.02</position>')
     assert ork_to_params(read_ork_xml(xml))["params"]["fin_offset"] == 30
+
+
+MULTI = b"""<?xml version='1.0' encoding='utf-8'?>
+<openrocket version="1.10" creator="OpenRocket 23.09"><rocket><name>Iki kademe</name><subcomponents>
+  <stage><name>Ust</name><subcomponents>
+    <nosecone><length>0.2</length><shape>conical</shape><aftradius>auto 0.03</aftradius></nosecone>
+    <bodytube><length>0.3</length><radius>auto 0.025</radius>
+      <subcomponents><trapezoidfinset><axialoffset method="bottom">0.0</axialoffset><fincount>4</fincount><rootchord>0.05</rootchord><tipchord>0.02</tipchord><height>0.03</height><sweeplength>0.02</sweeplength><thickness>0.002</thickness></trapezoidfinset></subcomponents></bodytube>
+  </subcomponents></stage>
+  <stage><name>Alt</name><subcomponents>
+    <bodytube><length>0.6</length><radius>0.03</radius><subcomponents>
+""" + b"".join(
+    b'<trapezoidfinset><axialoffset method="bottom">-0.01</axialoffset><fincount>1</fincount><rootchord>0.08</rootchord><tipchord>0.03</tipchord><height>0.06</height><sweeplength>0.03</sweeplength><thickness>0.003</thickness></trapezoidfinset>'
+    for _ in range(3)
+) + b"""</subcomponents></bodytube></subcomponents></stage>
+</subcomponents></rocket></openrocket>"""
+
+
+def test_multistage_aft_fins_and_fin_tube_diameter():
+    out = ork_to_params(read_ork_xml(MULTI))
+    p = out["params"]
+    assert p["nose_shape"] == "konik" and p["body_length"] == 900
+    assert p["body_diameter"] == 60  # kanatçık tüpü (önceki tüp 50 mm)
+    assert (p["fin_count"], p["fin_root_chord"], p["fin_span"], p["fin_offset"]) == (3, 80, 60, 10)
+    notes = " ".join(out["notes"])
+    assert "2 kademe" in notes and "toplandı" in notes and "Öndeki 1 kanatçık seti" in notes and "50 mm" in notes
+    RocketParams.model_validate(p)
