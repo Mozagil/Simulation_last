@@ -1680,8 +1680,15 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   (Barrowman 10.81), CD₀ 0.248 / 0.242, x_cp ort. 1194.7 mm. Not (veri): α 0'da
   CN 0.218 — kaba ağın simetri dışı olması; eğim bundan etkilenmez.
   Test `test_rocket_sweep.py`, `CfdSweepPanel.test.tsx`.
-- R6 ⏳ (isteğe bağlı) OpenRocket `.ork` içe aktarma: zip içindeki XML'den
-  parça ölçüleri → R1 şablonu (yeni bağımlılık yok: zipfile + xml).
+- R6 ✅ OpenRocket `.ork` içe aktarma (2026-10-09; yeni bağımlılık yok):
+  `POST /cfd/rocket/ork` (zip ya da düz XML, ≤ 5 MB, DOCTYPE/ENTITY reddedilir) →
+  R1 parametreleri (mm) + eşlenemeyenler notu; geometri üretmez. Eşleme: ilk
+  aşama; nosecone (ogive / conical → konik / ellipsoid → elips / haack 0 →
+  von_karman), bodytube'lar toplam boy + ilk çap, ilk trapezoidfinset (N, Cr, Ct,
+  s, Xs, t; `axialoffset`/`position` bottom → Xf), son tüpten sonra daralan
+  transition → boat-tail. Arayüz: roket şablonunda "OpenRocket .ork içe aktar"
+  formu doldurur. Gerçek OpenRocket dosyasıyla deneme kullanıcıda (elde örnek yok).
+  Test `test_rocket_ork.py`, `TemplatePanel.test.tsx`.
 
 **Sonraya (ayrı adım/faz):** zamana bağlı çözüm (`pimpleFoam` — girdap
 kopması, kuvvet salınımı), dönen tekerlek / hareketli zemin (MRF), kapalı

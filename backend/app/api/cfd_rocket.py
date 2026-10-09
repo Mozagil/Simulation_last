@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
@@ -166,3 +166,27 @@ def rocket_solve(body: RocketSolveRequest, background_tasks: BackgroundTasks, db
     )
     out = cfd_solve(req, background_tasks, db)
     return {**out, "mach": mach, "barrowman": b}
+
+
+@router.post("/ork")
+async def rocket_ork(file: UploadFile) -> dict[str, Any]:
+    """R6: OpenRocket .ork → R1 şablon parametreleri (mm) + eşlenemeyenler notu.
+
+    Geometri üretmez; değerler şablon formuna dolar, mühendis düzenleyip üretir.
+    """
+    from app.templates.rocket_ork import OrkError, ork_to_params, read_ork_xml
+
+    data = await file.read(5 * 1024 * 1024 + 1)
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=".ork 5 MB'tan büyük.")
+    try:
+        out = ork_to_params(read_ork_xml(data))
+    except OrkError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    try:
+        RocketParams.model_validate(out["params"])
+        out["valid"] = True
+    except ValidationError as e:
+        out["valid"] = False
+        out["notes"].append("Şablon doğrulaması: " + "; ".join(err["msg"] for err in e.errors()))
+    return out

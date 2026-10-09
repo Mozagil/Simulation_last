@@ -18,6 +18,7 @@ import TemplateLoadDialog, {
   loadInputsFromBcs,
 } from "./TemplateLoadDialog";
 import TemplateSchematic from "./TemplateSchematic";
+import { postRocketOrk } from "../api/cfd";
 
 interface TemplatePanelProps {
   busy: boolean;
@@ -60,6 +61,24 @@ export default function TemplatePanel({
   // değerlerini girer. Geometri ancak onaydan sonra üretilir.
   const [pending, setPending] = useState<{ params: Record<string, number | string> } | null>(null);
   const [loadInputs, setLoadInputs] = useState<Record<string, string>>({});
+  // R6: OpenRocket .ork → roket formu (eşlenemeyenler not olarak)
+  const [orkNotes, setOrkNotes] = useState<string[] | null>(null);
+
+  async function importOrk(file: File) {
+    setError(null);
+    try {
+      const r = await postRocketOrk(file);
+      setInputs((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(r.params)) next[k] = String(v);
+        return next;
+      });
+      setOrkNotes([`${file.name}${r.name ? ` (${r.name})` : ""}: ${Object.keys(r.params).length} parametre dolduruldu.`, ...r.notes]);
+    } catch (e) {
+      setOrkNotes(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
   const fields = useMemo(
@@ -166,6 +185,32 @@ export default function TemplatePanel({
         <p className="template-panel-desc" title={selected.description}>
           {selected.description}
         </p>
+      )}
+      {selected?.id === "rocket" && (
+        <div className="template-ork">
+          <label className="doe-btn doe-btn-ghost">
+            OpenRocket .ork içe aktar
+            <input
+              type="file"
+              accept=".ork,.xml"
+              aria-label="OpenRocket dosyası"
+              hidden
+              disabled={disabled}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importOrk(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {orkNotes && (
+            <ul className="crash-behavior-hint" data-testid="ork-notes">
+              {orkNotes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       <div className="template-panel-fields">
       {enums.map((f) => (

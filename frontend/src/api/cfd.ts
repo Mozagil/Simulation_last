@@ -316,3 +316,18 @@ export function fetchRocketSweep(id: string): Promise<RocketSweep> {
 export function rocketSweepCsvUrl(id: string, kind: "table" | "points"): string {
   return `${API_BASE_URL}/cfd/rocket/sweep/${id}/csv?kind=${kind}`;
 }
+
+// ------------------------------------------------------------- R6 OpenRocket içe aktarma
+
+export interface OrkImport {
+  name: string;
+  params: Record<string, number | string>;
+  notes: string[];
+  valid: boolean;
+}
+
+export async function postRocketOrk(file: File): Promise<OrkImport> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return getJson<OrkImport>(`${API_BASE_URL}/cfd/rocket/ork`, { method: "POST", body: fd });
+}

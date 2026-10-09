@@ -8790,3 +8790,8 @@ p {
 /* R5 tarama */
 .cfd-sweep { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border, #d0d5dd); }
 .cfd-sweep-links { margin-top: 6px; font-size: 13px; }
+
+/* R6 .ork içe aktarma */
+.template-ork { margin: 6px 0 10px; }
+.template-ork label { cursor: pointer; display: inline-block; }
+.template-ork ul { margin: 6px 0 0; padding-left: 18px; }
