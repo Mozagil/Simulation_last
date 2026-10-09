@@ -18,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
-from app.api.cfd import CfdSolveRequest, RocketRun, cfd_solve
+from app.api.cfd import CfdSolveRequest, RocketRun, auto_visualization, cfd_solve
 from app.api.cfd_mesh import read_mesh_meta
 from app.api.geometry import _get_geometry_or_404
 from app.db.session import get_db
@@ -72,6 +72,14 @@ class RocketSolveRequest(BaseModel):
     #: Mach sayısı için (veri): a = √(γ·R·T)
     temperature_k: float = Field(288.15, gt=0)
     turbulence_model: Literal["laminar", "kOmegaSST"] = "kOmegaSST"
+    #: R4: çözücü seçimi (NLGEOM gibi; otomatik değil). Sıkıştırılabilirde serbest akım
+    #: yoğunluğu ρ = p/(R·T)'den türetilir (rho_kg_m3 yok sayılır), basınç p_inf_pa.
+    solver: Literal["simpleFoam", "rhoSimpleFoam", "rhoCentralFoam"] = "simpleFoam"
+    p_inf_pa: float = Field(101325.0, gt=0)
+    transonic: bool = False
+    max_co: float = Field(0.5, gt=0)
+    #: Paralel koşu (R4b) çekirdek sayısı
+    n_procs: int = Field(1, ge=1, le=64)
     turbulence_intensity: float = Field(0.01, gt=0, le=1)
     iterations: int = Field(1000, gt=0)
     average_last: int = Field(100, gt=0)
@@ -101,20 +109,32 @@ def rocket_solve(body: RocketSolveRequest, background_tasks: BackgroundTasks, db
     a = math.radians(body.alpha_deg)
     mach = body.speed_m_s / speed_of_sound(body.temperature_k)
     b = barrowman(params, body.cg_mm)
+    rho = body.rho_kg_m3
+    if body.solver != "simpleFoam":
+        rho = body.p_inf_pa / (8314.46 / 28.96 * body.temperature_k)
     case = {
         "nu_m2_s": body.nu_m2_s,
-        "rho_kg_m3": body.rho_kg_m3,
+        "rho_kg_m3": rho,
+        "solver": body.solver,
+        "compressible": {
+            "p_inf_pa": body.p_inf_pa,
+            "t_inf_k": body.temperature_k,
+            "transonic": body.transonic,
+            "max_co": body.max_co,
+        },
         "patches": [
             *({"name": n, "kind": "farfield", "velocity_m_s": list(u_inf)} for n in ("inlet", "outlet", "sides")),
             *({"name": n, "kind": "wall"} for n in body_patches),
         ],
         "turbulence": {"model": body.turbulence_model, "intensity": body.turbulence_intensity, "length_scale_m": 0.1 * d_m},
         "initial_velocity_m_s": list(u_inf),
+        "visualization": auto_visualization(mesh, body_patches),
         "control": {
             "iterations": body.iterations,
             "write_interval": body.iterations,
             "relax_u": body.relax_u,
             "relax_other": body.relax_other,
+            "n_procs": body.n_procs,
         },
         "forces": {
             "patches": body_patches,

@@ -28,6 +28,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 #: ``freestreamPressure``). Hız ``velocity_m_s`` ile verilir.
 PatchKind = Literal["inlet", "outlet", "wall", "slip", "farfield", "symmetry", "empty"]
 TurbulenceModel = Literal["laminar", "kOmegaSST"]
+#: R4 (kullanıcı kararı 2026-10-08): üç çözücü de seçilebilir, otomatik seçim yok.
+SolverName = Literal["simpleFoam", "rhoSimpleFoam", "rhoCentralFoam"]
 
 #: k-ω SST için ω = √k / (Cμ^¼ · L)
 C_MU = 0.09
@@ -82,6 +84,8 @@ class CfdControl(BaseModel):
     residual_turbulence: float = Field(1e-3, gt=0)
     relax_u: float = Field(0.9, gt=0, le=1)
     relax_other: float = Field(0.9, gt=0, le=1)
+    #: Paralel koşu (R4b): > 1 ise decomposePar + mpirun -np N + reconstructPar.
+    n_procs: int = Field(1, ge=1, le=64)
 
 
 class CfdForces(BaseModel):
@@ -113,6 +117,35 @@ class CfdForces(BaseModel):
         return self
 
 
+class CfdCompressible(BaseModel):
+    """Sıkıştırılabilir çözücüler (R4) — ideal gaz, varsayılanlar hava / ISA deniz seviyesi."""
+
+    p_inf_pa: float = Field(101325.0, gt=0, description="Serbest akım basıncı (mutlak)")
+    t_inf_k: float = Field(288.15, gt=0, description="Serbest akım sıcaklığı")
+    mol_weight: float = Field(28.96, gt=0)
+    cp: float = Field(1005.0, gt=0)
+    prandtl: float = Field(0.71, gt=0)
+    #: rhoSimpleFoam: transonik basınç denklemi (Mach ≳ 0.7'de ESI önerisi; karar mühendisin)
+    transonic: bool = False
+    relax_p: float = Field(0.7, gt=0, le=1)
+    relax_rho: float = Field(0.01, gt=0, le=1)
+    #: rhoCentralFoam (LTS): yerel Courant sınırı
+    max_co: float = Field(0.5, gt=0)
+
+
+class CfdViz(BaseModel):
+    """Alan görselleştirme çıktıları (2.8) — çözüm sonunda yazılır (``writeTime``).
+
+    Yüzey: seçili yamaların yüz merkezlerinde p ve U (raw). Kesit: düzlemde U ve p
+    (raw). Akım çizgileri: tohum noktalarından ileri izleme (düz metin VTK).
+    """
+
+    surface_patches: list[str] = Field(default_factory=list)
+    slice_point: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    slice_normal: tuple[float, float, float] = (0.0, 1.0, 0.0)
+    streamline_seeds: list[tuple[float, float, float]] = Field(default_factory=list)
+
+
 class CfdCaseParams(BaseModel):
     #: Kinematik viskozite ν (m²/s)
     nu_m2_s: float = Field(gt=0)
@@ -127,6 +160,11 @@ class CfdCaseParams(BaseModel):
     monitor_patches: list[str] = Field(default_factory=list)
     #: Kuvvet / katsayı izleme (2.4) — dış akışta gövde yamaları.
     forces: CfdForces | None = None
+    #: Alan görselleştirme çıktıları (2.8); None = yazılmaz.
+    visualization: CfdViz | None = None
+    #: Çözücü (R4): simpleFoam sıkıştırılamaz; rhoSimpleFoam / rhoCentralFoam sıkıştırılabilir.
+    solver: SolverName = "simpleFoam"
+    compressible: CfdCompressible = Field(default_factory=CfdCompressible)
 
     @model_validator(mode="after")
     def _patches_ok(self) -> "CfdCaseParams":
@@ -143,6 +181,10 @@ class CfdCaseParams(BaseModel):
         if "farfield" not in kinds and ("inlet" not in kinds or "outlet" not in kinds):
             raise ValueError("En az bir giriş (inlet) ve bir çıkış (outlet) yaması ya da serbest akım (farfield) yaması gerekli.")
         return self
+
+    @property
+    def is_compressible(self) -> bool:
+        return self.solver != "simpleFoam"
 
     @property
     def turbulent(self) -> bool:
@@ -348,6 +390,8 @@ def _functions(p: CfdCaseParams) -> str:
         "        fields          (U);\n"
         "    }"
     )
+    if p.visualization is not None:
+        blocks.extend(_viz_blocks(p))
     if p.forces is not None:
         blocks.extend(_force_blocks(p))
     return "\nfunctions\n{\n" + "\n\n".join(blocks) + "\n}\n"
@@ -410,6 +454,12 @@ def _fv_solution(p: CfdCaseParams) -> str:
 
 def case_files(params: CfdCaseParams) -> dict[str, str]:
     """Göreli yol → dosya içeriği (diske yazmadan; testler için)."""
+    if params.is_compressible:
+        from app.solvers.openfoam_compressible import compressible_case_files
+
+        files = compressible_case_files(params)
+        files.update(_decompose(params))
+        return files
     files = {
         "0/U": _u_file(params),
         "0/p": _p_file(params),
@@ -421,7 +471,19 @@ def case_files(params: CfdCaseParams) -> dict[str, str]:
     }
     if params.turbulent:
         files.update(_turbulence_files(params))
+    files.update(_decompose(params))
     return files
+
+
+def _decompose(p: CfdCaseParams) -> dict[str, str]:
+    """n_procs > 1 → ``system/decomposeParDict`` (scotch; adaptör paralel koşar)."""
+    n = p.control.n_procs
+    if n <= 1:
+        return {}
+    return {
+        "system/decomposeParDict": _header("dictionary", "decomposeParDict", "system")
+        + f"numberOfSubdomains {n};\n\nmethod          scotch;\n"
+    }
 
 
 def write_case(params: CfdCaseParams, case_dir: Path) -> list[Path]:
@@ -444,6 +506,8 @@ def _force_blocks(p: CfdCaseParams) -> list[str]:
     f = p.forces
     assert f is not None
     rho = _num(p.rho_kg_m3)
+    # Sıkıştırılabilirde kuvvet gerçek yoğunluk alanıyla (rho), katsayılar rhoInf ile.
+    rho_field = "rho" if p.is_compressible else "rhoInf"
 
     def forces(name: str, patches: list[str]) -> str:
         return (
@@ -454,7 +518,7 @@ def _force_blocks(p: CfdCaseParams) -> list[str]:
             "        writeInterval   1;\n"
             "        log             false;\n"
             f"        patches         ({' '.join(patches)});\n"
-            "        rho             rhoInf;\n"
+            f"        rho             {rho_field};\n"
             f"        rhoInf          {rho};\n"
             f"        CofR            {_vec(f.cofr_m)};\n"
             "    }"
@@ -468,7 +532,7 @@ def _force_blocks(p: CfdCaseParams) -> list[str]:
         "        writeInterval   1;\n"
         "        log             false;\n"
         f"        patches         ({' '.join(f.patches)});\n"
-        "        rho             rhoInf;\n"
+        f"        rho             {rho_field};\n"
         f"        rhoInf          {rho};\n"
         f"        CofR            {_vec(f.cofr_m)};\n"
         f"        liftDir         {_vec(f.lift_dir)};\n"
@@ -483,3 +547,56 @@ def _force_blocks(p: CfdCaseParams) -> list[str]:
     if f.per_patch and len(f.patches) > 1:
         out.extend(forces(f"forces_{name}", [name]) for name in f.patches)
     return out
+
+
+def _viz_blocks(p: CfdCaseParams) -> list[str]:
+    """2.8: ``surfaces`` (yüzey + kesit, raw) ve ``streamLine`` (düz metin VTK)."""
+    v = p.visualization
+    assert v is not None
+    surf = []
+    if v.surface_patches:
+        surf.append(
+            "            body\n            {\n"
+            "                type        patch;\n"
+            f"                patches     ({' '.join(v.surface_patches)});\n"
+            "                triangulate false;\n            }"
+        )
+    surf.append(
+        "            slice\n            {\n"
+        "                type        cuttingPlane;\n"
+        f"                point       {_vec(v.slice_point)};\n"
+        f"                normal      {_vec(v.slice_normal)};\n"
+        "                interpolate false;\n            }"
+    )
+    blocks = [
+        "    vizSurfaces\n    {\n"
+        "        type            surfaces;\n"
+        "        libs            (sampling);\n"
+        "        writeControl    writeTime;\n"
+        "        surfaceFormat   raw;\n"
+        "        fields          (p U);\n"
+        "        interpolate     false;\n"
+        "        surfaces\n        {\n" + "\n".join(surf) + "\n        }\n    }"
+    ]
+    if v.streamline_seeds:
+        pts = " ".join(_vec(s) for s in v.streamline_seeds)
+        blocks.append(
+            "    vizStreamLines\n    {\n"
+            "        type            streamLine;\n"
+            "        libs            (fieldFunctionObjects);\n"
+            "        writeControl    writeTime;\n"
+            "        setFormat       vtk;\n"
+            "        formatOptions   { vtk { format ascii; legacy true; } }\n"
+            "        U               U;\n"
+            "        direction       forward;\n"
+            "        fields          (p U);\n"
+            "        lifeTime        10000;\n"
+            "        nSubCycle       5;\n"
+            "        cloud           vizTracks;\n"
+            "        seedSampleSet\n        {\n"
+            "            type        cloud;\n"
+            "            axis        xyz;\n"
+            f"            points      ({pts});\n"
+            "        }\n    }"
+        )
+    return blocks

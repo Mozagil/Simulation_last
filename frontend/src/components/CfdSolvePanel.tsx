@@ -13,9 +13,12 @@ import {
   type CfdJobSnapshot,
   type CfdMeshMeta,
   type CfdPatchKind,
+  type CfdSolver,
+  type RocketSolveBody,
 } from "../api/cfd";
 import CfdResidualChart from "./CfdResidualChart";
 import CfdResults from "./CfdResults";
+import CfdSweepPanel from "./CfdSweepPanel";
 
 const KIND_LABEL: Record<CfdPatchKind, string> = {
   inlet: "Giriş (hız)",
@@ -28,6 +31,11 @@ const KIND_LABEL: Record<CfdPatchKind, string> = {
 };
 const KINDS = Object.keys(KIND_LABEL) as CfdPatchKind[];
 const TUNNEL = new Set(["inlet", "outlet", "sides", "ground"]);
+const SOLVERS: { id: CfdSolver; label: string; hint: string }[] = [
+  { id: "simpleFoam", label: "simpleFoam", hint: "sıkıştırılamaz, daimi (Mach ≲ 0.3)" },
+  { id: "rhoSimpleFoam", label: "rhoSimpleFoam", hint: "sıkıştırılabilir, daimi (Mach ~0.3–0.8)" },
+  { id: "rhoCentralFoam", label: "rhoCentralFoam", hint: "şok yakalayan, yerel zaman adımı (Mach ~0.8+)" },
+];
 const ROCKET_PATCHES = ["burun", "govde", "kanatcik"];
 
 function defaultKind(name: string): CfdPatchKind {
@@ -85,7 +93,10 @@ export default function CfdSolvePanel({
   const [vel, setVel] = useState<[string, string, string]>(["10", "0", "0"]);
   const [fluid, setFluid] = useState({ nu: "1.5e-5", rho: "1.225" });
   const [turb, setTurb] = useState({ model: "kOmegaSST" as "laminar" | "kOmegaSST", intensity: "0.01", length: "0.01" });
-  const [ctl, setCtl] = useState({ iterations: "1000", residual_p: "1e-4", residual_u: "1e-5", relax_u: "0.7", relax_other: "0.5" });
+  const [ctl, setCtl] = useState({ iterations: "1000", residual_p: "1e-4", residual_u: "1e-5", relax_u: "0.7", relax_other: "0.5", n_procs: "1" });
+  // R4: çözücü seçimi + sıkıştırılabilir ayarlar
+  const [solver, setSolver] = useState<CfdSolver>("simpleFoam");
+  const [comp, setComp] = useState({ p_inf: "101325", t_inf: "288.15", transonic: false, max_co: "0.5" });
   const [forcePatches, setForcePatches] = useState<string[]>([]);
   const [ref, setRef] = useState({ a: "", l: "", avg: "100" });
   const [name, setName] = useState("");
@@ -145,26 +156,34 @@ export default function CfdSolvePanel({
     }
   }
 
+  /** R3 / R5 ortak alanları (hız, α hariç). */
+  function rocketBase(meshId: string): Omit<RocketSolveBody, "speed_m_s" | "alpha_deg"> {
+    return {
+        mesh_id: meshId,
+        cg_mm: rk.cg.trim() ? num(rk.cg) : null,
+        rho_kg_m3: num(fluid.rho),
+        nu_m2_s: num(fluid.nu),
+        temperature_k: num(rk.temp),
+        turbulence_model: turb.model,
+        solver,
+        p_inf_pa: num(comp.p_inf),
+        transonic: comp.transonic,
+        max_co: num(comp.max_co),
+        n_procs: num(ctl.n_procs),
+        iterations: num(ctl.iterations),
+        relax_u: num(ctl.relax_u),
+        relax_other: num(ctl.relax_other),
+        name: name.trim() || null,
+    };
+  }
+
   async function runRocket() {
     if (!mesh) return;
     setBusy(true);
     setError(null);
     setJob(null);
     try {
-      const res = await postRocketSolve({
-        mesh_id: mesh.mesh_id,
-        speed_m_s: num(rk.speed),
-        alpha_deg: num(rk.alpha),
-        cg_mm: rk.cg.trim() ? num(rk.cg) : null,
-        rho_kg_m3: num(fluid.rho),
-        nu_m2_s: num(fluid.nu),
-        temperature_k: num(rk.temp),
-        turbulence_model: turb.model,
-        iterations: num(ctl.iterations),
-        relax_u: num(ctl.relax_u),
-        relax_other: num(ctl.relax_other),
-        name: name.trim() || null,
-      });
+      const res = await postRocketSolve({ ...rocketBase(mesh.mesh_id), speed_m_s: num(rk.speed), alpha_deg: num(rk.alpha) });
       setBarrowman(res.barrowman);
       setJob({ job_id: res.job_id, status: res.status as CfdJobSnapshot["status"], message: res.message });
       setOpen(null);
@@ -216,7 +235,10 @@ export default function CfdSolvePanel({
             residual_u: num(ctl.residual_u),
             relax_u: num(ctl.relax_u),
             relax_other: num(ctl.relax_other),
+            n_procs: num(ctl.n_procs),
           },
+          solver,
+          compressible: { p_inf_pa: num(comp.p_inf), t_inf_k: num(comp.t_inf), transonic: comp.transonic, max_co: num(comp.max_co) },
           initial_velocity_m_s: u,
           forces,
         },
@@ -245,11 +267,11 @@ export default function CfdSolvePanel({
 
   return (
     <div className="panel material-panel" data-testid="cfd-solve-panel">
-      <span className="eyebrow">Faz 2 · Akış · simpleFoam</span>
+      <span className="eyebrow">Faz 2 · Akış · {solver}</span>
       <h1>Akış çözümü</h1>
       <p className="lead material-lead">
-        Mesh: {mesh.check.cells ?? "—"} hücre ({mesh.mesher === "cfmesh" ? "cfMesh" : "snappyHexMesh"}). Daimi,
-        sıkıştırılamaz (Mach ≲ 0.3 için).
+        Mesh: {mesh.check.cells ?? "—"} hücre ({mesh.mesher === "cfmesh" ? "cfMesh" : "snappyHexMesh"}). Çözücü
+        3. grupta seçilir.
       </p>
 
       {isRocket && (
@@ -275,7 +297,7 @@ export default function CfdSolvePanel({
               <Field label="Sıcaklık (Mach için)" unit="K" value={rk.temp} disabled={busy} onChange={(v) => setRk((x) => ({ ...x, temp: v }))} />
             </div>
             <p className="crash-behavior-hint" data-testid="cfd-mach">
-              Mach = {(num(rk.speed) / Math.sqrt(1.4 * 287.05 * num(rk.temp))).toFixed(3)} (simpleFoam sıkıştırılamaz)
+              Mach = {(num(rk.speed) / Math.sqrt(1.4 * 287.05 * num(rk.temp))).toFixed(3)} · çözücü {solver}
             </p>
             <button type="button" className="doe-btn doe-btn-ghost" disabled={busy} onClick={() => void runBarrowman()}>
               Barrowman (analitik CP, CNα)
@@ -354,13 +376,35 @@ export default function CfdSolvePanel({
         </p>
       </Acc>
 
-      <Acc n={3} title="Çözüm ayarları" summary={`${ctl.iterations} iterasyon · residual p ${ctl.residual_p}, U ${ctl.residual_u} · gevşetme ${ctl.relax_u}/${ctl.relax_other}`} open={open === 3} onToggle={() => toggle(3)}>
+      <Acc n={3} title="Çözücü ve çözüm ayarları" summary={`${solver} · ${ctl.iterations} iterasyon · gevşetme ${ctl.relax_u}/${ctl.relax_other}${num(ctl.n_procs) > 1 ? ` · ${ctl.n_procs} çekirdek` : ""}`} open={open === 3} onToggle={() => toggle(3)}>
+        <span className="doe-seg" role="group" aria-label="Çözücü">
+          {SOLVERS.map((s) => (
+            <button key={s.id} type="button" className={solver === s.id ? "doe-seg-opt active" : "doe-seg-opt"} aria-pressed={solver === s.id} disabled={busy} title={s.hint} onClick={() => setSolver(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </span>
+        <p className="crash-behavior-hint" data-testid="cfd-solver-hint">{SOLVERS.find((s) => s.id === solver)!.hint}</p>
+        {solver !== "simpleFoam" && (
+          <div className="crash-expert-grid cols-3">
+            <Field label="Serbest akım basıncı" unit="Pa" value={comp.p_inf} disabled={busy} onChange={(v) => setComp((c) => ({ ...c, p_inf: v }))} />
+            {mode === "general" && <Field label="Serbest akım sıcaklığı" unit="K" value={comp.t_inf} disabled={busy} onChange={(v) => setComp((c) => ({ ...c, t_inf: v }))} />}
+            {solver === "rhoCentralFoam" && <Field label="Courant sınırı" value={comp.max_co} disabled={busy} onChange={(v) => setComp((c) => ({ ...c, max_co: v }))} />}
+          </div>
+        )}
+        {solver === "rhoSimpleFoam" && (
+          <label className="material-check">
+            <input type="checkbox" checked={comp.transonic} disabled={busy} onChange={(e) => setComp((c) => ({ ...c, transonic: e.target.checked }))} />
+            <span>Transonik basınç denklemi</span>
+          </label>
+        )}
         <div className="crash-expert-grid cols-3">
           <Field label="İterasyon sınırı" value={ctl.iterations} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, iterations: v }))} />
           <Field label="Residual hedefi p" value={ctl.residual_p} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, residual_p: v }))} />
           <Field label="Residual hedefi U" value={ctl.residual_u} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, residual_u: v }))} />
           <Field label="Gevşetme U" value={ctl.relax_u} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, relax_u: v }))} />
           <Field label="Gevşetme diğer" value={ctl.relax_other} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, relax_other: v }))} />
+          <Field label="Çekirdek sayısı" value={ctl.n_procs} disabled={busy} onChange={(v) => setCtl((c) => ({ ...c, n_procs: v }))} />
         </div>
       </Acc>
 
@@ -396,7 +440,7 @@ export default function CfdSolvePanel({
         </span>
       </label>
       <button type="button" className="material-assign-button" disabled={busy} onClick={() => void run()}>
-        {busy ? "Çözülüyor…" : mode === "rocket" ? "Roket koşusunu çalıştır" : "Çalıştır (simpleFoam)"}
+        {busy ? "Çözülüyor…" : mode === "rocket" ? "Roket koşusunu çalıştır" : `Çalıştır (${solver})`}
       </button>
       {error && <p className="error-message" role="alert">{error}</p>}
 
@@ -409,6 +453,7 @@ export default function CfdSolvePanel({
           {job.status === "solved" && <CfdResults job={job} />}
         </section>
       )}
+      {mode === "rocket" && mesh && <CfdSweepPanel base={rocketBase(mesh.mesh_id)} temperatureK={num(rk.temp)} disabled={busy} />}
     </div>
   );
 }

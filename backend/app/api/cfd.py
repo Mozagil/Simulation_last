@@ -89,6 +89,36 @@ class CfdSolveRequest(BaseModel):
         return self
 
 
+def auto_visualization(mesh_meta: dict[str, Any], body_patches: list[str]) -> dict[str, Any]:
+    """2.8: tünel mesh'i için varsayılan görselleştirme — gövde yamaları, gövde
+    merkezinden geçen y-kesiti, gövdenin önünde 5 × 5 akım çizgisi tohumu."""
+    bb = (mesh_meta.get("surface") or {}).get("bbox_m") or [0, 0, 0, 0, 0, 0]
+    xmin, ymin, zmin, xmax, ymax, zmax = bb
+    length = max(xmax - xmin, 1e-6)
+    cy, cz = (ymin + ymax) / 2, (zmin + zmax) / 2
+    hy, hz = max((ymax - ymin) * 0.6, 0.05 * length), max((zmax - zmin) * 0.6, 0.05 * length)
+    x0 = xmin - 0.05 * length
+    seeds = [[x0, cy + hy * (i - 2) / 2, cz + hz * (j - 2) / 2] for i in range(5) for j in range(5)]
+    return {
+        "surface_patches": body_patches,
+        "slice_point": [(xmin + xmax) / 2, cy, cz],
+        "slice_normal": [0.0, 1.0, 0.0],
+        "streamline_seeds": seeds,
+    }
+
+
+def _viz_ref(case: CfdCaseParams) -> dict[str, Any]:
+    """Cp için serbest akım değerleri: |U| giriş / serbest akım yamasından."""
+    u = next((p.velocity_m_s for p in case.patches if p.kind in ("inlet", "farfield") and p.velocity_m_s), (0.0, 0.0, 0.0))
+    comp = case.is_compressible
+    return {
+        "u_ref": (u[0] ** 2 + u[1] ** 2 + u[2] ** 2) ** 0.5,
+        "p_ref": case.compressible.p_inf_pa if comp else 0.0,
+        "rho_ref": case.rho_kg_m3,
+        "compressible": comp,
+    }
+
+
 def _job_dir(job_id: str) -> Path:
     return CFD_DIR / job_id
 
@@ -218,8 +248,11 @@ def _complete_cfd_job(job_id: str) -> None:
         rho = float(meta.get("rho_kg_m3") or 1.0)
         if "p_avg_inlet" in res.scalars and "p_avg_outlet" in res.scalars:
             dp = res.scalars["p_avg_inlet"] - res.scalars["p_avg_outlet"]
-            res.scalars["dp_kinematic"] = dp
-            res.scalars["dp_pa"] = rho * dp
+            if meta.get("application", "simpleFoam") == "simpleFoam":
+                res.scalars["dp_kinematic"] = dp
+                res.scalars["dp_pa"] = rho * dp
+            else:  # sıkıştırılabilir: p mutlak (Pa)
+                res.scalars["dp_pa"] = dp
         meta["scalars"] = res.scalars
         meta["curves"] = res.curves
         meta["diagnostics"] = res.diagnostics
@@ -264,6 +297,12 @@ def cfd_solve(
                 status_code=422,
                 detail=f"Mesh'te olmayan yama: {', '.join(extra)} (mesh: {', '.join(mesh_meta.get('patches') or [])})",
             )
+    if mesh_meta is not None and body.case.visualization is None:
+        tunnel_names = {"inlet", "outlet", "sides", "ground"}
+        walls = [p.name for p in body.case.patches if p.kind == "wall" and p.name not in tunnel_names]
+        body.case.visualization = CfdCaseParams.model_validate(
+            {**body.case.model_dump(), "visualization": auto_visualization(mesh_meta, walls)}
+        ).visualization
     try:
         OpenFoamAdapter().build_input({"output_dir": str(case_dir), "case": body.case.model_dump()})
     except SolverError as exc:
@@ -284,10 +323,11 @@ def cfd_solve(
         "status": "case_only",
         "message": "case yazıldı",
         "case_dir": str(case_dir),
-        "application": "simpleFoam",
+        "application": body.case.solver,
         "end_iterations": body.case.control.iterations,
         "turbulence": body.case.turbulence.model,
         "rho_kg_m3": body.case.rho_kg_m3,
+        "viz_ref": _viz_ref(body.case) if body.case.visualization is not None else None,
         "forces": body.case.forces.model_dump() if body.case.forces is not None else None,
         "mesh": {"kind": "channel", **body.channel.model_dump(), "cells": body.channel.cell_count}
         if body.channel is not None
@@ -334,7 +374,7 @@ def cfd_solve(
         return {**result, "status": meta["status"], "message": meta["message"]}
 
     meta["status"] = "pending"
-    meta["message"] = "simpleFoam kuyrukta"
+    meta["message"] = f"{body.case.solver} kuyrukta"
     save()
     hub.update(job_id, state="running", percent=0.0, message=meta["message"])
     if body.wait:
@@ -369,6 +409,27 @@ def cfd_job_snapshot(job_id: str) -> dict[str, Any]:
     if live is not None:
         out["curves"] = {"iteration": live["iterations"], "residuals": live["residuals"]}
     return out
+
+
+@router.get("/jobs/{job_id}/fields")
+def cfd_job_fields(job_id: str) -> dict[str, Any]:
+    """2.8: yüzey Cp, kesit |U|, akım çizgileri (koşu sonunda yazılan çıktılardan)."""
+    meta = _read_job(job_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="cfd job yok")
+    ref = meta.get("viz_ref")
+    if not ref or meta.get("status") != "solved":
+        raise HTTPException(status_code=404, detail="Bu koşuda alan görselleştirme çıktısı yok.")
+    cache = _job_dir(job_id) / "fields.json"
+    if cache.is_file():
+        return json.loads(cache.read_text(encoding="utf-8"))
+    from app.postprocess.openfoam_viz import build_fields
+
+    data = build_fields(Path(meta["case_dir"]), **ref)
+    if "body" not in data and "slice" not in data:
+        raise HTTPException(status_code=404, detail="Alan çıktısı bulunamadı (postProcessing/vizSurfaces).")
+    cache.write_text(json.dumps(data), encoding="utf-8")
+    return data
 
 
 @router.websocket("/jobs/{job_id}/ws")

@@ -1569,8 +1569,16 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   - 2.7d ✅ Koşu geçmişi (`CfdRunsPanel`, `cfd_runs`): bu geometri / tümü, en çok 6
     koşuyu yan yana (Cd, Cl, CdA, Fx, Δp, roket CN / CNα / x_cp / kararlılık), dışla /
     geri al; çözüm bitince liste yenilenir. PDF raporu ve Belgeler'de AKIŞ kitabı ayrı adım.
-- 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
-  (mesh önizleme JSON deseni; gerekirse PyVista — onay).
+- 2.8 ✅ Alan görselleştirme (2026-10-09; yeni bağımlılık yok, PyVista gerekmedi):
+  case yazıcıda `CfdViz` → controlDict'e `surfaces` (raw: gövde yamaları p/U +
+  `cuttingPlane` kesit) ve `streamLine` (düz metin eski VTK) fonksiyon nesneleri,
+  `writeTime`'da yazılır. Tünel mesh'li koşularda (`/cfd/solve` mesh_id,
+  `/cfd/rocket/solve`) varsayılan: gövde duvarları, gövde merkezinden y-kesiti,
+  gövde önünde 5×5 tohum. `GET /cfd/jobs/{id}/fields` (`openfoam_viz.build_fields`):
+  gövde Cp = (p − p∞)/(½ρ∞U∞²), kesit |U|, akım çizgileri |U|; `fields.json`
+  önbelleği. Arayüz `CfdFieldViewer` (three.js; katman aç/kapa, min–max aralığı).
+  Roket 56k hücre, 40 m/s, α 4°: 384 gövde, 2249 kesit noktası, 25 akım çizgisi.
+  Testler `test_openfoam_viz.py`, `CfdFieldViewer.test.tsx`.
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
 
 **Kapsam ve hedef (kullanıcı, 2026-10-08):** Akışta hem iç hem dış akış ve
@@ -1643,20 +1651,35 @@ alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil m
   CNα 15.8/rad (Barrowman 10.8, %+46), x_cp 1.221 m (Barrowman 1.177, +0.44 kal.),
   kararlılık 3.21 kal. Kaba ağ + varsayılan p residual 1e-2 — doğrulama değil (2.6).
   Test `tests/test_rocket_r3.py`.
-- R4 ⏳ Çözücü seçimi (**karar verildi 2026-10-08:** üçü de bulunur, NLGEOM gibi
+- R4 ✅ Çözücü seçimi (**karar verildi 2026-10-08:** üçü de bulunur, NLGEOM gibi
   kullanıcı seçer; otomatik seçim yok — Mach sayısı yalnız veri olarak
   gösterilir). Case yazıcıda `solver` alanı: `simpleFoam` (sıkıştırılamaz,
   Mach ≲ 0.3, iç akış) | `rhoSimpleFoam` | `rhoCentralFoam`; üst katmanlar
   değişmez (adaptör deseni). Her çözücünün doğrulandığı Mach aralığı belgede veri.
   Not: hesaplanan Cd motor kapalı (power-off); y+ veri olarak gösterilir.
-  - R4a ⏳ `rhoSimpleFoam` (daimi, sıkıştırılabilir, `transonic` seçeneği;
-    Mach ~0.3–0.8): `0/T`, `thermophysicalProperties` (hava, mükemmel gaz),
-    ESI şemaları. Doğrulama: Basic Finner M 0.5 / 0.8 + R2 Barrowman.
-  - R4b ⏳ `rhoCentralFoam` (yoğunluk tabanlı, şok yakalayan, zamana bağlı;
-    Mach ~0.8 üstü) + paralel koşu (`decomposePar` + `mpirun`, çekirdek
-    sayısı parametre). Doğrulama: Basic Finner M 1.5 / 2.0.
-- R5 ⏳ Mach × α taraması (DOE altyapısıyla) → aerodinamik tablo (Cd(M),
-  CNα(M), CP(M)) CSV dışa aktarım (uçuş simülasyonu araçlarına girdi olarak).
+  - R4a ✅ `rhoSimpleFoam` (daimi, sıkıştırılabilir, `transonic` seçeneği;
+    Mach ~0.3–0.8): `0/T`, `0/alphat`, mutlak `0/p` (Pa),
+    `thermophysicalProperties` (hePsiThermo, mükemmel gaz, μ = ρ·ν), NACA0012
+    öğretici ayarları (`openfoam_compressible.py`). Roket 56k hücre, 170 m/s
+    (M 0.50), α 4°: 182 iterasyon yakınsadı, 102 s; CNα 16.4 /rad (Barrowman
+    10.8, +%51 — kaba ağ, doğrulama değil), x_cp 1183.8 mm (1176.6).
+  - R4b ✅ `rhoCentralFoam` (yoğunluk tabanlı, Kurganov akısı, yerel zaman
+    adımı `localEuler`, `maxCo` parametre) + paralel koşu (`n_procs` →
+    `decomposeParDict` scotch, `decomposePar -force`, `mpirun -np N … -parallel`,
+    `reconstructPar -latestTime`; docker `--shm-size 1g`). Roket 510 m/s (M 1.50),
+    α 4°, 1500 iterasyon, 362 s: CD 0.703, CNα 17.9 /rad, x_cp 1042.7 mm.
+    Basic Finner doğrulaması ayrı (ağ yakınsaması ile). Arayüz: "Çözücü ve
+    çözüm ayarları" grubunda üç düğme, Mach yalnız veri. Test
+    `test_openfoam_compressible.py`.
+- R5 ✅ Mach × α taraması (2026-10-09): `POST /cfd/rocket/sweep` (Mach listesi ×
+  α listesi, her nokta bir R3 koşusu, sıralı, aynı mesh + çözücü — çözücü Mach'a
+  göre değişmez), `GET /cfd/rocket/sweep/{id}`, `…/csv?kind=table|points`.
+  Tablo (`rocket_table.aero_table`): Mach başına CD (en küçük |α|), CNα (CN–α
+  en küçük kareler eğimi), x_cp ortalaması. Arayüz `CfdSweepPanel` (roket modu).
+  Deneme: 56k hücre, simpleFoam, M 0.1 / 0.2 × α 0 / 2 / 4, 149 s: CNα 10.74 /rad
+  (Barrowman 10.81), CD₀ 0.248 / 0.242, x_cp ort. 1194.7 mm. Not (veri): α 0'da
+  CN 0.218 — kaba ağın simetri dışı olması; eğim bundan etkilenmez.
+  Test `test_rocket_sweep.py`, `CfdSweepPanel.test.tsx`.
 - R6 ⏳ (isteğe bağlı) OpenRocket `.ork` içe aktarma: zip içindeki XML'den
   parça ölçüleri → R1 şablonu (yeni bağımlılık yok: zipfile + xml).
 

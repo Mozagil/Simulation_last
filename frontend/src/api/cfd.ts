@@ -111,6 +111,9 @@ export function fetchCfdMesh(meshId: string): Promise<CfdMeshMeta> {
 
 // ------------------------------------------------------------- çözüm (2.2–2.4)
 
+/** R4: üç çözücü, NLGEOM gibi seçilir (otomatik değil). */
+export type CfdSolver = "simpleFoam" | "rhoSimpleFoam" | "rhoCentralFoam";
+
 export type CfdPatchKind = "inlet" | "outlet" | "wall" | "slip" | "farfield" | "symmetry" | "empty";
 
 export interface CfdPatchSpec {
@@ -132,8 +135,11 @@ export interface CfdCase {
     residual_u: number;
     relax_u: number;
     relax_other: number;
+    n_procs?: number;
   };
   initial_velocity_m_s?: [number, number, number];
+  solver?: CfdSolver;
+  compressible?: { p_inf_pa: number; t_inf_k: number; transonic: boolean; max_co: number };
   forces?: {
     patches: string[];
     cofr_m: [number, number, number];
@@ -207,6 +213,11 @@ export interface RocketSolveBody {
   relax_u: number;
   relax_other: number;
   name?: string | null;
+  solver?: CfdSolver;
+  p_inf_pa?: number;
+  transonic?: boolean;
+  max_co?: number;
+  n_procs?: number;
 }
 
 export function postRocketSolve(body: RocketSolveBody): Promise<CfdSolveResponse & { mach: number; barrowman: BarrowmanResult }> {
@@ -242,4 +253,66 @@ export function patchCfdRun(id: number, body: { name?: string; excluded?: boolea
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+// ------------------------------------------------------------- 2.8 alan görselleştirme
+
+export interface CfdFields {
+  u_ref_m_s: number;
+  p_ref: number;
+  compressible: boolean;
+  body?: { points: [number, number, number][]; p: number[]; cp: number[] };
+  slice?: { points: [number, number, number][]; speed: number[] };
+  streamlines?: { points: [number, number, number][]; speed: number[] }[];
+}
+
+export function fetchCfdFields(jobId: string): Promise<CfdFields> {
+  return getJson<CfdFields>(`${API_BASE_URL}/cfd/jobs/${jobId}/fields`);
+}
+
+// ------------------------------------------------------------- R5 Mach × α taraması
+
+export interface RocketSweepPoint {
+  mach: number;
+  alpha_deg: number;
+  speed_m_s: number;
+  status: string;
+  message?: string;
+  job_id?: string;
+  CA?: number | null;
+  CN?: number | null;
+  CD?: number | null;
+  CL?: number | null;
+  Cm?: number | null;
+  x_cp_m?: number | null;
+}
+
+export interface RocketTableRow {
+  mach: number;
+  n_points: number;
+  CD_alpha_min: number;
+  alpha_min_deg: number;
+  CN_alpha_per_rad: number | null;
+  x_cp_m_mean: number | null;
+}
+
+export interface RocketSweep {
+  sweep_id: string;
+  status: "pending" | "running" | "done";
+  message?: string;
+  solver: CfdSolver;
+  points: RocketSweepPoint[];
+  table: RocketTableRow[];
+}
+
+export function postRocketSweep(body: Omit<RocketSolveBody, "speed_m_s" | "alpha_deg"> & { machs: number[]; alphas_deg: number[] }): Promise<RocketSweep> {
+  return postJson<RocketSweep>("/cfd/rocket/sweep", { ...body, wait: false });
+}
+
+export function fetchRocketSweep(id: string): Promise<RocketSweep> {
+  return getJson<RocketSweep>(`${API_BASE_URL}/cfd/rocket/sweep/${id}`);
+}
+
+export function rocketSweepCsvUrl(id: string, kind: "table" | "points"): string {
+  return `${API_BASE_URL}/cfd/rocket/sweep/${id}/csv?kind=${kind}`;
 }

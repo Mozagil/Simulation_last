@@ -72,6 +72,22 @@ describe("CfdSolvePanel (AKIŞ · 3 · Akış)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("çıkış kodu 136");
     expect(vi.mocked(postCfdSolve).mock.calls[0][0].case.forces).toBeNull();
   });
+
+  it("R4: çözücü elle seçilir; sıkıştırılabilir ayarlar ve çekirdek sayısı isteğe gider", async () => {
+    render(<CfdSolvePanel mesh={mesh} pollMs={1} />);
+    fireEvent.click(screen.getByRole("button", { name: /Çözücü ve çözüm ayarları/ }));
+    expect(screen.queryByLabelText("Courant sınırı")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "rhoCentralFoam" }));
+    expect(screen.getByTestId("cfd-solver-hint")).toHaveTextContent("şok yakalayan");
+    fireEvent.change(screen.getByLabelText("Courant sınırı"), { target: { value: "0.3" } });
+    fireEvent.change(screen.getByLabelText("Çekirdek sayısı"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: /Çalıştır \(rhoCentralFoam\)/ }));
+    await waitFor(() => expect(postCfdSolve).toHaveBeenCalled());
+    const c = vi.mocked(postCfdSolve).mock.calls[0][0].case;
+    expect(c.solver).toBe("rhoCentralFoam");
+    expect(c.compressible?.max_co).toBe(0.3);
+    expect(c.control.n_procs).toBe(4);
+  });
 });
 
 const BARROWMAN = {

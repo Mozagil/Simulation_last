@@ -54,6 +54,8 @@ def docker_command(image: str, case_dir: Path, script: str) -> list[str]:
         docker,
         "run",
         "--rm",
+        "--shm-size",
+        "1g",
         "-v",
         f"{Path(case_dir).resolve()}:{WORK_DIR}",
         "-w",
@@ -185,11 +187,23 @@ class OpenFoamAdapter(SolverAdapter):
         case_dir = Path(artifact.path)
         app = case_application(case_dir)
         timeout = timeout_s if timeout_s is not None else float(os.environ.get("CFD_TIMEOUT_S") or 3600)
+        n_procs = decompose_count(case_dir)
+        if n_procs > 1:
+            # Paralel (R4b): kök kullanıcıyla Open MPI izni, ayrıştır → koş → son zamanı birleştir.
+            run_app = (
+                "export OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1; "
+                "decomposePar -force > log.decomposePar 2>&1 || "
+                "{ echo 'FOAM FATAL ERROR: decomposePar başarısız (log.decomposePar)'; exit 4; }; "
+                f"mpirun --oversubscribe -np {n_procs} {app} -parallel 2>&1 | tee log.{app} && "
+                "reconstructPar -latestTime > log.reconstructPar 2>&1"
+            )
+        else:
+            run_app = f"{app} 2>&1 | tee log.{app}"
         script = (
             "set -o pipefail; "
             "if [ -f system/blockMeshDict ]; then blockMesh > log.blockMesh 2>&1 || "
             "{ echo 'FOAM FATAL ERROR: blockMesh başarısız (log.blockMesh)'; exit 3; }; fi; "
-            f"{app} 2>&1 | tee log.{app}"
+            f"{run_app}"
         )
         stream = SolverLogStream()
         proc = subprocess.Popen(
@@ -285,6 +299,15 @@ def _is_float(text: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def decompose_count(case_dir: Path) -> int:
+    """``system/decomposeParDict`` → numberOfSubdomains (yoksa 1)."""
+    path = Path(case_dir) / "system" / "decomposeParDict"
+    if not path.is_file():
+        return 1
+    m = re.search(r"numberOfSubdomains\s+(\d+)\s*;", path.read_text(encoding="utf-8", errors="replace"))
+    return int(m.group(1)) if m else 1
 
 
 def case_application(case_dir: Path) -> str:

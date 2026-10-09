@@ -4,6 +4,7 @@
  * + Barrowman ile yan yana. Yalnız veri; yorum / öneri yok.
  */
 import type { CfdJobSnapshot } from "../api/cfd";
+import CfdFieldViewer from "./CfdFieldViewer";
 import CfdResidualChart from "./CfdResidualChart";
 
 function f(v: unknown, d = 4): string {
@@ -123,6 +124,7 @@ export default function CfdResults({ job }: { job: CfdJobSnapshot }) {
           )}
         </>
       )}
+      <CfdFieldViewer jobId={job.job_id} />
     </div>
   );
 }
