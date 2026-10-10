@@ -88,3 +88,26 @@ durum (ayrılma / yeniden bağlanma eşiğine yakın). Ağ yakınsaması ve diğ
 ## Sırada
 
 - V-C5: Basic Finner (roket; sıkıştırılabilir rejim — R4 ile).
+
+## Roket ağ yakınsaması (R3, kısmi — 2026-10-10)
+
+Roket şablonu varsayılanı (ogive, D 100 mm, L 1.5 m, 4 kanatçık), 40 m/s (M 0.118),
+CG 900 mm, simpleFoam k-ω SST, sınır katmanı yok (duvar fonksiyonu), gevşetme 0.5 / 0.3,
+residual hedefi p 1e-5 / U 1e-6, 2500 iterasyon (hedefe inmedi; katsayı std son 200
+iterasyonda ≈ 0 — durağan). CNα iki yoldan: eğim (α 0 ve 4°) ve tek nokta (CN/α, α 4°).
+Barrowman: CNα 10.81 /rad, x_cp 1176.6 mm.
+
+| Ağ (taban · yüzey seviyesi) | Hücre | CN (α 0) | CN (α 4) | CD (α 0) | CNα eğim | CNα tek nokta | x_cp (α 4) |
+|---|---|---|---|---|---|---|---|
+| 0.3 m · 2–3 | 56 298 | +0.218 | 0.967 | 0.241 | 10.72 | 13.85 | 1159.7 mm |
+| 0.2 m · 3–4 | 195 128 | −0.173 | 0.757 | 0.372 | 13.32 | 10.84 | 1125.9 mm |
+| 0.15 m · 4–5 | 469 285 | — | — | — | — | — | — |
+
+Veri notları:
+- 3. ağ üretildi (checkMesh OK) ama çözüm, makinede bellek azaldığı için yarıda kaldı.
+- α 0'da CN sıfır değil ve ağa göre işaret değiştiriyor: snappy ağı roket ekseni etrafında
+  simetrik değil; CNα'nın iki tahmini bu kayma kadar ayrışıyor.
+- CD ağ inceldikçe artıyor (0.241 → 0.372): sınır katmanı yok, duvar fonksiyonu; y+ ağla
+  değişiyor. Katmanlı ağ ve y+ raporu ayrı çalışma.
+- Önceki roket koşuları (R3–R5, 2.9 DOE) varsayılan residual hedefiyle (p 1e-2 / U 1e-3)
+  ~100 iterasyonda "yakınsadı" diye durmuştu; düzeltme 481e66c — hedef artık mühendisten.
