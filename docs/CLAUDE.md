@@ -45,7 +45,8 @@ iskeleti var; **2.0 TAMAM (2026-10-08): ESI v2412 resmi Docker imajı** (`OPENFO
 CFD yolu eklenir. ML en sonda (2.9).
 
 **Operasyonel borç:** 200'lük durability kalite seti (ccx) ve 200 koşuluk
-crash DOE Codespace'te koşulacak.
+crash DOE Codespace'te koşulacak; roket ağ yakınsamasının 3. ağı da
+(`backend/scripts/cfd_rocket_convergence.py --only 3`, `docs/CFD_VALIDATION.md`).
 
 Grup 3 şablonları ayrı onay. `/solve` refaktör etme. Bir mikro-adımı
 bitirince dur.

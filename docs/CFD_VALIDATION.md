@@ -105,6 +105,8 @@ Barrowman: CNα 10.81 /rad, x_cp 1176.6 mm.
 
 Veri notları:
 - 3. ağ üretildi (checkMesh OK) ama çözüm, makinede bellek azaldığı için yarıda kaldı.
+- Çalışma Codespace'e bırakıldı (2026-10-11): `backend/scripts/cfd_rocket_convergence.py`
+  (`--only 3` yalnız 3. ağ, `--procs N` paralel). Sonuç `uploads/reports/cfd_rocket_convergence.json`.
 - α 0'da CN sıfır değil ve ağa göre işaret değiştiriyor: snappy ağı roket ekseni etrafında
   simetrik değil; CNα'nın iki tahmini bu kayma kadar ayrışıyor.
 - CD ağ inceldikçe artıyor (0.241 → 0.372): sınır katmanı yok, duvar fonksiyonu; y+ ağla
