@@ -1489,7 +1489,7 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   bağı isteğe bağlı) + `/cfd/runs` (liste, ayrıntı + eğriler, karşılaştır, ad /
   dışla). Canlı: pitzDaily duvarları Cd 0.318 (son 50 ort. 0.320, std 0.003),
   toplam = yamaların toplamı. Test `tests/test_cfd_forces_runs.py`.
-- 2.5 ⏳ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
+- 2.5 ✅ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
   blockMesh kutusu, yüzey/bölge inceltme, sınır tabakası katmanları —
   değerler mühendisten); `checkMesh` çıktısı veri olarak.
   **Mesh kurgusu (kullanıcı 2026-10-08):** CFD mesh'i FEA mesh'inden ayrıdır —
@@ -1525,7 +1525,7 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
     `mesher: snappy | cfmesh` (otomatik seçim yok). Küre: cfMesh 17 094 hücre,
     checkMesh OK, max non-orthogonality 24.6° (snappy 13 615 hücre, 34.5°). Ogive roket (aynı tünel, taban 0.15 m): cfMesh 27 s'de 328 233 hücre (snappy 124 s / 142 346), checkMesh 1 kontrol başarısız (max non-orth 71°, skewness 4.1); 50 m/s k-ω SST salınımlı (Cd 0.78, son 100 ort. 0.70, std 0.12) — snappy ile karşılaştırma için ayar eşlemesi ve ağ yakınsaması 2.6'da (veri, yorum yok). Test `tests/test_cfd_cfmesh.py`.
   - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.
-- 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
+- 2.6 ✅ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
   `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3). Sonuçlar `docs/CFD_VALIDATION.md`.
   - 2.6a ✅ (2026-10-09) V-C2 küre (silindir yerine 3B küre — mevcut tünel akışı):
     şablon `cfd_sphere`, Re 20/40/100 laminer, snappy seviye 2/3/4 + cfMesh; referans
