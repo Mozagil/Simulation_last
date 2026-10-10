@@ -86,6 +86,9 @@ class RocketSolveRequest(BaseModel):
     #: SIMPLE gevşetme katsayıları (mühendis ayarı; varsayılan pitzDaily 0.9 / 0.9).
     relax_u: float = Field(0.9, gt=0, le=1)
     relax_other: float = Field(0.9, gt=0, le=1)
+    #: Yakınsama hedefi (ilk residual); varsayılan case yazıcınınki (p 1e-2, U 1e-3).
+    residual_p: float = Field(1e-2, gt=0)
+    residual_u: float = Field(1e-3, gt=0)
     name: str | None = Field(None, max_length=200)
     wait: bool = False
 
@@ -134,6 +137,9 @@ def rocket_solve(body: RocketSolveRequest, background_tasks: BackgroundTasks, db
             "write_interval": body.iterations,
             "relax_u": body.relax_u,
             "relax_other": body.relax_other,
+            "residual_p": body.residual_p,
+            "residual_u": body.residual_u,
+            "residual_turbulence": body.residual_u,
             "n_procs": body.n_procs,
         },
         "forces": {

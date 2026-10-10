@@ -173,6 +173,8 @@ export default function CfdSolvePanel({
         iterations: num(ctl.iterations),
         relax_u: num(ctl.relax_u),
         relax_other: num(ctl.relax_other),
+        residual_p: num(ctl.residual_p),
+        residual_u: num(ctl.residual_u),
         name: name.trim() || null,
     };
   }

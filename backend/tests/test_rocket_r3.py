@@ -105,7 +105,8 @@ def test_api_rocket_solve_fake(monkeypatch, tmp_path):
     assert m["status"] == "meshed", m
     r = client.post(
         "/cfd/rocket/solve",
-        json={"mesh_id": m["mesh_id"], "speed_m_s": V, "alpha_deg": ALPHA, "cg_mm": X_REF * 1000, "wait": True},
+        json={"mesh_id": m["mesh_id"], "speed_m_s": V, "alpha_deg": ALPHA, "cg_mm": X_REF * 1000, "wait": True,
+              "residual_p": 1e-5, "residual_u": 1e-6},
     )
     assert r.status_code == 200, r.text
     d = r.json()
@@ -114,6 +115,8 @@ def test_api_rocket_solve_fake(monkeypatch, tmp_path):
     assert a["CN"] == pytest.approx(0.75) and a["CA"] == pytest.approx(0.35)
     assert a["x_cp_m"] == pytest.approx(X_CP) and a["stability_calibers"] == pytest.approx(2.8)
     assert a["barrowman"]["x_cp_barrowman_m"] == pytest.approx(d["barrowman"]["x_cp_mm"] / 1000)
+    fv = (Path(cfd_api.CFD_DIR) / d["job_id"] / "case" / "system" / "fvSolution").read_text()
+    assert "p               1e-05;" in fv and "U               1e-06;" in fv
     run = client.get(f"/cfd/runs/{d['run_id']}").json()
     assert run["reference"]["kind"] == "rocket_r3" and run["request"]["rocket"]["alpha_deg"] == ALPHA
     # roket olmayan mesh reddedilir

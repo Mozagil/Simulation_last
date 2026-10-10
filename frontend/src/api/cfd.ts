@@ -212,6 +212,8 @@ export interface RocketSolveBody {
   iterations: number;
   relax_u: number;
   relax_other: number;
+  residual_p?: number;
+  residual_u?: number;
   name?: string | null;
   solver?: CfdSolver;
   p_inf_pa?: number;

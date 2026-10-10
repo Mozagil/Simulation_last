@@ -132,7 +132,7 @@ describe("CfdSolvePanel · roket rüzgâr tüneli modu (R3)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Roket koşusunu çalıştır" }));
     expect(await screen.findByTestId("cfd-rocket-aero")).toHaveTextContent("1220.6 mm");
     const body = vi.mocked(postRocketSolve).mock.calls[0][0];
-    expect(body).toMatchObject({ mesh_id: "m1", speed_m_s: 50, alpha_deg: 4, cg_mm: 900 });
+    expect(body).toMatchObject({ mesh_id: "m1", speed_m_s: 50, alpha_deg: 4, cg_mm: 900, residual_p: 1e-4, residual_u: 1e-5 });
     expect(screen.getByTestId("cfd-rocket-barrowman")).toHaveTextContent("%46.0");
     expect(screen.getByTestId("cfd-patch-forces")).toHaveTextContent("burun");
     expect(vi.mocked(postCfdSolve)).not.toHaveBeenCalled();
