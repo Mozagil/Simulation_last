@@ -1402,6 +1402,17 @@ ortalama kuvvet …) mühendisten.
   remesh (mesh üzerinden yüzey seçimi), "Mesh'i sil"; mesh sonrası CAD gizli.
 - 2D mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir (solid + orta yüzey).
 
+*1.21 — LS-DYNA keyword (.k / .dyn) içe aktarma (kullanıcı kararı 2026-10-11)*
+Kendi çeviricimiz; yalnız okuma → OpenRadioss kartları, keyword yazma yok,
+arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
+- 1.21a Parser `app/importers/dyna_k.py`: .k/.dyn → ara model (*NODE,
+  *ELEMENT_SHELL/SOLID, *PART, *SECTION_SHELL/SOLID; sabit genişlik, virgüllü,
+  uzun format, *INCLUDE); bilinmeyen keyword'ler sayılıp raporlanır.
+- 1.21b Ara model → Radioss mesh + part kartları.
+- 1.21c Malzeme eşlemesi (*MAT_001/003/024 …), her kanun ayrı adım.
+- 1.21d Temas, BC, yük kartları.
+- 1.21e Crash arayüzü: "İçe aktar" + çeviri raporu (çevrilen / atlanan).
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse

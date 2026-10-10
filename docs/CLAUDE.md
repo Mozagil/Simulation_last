@@ -77,6 +77,11 @@ o an sunulabilir kalitede tasarlanır, "sonra güzelleştiririz" diye ertelenmez
    arayüzde ve dokümanda OpenRadioss kartının yanında bilgi amaçlı, yaklaşık ("≈")
    LS-DYNA keyword adı gösterilebilir (`frontend/src/lib/dynaKeywords.ts`, kullanıcı
    tercihiyle açılıp kapanır) — yalnız ad, işlev değil.
+   **İkinci istisna (kullanıcı kararı 2026-10-11):** LS-DYNA keyword dosyası
+   (`.k` / `.dyn`) yalnız **içe aktarma** için okunabilir — kendi çeviricimiz
+   (`backend/app/importers/dyna_k.py`) okur, OpenRadioss kartlarına çevirir.
+   LS-DYNA kurulmaz/çalıştırılmaz, keyword dosyası **yazılmaz** (ters yön yok),
+   kılavuz metni kopyalanmaz. Detay: `docs/LICENSING.md#ls-dyna-keyword-içe-aktarma`.
    Kod hiçbir noktada "kullanıcının makinesinde X kurulu" varsayımı yapmaz. Solver/mesh
    çağrıları sadece backend/worker sürecinde, sunucu tarafında olur. Detay: `docs/LICENSING.md`
    (özellikle OpenRadioss'un AGPL lisansının SaaS kullanımdaki etkisi için).

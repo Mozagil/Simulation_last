@@ -3,6 +3,25 @@
 Bu projede ticari CAE (ANSYS, HyperMesh, LS-DYNA) yok. Solver/mesh ikilileri
 sunucuda çalışır; kullanıcı makinesinde CAE kurulumu varsayılmaz.
 
+## LS-DYNA keyword içe aktarma
+
+Kullanıcı kararı (2026-10-11): `.k` / `.dyn` keyword dosyası yalnız içe
+aktarma için okunur ve OpenRadioss kartlarına çevrilir
+(`backend/app/importers/dyna_k.py`). Kurallar:
+
+- LS-DYNA kurulmaz, çağrılmaz, lisansı gerekmez; çeviri saf Python, sunucuda.
+  Çözüm yine yalnız OpenRadioss ile yapılır.
+- Ters yön yok: keyword dosyası **yazılmaz**.
+- Dosya formatı kendi başına telif konusu değil; LS-DYNA kılavuzunun metni ve
+  tabloları ise telifli — kodda/dokümanda kopyalanmaz, eşlemeler kendi
+  cümlelerimizle yazılır.
+- "LS-DYNA" Ansys markası: yalnız tanımlayıcı kullanım ("LS-DYNA .k dosyası
+  içe aktarma"); uyumluluk/onay iddiası, logo yok.
+- Yüklenen dosyanın hakları kullanıcıya aittir (ürün kullanım şartları konusu).
+- OpenRadioss'un kendi .k okuyucusu kullanılmaz.
+
+Bu not hukuki görüş değildir; ticari dağıtımdan önce avukata danışılmalı.
+
 ## CalculiX
 
 GPL. Debian/Codespace paketi `calculix-ccx` veya resmi `ccx` ikilisi.
