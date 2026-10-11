@@ -64,6 +64,8 @@ SHORT = [
     _card(1, 7.85e-9, 210000.0, 0.3, 250.0),
     "*CONTACT_AUTOMATIC_SINGLE_SURFACE",
     _card(0),
+    "*CONTACT_TIED_SURFACE_TO_SURFACE",
+    _card(1, 2, 3, 3),
     "*END",
     "*NODE",
     _node(99, 1.0, 1.0, 1.0),
@@ -83,7 +85,8 @@ def test_short_fixed_width(tmp_path: Path) -> None:
     sec = m.shell_sections[1]
     assert sec.elform == 16 and sec.thickness == (1.5, 1.5, 1.5, 1.5)
     assert m.solid_sections[2].elform == 1
-    assert m.skipped == {"CONTACT_AUTOMATIC_SINGLE_SURFACE": 1}
+    assert m.skipped == {"CONTACT_TIED_SURFACE_TO_SURFACE": 1}
+    assert m.contacts[0].keyword == "CONTACT_AUTOMATIC_SINGLE_SURFACE"
     # Yalnız 1. kart yazılmış *MAT_024: kalan kartlar varsayılan.
     mat = m.mats_024[1]
     assert (mat.ro, mat.e, mat.sigy, mat.lcss, mat.fail) == (7.85e-9, 210000.0, 250.0, 0, 1.0e21)

@@ -12,7 +12,11 @@ Desteklenen keyword'ler: *KEYWORD, *TITLE, *INCLUDE, *END, *NODE,
 *ELEMENT_SHELL, *ELEMENT_SOLID, *PART, *SECTION_SHELL(_TITLE),
 *SECTION_SOLID(_TITLE), *MAT_001 / *MAT_ELASTIC, *MAT_020 / *MAT_RIGID,
 *MAT_024 / *MAT_PIECEWISE_LINEAR_PLASTICITY (hepsi _TITLE ile de),
-*DEFINE_CURVE(_TITLE). Diğerleri `skipped` içinde sayılır;
+*DEFINE_CURVE(_TITLE), *SET_NODE(_LIST), *SET_PART(_LIST),
+*CONTACT_[AUTOMATIC_]NODES_TO_SURFACE / SURFACE_TO_SURFACE /
+SINGLE_SURFACE (_ID / _TITLE), *BOUNDARY_SPC_NODE / _SET,
+*INITIAL_VELOCITY(_NODE / _GENERATION), *RIGIDWALL_PLANAR(_ID),
+*LOAD_BODY_X/Y/Z, *CONTROL_TERMINATION. Diğerleri `skipped` içinde sayılır;
 atlanan *MAT_* bloklarının MID'i `mat_keywords`'e yazılır (rapor için).
 Satır biçimleri: sabit genişlik (kısa), uzun ("+" eki ya da
 *KEYWORD LONG=Y) ve virgüllü serbest biçim.
@@ -118,6 +122,58 @@ class DynaCurve:
 
 
 @dataclass
+class DynaContact:
+    keyword: str
+    where: str
+    ssid: int
+    msid: int
+    sstyp: int
+    mstyp: int
+    fs: float
+    fd: float
+    dc: float
+    # Varsayılandan farklı, çevrilmeyen alanlar (ad → değer)
+    extras: dict[str, float]
+
+
+@dataclass
+class DynaSpc:
+    keyword: str  # BOUNDARY_SPC_NODE | BOUNDARY_SPC_SET
+    where: str
+    target: int  # NID ya da NSID
+    cid: int
+    dofs: str  # DOFX DOFY DOFZ DOFRX DOFRY DOFRZ → "110000"
+
+
+@dataclass
+class DynaInitVel:
+    keyword: str
+    where: str
+    styp: str  # "part" | "part_set" | "node_set" | "node" | "all"
+    target: int
+    v: tuple[float, float, float]
+    extras: dict[str, float]
+
+
+@dataclass
+class DynaRigidWall:
+    where: str
+    nsid: int
+    tail: tuple[float, float, float]
+    head: tuple[float, float, float]
+    extras: dict[str, float]
+
+
+@dataclass
+class DynaBodyLoad:
+    where: str
+    axis: str  # X | Y | Z
+    lcid: int
+    sf: float
+    extras: dict[str, float]
+
+
+@dataclass
 class DynaModel:
     title: str = ""
     nodes: dict[int, tuple[float, float, float]] = field(default_factory=dict)
@@ -131,6 +187,14 @@ class DynaModel:
     mats_001: dict[int, DynaMatElastic] = field(default_factory=dict)
     mats_020: dict[int, DynaMatRigid] = field(default_factory=dict)
     curves: dict[int, DynaCurve] = field(default_factory=dict)
+    node_sets: dict[int, list[int]] = field(default_factory=dict)
+    part_sets: dict[int, list[int]] = field(default_factory=dict)
+    contacts: list[DynaContact] = field(default_factory=list)
+    spcs: list[DynaSpc] = field(default_factory=list)
+    init_vels: list[DynaInitVel] = field(default_factory=list)
+    rigid_walls: list[DynaRigidWall] = field(default_factory=list)
+    body_loads: list[DynaBodyLoad] = field(default_factory=list)
+    end_time: float | None = None
     # MID -> keyword adı (okunan ve atlanan tüm *MAT_* blokları)
     mat_keywords: dict[int, str] = field(default_factory=dict)
     # keyword adı -> atlanan blok sayısı
@@ -151,6 +215,12 @@ class DynaModel:
             "mats_001": len(self.mats_001),
             "mats_020": len(self.mats_020),
             "curves": len(self.curves),
+            "contacts": len(self.contacts),
+            "spcs": len(self.spcs),
+            "init_vels": len(self.init_vels),
+            "rigid_walls": len(self.rigid_walls),
+            "body_loads": len(self.body_loads),
+            "end_time": self.end_time,
             "skipped": dict(sorted(self.skipped.items())),
             "files": list(self.files),
             "warnings": list(self.warnings),
@@ -525,6 +595,237 @@ def _read_curve(block: _Block, model: DynaModel, titled: bool) -> None:
 # --- ana giriş ----------------------------------------------------------
 
 
+def _pad(lines: list[_Line], n: int, where: str) -> list[_Line]:
+    """Yazılmamış son kartlar varsayılan (boş) kart sayılır."""
+    return lines + [_Line("", where)] * max(0, n - len(lines))
+
+
+def _extras(pairs: dict[str, tuple[float, float]]) -> dict[str, float]:
+    """Varsayılandan farklı olanlar: ad → (değer, varsayılan)."""
+    return {k: v for k, (v, d) in pairs.items() if v != d}
+
+
+def _read_set(block: _Block, sets: dict[int, list[int]]) -> None:
+    lines = _data(block)
+    if block.name.endswith("_TITLE"):
+        lines = lines[1:]
+    if not lines:
+        raise DynaParseError(f"{block.where}: *{block.name} kartı eksik")
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    sid = _int(_split(lines[0], widths), 0, lines[0])
+    ids: list[int] = []
+    for ln in lines[1:]:
+        f = _split(ln, widths)
+        ids += [v for v in (_int(f, i, ln) for i in range(len(f))) if v]
+    if sid in sets:
+        raise DynaParseError(f"{lines[0].where}: küme {sid} ikinci kez tanımlı")
+    sets[sid] = ids
+
+
+_CONTACT_BASES = ("NODES_TO_SURFACE", "SURFACE_TO_SURFACE", "SINGLE_SURFACE")
+
+
+def contact_kind(name: str) -> str | None:
+    """Desteklenen temas adı → taban ad; değilse None."""
+    if not name.startswith("CONTACT_"):
+        return None
+    rest = name[len("CONTACT_") :].removeprefix("AUTOMATIC_")
+    for suffix in ("_ID", "_TITLE"):
+        rest = rest.removesuffix(suffix)
+    return rest if rest in _CONTACT_BASES else None
+
+
+def _read_contact(block: _Block, model: DynaModel) -> None:
+    lines = _cards(block)
+    if block.name.endswith(("_ID", "_TITLE")):
+        lines = lines[1:]
+    if not lines:
+        raise DynaParseError(f"{block.where}: *{block.name} kartı eksik")
+    c1, c2, c3 = _pad(lines, 3, lines[-1].where)[:3]
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    f1, f2, f3 = _split(c1, widths), _split(c2, widths), _split(c3, widths)
+    extras = _extras(
+        {
+            "SBOXID": (_float(f1, 4, c1), 0.0),
+            "MBOXID": (_float(f1, 5, c1), 0.0),
+            "VC": (_float(f2, 3, c2), 0.0),
+            "VDC": (_float(f2, 4, c2), 0.0),
+            "BT": (_float(f2, 6, c2), 0.0),
+            "DT": (_float(f2, 7, c2, default=1.0e20) or 1.0e20, 1.0e20),
+            "SFS": (_float(f3, 0, c3, default=1.0) or 1.0, 1.0),
+            "SFM": (_float(f3, 1, c3, default=1.0) or 1.0, 1.0),
+            "SST": (_float(f3, 2, c3), 0.0),
+            "MST": (_float(f3, 3, c3), 0.0),
+        }
+    )
+    if len(lines) > 3:
+        extras["opsiyonel kart"] = float(len(lines) - 3)
+    model.contacts.append(
+        DynaContact(
+            keyword=block.name,
+            where=c1.where,
+            ssid=_int(f1, 0, c1),
+            msid=_int(f1, 1, c1),
+            sstyp=_int(f1, 2, c1),
+            mstyp=_int(f1, 3, c1),
+            fs=_float(f2, 0, c2),
+            fd=_float(f2, 1, c2),
+            dc=_float(f2, 2, c2),
+            extras=extras,
+        )
+    )
+
+
+def _read_spc(block: _Block, model: DynaModel) -> None:
+    lines = _data(block)
+    if block.name.endswith("_ID"):
+        lines = lines[1:]
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    for ln in lines:
+        f = _split(ln, widths)
+        dofs = "".join("1" if _int(f, i, ln) else "0" for i in range(2, 8))
+        model.spcs.append(
+            DynaSpc(
+                keyword=block.name.removesuffix("_ID"),
+                where=ln.where,
+                target=_int(f, 0, ln),
+                cid=_int(f, 1, ln),
+                dofs=dofs,
+            )
+        )
+
+
+_STYP = {1: "part_set", 2: "part", 3: "node_set"}
+
+
+def _read_init_vel_node(block: _Block, model: DynaModel) -> None:
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    for ln in _data(block):
+        f = _split(ln, widths)
+        model.init_vels.append(
+            DynaInitVel(
+                keyword=block.name,
+                where=ln.where,
+                styp="node",
+                target=_int(f, 0, ln),
+                v=(_float(f, 1, ln), _float(f, 2, ln), _float(f, 3, ln)),
+                extras=_extras(
+                    {
+                        "VXR": (_float(f, 4, ln), 0.0),
+                        "VYR": (_float(f, 5, ln), 0.0),
+                        "VZR": (_float(f, 6, ln), 0.0),
+                        "ICID": (_float(f, 7, ln), 0.0),
+                    }
+                ),
+            )
+        )
+
+
+def _read_init_vel_generation(block: _Block, model: DynaModel) -> None:
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    lines = _pad(_cards(block), 2, block.where)
+    if len(lines) % 2:
+        raise DynaParseError(f"{block.where}: *{block.name} kart sayısı tek")
+    for k in range(0, len(lines), 2):
+        c1, c2 = lines[k], lines[k + 1]
+        f1, f2 = _split(c1, widths), _split(c2, widths)
+        styp_code = _int(f1, 1, c1)
+        model.init_vels.append(
+            DynaInitVel(
+                keyword=block.name,
+                where=c1.where,
+                styp=_STYP.get(styp_code, f"STYP={styp_code}"),
+                target=_int(f1, 0, c1),
+                v=(_float(f1, 3, c1), _float(f1, 4, c1), _float(f1, 5, c1)),
+                extras=_extras(
+                    {
+                        "OMEGA": (_float(f1, 2, c1), 0.0),
+                        "IVATN": (_float(f1, 6, c1), 0.0),
+                        "ICID": (_float(f1, 7, c1), 0.0),
+                        "IRIGID": (_float(f2, 7, c2), 0.0),
+                    }
+                ),
+            )
+        )
+
+
+def _read_init_vel(block: _Block, model: DynaModel) -> None:
+    # *INITIAL_VELOCITY: NSID NSIDEX BOXID IRIGID ICID · VX VY VZ VXR VYR VZR
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    c1, c2 = _pad(_cards(block), 2, block.where)[:2]
+    f1, f2 = _split(c1, widths), _split(c2, widths)
+    nsid = _int(f1, 0, c1)
+    model.init_vels.append(
+        DynaInitVel(
+            keyword=block.name,
+            where=c1.where,
+            styp="node_set" if nsid else "all",
+            target=nsid,
+            v=(_float(f2, 0, c2), _float(f2, 1, c2), _float(f2, 2, c2)),
+            extras=_extras(
+                {
+                    "NSIDEX": (_float(f1, 1, c1), 0.0),
+                    "BOXID": (_float(f1, 2, c1), 0.0),
+                    "IRIGID": (_float(f1, 3, c1), 0.0),
+                    "ICID": (_float(f1, 4, c1), 0.0),
+                    "VXR": (_float(f2, 3, c2), 0.0),
+                    "VYR": (_float(f2, 4, c2), 0.0),
+                    "VZR": (_float(f2, 5, c2), 0.0),
+                }
+            ),
+        )
+    )
+
+
+def _read_rigid_wall(block: _Block, model: DynaModel) -> None:
+    lines = _cards(block)
+    if block.name.endswith("_ID"):
+        lines = lines[1:]
+    c1, c2 = _pad(lines, 2, block.where)[:2]
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    f1, f2 = _split(c1, widths), _split(c2, widths)
+    model.rigid_walls.append(
+        DynaRigidWall(
+            where=c1.where,
+            nsid=_int(f1, 0, c1),
+            tail=(_float(f2, 0, c2), _float(f2, 1, c2), _float(f2, 2, c2)),
+            head=(_float(f2, 3, c2), _float(f2, 4, c2), _float(f2, 5, c2)),
+            extras=_extras(
+                {
+                    "NSIDEX": (_float(f1, 1, c1), 0.0),
+                    "BOXID": (_float(f1, 2, c1), 0.0),
+                    "OFFSET": (_float(f1, 3, c1), 0.0),
+                    "BIRTH": (_float(f1, 4, c1), 0.0),
+                    "DEATH": (_float(f1, 5, c1, default=1.0e20) or 1.0e20, 1.0e20),
+                    "FRIC": (_float(f2, 6, c2), 0.0),
+                    "WVEL": (_float(f2, 7, c2), 0.0),
+                    "opsiyonel kart": (float(max(0, len(lines) - 2)), 0.0),
+                }
+            ),
+        )
+    )
+
+
+def _read_body_load(block: _Block, model: DynaModel) -> None:
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    c1 = _pad(_cards(block), 1, block.where)[0]
+    f1 = _split(c1, widths)
+    model.body_loads.append(
+        DynaBodyLoad(
+            where=c1.where,
+            axis=block.name[-1],
+            lcid=_int(f1, 0, c1),
+            sf=_float(f1, 1, c1, default=1.0) or 1.0,
+            extras=_extras(
+                {
+                    "LCIDDR": (_float(f1, 2, c1), 0.0),
+                    "CID": (_float(f1, 6, c1), 0.0),
+                }
+            ),
+        )
+    )
+
+
 def _skip(model: DynaModel, name: str) -> None:
     model.skipped[name] = model.skipped.get(name, 0) + 1
 
@@ -579,6 +880,28 @@ def _read_file(
             _read_mat_020(block, model)
         elif name in ("DEFINE_CURVE", "DEFINE_CURVE_TITLE"):
             _read_curve(block, model, titled=name.endswith("_TITLE"))
+        elif name in _names("SET_NODE", "SET_NODE_LIST"):
+            _read_set(block, model.node_sets)
+        elif name in _names("SET_PART", "SET_PART_LIST"):
+            _read_set(block, model.part_sets)
+        elif contact_kind(name):
+            _read_contact(block, model)
+        elif name in ("BOUNDARY_SPC_NODE", "BOUNDARY_SPC_SET",
+                      "BOUNDARY_SPC_NODE_ID", "BOUNDARY_SPC_SET_ID"):
+            _read_spc(block, model)
+        elif name == "INITIAL_VELOCITY":
+            _read_init_vel(block, model)
+        elif name == "INITIAL_VELOCITY_NODE":
+            _read_init_vel_node(block, model)
+        elif name == "INITIAL_VELOCITY_GENERATION":
+            _read_init_vel_generation(block, model)
+        elif name in ("RIGIDWALL_PLANAR", "RIGIDWALL_PLANAR_ID"):
+            _read_rigid_wall(block, model)
+        elif name in ("LOAD_BODY_X", "LOAD_BODY_Y", "LOAD_BODY_Z"):
+            _read_body_load(block, model)
+        elif name == "CONTROL_TERMINATION":
+            c = _pad(_cards(block), 1, block.where)[0]
+            model.end_time = _float(_split(c, _widths(1, _CARD_WIDTH, block.long)), 0, c)
         elif name.startswith("MAT_"):
             _note_other_mat(block, model)
             _skip(model, name)

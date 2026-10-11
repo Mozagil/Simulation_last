@@ -1417,7 +1417,12 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   çevrilmez.
 - 1.21c-2 ✅ *MAT_001 → LAW1; *MAT_020 → /RBODY (part) + LAW1, CMO=1
   CON1/CON2 → ana düğüm /BCS (CMO=-1 yerel çevrilmez). Diğer kanunlar ayrı.
-- 1.21d Temas, BC, yük kartları.
+- 1.21d ✅ Temas (N2S → TYPE7, S2S → TYPE24, tek yüzey → TYPE7 öz; part /
+  part kümesi), *BOUNDARY_SPC_NODE/SET → /BCS, *INITIAL_VELOCITY(_NODE/
+  _GENERATION) → /INIVEL, *RIGIDWALL_PLANAR → /RWALL/PLANE, *LOAD_BODY → /GRAV,
+  *CONTROL_TERMINATION → t_end (`importers/dyna_setup.py`). Adaptör
+  varsayılanları (bariyer hızı, orijin duvarı) kapatılır; yalnız dosyadaki
+  uygulanır. Çevrilmeyen her satır raporda nedeniyle.
 - 1.21e Crash arayüzü: "İçe aktar" + çeviri raporu (çevrilen / atlanan).
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
