@@ -1414,7 +1414,9 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
 - 1.21c ✅ *MAT_024 (+ *DEFINE_CURVE) → LAW36 (eğri / EPS-ES) ya da LAW2
   (SIGY + ETAN birebir); FAIL → EPS_p_max; birim çarpanları (uzunluk, kütle,
   zaman) mühendisten (`importers/dyna_material.py`). C/P, LCSR, tablo uyarıyla
-  çevrilmez. Diğer kanunlar (*MAT_001, *MAT_020 …) ayrı adımlar.
+  çevrilmez.
+- 1.21c-2 ✅ *MAT_001 → LAW1; *MAT_020 → /RBODY (part) + LAW1, CMO=1
+  CON1/CON2 → ana düğüm /BCS (CMO=-1 yerel çevrilmez). Diğer kanunlar ayrı.
 - 1.21d Temas, BC, yük kartları.
 - 1.21e Crash arayüzü: "İçe aktar" + çeviri raporu (çevrilen / atlanan).
 

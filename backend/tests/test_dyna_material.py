@@ -1,4 +1,5 @@
-"""1.21c — *MAT_024 (+ *DEFINE_CURVE) → LAW36 / LAW2 parametreleri."""
+"""1.21c — *MAT_024 (+ *DEFINE_CURVE) → LAW36 / LAW2; *MAT_001 → LAW1;
+*MAT_020 → /RBODY + kısıt."""
 
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from app.importers.dyna_material import DynaMaterialError, DynaUnits, to_crash_m
 from app.importers.dyna_mesh import to_crash_mesh
 from app.solvers.openradioss import OpenRadiossAdapter
 
-# mm–t–s: gerilme MPa, yoğunluk t/mm³. Dört kabuk part, dört MID.
+# mm–t–s: gerilme MPa, yoğunluk t/mm³. Altı kabuk part, altı MID.
 DECK = """*KEYWORD
 *NODE
 1, 0.0, 0.0, 0.0
@@ -21,6 +22,8 @@ DECK = """*KEYWORD
 2, 2, 1, 2, 3, 4
 3, 3, 1, 2, 3, 4
 4, 4, 1, 2, 3, 4
+5, 5, 1, 2, 3, 4
+6, 6, 1, 2, 3, 4
 *PART
 egri
 1, 1, 10
@@ -30,6 +33,10 @@ noktali
 3, 1, 30
 rijit
 4, 1, 40
+elastik
+5, 1, 50
+kinematik
+6, 1, 60
 *SECTION_SHELL
 1, 2
 1.2
@@ -53,6 +60,13 @@ DP600
 150.0, 200.0, 240.0
 *MAT_RIGID
 40, 7.85e-9, 210000.0, 0.3
+1.0, 7.0, 4.0
+0
+*MAT_ELASTIC_TITLE
+cam
+50, 2.5e-9, 70000.0, 0.22
+*MAT_003
+60, 7.85e-9, 210000.0, 0.3, 300.0
 *END
 """
 
@@ -94,10 +108,20 @@ def test_mat024_mapping(tmp_path: Path) -> None:
     assert mats[0]["density"] == pytest.approx(7850.0)
     assert mats[0]["youngs_modulus"] == pytest.approx(210e9)
     assert mats[2]["name"] == "MAT_024_30"
-    assert m.unassigned == [4]
+    assert m.unassigned == [6]
     rows = {r["pid"]: r for r in m.parts}
-    assert rows[4]["note"] == "*MAT_RIGID çevrilmedi"
+    assert rows[6]["note"] == "*MAT_003 çevrilmedi"
     assert rows[1]["note"] == "LCSS eğri 100 (3 nokta)"
+    # *MAT_001 → LAW1
+    assert m.part_models[4] == {"law": "elastic"}
+    assert mats[4]["name"] == "cam" and mats[4]["density"] == pytest.approx(2500.0)
+    # *MAT_020 → /RBODY (part seçimi) + CMO=1 kısıtı: CON1=7 (xyz), CON2=4 (x+y)
+    assert m.part_models[3] == {"law": "elastic"}
+    assert mats[3]["name"] == "MAT_RIGID_40"
+    assert m.rigid_bodies == [{"name": "rigid_part_4", "part_id": 3}]
+    assert m.boundary_conditions == [
+        {"name": "rigid_part_4_con", "rigid_body": "rigid_part_4", "dofs": "111110"}
+    ]
     assert any("Cowper–Symonds C=40, P=5" in w for w in m.warnings)
 
 
@@ -113,9 +137,9 @@ def test_adapter_writes_law36_and_law2(tmp_path: Path) -> None:
     model, mesh = _setup(tmp_path)
     params = mesh.adapter_params()
     to_crash_materials(model, mesh, MM_T_S).apply(params)
-    # Çevrilmeyen part 4'e malzemeyi mühendis atar.
+    # Çevrilmeyen part 6'ya (*MAT_003) malzemeyi mühendis atar.
     params["materials"].append(
-        {"part_id": 3, "name": "elle", "density": 7850.0, "youngs_modulus": 210e9, "poisson_ratio": 0.3}
+        {"part_id": 5, "name": "elle", "density": 7850.0, "youngs_modulus": 210e9, "poisson_ratio": 0.3}
     )
     params.update(
         {
@@ -126,6 +150,8 @@ def test_adapter_writes_law36_and_law2(tmp_path: Path) -> None:
         }
     )
     deck = OpenRadiossAdapter().build_input(params).path.read_text(encoding="utf-8")
-    for card in ("/MAT/LAW36/1", "/MAT/LAW2/2", "/MAT/LAW36/3", "/MAT/LAW1/4", "/FUNCT/101"):
+    for card in ("/MAT/LAW36/1", "/MAT/LAW2/2", "/MAT/LAW36/3", "/MAT/LAW1/4",
+                 "/MAT/LAW1/5", "/MAT/LAW1/6", "/FUNCT/101", "/RBODY/"):
         assert card in deck, card
+    assert "   111 110" in deck  # rijit gövde ana düğümüne kısıt
     assert f"{0.1:20.8g}{0.5:20.8g}" in deck  # eğri noktası, σ GPa
