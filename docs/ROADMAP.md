@@ -1426,7 +1426,11 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   *CONTROL_TERMINATION → t_end (`importers/dyna_setup.py`). Adaptör
   varsayılanları (bariyer hızı, orijin duvarı) kapatılır; yalnız dosyadaki
   uygulanır. Çevrilmeyen her satır raporda nedeniyle.
-- 1.21e Crash arayüzü: "İçe aktar" + çeviri raporu (çevrilen / atlanan).
+- 1.21e-1 ✅ `POST /crash/import/dyna` (ana dosya + *INCLUDE dosyaları, birim
+  çarpanları, ε̇ listesi) → çeviri raporu; parametreler
+  `uploads/crash_import/{id}/import.json`. Koşu başlatmaz.
+- 1.21e-2 Crash arayüzü: "İçe aktar" + çeviri raporu (uyarı / atlananlar üstte,
+  okundu onayı) + çözüme bağlama (ayrı karar).
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
