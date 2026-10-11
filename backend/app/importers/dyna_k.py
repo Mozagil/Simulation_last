@@ -10,7 +10,9 @@ dönüşüm mühendisin kararıdır. Eleman düğümleri ham haliyle tutulur
 
 Desteklenen keyword'ler: *KEYWORD, *TITLE, *INCLUDE, *END, *NODE,
 *ELEMENT_SHELL, *ELEMENT_SOLID, *PART, *SECTION_SHELL(_TITLE),
-*SECTION_SOLID(_TITLE). Diğerleri `skipped` içinde sayılır.
+*SECTION_SOLID(_TITLE), *MAT_024 / *MAT_PIECEWISE_LINEAR_PLASTICITY
+(_TITLE), *DEFINE_CURVE(_TITLE). Diğerleri `skipped` içinde sayılır;
+atlanan *MAT_* bloklarının MID'i `mat_keywords`'e yazılır (rapor için).
 Satır biçimleri: sabit genişlik (kısa), uzun ("+" eki ya da
 *KEYWORD LONG=Y) ve virgüllü serbest biçim.
 """
@@ -56,6 +58,37 @@ class DynaSolidSection:
 
 
 @dataclass
+class DynaMat024:
+    """*MAT_024 ham değerleri (dosya birimlerinde)."""
+
+    mid: int
+    title: str
+    ro: float
+    e: float
+    pr: float
+    sigy: float
+    etan: float
+    fail: float
+    tdel: float
+    c: float
+    p: float
+    lcss: int
+    lcsr: int
+    vp: float
+    eps: tuple[float, ...]
+    es: tuple[float, ...]
+
+
+@dataclass
+class DynaCurve:
+    """*DEFINE_CURVE; SFA/SFO/OFFA/OFFO uygulanmış noktalar."""
+
+    lcid: int
+    title: str
+    points: list[tuple[float, float]]
+
+
+@dataclass
 class DynaModel:
     title: str = ""
     nodes: dict[int, tuple[float, float, float]] = field(default_factory=dict)
@@ -65,6 +98,10 @@ class DynaModel:
     parts: dict[int, DynaPart] = field(default_factory=dict)
     shell_sections: dict[int, DynaShellSection] = field(default_factory=dict)
     solid_sections: dict[int, DynaSolidSection] = field(default_factory=dict)
+    mats_024: dict[int, DynaMat024] = field(default_factory=dict)
+    curves: dict[int, DynaCurve] = field(default_factory=dict)
+    # MID -> keyword adı (okunan ve atlanan tüm *MAT_* blokları)
+    mat_keywords: dict[int, str] = field(default_factory=dict)
     # keyword adı -> atlanan blok sayısı
     skipped: dict[str, int] = field(default_factory=dict)
     files: list[str] = field(default_factory=list)
@@ -79,6 +116,8 @@ class DynaModel:
             "parts": len(self.parts),
             "shell_sections": len(self.shell_sections),
             "solid_sections": len(self.solid_sections),
+            "mats_024": len(self.mats_024),
+            "curves": len(self.curves),
             "skipped": dict(sorted(self.skipped.items())),
             "files": list(self.files),
             "warnings": list(self.warnings),
@@ -314,6 +353,100 @@ def _read_solid_sections(block: _Block, model: DynaModel, titled: bool) -> None:
         i += 1
 
 
+_MAT_024_NAMES = (
+    "MAT_024",
+    "MAT_024_TITLE",
+    "MAT_PIECEWISE_LINEAR_PLASTICITY",
+    "MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE",
+)
+
+
+def _cards(block: _Block) -> list[_Line]:
+    """Başlık hariç kartlar; boş satır da kart sayılır (varsayılan değerler),
+    yalnız sondaki boş satırlar atılır."""
+    lines = list(block.lines[1:])
+    while lines and not lines[-1].text.strip():
+        lines.pop()
+    return lines
+
+
+def _read_mat_024(block: _Block, model: DynaModel, titled: bool) -> None:
+    lines = _cards(block)
+    widths = _widths(8, _CARD_WIDTH, block.long)
+    per = 5 if titled else 4
+    if 0 < len(lines) < per:
+        # Sondaki kartlar yazılmamışsa varsayılan (boş) kart sayılır.
+        lines += [_Line("", lines[-1].where)] * (per - len(lines))
+    if not lines or len(lines) % per:
+        raise DynaParseError(
+            f"{block.where}: *{block.name} kart sayısı {len(lines)} ({per}'in katı değil)"
+        )
+    for k in range(0, len(lines), per):
+        title = lines[k].text.strip() if titled else ""
+        c1, c2, c3, c4 = lines[k + per - 4 : k + per]
+        f1, f2 = _split(c1, widths), _split(c2, widths)
+        f3, f4 = _split(c3, widths), _split(c4, widths)
+        mid = _int(f1, 0, c1)
+        if mid in model.mat_keywords:
+            raise DynaParseError(f"{c1.where}: malzeme {mid} ikinci kez tanımlı")
+        model.mat_keywords[mid] = block.name
+        model.mats_024[mid] = DynaMat024(
+            mid=mid,
+            title=title,
+            ro=_float(f1, 1, c1),
+            e=_float(f1, 2, c1),
+            pr=_float(f1, 3, c1),
+            sigy=_float(f1, 4, c1),
+            etan=_float(f1, 5, c1),
+            fail=_float(f1, 6, c1, default=1.0e21),
+            tdel=_float(f1, 7, c1),
+            c=_float(f2, 0, c2),
+            p=_float(f2, 1, c2),
+            lcss=_int(f2, 2, c2),
+            lcsr=_int(f2, 3, c2),
+            vp=_float(f2, 4, c2),
+            eps=tuple(_float(f3, i, c3) for i in range(8)),
+            es=tuple(_float(f4, i, c4) for i in range(8)),
+        )
+
+
+def _note_other_mat(block: _Block, model: DynaModel) -> None:
+    """Çevrilmeyen *MAT_*: yalnız MID'i (ilk kartın ilk alanı) kaydedilir."""
+    lines = _data(block)
+    if block.name.endswith("_TITLE"):
+        lines = lines[1:]
+    if not lines:
+        return
+    f = _split(lines[0], _widths(1, _CARD_WIDTH, block.long))
+    try:
+        model.mat_keywords.setdefault(_int(f, 0, lines[0]), block.name)
+    except DynaParseError:
+        pass  # alfanümerik MID vb. — rapor için önemsiz
+
+
+def _read_curve(block: _Block, model: DynaModel, titled: bool) -> None:
+    lines = _data(block)
+    title = ""
+    if titled:
+        title = lines[0].text.strip() if lines else ""
+        lines = lines[1:]
+    if not lines:
+        raise DynaParseError(f"{block.where}: *DEFINE_CURVE kartı eksik")
+    c1 = lines[0]
+    f1 = _split(c1, _widths(8, _CARD_WIDTH, block.long))
+    lcid = _int(f1, 0, c1)
+    sfa = _float(f1, 2, c1) or 1.0
+    sfo = _float(f1, 3, c1) or 1.0
+    offa, offo = _float(f1, 4, c1), _float(f1, 5, c1)
+    pts: list[tuple[float, float]] = []
+    for ln in lines[1:]:
+        f = _split(ln, _widths(2, 20, block.long))
+        pts.append((sfa * (_float(f, 0, ln) + offa), sfo * (_float(f, 1, ln) + offo)))
+    if lcid in model.curves:
+        raise DynaParseError(f"{c1.where}: eğri {lcid} ikinci kez tanımlı")
+    model.curves[lcid] = DynaCurve(lcid=lcid, title=title, points=pts)
+
+
 # --- ana giriş ----------------------------------------------------------
 
 
@@ -363,6 +496,13 @@ def _read_file(
             _read_shell_sections(block, model, titled=name.endswith("_TITLE"))
         elif name in ("SECTION_SOLID", "SECTION_SOLID_TITLE"):
             _read_solid_sections(block, model, titled=name.endswith("_TITLE"))
+        elif name in _MAT_024_NAMES:
+            _read_mat_024(block, model, titled=name.endswith("_TITLE"))
+        elif name in ("DEFINE_CURVE", "DEFINE_CURVE_TITLE"):
+            _read_curve(block, model, titled=name.endswith("_TITLE"))
+        elif name.startswith("MAT_"):
+            _note_other_mat(block, model)
+            _skip(model, name)
         else:
             _skip(model, name)
 

@@ -1411,7 +1411,10 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
 - 1.21b ✅ Ara model → adaptör mesh parametreleri (`importers/dyna_mesh.py`;
   kartları mevcut starter yazıcısı üretir, /PART/<PID> korunur, uzunluk
   çarpanı dosya → mm mühendisten).
-- 1.21c Malzeme eşlemesi (*MAT_001/003/024 …), her kanun ayrı adım.
+- 1.21c ✅ *MAT_024 (+ *DEFINE_CURVE) → LAW36 (eğri / EPS-ES) ya da LAW2
+  (SIGY + ETAN birebir); FAIL → EPS_p_max; birim çarpanları (uzunluk, kütle,
+  zaman) mühendisten (`importers/dyna_material.py`). C/P, LCSR, tablo uyarıyla
+  çevrilmez. Diğer kanunlar (*MAT_001, *MAT_020 …) ayrı adımlar.
 - 1.21d Temas, BC, yük kartları.
 - 1.21e Crash arayüzü: "İçe aktar" + çeviri raporu (çevrilen / atlanan).
 
