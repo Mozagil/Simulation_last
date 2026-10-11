@@ -9,8 +9,13 @@ Eşleme (*MAT_024, piecewise linear plasticity):
 - İkisi de yok → SIGY + ETAN doğrusal sertleşme, LAW2 ile birebir:
   a = SIGY, b = E·ETAN / (E − ETAN), n = 1.
 - FAIL (> 0, 1e20 altı) → EPS_p_max. Varsayılan 1e21 / 0 → kopma yok.
-Çevrilmeyenler (uyarıyla): Cowper–Symonds C/P, LCSR, LCSS'in tablo
-olması, FAIL < 0, TDEL. Hız etkisi eklemek mühendisin kararı.
+- Hız etkisi (1.21c-3): mühendis şekil değiştirme hızlarını (1/s) verirse
+  LAW36 çok eğri olur: ε̇ = 0'da statik eğri, her hızda σ·k(ε̇).
+  LCSR verilmişse k = LCSR(ε̇) (doğrusal ara/dış değer; C/P yok sayılır),
+  yoksa Cowper–Symonds k = 1 + (ε̇/C)^(1/P). SIGY + ETAN'lı malzeme bu
+  durumda iki noktalı eğri olur: (0, SIGY), (1, SIGY + b). VP 0 → LAW36
+  toplam hız, VP 1 → plastik hız. Hız listesi yoksa C/P / LCSR uyarıya düşer.
+Çevrilmeyenler (uyarıyla): LCSS'in tablo olması, FAIL < 0, TDEL, VP ∉ {0, 1}.
 
 *MAT_001 (elastik) → LAW1. DA / DB / K çevrilmez (uyarı).
 *MAT_020 (rijit) → part'a /RBODY (`rigid_bodies`, part seçimi) + ρ, E, ν
@@ -24,6 +29,8 @@ mühendisten gelir, gerilme ve yoğunluk çarpanı bunlardan türetilir.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -126,6 +133,57 @@ def _hardening(mat: DynaMat024, model: DynaModel, s_mpa: float) -> tuple[dict[st
     }, f"SIGY + ETAN doğrusal (b = {b * s_mpa:.6g} MPa)"
 
 
+def _interp(points: list[tuple[float, float]], x: float) -> float:
+    """Doğrusal ara değer; aralık dışında uç parçalardan doğrusal uzatma."""
+    if len(points) == 1:
+        return points[0][1]
+    pts = sorted(points)
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x <= x1 or (x1, y1) == pts[-1]:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return pts[-1][1]  # erişilmez
+
+
+def _rate_curves(
+    mat: DynaMat024,
+    model: DynaModel,
+    fields: dict[str, Any],
+    rates_per_s: Sequence[float],
+    units: DynaUnits,
+    s_mpa: float,
+) -> tuple[dict[str, Any], str]:
+    """Statik kanunu hızlara göre LAW36 çok eğriye açar; çevrilemezse ValueError."""
+    if fields["law"] == "tabulated":
+        base = list(fields["tab_curves"][0]["points"])
+    else:
+        sy = fields["sigma_y_pa"] * 1e-6
+        base = [(0.0, sy), (1.0, sy + fields["harden_b_mpa"])]
+    if mat.lcsr:
+        curve = model.curves.get(mat.lcsr)
+        if curve is None or not curve.points:
+            raise ValueError(f"LCSR {mat.lcsr} *DEFINE_CURVE değil")
+        # Eğri apsisi dosya biriminde hız (1/zaman)
+        def k(r: float) -> float:
+            return _interp(curve.points, r * units.time_to_s)
+        how = f"LCSR {mat.lcsr}"
+    else:
+        c_per_s = mat.c / units.time_to_s
+
+        def k(r: float) -> float:
+            return 1.0 + (r / c_per_s) ** (1.0 / mat.p)
+        how = f"Cowper–Symonds C={c_per_s:g} 1/s, P={mat.p:g}"
+    curves = [{"eps_dot_per_s": 0.0, "points": base}]
+    for r in rates_per_s:
+        factor = k(r)
+        if not math.isfinite(factor) or factor <= 0:
+            raise ValueError(f"ε̇ = {r:g} 1/s için ölçek {factor:g}")
+        curves.append({"eps_dot_per_s": r, "points": [(x, y * factor) for x, y in base]})
+    out = {key: v for key, v in fields.items() if key not in ("sigma_y_pa", "harden_b_mpa", "harden_n")}
+    out.update({"law": "tabulated", "tab_curves": curves, "tab_vp": int(mat.vp)})
+    rates = ", ".join(f"{r:g}" for r in rates_per_s)
+    return out, f"{how}; {len(curves)} eğri (ε̇ = 0, {rates} 1/s)"
+
+
 def _rigid(out: DynaMaterialMap, pid: int, part_id: int, rg: DynaMatRigid) -> None:
     name = f"rigid_part_{pid}"
     out.rigid_bodies.append({"name": name, "part_id": part_id})
@@ -146,10 +204,17 @@ def _rigid(out: DynaMaterialMap, pid: int, part_id: int, rg: DynaMatRigid) -> No
 
 
 def to_crash_materials(
-    model: DynaModel, mesh: DynaCrashMesh, units: DynaUnits
+    model: DynaModel,
+    mesh: DynaCrashMesh,
+    units: DynaUnits,
+    rates_per_s: Sequence[float] = (),
 ) -> DynaMaterialMap:
     """Mesh'teki her part için *MAT_001 / 020 / 024'ü kanun, malzeme, rijit
-    gövde ve kısıt parametrelerine çevirir."""
+    gövde ve kısıt parametrelerine çevirir. `rates_per_s`: hız etkisi olan
+    *MAT_024'ler için LAW36 eğri hızları (mühendis girer; boş = hız etkisi yok)."""
+    rates = sorted({float(r) for r in rates_per_s})
+    if any(not math.isfinite(r) or r <= 0 for r in rates):
+        raise DynaMaterialError("Şekil değiştirme hızları pozitif olmalı (1/s).")
     out = DynaMaterialMap()
     s_mpa = units.stress_to_pa * 1e-6
     for part in mesh.parts:
@@ -162,10 +227,14 @@ def to_crash_materials(
         out.parts.append(row)
         if part.mid in model.mats_024:
             mat = model.mats_024[part.mid]
+            has_rate = bool(mat.lcsr or (mat.c > 0 and mat.p > 0))
             try:
                 fields, source = _hardening(mat, model, s_mpa)
                 if 0 < mat.fail < _NO_FAIL:
                     fields["eps_p_max"] = mat.fail
+                if has_rate and rates and mat.vp in (0, 1):
+                    fields, rate_note = _rate_curves(mat, model, fields, rates, units, s_mpa)
+                    source = f"{source} + {rate_note}"
                 validated = CrashModelParams.model_validate(fields)
             except (ValueError, ValidationError) as exc:
                 msg = exc.errors()[0]["msg"] if isinstance(exc, ValidationError) else str(exc)
@@ -173,10 +242,17 @@ def to_crash_materials(
                 out.unassigned.append(part.pid)
                 continue
             notes = []
-            if mat.c or mat.p:
-                notes.append(f"Cowper–Symonds C={mat.c:g}, P={mat.p:g}")
-            if mat.lcsr:
-                notes.append(f"LCSR {mat.lcsr}")
+            if has_rate and not rates:
+                notes.append(
+                    (f"LCSR {mat.lcsr}" if mat.lcsr else f"Cowper–Symonds C={mat.c:g}, P={mat.p:g}")
+                    + " (hız listesi verilmedi — hız etkisi yok)"
+                )
+            elif has_rate and mat.vp not in (0, 1):
+                notes.append(f"hız etkisi VP={mat.vp:g} ile (yalnız 0 / 1)")
+            elif mat.lcsr and (mat.c or mat.p):
+                notes.append(f"C={mat.c:g}, P={mat.p:g} (LCSR öncelikli)")
+            elif not has_rate and (mat.c or mat.p):
+                notes.append(f"Cowper–Symonds C={mat.c:g}, P={mat.p:g} (eksik)")
             if mat.fail < 0:
                 notes.append(f"FAIL {mat.fail:g} (kullanıcı alt programı)")
             if mat.tdel:

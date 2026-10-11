@@ -155,3 +155,54 @@ def test_adapter_writes_law36_and_law2(tmp_path: Path) -> None:
         assert card in deck, card
     assert "   111 110" in deck  # rijit gövde ana düğümüne kısıt
     assert f"{0.1:20.8g}{0.5:20.8g}" in deck  # eğri noktası, σ GPa
+
+
+def test_cowper_symonds_rates_to_law36_curves(tmp_path: Path) -> None:
+    model, mesh = _setup(tmp_path)
+    m = to_crash_materials(model, mesh, MM_T_S, rates_per_s=[100.0, 10.0])
+    curves = m.part_models[0]["tab_curves"]
+    assert [c["eps_dot_per_s"] for c in curves] == [0.0, 10.0, 100.0]
+    k10 = 1.0 + (10.0 / 40.0) ** (1.0 / 5.0)
+    assert curves[1]["points"][0] == pytest.approx((0.0, 350.0 * k10))
+    assert m.part_models[0]["tab_vp"] == 0
+    assert not any("Cowper" in w for w in m.warnings)
+    assert "Cowper–Symonds C=40 1/s, P=5; 3 eğri" in {r["pid"]: r for r in m.parts}[1]["note"]
+    # Hız etkisi olmayan malzeme değişmez.
+    assert m.part_models[1]["law"] == "plastic"
+
+
+def test_lcsr_rates_on_bilinear(tmp_path: Path) -> None:
+    from app.importers.dyna_k import DynaCurve
+
+    model, mesh = _setup(tmp_path)
+    model.mats_024[20].lcsr = 101
+    model.curves[101] = DynaCurve(lcid=101, title="", points=[(0.0, 1.0), (100.0, 1.5)])
+    m = to_crash_materials(model, mesh, MM_T_S, rates_per_s=[10.0, 200.0])
+    bil = m.part_models[1]
+    assert bil["law"] == "tabulated" and "sigma_y_pa" not in bil
+    b = 210000.0 * 1000.0 / 209000.0
+    static, r10, r200 = bil["tab_curves"]
+    assert static["points"] == pytest.approx([(0.0, 235.0), (1.0, 235.0 + b)])
+    assert r10["points"][0][1] == pytest.approx(235.0 * 1.05)
+    assert r200["points"][0][1] == pytest.approx(235.0 * 2.0)  # doğrusal uzatma
+
+
+def test_rates_must_be_positive(tmp_path: Path) -> None:
+    model, mesh = _setup(tmp_path)
+    with pytest.raises(DynaMaterialError, match="pozitif"):
+        to_crash_materials(model, mesh, MM_T_S, rates_per_s=[0.0])
+
+
+def test_rate_curves_reach_deck(tmp_path: Path) -> None:
+    model, mesh = _setup(tmp_path)
+    params = mesh.adapter_params()
+    to_crash_materials(model, mesh, MM_T_S, rates_per_s=[10.0, 100.0]).apply(params)
+    params["materials"].append(
+        {"part_id": 5, "name": "elle", "density": 7850.0, "youngs_modulus": 210e9, "poisson_ratio": 0.3}
+    )
+    params.update({"output_dir": tmp_path / "job", "job_name": "hiz",
+                   "barrier": {"speed_m_s": 10.0, "angle_deg": 0.0,
+                               "wall": {"point": [0, 0, -1], "normal": [0, 0, 1]}}})
+    deck = OpenRadiossAdapter().build_input(params).path.read_text(encoding="utf-8")
+    assert "/FUNCT/103" in deck  # part 1: 3 eğri
+    assert f"{0.0:20.8g}{0.01:20.8g}{0.1:20.8g}" in deck  # ε̇ 1/ms

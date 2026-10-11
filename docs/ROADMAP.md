@@ -1417,6 +1417,9 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   çevrilmez.
 - 1.21c-2 ✅ *MAT_001 → LAW1; *MAT_020 → /RBODY (part) + LAW1, CMO=1
   CON1/CON2 → ana düğüm /BCS (CMO=-1 yerel çevrilmez). Diğer kanunlar ayrı.
+- 1.21c-3 ✅ Hız etkisi: mühendis ε̇ listesi (1/s) verirse *MAT_024 C/P ya da
+  LCSR → LAW36 çok eğri (ε̇ = 0 statik + her hız); VP 0/1 → LAW36 VP. Liste
+  yoksa uyarı (hız etkisi yok).
 - 1.21d ✅ Temas (N2S → TYPE7, S2S → TYPE24, tek yüzey → TYPE7 öz; part /
   part kümesi), *BOUNDARY_SPC_NODE/SET → /BCS, *INITIAL_VELOCITY(_NODE/
   _GENERATION) → /INIVEL, *RIGIDWALL_PLANAR → /RWALL/PLANE, *LOAD_BODY → /GRAV,
