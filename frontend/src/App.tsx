@@ -86,6 +86,7 @@ import { useMlStudioStatus } from "./components/mlStudioStatus";
 import SurrogatePanel from "./components/SurrogatePanel";
 import CrashPanel from "./components/CrashPanel";
 import MaterialCrashCurves from "./components/MaterialCrashCurves";
+import { customMaterialSnMode, snControlsVisible } from "./lib/snVisibility";
 import {
   fetchCorpusMembership,
   type SurrogatePredictResult,
@@ -2187,7 +2188,7 @@ function App() {
         poisson_ratio: nu,
         yield_strength: fy,
         ultimate_strength: rm,
-        sn_mode: snEstimate ? "estimated" : "none",
+        sn_mode: customMaterialSnMode(snEstimate, analysisTab),
       });
       setMaterials((prev) => [...prev, mat].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedMaterialId(mat.id);
@@ -4430,6 +4431,7 @@ function App() {
                     {selectedMaterial.elongation.toFixed(0)} %
                   </p>
                 )}
+                {snControlsVisible(analysisTab) && (
                 <p>
                   <span>S-N</span>
                   {selectedMaterial.sn_curve &&
@@ -4446,6 +4448,7 @@ function App() {
                       )
                     : "yok"}
                 </p>
+                )}
               </div>
             )}
             {selectedMaterial && (
@@ -4536,6 +4539,7 @@ function App() {
             >
               {busyAction === "component" ? "Kaydediliyor…" : "Component güncelle"}
             </button>
+            {snControlsVisible(analysisTab) && (
             <button
               type="button"
               className="material-secondary-button"
@@ -4544,6 +4548,7 @@ function App() {
             >
               {busyAction === "sn-curve" ? "S-N…" : "Tahmini S-N üret"}
             </button>
+            )}
             {!canAssignMaterial && geometryId !== null && (
               <p className="material-assign-hint">
                 Mesh elemanına tıklayın. Face: o CAD yüzeyi. Attached: tüm parça.
@@ -4620,6 +4625,7 @@ function App() {
                   <input value={customRm} onChange={(e) => setCustomRm(e.target.value)} />
                 </label>
               </div>
+              {snControlsVisible(analysisTab) && (
               <label className="material-check">
                 <input
                   type="checkbox"
@@ -4628,6 +4634,7 @@ function App() {
                 />
                 Oluştururken tahmini S-N ekle
               </label>
+              )}
               <button
                 type="button"
                 className="material-secondary-button"
