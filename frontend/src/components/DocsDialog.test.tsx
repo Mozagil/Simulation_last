@@ -60,6 +60,29 @@ describe("Belgeler · PDF indir", () => {
     expect(html).toContain("OpenRadioss ↔ LS-DYNA tablosu");
     expect(html).toContain("page-break-inside: avoid");
     expect(html).toContain("/docs/crash/01-genel.jpg");
+    // gizli çerçevede tembel görsel hiç yüklenmez → yazdır hiç açılmazdı
+    expect(html).not.toContain('loading="lazy"');
+  });
+
+  it("yüklenmeyen görsel yazdırı kilitlemez — üst sınırdan sonra yazdır açılır", async () => {
+    vi.useFakeTimers();
+    try {
+      const { openDocsPdf } = await import("./DocsDialog");
+      const printSpy = vi.fn();
+      document.querySelectorAll("iframe").forEach((f) => f.remove()); // önceki testin çerçevesi
+      const obs = new MutationObserver(() => {
+        const f = document.querySelector("iframe");
+        if (f?.contentWindow) f.contentWindow.print = printSpy;
+      });
+      obs.observe(document.body, { childList: true });
+      expect(openDocsPdf()).toBe(true);
+      // jsdom görselleri yüklemez (onload hiç gelmez) — takılan görsel durumu
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(printSpy).toHaveBeenCalledTimes(1);
+      obs.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gizli çerçevede yazdır başlatılır (açılır pencere yok)", async () => {

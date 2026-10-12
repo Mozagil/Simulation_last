@@ -308,7 +308,12 @@ code, .docs-dyna, .docs-tpl { font-family: "IBM Plex Mono", Consolas, monospace;
 
 /** Baskı sayfasının tam HTML'i (arama süzgeci olmadan tüm belge). */
 export function buildDocsPdfHtml(origin: string, book: DocBook = CRASH_BOOK): string {
-  const html = renderToStaticMarkup(<DocsContent q="" onZoom={() => undefined} book={book} />);
+  // Baskı kopyasında tembel yükleme yok: görünmeyen çerçevede `loading="lazy"`
+  // görseller hiç yüklenmiyor, yazdır penceresi de hiç açılmıyordu.
+  const html = renderToStaticMarkup(<DocsContent q="" onZoom={() => undefined} book={book} />).replace(
+    / loading="lazy"/g,
+    "",
+  );
   const date = new Date().toLocaleDateString("tr-TR");
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8">
 <base href="${origin}/">
@@ -320,12 +325,18 @@ export function buildDocsPdfHtml(origin: string, book: DocBook = CRASH_BOOK): st
 <main class="docs-main">${html}</main></body></html>`;
 }
 
+/** Görsel/font bekleme üst sınırı; aşılırsa yazdır yine de açılır. */
+const PDF_WAIT_MS = 15_000;
+
 /** Tüm belgeyi gizli bir çerçevede hazırlar ve tarayıcının yazdır penceresini
  * açar — "PDF olarak kaydet" ile indirilir. Açılır pencere engelinden etkilenmez. */
 export function openDocsPdf(book: DocBook = CRASH_BOOK): boolean {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  // 0×0 / visibility:hidden çerçevede tarayıcı görselleri yüklemeyebiliyor —
+  // A4 boyutunda, ekran dışında ve saydam tutulur.
+  frame.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
   document.body.appendChild(frame);
   const w = frame.contentWindow;
   if (!w) {
@@ -337,14 +348,11 @@ export function openDocsPdf(book: DocBook = CRASH_BOOK): boolean {
   w.document.close();
   const ready = async () => {
     const imgs = Array.from(w.document.images);
-    await Promise.all(
+    const loaded = Promise.all(
       imgs.map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = () => r(null); }))),
-    );
-    try {
-      await w.document.fonts.ready;
-    } catch {
-      /* font yüklenemezse yedek font */
-    }
+    ).then(() => w.document.fonts.ready);
+    // Görsel/font takılırsa yazdır yine açılır (eksik görselle) — buton sessizce ölmez.
+    await Promise.race([loaded.catch(() => undefined), new Promise((r) => setTimeout(r, PDF_WAIT_MS))]);
     w.focus();
     w.print();
     // yazdır penceresi kapanınca çerçeveyi kaldır
