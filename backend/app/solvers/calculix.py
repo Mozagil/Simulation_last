@@ -19,6 +19,7 @@ from typing import Any
 
 import gmsh
 
+from app.composite.section_writer import write_composite_inp
 from app.mesh.gmsh_adapter import _gmsh_lock
 from app.solvers.base import (
     InputArtifact,
@@ -711,6 +712,7 @@ class CalculiXAdapter(SolverAdapter):
         - output_dir: Path
         - job_name: str
         - materials: list[{name, density, youngs_modulus, poisson_ratio, part_id}]
+        - composite_layup: dict|list — doluysa COMPOSITE kesit (3.8); yoksa izotrop
         - shell_thickness: float (dim=2)
         - bcs: list[dict]  fixed/cload/pressure/displacement/gravity/bearing
         - analysis_type: "static" (varsayılan) | "modal"
@@ -735,7 +737,7 @@ class CalculiXAdapter(SolverAdapter):
         mesh_block, nsets, elsets, face_weights = _mesh_to_inp_blocks(
             mesh_path, dimension, materials, shell_thickness
         )
-        mat_block = _materials_inp_block(materials, dimension, shell_thickness)
+        mat_block = _section_block(params, materials, dimension, shell_thickness)
         # model_bc_block: *BOUNDARY/*TRANSFORM (STEP DIŞINDA kalabilir).
         # step_bc_block: *CLOAD/*DLOAD (SADECE STEP İÇİNDE geçerli — gerçek
         # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
@@ -1402,6 +1404,19 @@ def _mesh_to_inp_blocks(
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
+
+
+def _section_block(
+    params: dict[str, Any],
+    materials: list[dict[str, Any]],
+    dimension: int,
+    shell_thickness: float,
+) -> str:
+    """composite_layup doluysa COMPOSITE; aksi halde izotrop *SHELL/*SOLID SECTION."""
+    layup = params.get("composite_layup")
+    if layup:
+        return write_composite_inp(layup)
+    return _materials_inp_block(materials, dimension, shell_thickness)
 
 
 def _materials_inp_block(

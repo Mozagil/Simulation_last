@@ -118,6 +118,11 @@ import {
 } from "./api/components";
 import ButtonGroup from "./components/ButtonGroup";
 import GeometryViewer from "./components/GeometryViewer";
+import CompositePlanPanel from "./components/composite/CompositePlanPanel";
+import CompositeMaterialsPanel from "./components/composite/CompositeMaterialsPanel";
+import CompositeLayupPanel from "./components/composite/CompositeLayupPanel";
+import CompositeRosettePanel from "./components/composite/CompositeRosettePanel";
+import type { FiberZero } from "./components/composite/CompositeRosettePanel";
 import HistoryFooter, { type CorpusRole } from "./components/HistoryFooter";
 import type { GeometryViewerHandle } from "./components/GeometryViewer";
 import {
@@ -167,6 +172,7 @@ const STEP_LABELS: Record<string, string> = {
   geometry: "Geometri",
   mesh: "Mesh",
   material: "Malzeme",
+  composite: "Kompozit",
   bc: "Sınır koşulları",
   modal: "Modal",
   results: "Sonuçlar",
@@ -315,12 +321,12 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  type WizardStep = "geometry" | "mesh" | "material" | "bc" | "modal" | "results";
+  type WizardStep = "geometry" | "mesh" | "material" | "composite" | "bc" | "modal" | "results";
   // Üst düzey analiz sekmesi — Durability (mevcut statik BC/sonuç akışı) ve
   // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
   // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
-  // sekmede de aynı).
-  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash">("durability");
+  // sekmede de aynı). KOMPOZIT (Faz 3) ayrı hazırlık bölümü; 3.0 iskelet.
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "composite">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -344,7 +350,9 @@ function App() {
       ? ["geometry", "mesh", "material", "modal", "results"]
       : analysisTab === "crash"
         ? ["geometry", "mesh", "material", "bc", "results"]
-        : ["geometry", "mesh", "material", "bc", "results"];
+        : analysisTab === "composite"
+          ? ["geometry", "mesh", "composite"]
+          : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
     stepOrder.find((s) => expandedSteps.has(s)) ?? stepOrder[0];
@@ -377,6 +385,7 @@ function App() {
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
+  const [fiberZero, setFiberZero] = useState<FiberZero | null>(null);
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
@@ -2942,7 +2951,14 @@ function App() {
             ◆
           </span>
           <span className="toolbar-title">
-            CALCULIX · DURABILITY{fileName ? ` / ${fileName}` : ""}
+            {analysisTab === "crash"
+              ? "OPENRADIOSS · CRASH"
+              : analysisTab === "modal"
+                ? "CALCULIX · MODAL"
+                : analysisTab === "composite"
+                  ? "CALCULIX · KOMPOZIT"
+                  : "CALCULIX · DURABILITY"}
+            {fileName ? ` / ${fileName}` : ""}
           </span>
         </div>
         <div className="toolbar-actions">
@@ -2966,6 +2982,7 @@ function App() {
             type="button"
             className="toolbar-run-button"
             disabled={
+              analysisTab === "composite" ||
               busyAction !== null ||
               geometryId === null ||
               meshResult === null ||
@@ -2973,9 +2990,11 @@ function App() {
             }
             onClick={() => void handleSolve()}
             title={
-              !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
-                ? "En az bir Fixed/Displacement/Sliding BC ekleyin — aksi halde rijit cisim hareketi oluşur"
-                : "Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
+              analysisTab === "composite"
+                ? "Kompozit koşu 3.9’da bağlanır"
+                : !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
+                  ? "En az bir Fixed/Displacement/Sliding BC ekleyin — aksi halde rijit cisim hareketi oluşur"
+                  : "Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
             }
           >
             ▶ {busyAction === "solve" || busyAction === "modal" ? "ÇALIŞIYOR…" : "RUN SIMULATION"}
@@ -3059,6 +3078,17 @@ function App() {
           <span className="analysis-tab-label">CRASH</span>
           <span className="analysis-tab-meta">OpenRadioss · dinamik</span>
         </button>
+        <button
+          type="button"
+          className={analysisTab === "composite" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => {
+            setAnalysisTab("composite");
+            setExpandedSteps(new Set(["composite"]));
+          }}
+        >
+          <span className="analysis-tab-label">KOMPOZIT</span>
+          <span className="analysis-tab-meta">CalculiX · Faz 3</span>
+        </button>
       <div className="step-tab-strip">
       <button
         type="button"
@@ -3074,6 +3104,7 @@ function App() {
       >
         2 · MESH
       </button>
+      {analysisTab !== "composite" && (
       <button
         type="button"
         className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
@@ -3081,6 +3112,16 @@ function App() {
       >
         3 · MATERIAL
       </button>
+      )}
+      {analysisTab === "composite" && (
+      <button
+        type="button"
+        className={expandedSteps.has("composite") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("composite")}
+      >
+        3 · KOMPOZIT
+      </button>
+      )}
       {analysisTab === "durability" && (
       <button
         type="button"
@@ -3117,7 +3158,7 @@ function App() {
         5 · SONUÇLAR
       </button>
       )}
-      {analysisTab !== "crash" && (
+      {analysisTab !== "crash" && analysisTab !== "composite" && (
       <button
         type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
@@ -3855,6 +3896,7 @@ function App() {
                   selectedIds={selection.ids}
                   onSelectionChange={handleSelectionChange}
                   crashMarkers={analysisTab === "crash" && showBcMarkers ? viewerCrashMarkers : null}
+                  fiberZero={analysisTab === "composite" ? fiberZero : null}
                   pickPointMode={analysisTab === "crash" && pickingPoint}
                   onPointPick={(p) => {
                     pointPickDoneRef.current?.(p);
@@ -4381,7 +4423,38 @@ function App() {
       </div>
       )}
 
-      {expandedSteps.has("material") && (
+      {analysisTab === "composite" && expandedSteps.has("composite") && (
+        <>
+          <CompositeMaterialsPanel />
+          <CompositeLayupPanel
+            geometryId={geometryId}
+            partIds={
+              meshResult?.dimension === 2 && uniquePartIdsFromPreview(meshPreview).length > 0
+                ? uniquePartIdsFromPreview(meshPreview)
+                : allCadPartIds.length > 0
+                  ? allCadPartIds
+                  : [0]
+            }
+            selectedPartId={selectedPartIds[0] ?? null}
+          />
+          <CompositeRosettePanel
+            geometryId={geometryId}
+            partIds={
+              meshResult?.dimension === 2 && uniquePartIdsFromPreview(meshPreview).length > 0
+                ? uniquePartIdsFromPreview(meshPreview)
+                : allCadPartIds.length > 0
+                  ? allCadPartIds
+                  : [0]
+            }
+            selectedPartId={selectedPartIds[0] ?? null}
+            selectedFaceIds={selection.mode === "surface" ? selection.ids : []}
+            onFiberZero={setFiberZero}
+          />
+          <CompositePlanPanel />
+        </>
+      )}
+
+      {expandedSteps.has("material") && analysisTab !== "composite" && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Malzeme</span>
         <h1>Malzeme</h1>

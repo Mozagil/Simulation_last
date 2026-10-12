@@ -256,23 +256,39 @@ class ResultSet:
 
 ## Kompozit modelleme
 
-Kompozit, kendi solver'ı olan ayrı bir faz değil — **CalculiX ve OpenRadioss adaptörlerinin
-üzerine eklenen bir modül**. İki solver de kompozit kabuk (shell) elemanlarını, katman
-(ply) kalınlığı/açısı/malzemesi tanımını destekliyor. Eksik olan kısım — katman bazlı hasar
-kriterleri (Tsai-Wu, Hashin, Puck) — solver çıktısından (katman bazlı gerilme) sonradan
-Python'da hesaplanır, solver'ın kendisinden beklenmez.
+Kompozit, kendi solver'ı olan ayrı bir faz değil — **CalculiX (Dalga 1) ve ileride
+OpenRadioss adaptörlerinin üzerine eklenen bir modül**. Yeni `SolverAdapter` yazılmaz;
+Code_Aster / Elmer eklenmez. `/solve` (durability) refaktör edilmez ve izotrop yola
+dokunulmaz. Koşu `POST /composite/solve` üzerinden mevcut `CalculiXAdapter` kullanır.
+
+UI, ANSYS ACP benzeri bir **hazırlık bölümü**dür (ANALİZ TİPİ → KOMPOZIT), beşinci
+analiz çözücüsü değil. Adımlar: Geometry (ortak) · Mesh (ortak, 2D shell) · Kompozit
+(ply, rozet, stackup, CLT) · BC (durability paneli, 3.9+) · Sonuçlar (katman + IRF).
+Araç mühendise karar vermez: ABD, katman gerilmesi, IRF sayıdır.
+
+Ply kütüphanesi metal `materials` tablosuna karışmaz (`composite_materials`: E1/E2/E3,
+G12/G13/G23, ν12/ν13/ν23, ρ, Xt/Xc/Yt/Yc/S12). Dizilim `composite_layups` (geometry +
+parça + `plies` JSON: `material_id`, `thickness_mm`, `angle_deg`; `plies[0]` alt).
+`GET/PUT /composite/layups` — bir parça için upsert; UI `CompositeLayupPanel`
+(açı / kalınlık / malzeme / sıra, ABD canlı). Rozet/OSS `composite_orientations`
+(paralel, 0° = dir0, hedef parça veya `face_ids`); viewport 0° oku.
+`/solve` dokunulmaz.
 
 - `backend/app/composite/layup.py`: klasik laminasyon teorisi (CLT) ile ABD matrisi ve
-  katman dizilimi tanımı — bu adım solver'a gitmeden önce, saf Python/numpy ile yapılır.
-- `backend/app/composite/section_writer.py`: CLT çıktısını CalculiX
-  (`*SHELL SECTION, COMPOSITE`) ya da OpenRadioss (`/PROP/TYPE11` gibi kompozit özellik
-  kartları) formatına yazar — solver adaptörünün `build_input` adımına eklenen bir katman.
-- `backend/app/composite/failure_criteria.py`: solver sonuç dosyasından katman bazlı
-  gerilme/gerinim okunduktan sonra Tsai-Wu/Hashin/Puck kriterlerini uygular, her katman
-  için güvenlik faktörü (margin of safety) üretir. Bu, `ResultSet.scalars` içine eklenir.
-- Durability (statik/yorulma) ve crash (darbe) senaryolarında kompozit parça analiz
-  edilebilir — solver hangisiyse (CalculiX/OpenRadioss) o adaptör kullanılır, kompozit
-  modülü ikisiyle de çalışacak şekilde solver-agnostik yazılır.
+  katman dizilimi tanımı — solver'a gitmeden önce, saf Python/numpy.
+- `POST /composite/clt`: katman listesi (E Pa, t mm, θ°; `plies[0]` alt) → ABD
+  (A N/mm, B N, D N·mm). DB yok. Kalıcı dizilim: `GET/PUT /composite/layups`.
+- `backend/app/composite/section_writer.py`: layup'ı CalculiX
+  (`*ELASTIC, TYPE=ENGINEERING CONSTANTS`, `*ORIENTATION`, `*SHELL SECTION, COMPOSITE`)
+  formatına yazar — `build_input` katmanı. `calculix.py` yalnız
+  `params["composite_layup"]` doluysa çağırır; izotrop `/solve` yolu aynı.
+  OpenRadioss kartları Dalga 2+.
+- `backend/app/composite/failure_criteria.py`: katman gerilmesinden sonra Tsai-Wu /
+  Hashin IRF (Puck Dalga 2+). `ResultSet.scalars` + ply alanı.
+- `calculix.py` yalnız `params["composite_layup"]` doluysa COMPOSITE kesit yazar;
+  aksi halde bugünkü izotrop `*SHELL SECTION` aynı kalır.
+- `POST /composite/solve`: mesh + `composite_layups` + BC → `CalculiXAdapter`;
+  kayıt `composite_runs`. Durability `POST /geometry/{id}/solve` dokunulmaz.
 
 ## CFD
 

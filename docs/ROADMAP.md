@@ -1465,19 +1465,62 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
   (mesh önizleme JSON deseni; gerekirse PyVista — onay).
 - 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
 
-## Faz 3 — Kompozit modelleme (CalculiX + OpenRadioss üzerine katman)
+## Faz 3 — Kompozit modelleme (CalculiX üzerine katman; Dalga 1)
 
-Ön koşul: Faz 0 ve Faz 1 tamamlanmış olmalı (sıra değişikliği 2026-10-07: CFD önce). **Bu faz yeni bir solver eklemez** —
-mevcut iki adaptörü genişletir.
+**Durum: BAŞLADI (kullanıcı onayı 2026-10-12)** — paralel dal `feature/phase3-composite`
+(`main`'den; mevcut CFD/crash işine dokunulmaz). **Yeni solver yok.** Code_Aster yok.
+Dalga 1 solver'ı CalculiX (`*SHELL SECTION, COMPOSITE`). `/solve` refaktör edilmez;
+koşu 3.9'da `POST /composite/solve` → `CalculiXAdapter`. Arayüz ACP Pre benzeri
+hazırlık bölümüdür (ANALİZ TİPİ → KOMPOZIT), beşinci çözücü değil.
 
-- [ ] CLT (klasik laminasyon teorisi) modülü: katman dizilimi → ABD matrisi (saf Python/numpy)
-- [ ] CalculiX için kompozit shell section export (`*SHELL SECTION, COMPOSITE`)
-- [ ] OpenRadioss için kompozit özellik kartı export (katman malzemesi/açısı/kalınlığı)
-- [ ] Katman bazlı gerilme okuma (solver sonuç dosyasından)
-- [ ] Hasar kriterleri: Tsai-Wu, Hashin, Puck — Python'da hesaplanıp `ResultSet.scalars`'a eklenir
-- [ ] Frontend: katman dizilimi girişi (açı/kalınlık/malzeme tablosu) + katman bazlı
-      güvenlik faktörü görselleştirmesi
-- [ ] Hem durability (statik/yorulma) hem crash senaryosunda kompozit parça testi
+**Kararlar (2026-10-12):** Dalga 1 = ortotrop ply, rozet, stackup, CLT, COMPOSITE
+kesit, Tsai-Wu/Hashin, katman sonuçları. Draping / sandwich / katmanlı solid /
+OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
+
+**Mikro-adımlar (her biri ayrı onay; bir adım bitince dur):**
+
+- 3.0 ✅ (2026-10-12) İskelet: KOMPOZIT sekmesi + `CompositePlanPanel` (plan/kararlar
+  veri); ROADMAP / ARCHITECTURE / CLAUDE.md. Test `CompositePlanPanel.test.tsx`.
+  Solver bağlı değil. Doğrulama: `localhost:5173` KOMPOZIT sekmesi.
+- 3.1 ✅ (2026-10-12) Ply malzemesi (backend): `composite_materials` + Alembic
+  (`c4d5e6f7a8b9`) + UD seed (tipik T300/epoxy, E-glass/epoxy — mill test değil)
+  + `GET/POST /composite/materials`. Test `test_composite_materials.py`.
+  Metal `/materials` ve `/solve` dokunulmaz.
+- 3.2 ✅ (2026-10-12) Ply kütüphanesi (UI): `CompositeMaterialsPanel` — liste +
+  kullanıcı tanımlı ortotrop form (9 sabit GPa + Xt/Xc/Yt/Yc/S12 MPa → Pa).
+  Test `CompositeMaterialsPanel.test.tsx`.
+- 3.3 ✅ (2026-10-12) CLT: `backend/app/composite/layup.py` — katman listesi →
+  ABD (A N/mm, B N, D N·mm; E Pa, t mm). [0/90/0] B=0, A11>A22; [±45]s
+  A11=A22, A16=0. Test `test_composite_layup.py`.
+- 3.4 ✅ (2026-10-12) CLT önizleme: `POST /composite/clt` (E Pa, t mm, θ°; DB yok)
+  + `CompositeCltPanel` ABD (A N/mm, B N, D N·mm; yorum yok).
+  Test `test_composite_clt.py`, `CompositeCltPanel.test.tsx`.
+- 3.5 ✅ (2026-10-12) Layup CRUD: `composite_layups` (geometry_id + part_id +
+  `plies` JSON, alt → üst). Alembic `d5e6f7a8b9c0`. `GET/PUT /composite/layups`.
+  Test `test_composite_layups.py`. UI 3.6.
+- 3.6 ✅ (2026-10-12) Layup tablosu (UI): `CompositeLayupPanel` — parça, açı /
+  kalınlık / malzeme / sıra (↑↓), `PUT /composite/layups`, ABD canlı
+  (`POST /composite/clt`). Test `CompositeLayupPanel.test.tsx`.
+- 3.7 ✅ (2026-10-12) Rozet + OSS: `composite_orientations` (paralel, dir0
+  varsayılan global X, OSS parça | seçili yüzey). Alembic `e6f7a8b9c0d1`.
+  `GET/PUT /composite/orientations`. `CompositeRosettePanel` + viewport 0° oku.
+  Test `test_composite_orientations.py`, `CompositeRosettePanel.test.tsx`.
+- 3.8 ✅ (2026-10-12) `section_writer`: `*ELASTIC, TYPE=ENGINEERING CONSTANTS`
+  + `*ORIENTATION` + `*SHELL SECTION, COMPOSITE`. `calculix.py` yalnız
+  `params["composite_layup"]` doluysa bu yolu kullanır; `/solve` aynı.
+  Test `test_composite_section_writer.py`.
+- 3.9 ✅ (2026-10-12) `POST /composite/solve`: mesh + layup + BC →
+  CalculiXAdapter (`composite_layup`); `composite_runs` (Alembic `f7a8b9c0d1e2`).
+  `GET /composite/runs`. `/solve` değişmez. Test `test_composite_solve.py`.
+- 3.10 V-P1: klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır).
+  `docs/COMPOSITE_VALIDATION.md`.
+- 3.11 Katman gerilmesi: `.frd` katman S → ply tensörü.
+- 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
+- 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
+- 3.14 Belgeler: Kompozit kitabı.
+
+**Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,
+katmanlı solid, üretim ply kesimi, Puck/LaRC, OpenRadioss `/PROP/STACK` + LAW25.
 
 ## Faz 4 — Surrogate modelin diğer analiz tiplerine yayılması
 

@@ -16,6 +16,8 @@ from app.api.geometry import router as geometry_router
 from app.api.health import router as health_router
 from app.api.components import router as components_router
 from app.api.materials import router as materials_router
+from app.api.composite import COMPOSITE_RUNS_DIR
+from app.api.composite import router as composite_router
 from app.api.dataset import router as dataset_router
 from app.api.solve import RUNS_DIR
 from app.api.solve import router as solve_router
@@ -67,6 +69,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(geometry_router)
 app.include_router(materials_router)
+app.include_router(composite_router)
 app.include_router(components_router)
 app.include_router(solve_router)
 app.include_router(dataset_router)
@@ -104,4 +107,10 @@ app.mount(
     "/files/crash",
     StaticFiles(directory=str(CRASH_DIR)),
     name="crash_files",
+)
+Path(COMPOSITE_RUNS_DIR).mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/files/composite_runs",
+    StaticFiles(directory=str(COMPOSITE_RUNS_DIR)),
+    name="composite_run_files",
 )

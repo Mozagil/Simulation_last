@@ -15,6 +15,7 @@ from app.db.session import DATABASE_URL  # noqa: E402
 from app.models.base import Base  # noqa: E402
 from app.models import geometry  # noqa: E402,F401
 from app.models import material  # noqa: E402,F401
+from app.models import composite  # noqa: E402,F401  (Faz 3 ply + layup)
 from app.models import component  # noqa: E402,F401
 from app.models import run  # noqa: E402,F401  (analiz geçmişi)
 from app.models import doe  # noqa: E402,F401  (0.5.4 DOE)

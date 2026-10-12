@@ -151,6 +151,8 @@ interface GeometryViewerProps {
   freeEdgeSegments?: { p0: number[]; p1: number[] }[] | null;
   /** Crash işaretleri: duvar düzlemi, hız oku, parça rol etiketleri. */
   crashMarkers?: CrashMarkers | null;
+  /** Kompozit paralel rozet: 0° yön oku (CAD orijin + dir0). */
+  fiberZero?: { origin: [number, number, number]; dir: [number, number, number] } | null;
   /** true iken model tıklaması seçim yapmaz, tıklanan CAD noktasını bildirir. */
   pickPointMode?: boolean;
   onPointPick?: (point: [number, number, number]) => void;
@@ -414,6 +416,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshQualityInvert = true,
   freeEdgeSegments = null,
   crashMarkers = null,
+  fiberZero = null,
   pickPointMode = false,
   onPointPick,
 }: GeometryViewerProps,
@@ -479,6 +482,9 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
   meshGrowRef.current = meshGrow;
   const crashMarkersRef = useRef(crashMarkers);
   crashMarkersRef.current = crashMarkers;
+  const fiberZeroRef = useRef(fiberZero);
+  fiberZeroRef.current = fiberZero;
+  const fiberZeroGroupRef = useRef<THREE.Group | null>(null);
   const pickPointModeRef = useRef(pickPointMode);
   pickPointModeRef.current = pickPointMode;
   const onPointPickRef = useRef(onPointPick);
@@ -694,6 +700,42 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     }
     refs.scene.add(group);
     crashMarkerGroupRef.current = group;
+  }
+
+  function applyFiberZero() {
+    const refs = sceneRefs.current;
+    const old = fiberZeroGroupRef.current;
+    if (old && refs.scene) {
+      refs.scene.remove(old);
+      old.traverse((o) => {
+        if (o instanceof THREE.Sprite) {
+          (o.material as THREE.SpriteMaterial).map?.dispose();
+          o.material.dispose();
+        }
+      });
+    }
+    fiberZeroGroupRef.current = null;
+    const m = fiberZeroRef.current;
+    if (!m || !refs.scene) return;
+    const d = new THREE.Vector3(...m.dir);
+    if (d.lengthSq() <= 0) return;
+    d.normalize();
+    const center = refs.modelCenter;
+    const L = refs.maxDim || 1;
+    const len = L * 0.28;
+    const origin = new THREE.Vector3(
+      m.origin[0] - center.x,
+      m.origin[1] - center.y,
+      m.origin[2] - center.z,
+    );
+    const group = new THREE.Group();
+    group.name = "fiber-zero";
+    group.add(new THREE.ArrowHelper(d, origin, len, 0x0d9488, len * 0.25, len * 0.12));
+    const tag = makeTextSprite("0°", "#0f766e", L * 0.07);
+    tag.position.copy(origin).add(d.clone().multiplyScalar(len * 0.5));
+    group.add(tag);
+    refs.scene.add(group);
+    fiberZeroGroupRef.current = group;
   }
 
   function clearOverlayMaps(refs: typeof sceneRefs.current) {
@@ -1288,6 +1330,11 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     applyCrashMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crashMarkersKey]);
+  const fiberZeroKey = JSON.stringify(fiberZero);
+  useEffect(() => {
+    applyFiberZero();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fiberZeroKey]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1932,6 +1979,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
         applyCadVisibility();
         applyCadOpacity();
         applyCrashMarkers();
+        applyFiberZero();
       },
       undefined,
       (error) => {

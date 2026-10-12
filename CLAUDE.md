@@ -36,11 +36,15 @@ viewport işaretleri + rol renkleri, 5 · Sonuçlar, geçmiş dock'u, yeni vaka
 penceresi) bitti. Tam ALE ayrı faz. Solver: OpenRadioss artık kapalı kaynak;
 donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 
-**Sıradaki: FAZ 2 — CFD / akış (OpenFOAM)** — sıra değişikliği 2026-10-07
-(kompozit Faz 3'e kaydı). Durum: **plan** (`docs/ROADMAP.md` Faz 2, 2.0–2.9);
-açık sorular yanıtlanıp kullanıcı onay vermeden kod yazılmaz. Durability
-(CalculiX `/solve`, modal, DOE, surrogate) ve crash yolları dokunulmaz; yeni
-CFD yolu eklenir. ML en sonda (2.9).
+**Sıradaki (main çizgisi): FAZ 2 — CFD / akış (OpenFOAM)** — sıra değişikliği
+2026-10-07 (kompozit Faz 3'e kaydı). Durum: **plan** (`docs/ROADMAP.md` Faz 2);
+açık sorular yanıtlanıp kullanıcı onay vermeden kod yazılmaz.
+
+**FAZ 3 — Kompozit PARALEL BAŞLADI (kullanıcı onayı 2026-10-12):** dal
+`feature/phase3-composite` (`main`'den). Bu dalda yalnız Faz 3 Dalga 1
+(CalculiX COMPOSITE katmanı, ACP Pre çekirdeği). Yeni solver yok. `/solve`
+dokunulmaz. Durability / crash / CFD yollarına dokunulmaz. Her mikro-adımda
+dur (`docs/ROADMAP.md` Faz 3, 3.0–3.14). `main`'e otomatik merge yok.
 
 **Operasyonel borç:** 200'lük durability kalite seti (ccx) ve 200 koşuluk
 crash DOE Codespace'te koşulacak.
