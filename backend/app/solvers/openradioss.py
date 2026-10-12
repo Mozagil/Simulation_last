@@ -286,6 +286,30 @@ def _i(value: int, width: int = 10) -> str:
     return f"{int(value):{width}d}"
 
 
+#: 1.22a — ham kart bloğunu deck'te ayırt eden yorum satırı.
+RAW_CARDS_MARKER = "# --- 1.22 ham kartlar (kullanıcı) ---"
+
+
+def _raw_card_lines(params: dict[str, Any]) -> list[str]:
+    """1.22a — kullanıcının yazdığı ham kartlar, /END'den önce aynen.
+
+    Yalnız satır sonu normalize edilir ve sondaki boş satırlar atılır; içerik
+    dokunulmaz (kolon hizası mühendisin). /BEGIN ve /END kabul edilmez: deck'i
+    erken bitirir ya da ikinci başlık açar.
+    """
+    text = str(params.get("raw_cards") or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return []
+    for no, line in enumerate(lines, start=1):
+        head = line.strip().upper()
+        if head == "/END" or head.startswith("/BEGIN"):
+            raise SolverError(f"Ham kart satır {no}: {line.strip()} kullanılamaz (deck başı/sonu adaptörde).")
+    return [RAW_CARDS_MARKER, *lines]
+
+
 def _crash_model(params: dict[str, Any]) -> CrashModelParams:
     raw = params.get("model")
     if raw is None:
@@ -1182,6 +1206,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             lines.append("".join(_i(v) for v in ids[i : i + 10]))
         th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
                         "names": [s.name for s in sections], "vars": th.sect.vars})
+    lines.extend(_raw_card_lines(params))
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu

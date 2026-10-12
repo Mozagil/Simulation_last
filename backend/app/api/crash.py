@@ -147,6 +147,11 @@ class CrashSolveRequest(BaseModel):
     blast_loads: list[CrashBlastLoadParams] = Field(
         default_factory=list, description="/LOAD/PBLAST ampirik patlama (K13, mayın)"
     )
+    raw_cards: str = Field(
+        default="",
+        max_length=200_000,
+        description="1.22a — OpenRadioss ham kartları (mesh düğüm/eleman ID'leriyle); /END'den önce aynen",
+    )
 
     @field_validator("scenario")
     @classmethod
@@ -394,6 +399,7 @@ def crash_solve(
                 "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
                 "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
                 "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+                "raw_cards": body.raw_cards,
                 "region_nodes": region_nodes,
             }
         )
@@ -455,6 +461,7 @@ def crash_solve(
         "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
         "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
         "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+        "raw_cards": body.raw_cards,
         "dimension": body.dimension,
         "solver_ran": False,
         "openradioss_available": or_ok,

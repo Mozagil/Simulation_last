@@ -32,6 +32,7 @@ REQUEST_KEYS = (
     "barrier", "model", "scenario", "parts", "contacts", "use_rigid_wall",
     "engine", "th", "sections", "t_end_ms", "dimension", "law36_curve_source",
     "added_masses", "rigid_bodies", "boundary_conditions", "imposed_velocities", "initial_velocities", "filters", "gravity", "pressure_loads", "sph_projectiles", "blast_loads",
+    "raw_cards",  # 1.22a — ham kartlar koşuyla saklanır (1.22f etiket)
 )
 
 
