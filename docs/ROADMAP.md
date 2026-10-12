@@ -1402,6 +1402,33 @@ ortalama kuvvet …) mühendisten.
   remesh (mesh üzerinden yüzey seçimi), "Mesh'i sil"; mesh sonrası CAD gizli.
 - 2D mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir (solid + orta yüzey).
 
+*1.22 — Crash ham kart editörü (kullanıcı kararı 2026-10-12) — PLAN, onay bekliyor*
+Kullanıcı BC / malzeme kartını popup metin editöründe, düğüm/eleman ID'leriyle
+OpenRadioss sözdiziminde yazar. Yalnız crash; kompozitten paralel, ayrı dal
+(`feature/crash-raw-cards`). Mod A (ek kart) önce; Mod B (üretilen kartı önizle +
+düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart → form) yok.
+- Dayanak: starter deck'teki düğüm/eleman ID'leri gmsh mesh ID'leriyle aynı
+  (`th_nodes` bugün de mesh düğüm kümesine karşı denetleniyor).
+- Mimari: metin üst katmanlarda opak string (`raw_cards`); yalnız
+  `solvers/openradioss.py` deck'e yazar. DB şeması değişmez (crash_runs params JSON).
+- Araç öneri yapmaz: doğrulama = starter'ın kendi hata satırları + ID çakışma
+  listesi, olduğu gibi gösterilir.
+- 1.22a ⏳ Backend: `raw_cards` parametresi → `_write_starter` metni `/END`'den
+  önce aynen ekler; boşsa deck bayt bayt aynı. Test: ekleme yeri + boş durum.
+- 1.22b ⏳ Backend: ID envanteri — üretilen deck'in kullandığı ID'ler (düğüm/eleman
+  aralığı, PART, MAT, PROP, GRNOD/GRSHEL, FUNCT, INTER, SECT) + kullanıcıya ayrılan
+  aralık (≥ 900000). Ham kart başlıklarındaki ID'ler üretilenlerle çakışırsa liste
+  olarak döner. Test: bilinen deck'te envanter + çakışma.
+- 1.22c ⏳ Backend: "Kontrol et" — yalnız starter koşusu (engine yok); starter
+  çıktısındaki ERROR/WARNING satırları aynen döner. Test: bozuk kartta hata satırı.
+- 1.22d ⏳ Frontend: popup editör (monospace, satır no, 10 karakterlik kolon
+  cetveli); 3 · Malzeme ve 4 · Crash'ten açılır, içerik ortak; viewport'ta seçili
+  düğüm/eleman ID'leri imlece eklenir. Koşu isteğine `raw_cards` eklenir.
+- 1.22e ⏳ Frontend: "Kontrol et" sonucu + ID envanteri/çakışma paneli editörde.
+- 1.22f ⏳ Ham kartlı koşu crash geçmişinde "ham kart" etiketli; ML korpusu
+  bunları varsayılan dışarıda bırakır (ham kart parametre değil, taranamaz).
+  `docs/crashDoc` + görseller aynı commit'te.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
