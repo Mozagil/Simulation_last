@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from app.solvers.crash_params import (
     CrashThParams,
 )
 from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
+from app.solvers.openradioss_ids import deck_inventory, raw_card_report
 from app.solvers.openradioss_progress import ParsedCrashProgress
 
 logger = logging.getLogger(__name__)
@@ -274,13 +276,14 @@ def _complete_crash_job(job_id: str) -> None:
         hub.update(job_id, state="failed", message=str(exc))
 
 
-@router.post("/solve")
-def crash_solve(
-    body: CrashSolveRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """3D (solid) ya da 2D (kabuk) mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
+def _starter_params(
+    body: CrashSolveRequest, db: Session
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """İstek + DB (mesh, malzeme, bileşen, bölge) → adaptör parametreleri.
+
+    /solve ve 1.22b ID envanteri aynı deck'i üretsin diye ortak; output_dir /
+    job_name çağırana kalır. Döner: (params, materials, law36_curve_source).
+    """
     if body.dimension not in (2, 3):
         raise HTTPException(
             status_code=400, detail="crash dimension=3 (solid) ya da dimension=2 (kabuk) ister."
@@ -365,44 +368,76 @@ def crash_solve(
 
         region_nodes = region_node_ids(mesh_path, groups)
 
+    params = {
+        "mesh_path": mesh_path,
+        "barrier": body.barrier.model_dump(),
+        "materials": materials,
+        "t_end_ms": body.t_end_ms,
+        "engine": body.engine.model_dump(),
+        "th": body.th.model_dump(),
+        "sections": [s.model_dump() for s in body.sections],
+        "th_nodes": body.th_nodes,
+        "title": (body.name or "crash")[:80],
+        "model": body.model.model_dump(),
+        "scenario": body.scenario,
+        "parts": [p.model_dump() for p in body.parts],
+        "contacts": [c.model_dump() for c in body.contacts],
+        "use_rigid_wall": body.use_rigid_wall,
+        "component_thickness": component_thickness,
+        "added_masses": [m.model_dump() for m in body.added_masses],
+        "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
+        "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
+        "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
+        "initial_velocities": [v.model_dump() for v in body.initial_velocities],
+        "filters": body.filters.model_dump(),
+        "gravity": body.gravity.model_dump() if body.gravity else None,
+        "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
+        "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
+        "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+        "raw_cards": body.raw_cards,
+        "region_nodes": region_nodes,
+    }
+    return params, materials, law36_curve_source
+
+
+@router.post("/raw-cards/inventory")
+def crash_raw_cards_inventory(
+    body: CrashSolveRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """1.22b — bu istekle üretilecek deck'in ID envanteri + ham kart çakışmaları.
+
+    Deck ham kartsız üretilir (geçici klasör, iş kaydı açılmaz); ham kartlar
+    ayrıca taranır. Yalnız veri: öneri yok.
+    """
+    params, _, _ = _starter_params(body, db)
+    params["raw_cards"] = ""
+    tmp = CRASH_DIR / "_inventory" / str(uuid.uuid4())
+    try:
+        try:
+            artifact = OpenRadiossAdapter().build_input({**params, "output_dir": tmp, "job_name": "crash"})
+        except SolverError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        generated = artifact.path.read_text(encoding="utf-8")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {**deck_inventory(generated), **raw_card_report(generated, body.raw_cards)}
+
+
+@router.post("/solve")
+def crash_solve(
+    body: CrashSolveRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """3D (solid) ya da 2D (kabuk) mesh + bariyer → OpenRadioss .rad; isteğe bağlı solver."""
+    params, materials, law36_curve_source = _starter_params(body, db)
+
     job_id = str(uuid.uuid4())
     work_dir = _job_dir(job_id)
     work_dir.mkdir(parents=True, exist_ok=True)
     adapter = OpenRadiossAdapter()
     try:
-        artifact = adapter.build_input(
-            {
-                "output_dir": work_dir,
-                "job_name": "crash",
-                "mesh_path": mesh_path,
-                "barrier": body.barrier.model_dump(),
-                "materials": materials,
-                "t_end_ms": body.t_end_ms,
-                "engine": body.engine.model_dump(),
-                "th": body.th.model_dump(),
-                "sections": [s.model_dump() for s in body.sections],
-                "th_nodes": body.th_nodes,
-                "title": (body.name or "crash")[:80],
-                "model": body.model.model_dump(),
-                "scenario": body.scenario,
-                "parts": [p.model_dump() for p in body.parts],
-                "contacts": [c.model_dump() for c in body.contacts],
-                "use_rigid_wall": body.use_rigid_wall,
-                "component_thickness": component_thickness,
-                "added_masses": [m.model_dump() for m in body.added_masses],
-                "rigid_bodies": [r.model_dump() for r in body.rigid_bodies],
-                "boundary_conditions": [b.model_dump() for b in body.boundary_conditions],
-                "imposed_velocities": [v.model_dump() for v in body.imposed_velocities],
-                "initial_velocities": [v.model_dump() for v in body.initial_velocities],
-                "filters": body.filters.model_dump(),
-                "gravity": body.gravity.model_dump() if body.gravity else None,
-                "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
-                "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
-                "blast_loads": [bl.model_dump() for bl in body.blast_loads],
-                "raw_cards": body.raw_cards,
-                "region_nodes": region_nodes,
-            }
-        )
+        artifact = adapter.build_input({**params, "output_dir": work_dir, "job_name": "crash"})
     except SolverError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

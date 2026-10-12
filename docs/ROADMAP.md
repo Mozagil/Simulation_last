@@ -1417,10 +1417,14 @@ düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart →
   önce aynen ekler (yorum işaretiyle; `/BEGIN`, `/END` reddedilir; ≤ 200 kB);
   boşsa deck bayt bayt aynı; `crash_runs.request` içinde saklanır.
   Test: `test_crash_raw_cards.py`.
-- 1.22b ⏳ Backend: ID envanteri — üretilen deck'in kullandığı ID'ler (düğüm/eleman
-  aralığı, PART, MAT, PROP, GRNOD/GRSHEL, FUNCT, INTER, SECT) + kullanıcıya ayrılan
-  aralık (≥ 900000, kullanıcı onayı). Ham kart başlıklarındaki ID'ler üretilenlerle çakışırsa liste
-  olarak döner. Test: bilinen deck'te envanter + çakışma.
+- 1.22b ✅ Backend: ID envanteri — `POST /crash/raw-cards/inventory` (gövde =
+  /crash/solve isteği; deck ham kartsız, geçici klasörde üretilir, iş kaydı yok).
+  Döner: düğüm/eleman sayı + aralık, ad alanı başına ID'ler (MAT, PROP, PART,
+  FUNCT, INTER, BCS, …; /GR*·/SURF·/LINE tek `GRUP` ad alanı — temkinli),
+  kullanıcı aralığı (≥ 900000, kullanıcı onayı); ham kart için `collisions`
+  (üretilenle), `duplicates` (kendi içinde), `below_user_range`. /solve ile aynı
+  parametreler `_starter_params` yardımcısında (davranış aynı).
+  Modül `solvers/openradioss_ids.py`. Test: `test_crash_raw_card_ids.py`.
 - 1.22c ⏳ Backend: "Kontrol et" — yalnız starter koşusu (engine yok); starter
   çıktısındaki ERROR/WARNING satırları aynen döner. Test: bozuk kartta hata satırı.
 - 1.22d ⏳ Frontend: popup editör (monospace, satır no, 10 karakterlik kolon
