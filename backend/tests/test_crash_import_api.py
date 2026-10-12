@@ -35,6 +35,9 @@ def test_import_report_and_saved_params(tmp_path: Path, monkeypatch) -> None:
     saved = tmp_path / rep["import_id"] / "import.json"
     assert saved.is_file()
     assert client.get(f"/crash/import/dyna/{rep['import_id']}").json() == rep
+    prev = client.get(f"/crash/import/dyna/{rep['import_id']}/preview").json()
+    assert prev["part_faces"] == {"1": 1, "2": 1}
+    assert prev["bbox_mm"]["max"] == [100.0, 100.0, 50.0]
 
 
 def test_bad_input_is_422_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
@@ -53,3 +56,4 @@ def test_bad_input_is_422_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
     )
     assert r.status_code == 422 and "pozitif" in r.json()["detail"]
     assert client.get("/crash/import/dyna/../../etc").status_code == 404
+    assert client.get(f"/crash/import/dyna/{'0' * 32}/preview").status_code == 404

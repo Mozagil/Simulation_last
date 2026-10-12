@@ -1429,8 +1429,14 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
 - 1.21e-1 ✅ `POST /crash/import/dyna` (ana dosya + *INCLUDE dosyaları, birim
   çarpanları, ε̇ listesi) → çeviri raporu; parametreler
   `uploads/crash_import/{id}/import.json`. Koşu başlatmaz.
-- 1.21e-2 Crash arayüzü: "İçe aktar" + çeviri raporu (uyarı / atlananlar üstte,
-  okundu onayı) + çözüme bağlama (ayrı karar).
+- 1.21e-2 Kullanıcı kararı (2026-10-12): crash panelinin üstünde ayrı
+  "İçe aktar" düğmesi; içe aktarılan model koşulabilir (şema değişikliği).
+  - 2a ✅ `GET /crash/import/dyna/{id}/preview`: dış yüzey (kabuk + katı dış
+    yüzleri, mm) + yüz başına PID — three.js önizlemesi için.
+  - 2b `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic migration).
+  - 2c Koşu: import.json parametreleriyle adaptör → OpenRadioss.
+  - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
+    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)

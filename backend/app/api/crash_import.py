@@ -23,6 +23,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from app.importers.dyna_k import SUPPORTED_SUFFIXES, DynaParseError, read_keyword_file
 from app.importers.dyna_material import DynaMaterialError, DynaUnits, to_crash_materials
 from app.importers.dyna_mesh import DynaMeshError, to_crash_mesh
+from app.importers.dyna_preview import surface_preview
 from app.importers.dyna_setup import to_crash_setup
 
 router = APIRouter(prefix="/crash/import", tags=["crash"])
@@ -108,12 +109,22 @@ async def import_dyna(
     return report
 
 
-@router.get("/dyna/{import_id}")
-def get_import(import_id: str) -> dict[str, Any]:
-    """Kayıtlı çeviri raporu (parametreler hariç; ağ boyutu büyük olabilir)."""
+def _load(import_id: str) -> dict[str, Any]:
     if len(import_id) != 32 or not all(c in "0123456789abcdef" for c in import_id):
         raise HTTPException(status_code=404, detail="İçe aktarma bulunamadı.")
     path = IMPORT_DIR / import_id / "import.json"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="İçe aktarma bulunamadı.")
-    return json.loads(path.read_text(encoding="utf-8"))["report"]
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.get("/dyna/{import_id}")
+def get_import(import_id: str) -> dict[str, Any]:
+    """Kayıtlı çeviri raporu (parametreler hariç; ağ boyutu büyük olabilir)."""
+    return _load(import_id)["report"]
+
+
+@router.get("/dyna/{import_id}/preview")
+def get_preview(import_id: str) -> dict[str, Any]:
+    """1.21e-2a — viewport önizlemesi: dış yüzey (mm) + yüz başına PID."""
+    return surface_preview(_load(import_id)["params"])
