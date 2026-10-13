@@ -562,8 +562,19 @@ export async function putValidationThresholds(t: CrashValidationThresholds): Pro
   });
 }
 
+// Aynı koşu için eşzamanlı istekler tek isteği paylaşır: ilk açılışta sunucu animasyonu
+// dönüştürürken (dev'de StrictMode efekti iki kez çalıştırır) iki istek aynı anim.json'u
+// üretip yarım dosya okuyabiliyordu (kullanıcı 2026-10-13, Codespace).
+const animInflight = new Map<number, Promise<CrashAnimation>>();
+
 export async function fetchCrashAnimation(runId: number): Promise<CrashAnimation> {
-  return getJson<CrashAnimation>(`${API_BASE_URL}/crash/runs/${runId}/animation`);
+  const pending = animInflight.get(runId);
+  if (pending) return pending;
+  const p = getJson<CrashAnimation>(`${API_BASE_URL}/crash/runs/${runId}/animation`).finally(() =>
+    animInflight.delete(runId),
+  );
+  animInflight.set(runId, p);
+  return p;
 }
 
 export async function compareCrashRuns(ids: number[]): Promise<CrashRunCompared[]> {
