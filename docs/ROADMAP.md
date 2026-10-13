@@ -1402,6 +1402,42 @@ ortalama kuvvet …) mühendisten.
   remesh (mesh üzerinden yüzey seçimi), "Mesh'i sil"; mesh sonrası CAD gizli.
 - 2D mesh parça no ↔ CAD parça no yüzey üzerinden eşlenir (solid + orta yüzey).
 
+*1.21 — LS-DYNA keyword (.k / .dyn) içe aktarma (kullanıcı kararı 2026-10-11)*
+Kendi çeviricimiz; yalnız okuma → OpenRadioss kartları, keyword yazma yok,
+arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
+- 1.21a ✅ Parser `app/importers/dyna_k.py`: .k/.dyn → ara model (*NODE,
+  *ELEMENT_SHELL/SOLID, *PART, *SECTION_SHELL/SOLID; sabit genişlik, virgüllü,
+  uzun format, *INCLUDE); bilinmeyen keyword'ler sayılıp raporlanır.
+- 1.21b ✅ Ara model → adaptör mesh parametreleri (`importers/dyna_mesh.py`;
+  kartları mevcut starter yazıcısı üretir, /PART/<PID> korunur, uzunluk
+  çarpanı dosya → mm mühendisten).
+- 1.21c ✅ *MAT_024 (+ *DEFINE_CURVE) → LAW36 (eğri / EPS-ES) ya da LAW2
+  (SIGY + ETAN birebir); FAIL → EPS_p_max; birim çarpanları (uzunluk, kütle,
+  zaman) mühendisten (`importers/dyna_material.py`). C/P, LCSR, tablo uyarıyla
+  çevrilmez.
+- 1.21c-2 ✅ *MAT_001 → LAW1; *MAT_020 → /RBODY (part) + LAW1, CMO=1
+  CON1/CON2 → ana düğüm /BCS (CMO=-1 yerel çevrilmez). Diğer kanunlar ayrı.
+- 1.21c-3 ✅ Hız etkisi: mühendis ε̇ listesi (1/s) verirse *MAT_024 C/P ya da
+  LCSR → LAW36 çok eğri (ε̇ = 0 statik + her hız); VP 0/1 → LAW36 VP. Liste
+  yoksa uyarı (hız etkisi yok).
+- 1.21d ✅ Temas (N2S → TYPE7, S2S → TYPE24, tek yüzey → TYPE7 öz; part /
+  part kümesi), *BOUNDARY_SPC_NODE/SET → /BCS, *INITIAL_VELOCITY(_NODE/
+  _GENERATION) → /INIVEL, *RIGIDWALL_PLANAR → /RWALL/PLANE, *LOAD_BODY → /GRAV,
+  *CONTROL_TERMINATION → t_end (`importers/dyna_setup.py`). Adaptör
+  varsayılanları (bariyer hızı, orijin duvarı) kapatılır; yalnız dosyadaki
+  uygulanır. Çevrilmeyen her satır raporda nedeniyle.
+- 1.21e-1 ✅ `POST /crash/import/dyna` (ana dosya + *INCLUDE dosyaları, birim
+  çarpanları, ε̇ listesi) → çeviri raporu; parametreler
+  `uploads/crash_import/{id}/import.json`. Koşu başlatmaz.
+- 1.21e-2 Kullanıcı kararı (2026-10-12): crash panelinin üstünde ayrı
+  "İçe aktar" düğmesi; içe aktarılan model koşulabilir (şema değişikliği).
+  - 2a ✅ `GET /crash/import/dyna/{id}/preview`: dış yüzey (kabuk + katı dış
+    yüzleri, mm) + yüz başına PID — three.js önizlemesi için.
+  - 2b `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic migration).
+  - 2c Koşu: import.json parametreleriyle adaptör → OpenRadioss.
+  - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
+    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
