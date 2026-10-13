@@ -97,7 +97,7 @@ export default function CrashMaterialSection({
                   disabled={disabled}
                   onChange={(e) => choose(pid, e.target.value)}
                 >
-                  <option value="common">Varsayılan ({LAW_SHORT[matCard.law]})</option>
+                  <option value="common">Varsayılan</option>
                   <option value="elastic">{LAW_SHORT.elastic}</option>
                   <option value="plastic">{LAW_SHORT.plastic}</option>
                   <option value="tabulated">{LAW_SHORT.tabulated}</option>
@@ -115,9 +115,7 @@ export default function CrashMaterialSection({
       {partIds.length > 1 && <p className="crash-expert-title">Varsayılan model (kendi modeli seçilmeyen parçalar)</p>}
       {askAll && (
         <div className="crash-mat-ask" role="alertdialog" aria-label="Tüm parçalar">
-          <span>
-            Tüm parçalar {LAW_SHORT[askAll]} olsun mu? ({ownCount} parçanın kendi modeli var)
-          </span>
+          <span>Hepsi {LAW_SHORT[askAll]} olsun mu?</span>
           <button
             type="button"
             className="material-assign-button"
@@ -126,10 +124,10 @@ export default function CrashMaterialSection({
               setAskAll(null);
             }}
           >
-            Tamam
+            Evet
           </button>
           <button type="button" className="material-secondary-button" onClick={() => setAskAll(null)}>
-            Hayır, yalnız varsayılan
+            Hayır
           </button>
         </div>
       )}
