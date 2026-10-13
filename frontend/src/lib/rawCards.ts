@@ -57,3 +57,26 @@ export function rawCardLineCount(text: string): number {
   const trimmed = text.replace(/\s+$/, "");
   return trimmed ? trimmed.split("\n").length : 0;
 }
+
+/**
+ * Viewport seçimlerini OpenRadioss deck numaralarına çevirir (1.22).
+ * Düğüm: CalculiX no (`node_ids`) → Gmsh tag (`node_tags`); eski önizlemede
+ * tag yoksa CalculiX no'su olduğu gibi. Eleman: önizleme id'si → Gmsh tag
+ * (`element_tags`); yoksa eleman eklenemez (boş liste).
+ */
+export function deckIdsFromPicks(
+  preview: { node_ids?: number[]; node_tags?: number[]; element_tags?: number[] } | null,
+  nodePicks: number[],
+  elementPicks: number[],
+): { nodes: number[]; elements: number[] } {
+  const tagOf = new Map<number, number>();
+  const ccx = preview?.node_ids;
+  const tags = preview?.node_tags;
+  if (tags) tags.forEach((t, i) => tagOf.set(ccx?.[i] ?? i + 1, t));
+  const nodes = nodePicks.map((id) => tagOf.get(id) ?? id);
+  const etags = preview?.element_tags;
+  const elements = etags
+    ? [...new Set(elementPicks)].filter((e) => e >= 0 && e < etags.length).map((e) => etags[e])
+    : [];
+  return { nodes, elements };
+}

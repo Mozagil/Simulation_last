@@ -77,11 +77,11 @@ describe("CrashModelPanel", () => {
     expect(Array.from(source.options).map((o) => o.value)).toEqual(["", "3"]);
     fireEvent.change(source, { target: { value: "3" } });
     await waitFor(() =>
-      expect(fetchCrashCorpus).toHaveBeenLastCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3 }),
+      expect(fetchCrashCorpus).toHaveBeenLastCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3, include_raw_cards: false }),
     );
     expect(await screen.findByText("geom.wall")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Eğit · 5-fold CV" }));
-    await waitFor(() => expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3 }));
+    await waitFor(() => expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3, include_raw_cards: false }));
     expect(await screen.findByText("0.931")).toBeInTheDocument();
     expect(screen.getByText("3.4%")).toBeInTheDocument();
     expect(screen.getByText("en az 8 dolu satır gerekir")).toBeInTheDocument();
@@ -91,7 +91,22 @@ describe("CrashModelPanel", () => {
     render(<CrashModelPanel />);
     fireEvent.click(await screen.findByRole("button", { name: "plate_ball" }));
     await waitFor(() =>
-      expect(fetchCrashCorpus).toHaveBeenLastCalledWith({ template_id: "plate_ball_shell", scenario: "plate_ball", study_id: null }),
+      expect(fetchCrashCorpus).toHaveBeenLastCalledWith({ template_id: "plate_ball_shell", scenario: "plate_ball", study_id: null, include_raw_cards: false }),
+    );
+  });
+
+  it("1.22f: ham kartlı koşular anahtarla korpusa ve eğitime girer; düşen sayısı görünür", async () => {
+    vi.mocked(fetchCrashCorpus).mockResolvedValue({ ...CORPUS, dropped: { raw_cards: 2 } });
+    vi.mocked(trainCrashModel).mockResolvedValue(MODEL);
+    render(<CrashModelPanel />);
+    expect(await screen.findByText("düşen · raw_cards: 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Ham kartlı koşuları dahil et"));
+    await waitFor(() =>
+      expect(fetchCrashCorpus).toHaveBeenLastCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: null, include_raw_cards: true }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Eğit · 5-fold CV" }));
+    await waitFor(() =>
+      expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: null, include_raw_cards: true }),
     );
   });
 });

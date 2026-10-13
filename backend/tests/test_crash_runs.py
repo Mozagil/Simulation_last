@@ -155,3 +155,18 @@ def test_reprocess_keeps_previous_scalars(tmp_path):
         assert mod.reprocess(db, tmp_path, apply=True)["unchanged"] == 1  # ikinci kez değişmez
     finally:
         db.close()
+
+
+@requires_db
+def test_summary_flags_raw_card_runs():
+    """1.22f: ham kartla üretilen koşu listede `has_raw_cards`."""
+    gid = _upload_and_mesh_box()
+    plain = _solve(gid, "duz")["run_id"]
+    r = client.post(
+        "/crash/solve",
+        json={"geometry_id": gid, "barrier": _barrier(), "name": "ham", "model": {"law": "elastic"},
+              "raw_cards": "/GRNOD/NODE/900001\nham\n         1\n"},
+    )
+    assert r.status_code == 200, r.text
+    flags = {x["id"]: x["has_raw_cards"] for x in client.get("/crash/runs", params={"geometry_id": gid}).json()["runs"]}
+    assert flags == {plain: False, r.json()["run_id"]: True}

@@ -171,7 +171,14 @@ export default function CrashHistory({
                   onChange={() => setSelected((s) => (on ? s.filter((x) => x !== r.id) : [...s, r.id]))}
                 />
                 <span className="crash-run-main">
-                  <span className="crash-run-name">{label(r)}</span>
+                  <span className="crash-run-name">
+                    {label(r)}
+                    {r.has_raw_cards && (
+                      <span className="crash-run-tag" title="Ham kartla üretildi; ML korpusu varsayılan almaz">
+                        ham kart
+                      </span>
+                    )}
+                  </span>
                   <span className="crash-run-meta">
                     #{r.id} · {when(r.created_at)}
                     {geometryId == null ? ` · geo ${r.geometry_id}` : ""} ·{" "}

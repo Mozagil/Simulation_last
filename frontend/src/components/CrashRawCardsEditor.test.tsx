@@ -42,10 +42,29 @@ describe("CrashRawCardsEditor", () => {
     expect(value()).toBe("/GRNOD/NODE/900001\n       101       102\n");
   });
 
+  it("eleman düğmesi seçili eleman no'larını yazar", () => {
+    function H() {
+      const [v, setV] = useState("/GRBRIC/BRIC/900002");
+      return (
+        <>
+          <CrashRawCardsEditor value={v} onChange={setV} onClose={() => {}} elementPicks={[1503, 1504]} />
+          <output data-testid="value">{JSON.stringify(v)}</output>
+        </>
+      );
+    }
+    render(<H />);
+    expect(screen.getByTestId("raw-cards-elem-count")).toHaveTextContent("2");
+    const el = area();
+    el.setSelectionRange(el.value.length, el.value.length);
+    fireEvent.click(screen.getByRole("button", { name: "Eleman ID'lerini imlece ekle" }));
+    expect(value()).toBe("/GRBRIC/BRIC/900002\n      1503      1504\n");
+  });
+
   it("seçim yoksa ekleme pasif; Esc ve × kapatır", () => {
     const onClose = vi.fn();
     render(<Harness onClose={onClose} />);
     expect(screen.getByRole("button", { name: "Düğüm ID'lerini imlece ekle" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Eleman ID'lerini imlece ekle" })).toBeDisabled();
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Kapat" }));
     expect(onClose).toHaveBeenCalledTimes(2);

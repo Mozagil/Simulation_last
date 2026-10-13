@@ -156,3 +156,50 @@ def test_build_input_accepts_mesh_path(tmp_path):
     assert "/TETRA4/1\n" in text
     assert "/NODE" in text
     assert "-1000" in text
+
+
+def test_element_ids_are_gmsh_tags(tmp_path):
+    """1.22: deck eleman no'su = Gmsh eleman tag'i (1'den yeniden numaralama yok)."""
+    msh = tmp_path / "tagged.msh"
+    nodes = [(1, 0.0, 0.0, 0.0), (2, 1.0, 0.0, 0.0), (3, 0.0, 1.0, 0.0), (4, 0.0, 0.0, 1.0)]
+    _write_msh(msh, nodes, ["57 4 2 0 1 1 2 3 4"])
+    out = gmsh_msh_to_radioss(msh)
+    assert out.tets[0][0] == 57 and out.element_parts == {57: 0}
+
+    shell = tmp_path / "tagged_shell.msh"
+    _write_msh(shell, nodes[:3], ["42 2 2 0 1 1 2 3"])
+    assert gmsh_msh_to_radioss(shell).sh3n == [(42, 1, 2, 3)]
+
+
+def test_preview_element_and_node_tags_match_export(tmp_path):
+    """Viewport eleman/düğüm seçimi (önizleme `element_tags` / `node_tags`) deck no'larıyla aynı."""
+    import gmsh
+
+    from app.mesh.gmsh_adapter import _extract_mesh_wireframe_preview, _gmsh_lock
+
+    step = tmp_path / "box.step"
+    step.write_bytes(BOX_STEP.read_bytes())
+    adapter = GmshMesherAdapter()
+    mesh = adapter.generate_mesh(adapter.import_geometry(step), MeshParams(element_size=5.0, dimension=3))
+    out = gmsh_msh_to_radioss(mesh.mesh_path)
+
+    with _gmsh_lock:
+        gmsh.initialize(interruptible=False)
+        try:
+            gmsh.option.setNumber("General.Terminal", 0)
+            gmsh.open(str(mesh.mesh_path))
+            preview = _extract_mesh_wireframe_preview(3)
+        finally:
+            gmsh.finalize()
+
+    deck_eids = {t[0] for t in out.tets}
+    tags = preview["element_tags"]
+    assert len(tags) == len(out.tets)
+    assert set(tags) == deck_eids
+    # Yüzey üçgeninin elemanı deck'teki aynı tet: düğümleri o tet'in köşeleri.
+    tet_by_id = {t[0]: set(t[1:]) for t in out.tets}
+    node_tags = preview["node_tags"]
+    faces = preview["faces"]
+    for tri, el in enumerate(preview["triangle_to_element"][:50]):
+        corners = {node_tags[faces[tri * 3 + k]] for k in range(3)}
+        assert corners <= tet_by_id[tags[el]]

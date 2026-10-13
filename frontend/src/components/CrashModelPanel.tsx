@@ -36,6 +36,8 @@ export default function CrashModelPanel() {
   const [scenario, setScenario] = useState("rigid_wall");
   const [studies, setStudies] = useState<CrashDoeStudyInfo[]>([]);
   const [studyId, setStudyId] = useState<number | null>(null);
+  // 1.22f: ham kartlı koşular varsayılan dışarıda (ham kart taranamaz; parametre değil).
+  const [includeRaw, setIncludeRaw] = useState(false);
   const [corpus, setCorpus] = useState<CrashCorpusSummary | null>(null);
   const [model, setModel] = useState<CrashModelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,7 +61,7 @@ export default function CrashModelPanel() {
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    fetchCrashCorpus({ template_id: templateId, scenario, study_id: studyId })
+    fetchCrashCorpus({ template_id: templateId, scenario, study_id: studyId, include_raw_cards: includeRaw })
       .then((c) => !cancelled && setCorpus(c))
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : "Korpus alınamadı."));
     fetchCrashModels()
@@ -70,7 +72,7 @@ export default function CrashModelPanel() {
     return () => {
       cancelled = true;
     };
-  }, [templateId, scenario, studyId]);
+  }, [templateId, scenario, studyId, includeRaw]);
 
   function selectTemplate(tid: string) {
     setTemplateId(tid);
@@ -82,7 +84,9 @@ export default function CrashModelPanel() {
     setBusy(true);
     setError(null);
     try {
-      setModel(await trainCrashModel({ template_id: templateId, scenario, study_id: studyId }));
+      setModel(
+        await trainCrashModel({ template_id: templateId, scenario, study_id: studyId, include_raw_cards: includeRaw }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Eğitim başarısız.");
     } finally {
@@ -140,6 +144,14 @@ export default function CrashModelPanel() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="crash-ml-check">
+            <input
+              type="checkbox"
+              checked={includeRaw}
+              onChange={(e) => setIncludeRaw(e.target.checked)}
+            />
+            Ham kartlı koşuları dahil et
           </label>
         </div>
 

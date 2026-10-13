@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { EdgeInfo, MeshPreviewData, PointInfo, ResultsPreviewData } from "../api/geometry";
+import { setNodeCloudBounds } from "../lib/nodeCloud";
 import type {
   MeshGrowMode,
   MeshPickInfo,
@@ -1299,6 +1300,7 @@ const GeometryViewer = forwardRef<GeometryViewerHandle, GeometryViewerProps>(fun
     }
     posAttr.needsUpdate = true;
     attr.needsUpdate = true;
+    if (basePos) setNodeCloudBounds(pts.geometry, basePos);
   }
 
   function applyMeshWireframe(wire: boolean) {

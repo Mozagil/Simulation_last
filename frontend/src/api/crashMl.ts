@@ -90,12 +90,15 @@ export interface CrashCorpusQuery {
   template_id: string;
   scenario: string;
   study_id?: number | null;
+  /** 1.22f: ham kartlı koşular da korpusa girsin (varsayılan hayır). */
+  include_raw_cards?: boolean;
 }
 
 export interface CrashCorpusSummary {
   template_id: string;
   scenario: string;
   study_id: number | null;
+  include_raw_cards?: boolean;
   n_runs: number;
   features: string[];
   constant_features: Record<string, number>;

@@ -94,7 +94,9 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
         tets: list[tuple[int, int, int, int, int]] = []
         bricks: list[tuple[int, ...]] = []
         element_parts: dict[int, int] = {}
-        eid = 1
+        # Eleman no = Gmsh eleman tag'i (1.22): viewport'ta seçilen eleman
+        # (`element_tags` önizlemede) deck'teki numarayla aynı olsun diye.
+        # Tag'ler tüm boyutlarda tekil; ardışık olmaları gerekmiyor.
 
         entities = gmsh.model.getEntities(dim=3)
         if not entities:
@@ -110,7 +112,8 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                 if n_per == 0 or len(tags) == 0:
                     continue
                 gtype = int(etype)
-                for ei, _etag_i in enumerate(tags):
+                for ei, etag_i in enumerate(tags):
+                    eid = int(etag_i)
                     conn = [int(enodes[ei * n_per + k]) for k in range(n_per)]
                     if gtype in (_TET4, _TET10) and len(conn) >= 4:
                         n1, n2, n3, n4 = conn[0], conn[1], conn[2], conn[3]
@@ -119,11 +122,9 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                             n3, n4 = n4, n3
                         tets.append((eid, n1, n2, n3, n4))
                         element_parts[eid] = part_index
-                        eid += 1
                     elif gtype in (_HEX8, _HEX20) and len(conn) >= 8:
                         bricks.append((eid, *conn[:8]))
                         element_parts[eid] = part_index
-                        eid += 1
 
         shells: list[tuple[int, int, int, int, int]] = []
         sh3n: list[tuple[int, int, int, int]] = []
@@ -140,6 +141,7 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                     n_per = len(enodes) // len(tags)
                     gtype = int(etype)
                     for ei in range(len(tags)):
+                        eid = int(tags[ei])
                         conn = [int(enodes[ei * n_per + k]) for k in range(n_per)]
                         if gtype in (_TRI3, _TRI6):
                             sh3n.append((eid, conn[0], conn[1], conn[2]))
@@ -148,7 +150,6 @@ def gmsh_msh_to_radioss(mesh_path: Path) -> RadiossMesh:
                         else:
                             continue
                         element_parts[eid] = pid
-                        eid += 1
     finally:
         gmsh.finalize()
         _gmsh_lock.release()

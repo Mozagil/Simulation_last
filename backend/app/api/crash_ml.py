@@ -26,6 +26,7 @@ class CorpusQuery(BaseModel):
     template_id: str
     scenario: str = "rigid_wall"
     study_id: int | None = Field(default=None, description="Yalnız bu crash DOE çalışmasının koşuları")
+    include_raw_cards: bool = Field(default=False, description="1.22f: ham kartlı koşular da korpusa girsin")
 
 
 class TrainRequest(CorpusQuery):
@@ -77,12 +78,16 @@ def list_targets() -> dict[str, Any]:
 
 @router.post("/corpus")
 def corpus_summary(q: CorpusQuery, db: Session = Depends(get_db)) -> dict[str, Any]:
-    return load_crash_corpus(db, q.template_id, q.scenario, study_id=q.study_id).summary()
+    return load_crash_corpus(
+        db, q.template_id, q.scenario, study_id=q.study_id, include_raw_cards=q.include_raw_cards
+    ).summary()
 
 
 @router.post("/train")
 def train(body: TrainRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
-    corpus = load_crash_corpus(db, body.template_id, body.scenario, study_id=body.study_id)
+    corpus = load_crash_corpus(
+        db, body.template_id, body.scenario, study_id=body.study_id, include_raw_cards=body.include_raw_cards
+    )
     try:
         bundle = surrogate.train_crash_surrogate(corpus, seed=body.seed, n_folds=body.n_folds)
         path = surrogate.save_crash_model(bundle)

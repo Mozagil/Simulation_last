@@ -1261,6 +1261,9 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
     triangle_to_part: list[int] = []
     triangle_to_face: list[int] = []
     triangle_to_element: list[int] = []
+    # Önizleme eleman id'si (triangle_to_element) → Gmsh eleman tag'i
+    # (= OpenRadioss deck eleman no'su, `openradioss_export`).
+    element_tags: list[int] = []
     next_element_id = 0
     edge_set: set[tuple[int, int]] = set()
 
@@ -1279,23 +1282,25 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
         triangle_to_element.append(element_id)
 
     def _add_triangle_element(
-        i0: int, i1: int, i2: int, part_id: int, face_id: int
+        i0: int, i1: int, i2: int, part_id: int, face_id: int, gmsh_tag: int
     ) -> None:
         nonlocal next_element_id
         eid = next_element_id
         next_element_id += 1
+        element_tags.append(gmsh_tag)
         _add_tri_face(i0, i1, i2, part_id, face_id, eid)
         _add_edge(i0, i1)
         _add_edge(i1, i2)
         _add_edge(i2, i0)
 
     def _add_quad_element(
-        i0: int, i1: int, i2: int, i3: int, part_id: int, face_id: int
+        i0: int, i1: int, i2: int, i3: int, part_id: int, face_id: int, gmsh_tag: int
     ) -> None:
         # Three.js Mesh üçgen ister → 2 üçgen; köşegen wireframe'e girmez
         nonlocal next_element_id
         eid = next_element_id
         next_element_id += 1
+        element_tags.append(gmsh_tag)
         _add_tri_face(i0, i1, i2, part_id, face_id, eid)
         _add_tri_face(i0, i2, i3, part_id, face_id, eid)
         _add_edge(i0, i1)
@@ -1316,14 +1321,14 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                     i0 = tag_to_idx[int(enodes[e * 3])]
                     i1 = tag_to_idx[int(enodes[e * 3 + 1])]
                     i2 = tag_to_idx[int(enodes[e * 3 + 2])]
-                    _add_triangle_element(i0, i1, i2, part_id, face_id)
+                    _add_triangle_element(i0, i1, i2, part_id, face_id, int(etags[e]))
             elif int(etype) == 3:
                 for e in range(n_elems):
                     i0 = tag_to_idx[int(enodes[e * 4])]
                     i1 = tag_to_idx[int(enodes[e * 4 + 1])]
                     i2 = tag_to_idx[int(enodes[e * 4 + 2])]
                     i3 = tag_to_idx[int(enodes[e * 4 + 3])]
-                    _add_quad_element(i0, i1, i2, i3, part_id, face_id)
+                    _add_quad_element(i0, i1, i2, i3, part_id, face_id, int(etags[e]))
 
     # 2. mertebe (kenar-ortası) düğüm indeksleri. Gmsh sıralamasında tet10'un
     # İLK 4 düğümü daima köşe, kalan 6'sı kenar ortasıdır. Arayüz bunları
@@ -1367,6 +1372,7 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                             tag_to_idx[int(enodes[e * n_per + k])] for k in range(4)
                         ]
                         volume_tets.append((part_id, idxs))
+                        element_tags.append(int(etags[e]))
                         for k in range(4, n_per):
                             midside_idx.add(tag_to_idx[int(enodes[e * n_per + k])])
         else:
@@ -1378,6 +1384,7 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                 for e in range(len(_tags)):
                     idxs = [tag_to_idx[int(conn[e * n_per + k])] for k in range(4)]
                     volume_tets.append((0, idxs))
+                    element_tags.append(int(_tags[e]))
                     for k in range(4, n_per):
                         midside_idx.add(tag_to_idx[int(conn[e * n_per + k])])
 
@@ -1441,6 +1448,10 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
         "triangle_to_part": triangle_to_part,
         "triangle_to_face": triangle_to_face,
         "triangle_to_element": triangle_to_element,
+        "element_tags": element_tags,
+        # Gmsh düğüm tag'leri (önizleme sırası) = OpenRadioss deck düğüm no'su;
+        # `node_ids` CalculiX numarasıdır (index + 1), ikisi her zaman aynı değil.
+        "node_tags": [int(t) for t in node_tags],
     }
 
 

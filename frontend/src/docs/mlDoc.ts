@@ -54,6 +54,13 @@ export const ML_DOC: DocSection[] = [
           "Durability'de lineer ve NLGEOM modelleri de ayrıdır; crash'te model şablon × senaryo başınadır.",
       },
       {
+        name: "Ham kartlı koşular (crash)",
+        what:
+          "Ham kart editörüyle eklenen kartlar parametre değildir, girdi sütunu olamaz; aynı parametrelerle farklı " +
+          "model demektir. Bu koşular korpusa varsayılan girmez (özette “düşen · raw_cards”). Model sekmesindeki " +
+          "“Ham kartlı koşuları dahil et” kutusu ile alınır — karar mühendisin.",
+      },
+      {
         name: "Aşamalar",
         what:
           "Durability: DOE → Veri seti → Yakınsama → Model → Tahmin. Crash: DOE → Model → Tahmin → Doğrulama. " +

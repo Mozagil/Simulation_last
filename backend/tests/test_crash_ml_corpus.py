@@ -64,3 +64,21 @@ def test_empty_corpus():
     c = build_corpus([], "crash_box", "rigid_wall", curves_loader=lambda _job: {})
     assert c.X.shape == (0, 0) and c.Y.shape == (0, len(TARGET_KEYS))
     assert math.isfinite(len(c.summary()["targets"]))
+
+
+def test_raw_card_runs_dropped_by_default():
+    """1.22f: ham kartlı koşu varsayılan korpus dışı; anahtarla dahil; metin girdi sütunu olmaz."""
+    raw = _rec(2, 10.0, 1.5)
+    raw.request["raw_cards"] = "/BCS/900001\nkilit\n"
+    blank = _rec(3, 7.5, 2.0)
+    blank.request["raw_cards"] = "  \n"
+    recs = [_rec(1, 5.0, 1.0), raw, blank]
+
+    c = build_corpus(recs, "crash_box", "rigid_wall", curves_loader=lambda _job: {})
+    assert c.run_ids == [1, 3]
+    assert c.dropped == {"raw_cards": 1}
+    assert c.summary()["include_raw_cards"] is False
+
+    c2 = build_corpus(recs, "crash_box", "rigid_wall", curves_loader=lambda _job: {}, include_raw_cards=True)
+    assert c2.run_ids == [1, 2, 3] and c2.dropped == {}
+    assert not any("raw_cards" in k for k in [*c2.feature_names, *c2.constant_features])

@@ -8,6 +8,7 @@ import {
   type CrashJobSnapshot,
   type CrashModelPayload,
   type CrashPartSpec,
+  type CrashSolveRequest,
   type CrashSolveResponse,
   type CrashScenarioSetup,
 } from "../api/crash";
@@ -180,6 +181,7 @@ export default function CrashPanel({
   onSolved,
   rawCards = "",
   onOpenRawCards,
+  onRequestBuilder,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -225,6 +227,8 @@ export default function CrashPanel({
   rawCards?: string;
   /** Verilirse "Ham kartlar" satırı editörü açar. */
   onOpenRawCards?: () => void;
+  /** 1.22e: güncel /crash/solve gövdesini kuran fonksiyon (panel ayrılınca null). */
+  onRequestBuilder?: (build: (() => CrashSolveRequest | null) | null) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -546,62 +550,78 @@ export default function CrashPanel({
     ...contactsMissing,
   ];
 
+  /** /crash/solve gövdesi (ham kartsız) — koşu ve ham kart kontrolü (1.22e) aynı gövdeyi kullanır. */
+  function buildSolveBody(): CrashSolveRequest | null {
+    if (geometryId == null) return null;
+    // Eleman bayrakları (TYPE14 / kabuk TYPE1) global; parça kartı yalnız malzemeyi değiştirir.
+    const elementFlags = {
+      isolid: num(isolid),
+      ismstr: num(ismstr),
+      nip: num(nip),
+      solid_hourglass_h: num(hgSolid),
+      ...(isShell
+        ? {
+            shell: {
+              ishell: num(ishell),
+              ish3n: num(ish3n),
+              ismstr: num(shellIsmstr),
+              nip: num(shellNip),
+              hm: num(hgHm),
+              hf: num(hgHf),
+              hr: num(hgHr),
+            },
+          }
+        : {}),
+    };
+    const modelFor = (card: MatCardState, label: string) =>
+      ({ ...elementFlags, ...matCardPayload(card, label) }) as CrashModelPayload;
+    return {
+      geometry_id: geometryId,
+      // Ortak çarpma hızı hareketli parçalara (bariyer); duvar modunda yön duvar normalinden.
+      barrier: {
+        speed_m_s: num(speed),
+        angle_deg: impactMode === "wall" ? num(angle) : 0,
+        wall: {
+          point: (wallXYZ ?? [0, 0, 0]) as [number, number, number],
+          normal: dirVec as [number, number, number],
+        },
+        ...(impactMode === "free" ? { direction: dirVec as [number, number, number] } : {}),
+      },
+      ...(gravOn ? { gravity: { accel_m_s2: num(gravAccel), direction: gravDir } } : {}),
+      dimension: isShell ? 2 : 3,
+      run_solver: runSolver,
+      wait: false,
+      t_end_ms: num(tEnd),
+      parts: partOptions.map(
+        (pid): CrashPartSpec => ({
+          part_id: pid,
+          role: roleOfPart(pid),
+          ...(partCards[pid] ? { model: modelFor(partCards[pid], `Parça #${pid}`) } : {}),
+        }),
+      ),
+      contacts: contacts.map(contactPayload),
+      use_rigid_wall: useRigidWall,
+      ...cardsPayload(loadCards, impactAxis),
+      model: modelFor(matCard, "Global"),
+      ...outputPayload(output),
+    };
+  }
+
+  // 1.22e: editör "Kontrol et" için güncel gövde kurucusunu App'e verir.
+  useEffect(() => {
+    onRequestBuilder?.(buildSolveBody);
+  });
+  useEffect(() => () => onRequestBuilder?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleSubmit() {
     if (geometryId == null) return;
     setBusy(true);
     setError(null);
     try {
-      // Eleman bayrakları (TYPE14 / kabuk TYPE1) global; parça kartı yalnız malzemeyi değiştirir.
-      const elementFlags = {
-        isolid: num(isolid),
-        ismstr: num(ismstr),
-        nip: num(nip),
-        solid_hourglass_h: num(hgSolid),
-        ...(isShell
-          ? {
-              shell: {
-                ishell: num(ishell),
-                ish3n: num(ish3n),
-                ismstr: num(shellIsmstr),
-                nip: num(shellNip),
-                hm: num(hgHm),
-                hf: num(hgHf),
-                hr: num(hgHr),
-              },
-            }
-          : {}),
-      };
-      const modelFor = (card: MatCardState, label: string) =>
-        ({ ...elementFlags, ...matCardPayload(card, label) }) as CrashModelPayload;
+      const request = buildSolveBody();
+      if (request == null) return;
       const body = await postCrashSolve({
-        geometry_id: geometryId,
-        // Ortak çarpma hızı hareketli parçalara (bariyer); duvar modunda yön duvar normalinden.
-        barrier: {
-          speed_m_s: num(speed),
-          angle_deg: impactMode === "wall" ? num(angle) : 0,
-          wall: {
-            point: (wallXYZ ?? [0, 0, 0]) as [number, number, number],
-            normal: dirVec as [number, number, number],
-          },
-          ...(impactMode === "free" ? { direction: dirVec as [number, number, number] } : {}),
-        },
-        ...(gravOn ? { gravity: { accel_m_s2: num(gravAccel), direction: gravDir } } : {}),
-        dimension: isShell ? 2 : 3,
-        run_solver: runSolver,
-        wait: false,
-        t_end_ms: num(tEnd),
-        parts: partOptions.map(
-          (pid): CrashPartSpec => ({
-            part_id: pid,
-            role: roleOfPart(pid),
-            ...(partCards[pid] ? { model: modelFor(partCards[pid], `Parça #${pid}`) } : {}),
-          }),
-        ),
-        contacts: contacts.map(contactPayload),
-        use_rigid_wall: useRigidWall,
-        ...cardsPayload(loadCards, impactAxis),
-        model: modelFor(matCard, "Global"),
-        ...outputPayload(output),
+        ...request,
         ...(rawCards.trim() ? { raw_cards: rawCards } : {}),
       });
       setResult(body);

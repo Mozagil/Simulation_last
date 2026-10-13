@@ -1440,7 +1440,7 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
 
 *1.22 — Crash ham kart editörü (kullanıcı kararı 2026-10-12; plan onayı 2026-10-13)*
 Kullanıcı BC / malzeme kartını popup metin editöründe, düğüm/eleman ID'leriyle
-OpenRadioss sözdiziminde yazar. Yalnız crash; kompozitten paralel, ayrı dal
+OpenRadioss sözdiziminde yazar. Yalnız crash; kompozitten paralel; dal
 (`feature/crash-raw-cards`). Mod A (ek kart) önce; Mod B (üretilen kartı önizle +
 düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart → form) yok.
 - Dayanak: starter deck'teki düğüm/eleman ID'leri gmsh mesh ID'leriyle aynı
@@ -1477,11 +1477,31 @@ düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart →
   NODE" verir (1.22c). Eleman ID ekleme YOK: export elemanları 1'den yeniden
   numaralıyor, viewport eleman no'su ile eşlenmedi (ayrı karar).
   Test: `rawCards.test.ts`, `CrashRawCardsEditor.test.tsx`, `CrashPanel.test.tsx`.
-- 1.22e ⏳ Frontend: "Kontrol et" sonucu + ID envanteri/çakışma paneli editörde.
-- 1.22f ⏳ Ham kartlı koşu crash geçmişinde "ham kart" etiketli; ML korpusu
-  bunları varsayılan dışarıda bırakır (ham kart parametre değil, taranamaz);
-  ML Stüdyo'da "ham kartlı koşuları dahil et" anahtarı (kullanıcı onayı).
-  `docs/crashDoc` + görseller aynı commit'te.
+- 1.22d-2 ✅ (kullanıcı kararı 2026-10-13, seçenek a) Deck eleman no'su = Gmsh
+  eleman tag'i (`openradioss_export`, 1'den yeniden numaralama kalktı; anim
+  hücre sırasıyla eşlendiği için etkilenmez). Önizlemeye `element_tags`
+  (önizleme eleman id → Gmsh tag) ve `node_tags` (Gmsh düğüm tag'i; `node_ids`
+  CalculiX no'su) eklendi; editörde "Eleman ID'lerini imlece ekle", düğümler
+  de `node_tags` üzerinden çevrilir (`deckIdsFromPicks`). Viewport düzeltmesi:
+  ara düğümler gizliyken (NaN konum) düğüm bulutunun sınır küresi NaN oluyor,
+  hiçbir düğüm seçilemiyordu — küre bozulmamış kopyadan kurulur
+  (`lib/nodeCloud.ts`). Belgeler: `crashDoc.ts` "Ham kart editörü" bölümü.
+  Test: `test_openradioss_export.py` (tag + önizleme eşleşmesi),
+  `nodeCloud.test.ts`, `rawCards.test.ts`, `CrashRawCardsEditor.test.tsx`.
+- 1.22e ✅ Frontend: editörde "Kontrol et" — `postRawCardsCheck` + `postRawCardsInventory`
+  paralel (gövde = CrashPanel'in `buildSolveBody`'si, App üzerinden; koşu ile aynı).
+  Sonuç paneli: starter çıkış kodu, ERROR/WARNING blokları aynen, ham kartın deck
+  satırı; çakışma / tekrar / 900000 altı listesi (satıra atlar); üretilen deck
+  envanteri. Metin değişince "eski"; starter yoksa (503) mesaj, envanter yine.
+  Ölçüldü (kiriş, tet): /MAT/LAW1/1 → ERROR 79 DUPLICATE ID + çakışma; 900001 →
+  çıkış 0, çakışma yok. Test: `CrashRawCardsCheck.test.tsx`.
+- 1.22f ✅ Ham kartlı koşu crash geçmişinde "ham kart" etiketli (`has_raw_cards`
+  liste özetinde, `request.raw_cards`'tan; şema değişmez); ML korpusu bunları
+  varsayılan dışarıda bırakır (`build_corpus(include_raw_cards=False)`, özet
+  `dropped.raw_cards`; ham kart parametre değil, taranamaz); ML Stüdyo → Crash →
+  Model'de "Ham kartlı koşuları dahil et" (korpus + eğitim isteğinde
+  `include_raw_cards`). Belgeler: crashDoc + mlDoc. Test: `test_crash_ml_corpus.py`,
+  `test_crash_runs.py`, `CrashModelPanel.test.tsx`, `CrashHistory.test.tsx`.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)

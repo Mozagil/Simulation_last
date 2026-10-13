@@ -62,12 +62,15 @@ class CrashCorpus:
     dropped: dict[str, int] = field(default_factory=dict)
     #: Korpus tek bir crash DOE çalışmasından süzüldüyse onun kimliği.
     study_id: int | None = None
+    #: 1.22f: ham kartlı koşular dahil mi (varsayılan hayır — ham kart taranamaz).
+    include_raw_cards: bool = False
 
     def summary(self) -> dict[str, Any]:
         return {
             "template_id": self.template_id,
             "scenario": self.scenario,
             "study_id": self.study_id,
+            "include_raw_cards": self.include_raw_cards,
             "n_runs": len(self.run_ids),
             "features": self.feature_names,
             "constant_features": self.constant_features,
@@ -110,11 +113,20 @@ def build_corpus(
     template_id: str,
     scenario: str,
     curves_loader: CurvesLoader = job_json_curves,
+    include_raw_cards: bool = False,
 ) -> CrashCorpus:
-    """Kayıtlar → girdi × hedef tablosu (saf; DB yok)."""
+    """Kayıtlar → girdi × hedef tablosu (saf; DB yok).
+
+    1.22f: ham kartlı koşu (`request.raw_cards` dolu) varsayılan dışarıda —
+    ham kart bir parametre değil, girdi sütunu olamaz; aynı parametrelerle
+    farklı model demektir. `include_raw_cards` ile mühendis dahil edebilir.
+    """
     dropped: dict[str, int] = {}
     rows: list[tuple[int, dict[str, float], list[float]]] = []
     for r in records:
+        if not include_raw_cards and str(r.request.get("raw_cards") or "").strip():
+            dropped["raw_cards"] = dropped.get("raw_cards", 0) + 1
+            continue
         if r.template_id != template_id:
             dropped["other_template"] = dropped.get("other_template", 0) + 1
             continue
@@ -156,6 +168,7 @@ def build_corpus(
         Y=np.array([y for _, _, y in rows], dtype=float).reshape(len(rows), len(TARGET_KEYS)),
         constant_features=constant,
         dropped=dropped,
+        include_raw_cards=include_raw_cards,
     )
 
 
@@ -192,7 +205,10 @@ def load_crash_corpus(
     scenario: str,
     curves_loader: CurvesLoader = job_json_curves,
     study_id: int | None = None,
+    include_raw_cards: bool = False,
 ) -> CrashCorpus:
-    corpus = build_corpus(load_records(db, study_id), template_id, scenario, curves_loader)
+    corpus = build_corpus(
+        load_records(db, study_id), template_id, scenario, curves_loader, include_raw_cards=include_raw_cards
+    )
     corpus.study_id = study_id
     return corpus

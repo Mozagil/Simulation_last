@@ -412,6 +412,11 @@ export interface MeshPreviewData {
   triangle_to_face?: number[];
   /** FE eleman id (quad = iki üçgen aynı id) — eleman picking. */
   triangle_to_element?: number[];
+  /** Önizleme eleman id'si → Gmsh eleman tag'i = OpenRadioss deck eleman no'su (1.22). */
+  element_tags?: number[];
+  /** Önizleme düğümü → Gmsh düğüm tag'i = OpenRadioss deck düğüm no'su (1.22).
+   * `node_ids` CalculiX numarasıdır; ikisi her zaman aynı değil. */
+  node_tags?: number[];
 }
 
 /** FEA mesh üretir: dimension 2 = shell, 3 = solid; scheme tet|quad|mix. */

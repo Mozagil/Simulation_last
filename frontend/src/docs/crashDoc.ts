@@ -190,6 +190,24 @@ export const CRASH_DOC: DocSection[] = [
     ],
   },
   {
+    id: "hamkart",
+    title: "Ham kart editörü",
+    intro:
+      "Formda olmayan bir sınır koşulu ya da malzeme kartını OpenRadioss sözdiziminde, mesh düğüm/eleman numaralarıyla " +
+      "doğrudan yazmak için. 3 · Material ve 4 · Crash'teki “Ham kart editörü” satırından açılır (iki yer aynı metni düzenler). " +
+      "Metin yorumlanmaz: starter deck'ine /END'den hemen önce aynen eklenir. Boşsa deck değişmez.",
+    image: IMG("15-ham-kart.png"),
+    imageCaption: "Editör ve “Kontrol et” sonucu: starter çıkışı, ID çakışmaları, üretilen deck envanteri.",
+    items: [
+      { name: "Sabit genişlik", what: "OpenRadioss alanları 10 karakter. Cetvel her 10 kolonda çizgi gösterir; Tab imleci bir sonraki alan başına götürür; alttaki satır imlecin satır / kolon / alan numarası." },
+      { name: "Düğüm ID'lerini imlece ekle", what: "Viewport'ta Mesh → Düğüm modunda seçilen düğümler, deck'teki numaralarıyla (Gmsh düğüm no'su), sağa yaslı 10'luk alanlarda, satır başına 10 adet yazılır. 2. mertebe mesh'in ara düğümleri deck'te yoktur (solid TETRA4 köşe düğümleriyle yazılır).", dyna: "*SET_NODE_LIST satırları" },
+      { name: "Eleman ID'lerini imlece ekle", what: "Mesh → Eleman modunda seçilen elemanlar, deck'teki numaralarıyla (Gmsh eleman no'su) aynı biçimde yazılır.", dyna: "*SET_SOLID / *SET_SHELL_LIST satırları" },
+      { name: "Kontrol et", what: "Ham kartlı deck'i yalnız OpenRadioss starter'ı ile okutur (koşu yok, ~1 sn). Starter'ın ERROR / WARNING blokları aynen gösterilir; ham kartların deck'te başladığı satır yazılır. Yanında ID listesi: üretilen kartlarla aynı ID (çakışma), ham metinde tekrar eden ID, 900000 altındaki ID — “Satır n” tıklanınca imleç o satıra gider. Altta üretilen deck'in envanteri (düğüm/eleman sayısı ve aralığı, ad alanı başına kullanılan ID'ler). Metin sonra değişirse sonuç “eski” işaretlenir." },
+      { name: "ID aralığı", what: "Ham kartlardaki kendi ID'leriniz (MAT, PROP, PART, GRNOD, BCS …) 900000 ve üstünde verilir; üretilen kartlar bu aralığı kullanmaz. /BEGIN ve /END yazılmaz (reddedilir)." },
+      { name: "Kayıt", what: "Ham kart metni koşunun isteğinde saklanır; aynı koşu tekrar üretilebilir. Crash geçmişinde bu koşular “ham kart” etiketiyle görünür ve ML korpusuna varsayılan girmez (ML Stüdyo → Crash → Model'de “Ham kartlı koşuları dahil et”)." },
+    ],
+  },
+  {
     id: "cikti",
     title: "4 · Crash → Çıktı ayarları (preprocess)",
     intro:

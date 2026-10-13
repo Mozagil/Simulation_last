@@ -83,6 +83,8 @@ def _summary(r: CrashRun) -> dict[str, Any]:
         "scalars": r.scalars,
         "excluded": r.excluded,
         "exclude_reason": r.exclude_reason,
+        # 1.22f: koşu ham kartla üretildi (geçmişte etiket; ML korpusu varsayılan dışarıda).
+        "has_raw_cards": bool(str((r.request or {}).get("raw_cards") or "").strip()),
     }
 
 

@@ -229,6 +229,8 @@ export interface CrashRunSummary {
   scalars: Record<string, number>;
   excluded: boolean;
   exclude_reason: string | null;
+  /** 1.22f: koşu ham kartla üretildi. Eski sunucuda yok. */
+  has_raw_cards?: boolean;
 }
 
 export interface CrashRunCompared extends CrashRunSummary {
@@ -580,4 +582,60 @@ export interface CrashCatalog {
 
 export async function fetchCrashCatalog(): Promise<CrashCatalog> {
   return getJson<CrashCatalog>(`${API_BASE_URL}/crash/catalog`);
+}
+
+/** 1.22b/c — ham kart ID satırı (satır no ham metin içinde, 1 tabanlı). */
+export interface RawCardIdRow {
+  line: number;
+  keyword: string;
+  namespace: string;
+  id: number;
+  /** Yalnız `duplicates`: aynı ID'nin ham metindeki ilk satırı. */
+  first_line?: number;
+}
+
+export interface RawCardsInventoryResponse {
+  user_id_min: number;
+  nodes: { count: number; min: number | null; max: number | null };
+  elements: { count: number; min: number | null; max: number | null };
+  /** Üretilen deck'te ad alanı başına kullanılan ID'ler. */
+  ids: Record<string, number[]>;
+  collisions: RawCardIdRow[];
+  duplicates: RawCardIdRow[];
+  below_user_range: RawCardIdRow[];
+}
+
+export interface StarterMessageBlock {
+  kind: "error" | "warning";
+  id: number;
+  lines: string[];
+}
+
+export interface RawCardsCheckResponse {
+  exit_code: number;
+  errors: StarterMessageBlock[];
+  warnings: StarterMessageBlock[];
+  raw_cards_deck_line: number | null;
+  console_tail: string;
+}
+
+async function postRawCards<T>(path: string, body: CrashSolveRequest): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}/crash/raw-cards/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as T;
+}
+
+/** Üretilen deck'in ID envanteri + ham kart çakışmaları (solver koşmaz). */
+export function postRawCardsInventory(body: CrashSolveRequest): Promise<RawCardsInventoryResponse> {
+  return postRawCards("inventory", body);
+}
+
+/** Ham kartlı deck'le yalnız starter: ERROR/WARNING blokları aynen. Starter yoksa 503. */
+export function postRawCardsCheck(body: CrashSolveRequest): Promise<RawCardsCheckResponse> {
+  return postRawCards("check", body);
 }

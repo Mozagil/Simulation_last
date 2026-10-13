@@ -68,7 +68,7 @@ import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
-import type { CrashScenarioResponse, CrashScenarioSetup } from "./api/crash";
+import type { CrashScenarioResponse, CrashScenarioSetup, CrashSolveRequest } from "./api/crash";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
@@ -80,6 +80,7 @@ import CfdSolvePanel from "./components/CfdSolvePanel";
 import CfdRunsPanel from "./components/CfdRunsPanel";
 import type { CfdMeshMeta } from "./api/cfd";
 import CrashRawCardsEditor, { RawCardsOpenRow } from "./components/CrashRawCardsEditor";
+import { deckIdsFromPicks } from "./lib/rawCards";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import { matCardSummary } from "./components/CrashMaterialSection";
@@ -417,6 +418,8 @@ function App() {
   // 1.22d — ham kartlar (OpenRadioss); 3 · Material ve 4 · Crash'ten aynı editör.
   const [crashRawCards, setCrashRawCards] = useState("");
   const [showRawCards, setShowRawCards] = useState(false);
+  // 1.22e: CrashPanel'in güncel /crash/solve gövde kurucusu (ham kart kontrolü için).
+  const crashRequestBuilderRef = useRef<(() => CrashSolveRequest | null) | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -5440,6 +5443,9 @@ function App() {
           }}
           rawCards={crashRawCards}
           onOpenRawCards={() => setShowRawCards(true)}
+          onRequestBuilder={(build) => {
+            crashRequestBuilderRef.current = build;
+          }}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
@@ -5583,7 +5589,12 @@ function App() {
           value={crashRawCards}
           onChange={setCrashRawCards}
           onClose={() => setShowRawCards(false)}
-          nodePicks={meshNodePicks}
+          buildRequest={() => crashRequestBuilderRef.current?.() ?? null}
+          {...(() => {
+            // Viewport seçimi → deck numaraları (Gmsh tag'leri).
+            const deck = deckIdsFromPicks(meshPreview, meshNodePicks, meshPicks.map((p) => p.elementId));
+            return { nodePicks: deck.nodes, elementPicks: deck.elements };
+          })()}
         />
       )}
       {showNewCrashCase && (

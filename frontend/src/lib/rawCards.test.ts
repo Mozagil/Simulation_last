@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deckIdsFromPicks,
   cursorInfo,
   formatIdLines,
   insertBlockAt,
@@ -50,5 +51,18 @@ describe("rawCards yardımcıları", () => {
     expect(rawCardLineCount("")).toBe(0);
     expect(rawCardLineCount("  \n\n")).toBe(0);
     expect(rawCardLineCount("a\nb\n\n")).toBe(2);
+  });
+});
+
+describe("deckIdsFromPicks", () => {
+  const preview = { node_ids: [1, 2, 3], node_tags: [7, 8, 9], element_tags: [101, 205, 300] };
+
+  it("düğüm: CalculiX no → Gmsh tag; eleman: önizleme id → Gmsh tag (tekil)", () => {
+    expect(deckIdsFromPicks(preview, [3, 1], [1, 1, 0])).toEqual({ nodes: [9, 7], elements: [205, 101] });
+  });
+
+  it("eski önizleme: düğüm no aynen, eleman eklenemez", () => {
+    expect(deckIdsFromPicks({ node_ids: [1, 2] }, [2], [0])).toEqual({ nodes: [2], elements: [] });
+    expect(deckIdsFromPicks(null, [5], [0])).toEqual({ nodes: [5], elements: [] });
   });
 });

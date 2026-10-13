@@ -36,6 +36,13 @@ describe("CrashHistory", () => {
     expect(screen.getByText("101.0")).toBeInTheDocument(); // duvar Fmax
   });
 
+  it("1.22f: ham kartlı koşu etiketli", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(3, { has_raw_cards: true })]);
+    render(<CrashHistory geometryId={3931} />);
+    expect(await screen.findByText("ham kart")).toBeInTheDocument();
+    expect(screen.getAllByText("ham kart")).toHaveLength(1);
+  });
+
   it("geometri yokken tüm geometriler; dışla PATCH gönderir", async () => {
     vi.mocked(fetchCrashRuns).mockResolvedValue([run(5)]);
     vi.mocked(patchCrashRun).mockResolvedValue(run(5, { excluded: true }));
