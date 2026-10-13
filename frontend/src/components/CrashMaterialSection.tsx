@@ -13,6 +13,12 @@ const LAW_NAME: Record<MatCardState["law"], string> = {
   tabulated: "tablolu eğri (LAW36)",
 };
 
+export const LAW_SHORT: Record<MatCardState["law"], string> = {
+  elastic: "LAW1 elastik",
+  plastic: "LAW2 elasto-plastik",
+  tabulated: "LAW36 tablolu",
+};
+
 /** "elasto-plastik (LAW2) · kopma kapalı" — 4 · Crash özeti için. */
 export function matCardSummary(card: MatCardState): string {
   const fails = [card.failJohnson && "Johnson-Cook", card.failTens && "çekme gerinimi"].filter(Boolean);
@@ -27,6 +33,7 @@ export default function CrashMaterialSection({
   setPartCards,
   disabled = false,
   hideToggle = false,
+  materialOf,
 }: {
   partIds: number[];
   matCard: MatCardState;
@@ -36,7 +43,18 @@ export default function CrashMaterialSection({
   disabled?: boolean;
   /** Üst bileşen LS-DYNA düğmesini zaten gösteriyorsa. */
   hideToggle?: boolean;
+  /** 1.23 A2: parçaya atanmış kütüphane malzemesinin adı (tabloda gösterilir). */
+  materialOf?: (pid: number) => string | null;
 }) {
+  // 1.23 A2: parça başına model seçimi tek tabloda. "Ortak" = ortak kart; LAW seçilince
+  // o parçaya kendi kartı açılır (ortak karttan kopya, LAW değiştirilmiş).
+  const choose = (pid: number, v: string) =>
+    setPartCards((c) => {
+      const next = { ...c };
+      if (v === "common") delete next[pid];
+      else next[pid] = { ...(c[pid] ?? matCard), law: v as MatCardState["law"] };
+      return next;
+    });
   return (
     <section className="crash-mat-section-wrap" aria-label="Crash malzeme modeli">
       {!hideToggle && (
@@ -52,43 +70,39 @@ export default function CrashMaterialSection({
       )}
       {!hideToggle && <DynaToggle />}
       {partIds.length > 1 && (
-        <div className="crash-mat-toggles">
+        <div className="crash-mat-table" role="table" aria-label="Parça başına malzeme modeli">
+          <div className="crash-mat-row crash-mat-row-head" role="row">
+            <span role="columnheader">Parça</span>
+            <span role="columnheader">Kütüphane malzemesi</span>
+            <span role="columnheader">Model (LAW) · kopma</span>
+          </div>
           {partIds.map((pid) => (
-            <div key={pid} className="crash-mat-toggle">
-              <span>#{pid}</span>
-              <span className="doe-seg" role="group" aria-label={`Parça ${pid} kartı`}>
-                <button
-                  type="button"
-                  className={partCards[pid] ? "doe-seg-opt" : "doe-seg-opt active"}
-                  aria-pressed={!partCards[pid]}
+            <div key={pid} className="crash-mat-row" role="row" data-testid={`crash-mat-row-${pid}`}>
+              <code role="cell">#{pid}</code>
+              <span role="cell">{materialOf?.(pid) ?? "—"}</span>
+              <span role="cell" className="crash-mat-row-model">
+                <select
+                  aria-label={`Parça ${pid} modeli`}
+                  value={partCards[pid] ? partCards[pid].law : "common"}
                   disabled={disabled}
-                  onClick={() =>
-                    setPartCards((c) => {
-                      const next = { ...c };
-                      delete next[pid];
-                      return next;
-                    })
-                  }
+                  onChange={(e) => choose(pid, e.target.value)}
                 >
-                  Global
-                </button>
-                <button
-                  type="button"
-                  className={partCards[pid] ? "doe-seg-opt active" : "doe-seg-opt"}
-                  aria-pressed={Boolean(partCards[pid])}
-                  disabled={disabled}
-                  onClick={() => setPartCards((c) => (c[pid] ? c : { ...c, [pid]: { ...matCard } }))}
-                >
-                  Ayrı
-                </button>
+                  <option value="common">Ortak ({LAW_SHORT[matCard.law]})</option>
+                  <option value="elastic">{LAW_SHORT.elastic}</option>
+                  <option value="plastic">{LAW_SHORT.plastic}</option>
+                  <option value="tabulated">{LAW_SHORT.tabulated}</option>
+                </select>
+                <span className="crash-behavior-hint">{matCardSummary(partCards[pid] ?? matCard).split(" · ")[1]}</span>
               </span>
             </div>
           ))}
           <span className="crash-behavior-hint">
-            Global = ortak model; Ayrı = o parçaya kendi modeli (ör. çarpan rijit küre elastik, plaka kopmalı).
+            Ortak = aşağıdaki ortak kart. LAW seçilen parçanın kendi kartı açılır (kopma ayarları dahil) — ör. çarpan
+            rijit küre LAW1 elastik, plaka LAW2 + kopma.
           </span>
         </div>
       )}
+      {partIds.length > 1 && <p className="crash-expert-title">Ortak model (kendi modeli seçilmeyen parçalar)</p>}
       <CrashMaterialCard value={matCard} onChange={setMatCard} disabled={disabled} testId="crash-mat-global" />
       {partIds
         .filter((pid) => partCards[pid])

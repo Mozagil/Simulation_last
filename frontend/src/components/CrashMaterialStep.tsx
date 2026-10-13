@@ -251,6 +251,7 @@ export default function CrashMaterialStep({
               setPartCards={setPartCards}
               disabled={busy}
               hideToggle
+              materialOf={(pid) => assignedOf(pid)?.material_name ?? null}
             />
           </div>
         )}

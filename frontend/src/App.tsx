@@ -3568,12 +3568,21 @@ function App() {
                 {matCardSummary(crashMatCard)}
               </span>
             </div>
-            {Object.entries(crashPartCards).map(([pid, card]) => (
-              <div className="model-tree-row model-tree-depth-2" key={pid} title={matCardSummary(card)}>
-                <span className="model-tree-leaf">Parça #{pid}</span>
-                <span className="model-tree-value model-tree-value-fit">{matCardSummary(card)}</span>
-              </div>
-            ))}
+            {/* 1.23 A2: her parça — kütüphane malzemesi + geçerli model (ortak ya da kendi). */}
+            {crashMaterialPartIds.length > 1 &&
+              crashMaterialPartIds.map((pid) => {
+                const card = crashPartCards[pid];
+                const mat = materialAssignments.find((a) => a.part_id === pid)?.material_name ?? "atama yok";
+                const text = `${mat} · ${matCardSummary(card ?? crashMatCard)}${card ? "" : " (ortak)"}`;
+                return (
+                  <div className="model-tree-row model-tree-depth-2" key={pid} title={text}>
+                    <span className="model-tree-leaf">Parça #{pid}</span>
+                    <span className="model-tree-value model-tree-value-fit" data-testid={`tree-crash-part-${pid}`}>
+                      {text}
+                    </span>
+                  </div>
+                );
+              })}
           </>
         )}
         {(() => {

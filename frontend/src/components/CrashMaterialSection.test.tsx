@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
@@ -41,5 +41,42 @@ describe("CrashPanel malzeme özeti", () => {
     );
     expect(screen.queryByTestId("crash-mat-summary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("crash-mat-global")).not.toBeInTheDocument();
+  });
+});
+
+function TableHarness() {
+  const [mat, setMat] = useState<MatCardState>(defaultMatCard());
+  const [parts, setParts] = useState<Record<number, MatCardState>>({});
+  return (
+    <>
+      <CrashMaterialSection
+        partIds={[0, 1]}
+        matCard={mat}
+        setMatCard={setMat}
+        partCards={parts}
+        setPartCards={setParts}
+        hideToggle
+        materialOf={(pid) => (pid === 0 ? "6061-T6" : "S235")}
+      />
+      <output data-testid="parts">{JSON.stringify(Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v.law])))}</output>
+    </>
+  );
+}
+
+describe("CrashMaterialSection · parça tablosu (1.23 A2)", () => {
+  it("her parça: kütüphane malzemesi + model seçimi; LAW seçilince kendi kartı, Ortak'ta kalkar", () => {
+    render(<TableHarness />);
+    const row1 = screen.getByTestId("crash-mat-row-1");
+    expect(within(row1).getByText("S235")).toBeInTheDocument();
+    expect(screen.getByLabelText("Parça 1 modeli")).toHaveValue("common");
+
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "elastic" } });
+    expect(screen.getByTestId("parts")).toHaveTextContent('{"1":"elastic"}');
+    expect(screen.getByTestId("crash-mat-part-1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Parça 0 modeli")).toHaveValue("common");
+
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "common" } });
+    expect(screen.getByTestId("parts")).toHaveTextContent("{}");
+    expect(screen.queryByTestId("crash-mat-part-1")).not.toBeInTheDocument();
   });
 });

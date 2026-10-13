@@ -1510,7 +1510,11 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   bırakınca pop-up kapanıyor → yalnız arka plana basılıp orada bırakılınca kapanır.
   `lib/useBackdropClose.ts`; aynı düzeltme Yeni crash vakası, Ham kart editörü ve
   Belgeler pencerelerinde. Test: `useBackdropClose.test.tsx`.
-- A2 Crash malzemesi parça bazında (parça × LAW / FAIL tek tabloda) + ürün ağacı.
+- A2 ✅ Crash malzemesi parça bazında: 3 · Material → 3. grupta parça tablosu (parça,
+  kütüphane malzemesi, model listesi Ortak / LAW1 / LAW2 / LAW36 + kopma özeti); LAW
+  seçilen parçanın kendi kartı açılır (ortak karttan kopya, /FAIL ayarları dahil).
+  Ürün ağacı: her parça "malzeme · LAW · kopma (ortak)". Test:
+  `CrashMaterialSection.test.tsx`, `CrashPanel.test.tsx`.
 - A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
 - A4 Plastik deformasyon animasyonda görünür (deformasyon ölçeği, gerçek ölçek).
 - A5 Animasyon akıcı (kareler arası ara-değer, kare sayısı).
