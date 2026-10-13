@@ -1186,6 +1186,11 @@ function App() {
 
   /** 1.23 B1c: "Kurulumu yükle" — geometri + mesh yüklenir, kurulum panellere dolar (koşu yok). */
   async function loadScenarioSetup(res: CrashScenarioSetupResponse) {
+    if (!res?.solve_request) {
+      // Eski backend setup_only'yi tanımaz, senaryoyu koşar ve kurulum dönmez.
+      setErrorMessage("Sunucu kurulumu döndürmedi (setup_only). git pull sonrası backend'i yeniden başlatın.");
+      return;
+    }
     setShowNewCrashCase(false);
     setCrashCaseInit(null);
     setScenarioJob(null);
