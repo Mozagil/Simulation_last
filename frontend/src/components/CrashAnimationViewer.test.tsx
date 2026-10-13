@@ -46,6 +46,10 @@ describe("1.23 A4/A5 — ölçek ve ara-değer", () => {
     expect(lerpFrame([0, 10], [10, 30], 0.25, 1)).toBe(15);
     expect(lerpFrame([4], [8], 0, 0)).toBe(4);
     expect(lerpFrame([4], [8], 1, 0)).toBe(8);
+    // ıraksamış kare: null → diğer kare / yedek değer (NaN değil)
+    expect(lerpFrame([null], [8], 0.5, 0, 1)).toBe(8);
+    expect(lerpFrame([4], [null], 0.5, 0, 1)).toBe(4);
+    expect(lerpFrame([null], [null], 0.5, 0, 7)).toBe(7);
   });
 
   it("deformasyon ölçeği ilk kareye göre yer değiştirmeyi çarpar; ×1 gerçek konum", () => {

@@ -90,3 +90,16 @@ def test_cycle_table_and_mass_scalars(tmp_path):
     assert s["timestep_min"] == pytest.approx(0.001)
     assert s["mass_model"] == pytest.approx(1.853 - 0.6662)  # TOTAL MASS eklenen kütleyi içerir
     assert s["mass_added_rel"] == pytest.approx(0.6708 / (1.853 - 0.6662))
+
+
+def test_nan_energy_rows_mark_divergence(tmp_path):
+    """Radioss NaN'e gidip yine NORMAL TERMINATION yazabiliyor; ilk NaN zamanı veri olarak."""
+    listing = _LISTING + (
+        "    3700  0.1425E-01  0.1398-157 SHELL       1820   0.0%         NaN         NaN"
+        "         NaN         NaN   0.000       1.187       0.000    \n"
+    )
+    out = tmp_path / "crash_0001.out"
+    out.write_text(listing, encoding="utf-8")
+    assert parse_cycle_table(out)["nan_time"] == [0.01425]
+    res = parse_openradioss_dir(tmp_path)
+    assert res.scalars["diverged_at_ms"] == pytest.approx(0.01425)

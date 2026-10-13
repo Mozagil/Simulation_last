@@ -50,9 +50,18 @@ export const DEFORM_SCALES = [1, 2, 5, 10] as const;
 export const PLAY_SPEEDS = [0.25, 0.5, 1, 2] as const;
 const PLAY_SECONDS = 3;
 
-/** Kareler arası doğrusal ara-değer: f kesirli kare indeksi. */
-export function lerpFrame(a: ArrayLike<number>, b: ArrayLike<number>, t: number, i: number): number {
-  return a[i] + (b[i] - a[i]) * t;
+/** Kareler arası doğrusal ara-değer: f kesirli kare indeksi. Iraksamış koşuda
+ * null (NaN/inf) gelen değer `fallback` olur — NaN geometriyi tümden siler. */
+export function lerpFrame(
+  a: ArrayLike<number | null>,
+  b: ArrayLike<number | null>,
+  t: number,
+  i: number,
+  fallback = 0,
+): number {
+  const x = a[i] ?? b[i] ?? fallback;
+  const y = b[i] ?? x;
+  return x + (y - x) * t;
 }
 
 /** Ölçekli konum: ilk kareye göre yer değiştirme k ile çarpılır. */
@@ -229,7 +238,7 @@ export default function CrashAnimationViewer({
     const p0 = data.frames[0].positions;
     const box = new THREE.Box3();
     // yalnız yüzeylerde kullanılan düğümler (rijit duvar / ana düğüm noktaları hariç)
-    for (const v of tri.vtx) box.expandByPoint(new THREE.Vector3(p0[v * 3], p0[v * 3 + 1], p0[v * 3 + 2]));
+    for (const v of tri.vtx) box.expandByPoint(new THREE.Vector3(p0[v * 3] ?? 0, p0[v * 3 + 1] ?? 0, p0[v * 3 + 2] ?? 0));
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length() || 1;
     const camera = new THREE.PerspectiveCamera(35, width / height, size / 100, size * 20);
@@ -378,15 +387,15 @@ export default function CrashAnimationViewer({
       const src = alive ? node : tri.vtx[Math.floor(v / 3) * 3];
       pos.setXYZ(
         v,
-        scaledPos(p0[src * 3], lerpFrame(fa.positions, fb.positions, t, src * 3), deform),
-        scaledPos(p0[src * 3 + 1], lerpFrame(fa.positions, fb.positions, t, src * 3 + 1), deform),
-        scaledPos(p0[src * 3 + 2], lerpFrame(fa.positions, fb.positions, t, src * 3 + 2), deform),
+        scaledPos(p0[src * 3] ?? 0, lerpFrame(fa.positions, fb.positions, t, src * 3, p0[src * 3] ?? 0), deform),
+        scaledPos(p0[src * 3 + 1] ?? 0, lerpFrame(fa.positions, fb.positions, t, src * 3 + 1, p0[src * 3 + 1] ?? 0), deform),
+        scaledPos(p0[src * 3 + 2] ?? 0, lerpFrame(fa.positions, fb.positions, t, src * 3 + 2, p0[src * 3 + 2] ?? 0), deform),
       );
       const val =
         nodeA && nodeB
-          ? lerpFrame(nodeA, nodeB, t, node)
+          ? lerpFrame(nodeA, nodeB, t, node, lo)
           : faceA && faceB
-            ? lerpFrame(faceA, faceB, t, face)
+            ? lerpFrame(faceA, faceB, t, face, lo)
             : lo;
       const [r, g, b] = jet((val - lo) / span);
       col.setXYZ(v, r, g, b);
@@ -402,9 +411,9 @@ export default function CrashAnimationViewer({
         const node = alive ? edges.pairs[e] : edges.pairs[Math.floor(e / 2) * 2];
         ep.setXYZ(
           e,
-          scaledPos(p0[node * 3], lerpFrame(fa.positions, fb.positions, t, node * 3), deform),
-          scaledPos(p0[node * 3 + 1], lerpFrame(fa.positions, fb.positions, t, node * 3 + 1), deform),
-          scaledPos(p0[node * 3 + 2], lerpFrame(fa.positions, fb.positions, t, node * 3 + 2), deform),
+          scaledPos(p0[node * 3] ?? 0, lerpFrame(fa.positions, fb.positions, t, node * 3, p0[node * 3] ?? 0), deform),
+          scaledPos(p0[node * 3 + 1] ?? 0, lerpFrame(fa.positions, fb.positions, t, node * 3 + 1, p0[node * 3 + 1] ?? 0), deform),
+          scaledPos(p0[node * 3 + 2] ?? 0, lerpFrame(fa.positions, fb.positions, t, node * 3 + 2, p0[node * 3 + 2] ?? 0), deform),
         );
       }
       ep.needsUpdate = true;
@@ -456,13 +465,14 @@ export default function CrashAnimationViewer({
     const hi = [-Infinity, -Infinity, -Infinity];
     for (const node of tri.vtx) {
       const i = node * 3;
-      const dx = b[i] - a[i];
-      const dy = b[i + 1] - a[i + 1];
-      const dz = b[i + 2] - a[i + 2];
-      maxU = Math.max(maxU, Math.hypot(dx, dy, dz));
+      const a0 = [a[i] ?? 0, a[i + 1] ?? 0, a[i + 2] ?? 0];
+      // ıraksamış karede null konum yer değiştirmeye katılmaz
+      if (b[i] != null && b[i + 1] != null && b[i + 2] != null) {
+        maxU = Math.max(maxU, Math.hypot(b[i]! - a0[0], b[i + 1]! - a0[1], b[i + 2]! - a0[2]));
+      }
       for (let k = 0; k < 3; k += 1) {
-        lo[k] = Math.min(lo[k], a[i + k]);
-        hi[k] = Math.max(hi[k], a[i + k]);
+        lo[k] = Math.min(lo[k], a0[k]);
+        hi[k] = Math.max(hi[k], a0[k]);
       }
     }
     const size = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
@@ -500,6 +510,7 @@ export default function CrashAnimationViewer({
           <span className="ds-sb" data-testid="crash-anim-time">
             t = {fmt(fr.time ?? 0)} ms · kare {frame + 1}/{data?.frames.length}
             {deleted ? ` · silinen ${deleted}` : ""}
+            {fr.nonfinite ? ` · ${fr.nonfinite} geçersiz değer (ıraksama)` : ""}
           </span>
         )}
         <button

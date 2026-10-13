@@ -1372,6 +1372,11 @@ export default function CrashPanel({
               ))}
             </ul>
           )}
+          {diagnostics?.diverged && (
+            <p className="error-message" data-testid="crash-diverged">
+              {diagnostics.diverged}
+            </p>
+          )}
           {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
             <p className="material-assign-hint" data-testid="crash-starter-msgs">
               Starter

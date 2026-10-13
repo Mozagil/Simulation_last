@@ -97,3 +97,22 @@ def test_elements_off_at_start_are_rigid_not_eroded():
     # 1.18b — rijit gövde elemanı ilk karede EROSION_STATUS 0 (koşu #63, küre); çizilir
     a = build_animation([_vtk(0.0, 0.0, alive=0), _vtk(1.0, -3.0, alive=0)])
     assert [f["face_alive"] for f in a["frames"]] == [[1, 1], [1, 1]]
+
+
+def test_nonfinite_values_become_null_and_json_is_valid(tmp_path):
+    """Kullanıcı 2026-10-13: ıraksamış koşuda (1000 m/s) EPSP / konum inf-NaN; anim.json
+    `Infinity` içeriyordu, tarayıcı okuyamıyordu ("reading 'scalars'" null)."""
+    import json
+
+    from app.postprocess.openradioss_anim import write_animation_cache
+
+    bad = _vtk(1.0, 0.5).replace("0.0 0.25 0", "inf 0.25 0").replace("2 0 0 2 1 0\nCELLS", "nan 0 0 2 1 0\nCELLS")
+    data = build_animation([_vtk(0.0, 0.0), bad])
+    f1 = data["frames"][1]
+    assert f1["face"]["EPSP"][0] is None
+    assert f1["nonfinite"] == 1 and None in f1["positions"]
+    assert data["scalars"]["EPSP"]["max"] == 0.25  # aralık yalnız sonlu değerlerden
+    p = write_animation_cache(tmp_path, data)
+    text = p.read_text(encoding="utf-8")
+    assert "Infinity" not in text and "NaN" not in text
+    assert json.loads(text)["frames"][1]["face"]["EPSP"][0] is None

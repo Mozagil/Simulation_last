@@ -154,11 +154,15 @@ def compare_crash_runs(
 
 
 def _cache_complete(path: Path) -> bool:
-    """anim.json tam mı: JSON nesnesi '}' ile biter (yarım yazılmışsa okunamaz)."""
+    """anim.json geçerli mi: '}' ile biter (yarım değil) ve NaN/Infinity içermez
+    (eski sürüm ıraksamış koşuda bunları yazıyordu, tarayıcı okuyamıyordu)."""
     try:
         with path.open("rb") as fh:
             fh.seek(-1, 2)
-            return fh.read(1) == b"}"
+            if fh.read(1) != b"}":
+                return False
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return "NaN" not in text and "Infinity" not in text
     except OSError:
         return False
 

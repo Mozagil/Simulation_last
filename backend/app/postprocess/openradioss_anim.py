@@ -111,6 +111,12 @@ def surface_faces(cells: list[list[int]], types: list[int]) -> tuple[list[list[i
     return faces, owner
 
 
+def _fin(x: float, nd: int) -> float | None:
+    """Sonlu değer → yuvarlanmış; NaN / ±inf → None (JSON'da null). Iraksamış koşuda
+    Python json `NaN`/`Infinity` yazar, tarayıcı JSON.parse edemez (kullanıcı 2026-10-13)."""
+    return round(x, nd) if math.isfinite(x) else None
+
+
 def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any]:
     """Kare VTK metinleri → web verisi. Topoloji ilk kareden (hücre sırası sabit)."""
     frames = [parse_vtk_ascii(t) for t in vtk_texts]
@@ -144,16 +150,19 @@ def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any
     off_at_start = {c for c, v in enumerate(er0) if not v} if er0 else set()
     for f in frames:
         pts = f["points"]
-        fr: dict[str, Any] = {
-            "time": f["time"],
-            "positions": [round(c, 4) for p in pts for c in p],
-        }
+        pos = [_fin(c, 4) for p in pts for c in p]
+        fr: dict[str, Any] = {"time": f["time"], "positions": pos}
+        bad = sum(1 for c in pos if c is None)
+        if bad:
+            fr["nonfinite"] = bad
         disp = f["point_data"].get("Displacement")
         if disp:
-            mag = [round(math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2), 4) for d in disp]
+            mag = [_fin(math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2), 4) for d in disp]
             fr["node"] = {"disp_mag": mag}
-            r = scal_range.setdefault("disp_mag", [math.inf, -math.inf])
-            r[0], r[1] = min(r[0], min(mag)), max(r[1], max(mag))
+            fin = [m for m in mag if m is not None]
+            if fin:
+                r = scal_range.setdefault("disp_mag", [math.inf, -math.inf])
+                r[0], r[1] = min(r[0], min(fin)), max(r[1], max(fin))
         er = f["cell_data"].get("EROSION_STATUS")
         if er:
             fr["face_alive"] = [1 if er[c] or c in off_at_start else 0 for c in owner]
@@ -162,9 +171,11 @@ def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any
             vals = f["cell_data"][name]
             if len(vals) != len(f["cells"]):
                 continue
-            cd[name] = [round(float(vals[c]), 6) for c in owner]
-            r = scal_range.setdefault(name, [math.inf, -math.inf])
-            r[0], r[1] = min(r[0], min(cd[name])), max(r[1], max(cd[name]))
+            cd[name] = [_fin(float(vals[c]), 6) for c in owner]
+            fin = [v for v in cd[name] if v is not None]
+            if fin:
+                r = scal_range.setdefault(name, [math.inf, -math.inf])
+                r[0], r[1] = min(r[0], min(fin)), max(r[1], max(fin))
         fr["face"] = cd
         out_frames.append(fr)
     return {
@@ -186,6 +197,7 @@ def write_animation_cache(work_dir: Path, data: dict[str, Any]) -> Path:
     yarım yazılmış anim.json okuyup geçersiz JSON döndürmesin (kullanıcı 2026-10-13)."""
     p = Path(work_dir) / "anim.json"
     tmp = p.with_name(f"anim.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    # allow_nan=False: geçersiz JSON (NaN/Infinity) asla diske yazılmaz.
+    tmp.write_text(json.dumps(data, separators=(",", ":"), allow_nan=False), encoding="utf-8")
     os.replace(tmp, p)
     return p

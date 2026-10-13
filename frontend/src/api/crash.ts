@@ -197,6 +197,8 @@ export interface CrashDiagnostics {
   starter_errors?: Record<string, number>;
   starter_warnings?: Record<string, number>;
   deleted_elements?: { criterion: string; kind: string; element: number; time: number | null }[];
+  /** Iraksama: listing'de enerji NaN (Radioss yine NORMAL TERMINATION yazabilir). */
+  diverged?: string;
 }
 
 export interface CrashJobSnapshot {
@@ -428,10 +430,12 @@ export interface CrashAnimation {
   scalars: Record<string, { location: "node" | "face"; min: number; max: number }>;
   frames: {
     time: number | null;
-    positions: number[];
-    node?: Record<string, number[]>;
+    /** Iraksamış koşuda sonlu olmayan değer null gelir. */
+    positions: (number | null)[];
+    nonfinite?: number;
+    node?: Record<string, (number | null)[]>;
     face_alive?: number[];
-    face?: Record<string, number[]>;
+    face?: Record<string, (number | null)[]>;
   }[];
 }
 

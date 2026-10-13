@@ -223,7 +223,7 @@ def parse_ruptures(path: Path) -> list[dict[str, Any]]:
 def parse_cycle_table(path: Path) -> dict[str, list[float]]:
     """Engine listing cycle satırları: CYCLE TIME TIME-STEP ELEMENT … TOTAL MASS
     MASS ADDED (1.15a). Basma aralığındaki satırlar; ara cycle'lar listing'de yok."""
-    out: dict[str, list[float]] = {"time": [], "dt": [], "total_mass": [], "mass_added": []}
+    out: dict[str, list[float]] = {"time": [], "dt": [], "total_mass": [], "mass_added": [], "nan_time": []}
     in_table = False
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if "CYCLE" in raw and "TIME-STEP" in raw:
@@ -232,6 +232,14 @@ def parse_cycle_table(path: Path) -> dict[str, list[float]]:
         if not in_table or not _CYCLE_RE.match(raw):
             continue
         tok = raw.split()
+        # Iraksama: enerji sütunları NaN (Radioss yine "NORMAL TERMINATION" yazabilir;
+        # kullanıcı 2026-10-13, 1000 m/s koşusu). İlk NaN satırının zamanı.
+        if "NaN" in tok:
+            try:
+                out["nan_time"].append(float(tok[1]))
+            except (ValueError, IndexError):
+                pass
+            continue
         try:
             vals = (float(tok[1]), float(tok[2]), float(tok[-2]), float(tok[-1]))
         except (ValueError, IndexError):
@@ -289,6 +297,12 @@ def _diagnostics(work_dir: Path, engine_out: Path | None) -> tuple[dict[str, Any
         scalars["starter_warning_count"] = float(sum(msgs["warnings"].values()))
     if engine_out is not None and engine_out.name.endswith("_0001.out"):
         cyc = parse_cycle_table(engine_out)
+        if cyc["nan_time"]:
+            scalars["diverged_at_ms"] = float(min(cyc["nan_time"]))
+            diag["diverged"] = (
+                f"Çözüm ıraksadı: t = {min(cyc['nan_time']):.4g} ms'den sonra enerji NaN "
+                "(listing). Bu andan sonraki sonuçlar geçersiz."
+            )
         if cyc["dt"]:
             # listing basılan cycle'lardaki değerler (ara adımlar görünmez)
             scalars["timestep_min"] = float(min(cyc["dt"]))
