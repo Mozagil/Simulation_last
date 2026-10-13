@@ -407,6 +407,8 @@ function App() {
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  // 1.23 B1: şablon panelinden "Model üret" (crash) → yeni vaka penceresine seçim.
+  const [crashCaseInit, setCrashCaseInit] = useState<{ templateId: string; geometry: Record<string, string> } | null>(null);
   const [showDocs, setShowDocs] = useState(false);
   const [scenarioJob, setScenarioJob] = useState<
     { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null
@@ -4192,6 +4194,10 @@ function App() {
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
           kind={analysisTab === "crash" ? "crash" : analysisTab === "cfd" ? "cfd" : "durability"}
+          onCrashModel={(templateId, geometry) => {
+            setCrashCaseInit({ templateId, geometry });
+            setShowNewCrashCase(true);
+          }}
         />
         </div>
           </div>
@@ -5599,8 +5605,15 @@ function App() {
       )}
       {showNewCrashCase && (
         <CrashNewCaseDialog
-          onClose={() => setShowNewCrashCase(false)}
-          onGeometry={() => setShowNewCrashCase(false)}
+          onClose={() => {
+            setShowNewCrashCase(false);
+            setCrashCaseInit(null);
+          }}
+          onGeometry={() => {
+            setShowNewCrashCase(false);
+            setCrashCaseInit(null);
+          }}
+          initial={crashCaseInit ?? undefined}
           onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
           onJobStarted={(res) => void loadScenario(res)}
         />

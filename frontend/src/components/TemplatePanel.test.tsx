@@ -1,7 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TemplatePanel, { templatesForKind } from "./TemplatePanel";
+
+vi.mock("../api/crash", () => ({
+  fetchCrashCatalog: vi.fn(() => Promise.resolve({ entries: [], scenario_templates: { taylor_bar: 3 } })),
+}));
 
 vi.mock("../api/templates", () => ({
   TemplateApiError: class TemplateApiError extends Error {},
@@ -10,6 +14,7 @@ vi.mock("../api/templates", () => ({
   downloadGeometryStep: vi.fn(),
 }));
 
+import { fetchCrashCatalog } from "../api/crash";
 import {
   TemplateApiError,
   createGeometryFromTemplate,
@@ -294,5 +299,20 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Modeli üret" }));
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
     expect(vi.mocked(onCreated).mock.calls[0][0].default_bcs).toEqual([]);
+  });
+  it("1.23 B1: crash'te hazır senaryolu şablonda Model üret yeni vaka penceresini açar (geometri değerleriyle)", async () => {
+    vi.mocked(fetchTemplates).mockResolvedValue([
+      { ...CANTILEVER, id: "taylor_bar", name: "Taylor çubuğu", tags: ["crash"] },
+    ]);
+    vi.mocked(createGeometryFromTemplate).mockClear();
+    const onCrashModel = vi.fn();
+    render(<TemplatePanel busy={false} onCreated={vi.fn()} kind="crash" onCrashModel={onCrashModel} />);
+    await screen.findByDisplayValue("500");
+    await waitFor(() => expect(fetchCrashCatalog).toHaveBeenCalled());
+    await act(async () => {}); // katalog yanıtı state'e yazılsın
+    await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
+    expect(onCrashModel).toHaveBeenCalledWith("taylor_bar", { length: "500", thickness: "10", width: "50" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(createGeometryFromTemplate).not.toHaveBeenCalled();
   });
 });

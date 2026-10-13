@@ -1522,6 +1522,11 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   bağlantısı göreli yoldu (frontend köküne gidiyordu), düzeldi. Test: `CrashPanel.test.tsx`.
 - B1 Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
   "STEP indir"; Model üret → "Yeni crash vakası" pop-up'ı.
+  - B1a ✅ Crash'te hazır senaryolu şablonda Model üret → Yeni crash vakası (o şablonun
+    örneği seçili, geometri alanları paneldeki değerlerle; ilk hız, süre, eleman,
+    malzeme, CFC, Ishell senaryo kartından). Senaryosu olmayan şablon (crash_box_plate)
+    eski pencere + not. Test: `TemplatePanel.test.tsx`, `CrashScenarioCard.test.tsx`.
+  - B1b Büyük görsel + STEP indir şablon panelinde.
 - B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video.

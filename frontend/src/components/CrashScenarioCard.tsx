@@ -228,9 +228,13 @@ export default function CrashScenarioCard({
   onGeometry,
   onJobStarted,
   showSchematic = false,
+  initial,
 }: {
   /** Seçili örneğin kendi şeması (yeni vaka penceresi). */
   showSchematic?: boolean;
+  /** 1.23 B1: "Şablondan üret → Model üret" (crash) — bu şablonun ilk örneği seçili,
+   * geometri alanları paneldeki değerlerle dolu gelir. */
+  initial?: { templateId: string; geometry: Record<string, string> };
   onDone?: () => void;
   /** Senaryo koşusu başladı — App bunu 5 · Sonuçlar paneline bağlar. */
   onJobStarted?: (res: CrashScenarioResponse) => void;
@@ -263,10 +267,11 @@ export default function CrashScenarioCard({
         const ready = cat.entries.filter((e) => e.status === "ready" && e.template_id);
         setEntries(ready);
         setTemplates(Object.fromEntries(tpls.map((t) => [t.id, t])));
-        setEntryId((cur) => cur ?? ready[0]?.id ?? null);
+        const fromTemplate = initial ? ready.find((e) => e.template_id === initial.templateId)?.id : undefined;
+        setEntryId((cur) => cur ?? fromTemplate ?? ready[0]?.id ?? null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Katalog okunamadı."));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const entry = entries.find((e) => e.id === entryId);
   const template = entry?.template_id ? templates[entry.template_id] : undefined;
@@ -279,7 +284,10 @@ export default function CrashScenarioCard({
   // değerleri (K5), yoksa şablon varsayılanı.
   const defaults = entry?.defaults;
   useEffect(() => {
-    const dg = defaults?.geometry ?? {};
+    const dg: Record<string, unknown> = {
+      ...(defaults?.geometry ?? {}),
+      ...(initial && entry?.template_id === initial.templateId ? initial.geometry : {}),
+    };
     setGeo(
       Object.fromEntries(
         props.map(([k, p]) => [k, dg[k] != null ? String(dg[k]) : p.default != null ? String(p.default) : ""]),
@@ -287,7 +295,7 @@ export default function CrashScenarioCard({
     );
     setExtra(Object.fromEntries((extras?.fields ?? []).map((f) => [f.key, defaults?.extras?.[f.key] ?? f.initial])));
     setCommon({ ...COMMON, ...(defaults?.common ?? {}) });
-  }, [props, extras, defaults]);
+  }, [props, extras, defaults]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const jobId = res?.crash.job_id ?? null;
   useEffect(() => {

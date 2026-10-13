@@ -13,11 +13,14 @@ export default function CrashNewCaseDialog({
   onGeometry,
   onDone,
   onJobStarted,
+  initial,
 }: {
   onClose: () => void;
   onGeometry: (geometryId: number, name: string) => void;
   onDone: () => void;
   onJobStarted?: (res: CrashScenarioResponse) => void;
+  /** 1.23 B1: şablon panelinden gelen seçim (şablon + geometri değerleri). */
+  initial?: { templateId: string; geometry: Record<string, string> };
 }) {
   const backdrop = useBackdropClose(onClose);
   return (
@@ -38,7 +41,7 @@ export default function CrashNewCaseDialog({
         <div className="crash-newcase-body">
           <div>
             <CrashScenarioCard
-              showSchematic onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} />
+              showSchematic onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} initial={initial} />
           </div>
           <div>
             <CrashCatalog />

@@ -19,6 +19,7 @@ import TemplateLoadDialog, {
 } from "./TemplateLoadDialog";
 import TemplateSchematic from "./TemplateSchematic";
 import { postRocketOrk } from "../api/cfd";
+import { fetchCrashCatalog } from "../api/crash";
 
 interface TemplatePanelProps {
   busy: boolean;
@@ -30,6 +31,9 @@ interface TemplatePanelProps {
    * modal → crash olmayanlar (kullanıcı 2026-10-04: crash'te durability
    * şablonları görünüyordu). */
   kind?: TemplateKind;
+  /** 1.23 B1 (crash): hazır senaryosu olan şablonda "Model üret" yeni vaka penceresini
+   * (crash kurulum alanlarıyla) açar; geometri değerleri oraya taşınır. */
+  onCrashModel?: (templateId: string, geometry: Record<string, string>) => void;
 }
 
 export type TemplateKind = "durability" | "crash" | "cfd";
@@ -50,6 +54,7 @@ export default function TemplatePanel({
   onCreated,
   onTemplateSelected,
   kind = "durability",
+  onCrashModel,
 }: TemplatePanelProps) {
   const [allTemplates, setAllTemplates] = useState<GeometryTemplateInfo[]>([]);
   const templates = useMemo(() => templatesForKind(allTemplates, kind), [allTemplates, kind]);
@@ -108,6 +113,15 @@ export default function TemplatePanel({
       .catch((e) => setError(e instanceof Error ? e.message : "Şablonlar alınamadı."));
   }, []);
 
+  // 1.23 B1: hazır crash senaryosu olan şablonlar (katalog).
+  const [scenarioTemplates, setScenarioTemplates] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (kind !== "crash" || !onCrashModel) return;
+    fetchCrashCatalog()
+      .then((c) => setScenarioTemplates(new Set(Object.keys(c.scenario_templates))))
+      .catch(() => setScenarioTemplates(new Set()));
+  }, [kind, onCrashModel]);
+
   // Liste (ya da sekme) değişince seçim listede değilse ilk şablona geç.
   useEffect(() => {
     if (!templates.length || templates.some((t) => t.id === selectedId)) return;
@@ -125,6 +139,10 @@ export default function TemplatePanel({
       return;
     }
     setError(null);
+    if (kind === "crash" && onCrashModel && scenarioTemplates.has(selected.id)) {
+      onCrashModel(selected.id, inputs);
+      return;
+    }
     setLoadInputs(loadInputsFromBcs(templateBcs));
     setPending({ params: parsed });
   }

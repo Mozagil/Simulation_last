@@ -85,6 +85,18 @@ describe("CrashScenarioCard", () => {
     expect(await screen.findByText(/t: sayı geçersiz/)).toBeInTheDocument();
   });
 
+  it("1.23 B1: şablon panelinden gelince o şablonun örneği seçili, geometri paneldeki değerlerle", async () => {
+    render(
+      <CrashScenarioCard
+        initial={{ templateId: "plate_ball_shell", geometry: { plate_size: "250", plate_thickness: "4", ball_diameter: "60", gap: "2" } }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByLabelText("Senaryo şablonu")).toHaveValue("plate_perforation"));
+    await waitFor(() => expect(screen.getByLabelText("D (mm)")).toHaveValue("60"));
+    expect(screen.getByLabelText("a (mm)")).toHaveValue("250");
+    expect(screen.getByLabelText("v₀ (m/s)")).toBeInTheDocument();
+  });
+
   it("plaka–küre: şema alanları + küre kütlesi / kabuk kalınlığı; kızak alanı yok", async () => {
     vi.mocked(postCrashScenario).mockClear();
     render(<CrashScenarioCard />);
