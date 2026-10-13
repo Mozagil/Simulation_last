@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { DocItem } from "../docs/crashDoc";
 import { dynaFor } from "../lib/dynaKeywords";
 import { CRASH_BOOK, DOC_BOOKS, type DocBook } from "../docs/books";
+import { useBackdropClose } from "../lib/useBackdropClose";
 
 const MAP_ID = "eslesme";
 const SCEN_ID = "senaryolar";
@@ -382,8 +383,9 @@ export default function DocsDialog({ onClose }: { onClose: () => void }) {
 
   const go = (id: string) => document.getElementById(`doc-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="docs-backdrop" role="presentation" onClick={onClose}>
+    <div className="docs-backdrop" role="presentation" {...backdrop}>
       <div className="docs-dialog" role="dialog" aria-label="Belgeler" onClick={(e) => e.stopPropagation()}>
         <header className="docs-head">
           <div className="docs-head-title">

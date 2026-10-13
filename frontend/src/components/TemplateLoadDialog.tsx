@@ -9,6 +9,7 @@
 import type { SolveBC } from "../api/materials";
 import type { GeometryTemplateInfo } from "../api/templates";
 import TemplateSchematic from "./TemplateSchematic";
+import { useBackdropClose } from "../lib/useBackdropClose";
 
 /** Kullanıcının düzenleyebildiği yük alanları: BC tipine göre. */
 const LOAD_FIELDS: Record<string, { key: string; label: string; unit: string }[]> = {
@@ -101,8 +102,9 @@ export default function TemplateLoadDialog({
   const loads = bcs.map((bc, index) => ({ bc, index })).filter((x) => isLoadBc(x.bc));
   const constraints = bcs.filter((bc) => !isLoadBc(bc));
 
+  const backdrop = useBackdropClose(onCancel);
   return (
-    <div className="template-dialog-backdrop" role="presentation" onClick={onCancel}>
+    <div className="template-dialog-backdrop" role="presentation" {...backdrop}>
       <div
         className="template-dialog"
         role="dialog"

@@ -1503,6 +1503,38 @@ düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart →
   `include_raw_cards`). Belgeler: crashDoc + mlDoc. Test: `test_crash_ml_corpus.py`,
   `test_crash_runs.py`, `CrashModelPanel.test.tsx`, `CrashHistory.test.tsx`.
 
+*1.23 — Crash kullanıcı geri bildirimi (kullanıcı listesi + plan onayı 2026-10-13)*
+Her madde ayrı küçük adım; sıra: A1 → A6 → A7 → A2 → A4+A5 → C2/C3 → C6 → C8 →
+C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
+- A1 ✅ Şablon "Modeli üret" pop-up'ı: alan içinde sürükleyerek seçip dışarıda
+  bırakınca pop-up kapanıyor → yalnız arka plana basılıp orada bırakılınca kapanır.
+  `lib/useBackdropClose.ts`; aynı düzeltme Yeni crash vakası, Ham kart editörü ve
+  Belgeler pencerelerinde. Test: `useBackdropClose.test.tsx`.
+- A2 Crash malzemesi parça bazında (parça × LAW / FAIL tek tabloda) + ürün ağacı.
+- A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
+- A4 Plastik deformasyon animasyonda görünür (deformasyon ölçeği, gerçek ölçek).
+- A5 Animasyon akıcı (kareler arası ara-değer, kare sayısı).
+- A6 Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez.
+- A7 ".rad indir" belirgin düğme: starter (model) ve engine (çözüm kontrolü) ayrı.
+- B1 Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
+  "STEP indir"; Model üret → "Yeni crash vakası" pop-up'ı.
+- B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
+- B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
+- C1 Dışa aktar: grafik (PNG/CSV) + animasyon video.
+- C2 Sonuçlarda mesh on/off + eleman bazlı sonuç.
+- C3 Animasyonda rijit duvar on/off.
+- C4 Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği.
+- C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
+- C6 Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti.
+- C7 Post-process alanları: yönlü deformasyon, eşdeğer plastik şekil değiştirme
+  (min/maks/ort), gerçek ölçek eleman.
+- C8 Kuvvet grafiği açıklaması: eksen/birim, tepe + ortalama işaretli, kısa açıklama.
+- D1 Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
+- D2 Çözüm kontrolü kartı: bitiş süresi, Δt ölçeği (güvenlik katsayısı), kütle
+  ölçekleme tek yerde + açıklama.
+- D3 Koşu sırasında adım sayısı / anlık adım / Δt canlı.
+- E Mesh: eğriliğe göre adaptif boyut (Gmsh curvature sizing).
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse

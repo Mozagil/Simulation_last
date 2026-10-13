@@ -6,6 +6,7 @@
 import type { CrashScenarioResponse } from "../api/crash";
 import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
+import { useBackdropClose } from "../lib/useBackdropClose";
 
 export default function CrashNewCaseDialog({
   onClose,
@@ -18,8 +19,9 @@ export default function CrashNewCaseDialog({
   onDone: () => void;
   onJobStarted?: (res: CrashScenarioResponse) => void;
 }) {
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="crash-newcase-backdrop" role="presentation" onClick={onClose}>
+    <div className="crash-newcase-backdrop" role="presentation" {...backdrop}>
       <div
         className="crash-newcase-dialog"
         role="dialog"

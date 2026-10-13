@@ -22,6 +22,7 @@ import {
   rulerLines,
   spacesToNextField,
 } from "../lib/rawCards";
+import { useBackdropClose } from "../lib/useBackdropClose";
 
 const [RULER_NUMS, RULER_TICKS] = rulerLines(100);
 
@@ -185,8 +186,9 @@ export default function CrashRawCardsEditor({
   const info = cursorInfo(value, cursor);
   const updateCursor = () => setCursor(areaRef.current?.selectionStart ?? 0);
 
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="crash-newcase-backdrop" role="presentation" onClick={onClose}>
+    <div className="crash-newcase-backdrop" role="presentation" {...backdrop}>
       <div
         className="raw-cards-dialog"
         role="dialog"
