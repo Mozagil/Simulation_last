@@ -1201,12 +1201,21 @@ function App() {
     const thick = (rq.parts ?? []).filter((p) => typeof p.thickness_mm === "number" && p.thickness_mm > 0);
     if (thick.length) {
       try {
+        // material_id da gönderilir: upsert malzemesiz giderse sunucu parça atamasını siler
+        // (kullanıcı 2026-10-13: "En az bir parça için malzeme atayın" 422).
+        const sc = res.scenario as { material_id?: number; ball_material_id?: number };
+        const matOf = (pid: number) =>
+          (pid === 1 && typeof sc.ball_material_id === "number" ? sc.ball_material_id : sc.material_id) ?? null;
         for (const p of thick) {
           await upsertComponent(res.geometry_id, {
             part_id: p.part_id,
             property_kind: "shell",
             thickness: p.thickness_mm,
+            material_id: matOf(p.part_id),
           });
+        }
+        if (activeGeometryIdRef.current === res.geometry_id) {
+          setMaterialAssignments(await fetchMaterialAssignments(res.geometry_id));
         }
         if (activeGeometryIdRef.current === res.geometry_id) {
           setProductTree(await fetchProductTree(res.geometry_id, 0));
