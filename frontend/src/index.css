@@ -9171,10 +9171,10 @@ p {
 /* 1.23 B1b — crash'te sade şablon paneli: büyük görsel, şablon, Model üret, STEP indir */
 .geo-upload-columns .template-panel-compact .template-schematic {
   flex: 1 1 auto;
-  min-height: 220px;
-  max-height: none;
+  min-height: 165px;
+  max-height: 260px;
 }
 
 .geo-upload-columns .template-panel-compact .template-schematic svg {
-  max-height: 320px;
+  max-height: 240px;
 }
