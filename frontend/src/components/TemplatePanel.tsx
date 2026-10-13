@@ -81,6 +81,8 @@ export default function TemplatePanel({
   }
 
   const selected = templates.find((t) => t.id === selectedId) ?? null;
+  // 1.23 A6: şablon BC'leri yalnız durability'de (crash / akışta kendi kurulumları var).
+  const templateBcs = kind === "durability" ? (selected?.default_bcs ?? []) : [];
   const fields = useMemo(
     () => (selected ? numberFieldsFromSchema(selected.params_schema as JsonSchema) : []),
     [selected],
@@ -123,7 +125,7 @@ export default function TemplatePanel({
       return;
     }
     setError(null);
-    setLoadInputs(loadInputsFromBcs(selected.default_bcs ?? []));
+    setLoadInputs(loadInputsFromBcs(templateBcs));
     setPending({ params: parsed });
   }
 
@@ -131,7 +133,7 @@ export default function TemplatePanel({
     if (!selected || !pending) return;
     // Önce girdileri doğrula: şablonun (id'siz) BC listesi üzerinde. Geometri
     // üretmeden hata vermek, yarım kayıt bırakmamak için.
-    const check = applyLoadInputs(selected.default_bcs ?? [], loadInputs);
+    const check = applyLoadInputs(templateBcs, loadInputs);
     if (typeof check === "string") {
       setError(check);
       return;
@@ -142,10 +144,14 @@ export default function TemplatePanel({
       const result = await createGeometryFromTemplate(selected.id, pending.params);
       // Sunucudan gelen BC'ler gerçek yüzey/kenar id'leriyle bağlı; kullanıcının
       // girdiği yük değerlerini bunların üzerine uygula (sıra aynı şablondan gelir).
-      const bound = applyLoadInputs(result.default_bcs ?? [], loadInputs);
-      await onCreated(
-        typeof bound === "string" ? result : { ...result, default_bcs: bound },
-      );
+      // 1.23 A6: şablonun BC'leri durability'ye ait (ör. Taylor basıncı);
+      // crash / akış sekmesinde yüklenmez — kurulum o sekmenin kendi panelinde.
+      if (kind !== "durability") {
+        await onCreated({ ...result, default_bcs: [] });
+      } else {
+        const bound = applyLoadInputs(result.default_bcs ?? [], loadInputs);
+        await onCreated(typeof bound === "string" ? result : { ...result, default_bcs: bound });
+      }
       setPending(null);
     } catch (e) {
       setError(e instanceof TemplateApiError ? e.message : "Şablon üretilemedi.");
@@ -263,7 +269,14 @@ export default function TemplatePanel({
         <TemplateLoadDialog
           template={selected}
           params={inputs}
-          bcs={selected.default_bcs ?? []}
+          bcs={templateBcs}
+          note={
+            kind === "crash"
+              ? "Şablonun durability yükü/kısıtları crash'te kullanılmaz; çarpma (ilk hız, duvar, roller) 4 · Crash'te kurulur."
+              : kind === "cfd"
+                ? "Şablonun durability yükü/kısıtları akışta kullanılmaz; akış koşulları 3 · Akış'ta kurulur."
+                : undefined
+          }
           inputs={loadInputs}
           busy={creating}
           error={error}

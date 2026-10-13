@@ -1514,7 +1514,9 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
 - A4 Plastik deformasyon animasyonda görünür (deformasyon ölçeği, gerçek ölçek).
 - A5 Animasyon akıcı (kareler arası ara-değer, kare sayısı).
-- A6 Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez.
+- A6 ✅ Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez:
+  crash / akış sekmesinde "Modeli üret" pop-up'ı yük/kısıt yerine not gösterir,
+  şablon BC'leri yüklenmez (`TemplatePanel` `templateBcs`). Test: `TemplatePanel.test.tsx`.
 - A7 ".rad indir" belirgin düğme: starter (model) ve engine (çözüm kontrolü) ayrı.
 - B1 Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
   "STEP indir"; Model üret → "Yeni crash vakası" pop-up'ı.

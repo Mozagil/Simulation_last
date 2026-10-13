@@ -271,4 +271,28 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     expect(screen.getByDisplayValue("280")).toBeInTheDocument();
     spy.mockRestore();
   });
+  it("1.23 A6: crash sekmesinde şablonun durability BC'leri gösterilmez ve yüklenmez", async () => {
+    const TAYLOR = {
+      ...CANTILEVER,
+      id: "taylor_bar",
+      name: "Taylor çubuğu",
+      tags: ["crash"],
+      default_bcs: [{ type: "pressure", region: "on_yuz", magnitude: 10 }],
+    };
+    vi.mocked(fetchTemplates).mockResolvedValue([TAYLOR]);
+    vi.mocked(createGeometryFromTemplate).mockResolvedValue({
+      ...CREATED,
+      template_id: "taylor_bar",
+      default_bcs: [{ type: "pressure", region: "on_yuz", face_ids: [3], magnitude: 10 }],
+    });
+    const onCreated = vi.fn();
+    render(<TemplatePanel busy={false} onCreated={onCreated} kind="crash" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Model üret" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("Basınç (MPa)")).toBeNull();
+    expect(within(dialog).getByTestId("template-dialog-note")).toHaveTextContent("4 · Crash");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Modeli üret" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(onCreated).mock.calls[0][0].default_bcs).toEqual([]);
+  });
 });

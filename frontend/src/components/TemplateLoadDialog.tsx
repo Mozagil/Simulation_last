@@ -86,6 +86,8 @@ interface TemplateLoadDialogProps {
   onInputChange: (key: string, value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
+  /** 1.23 A6: crash / akış sekmesinde BC listesi yerine gösterilen not. */
+  note?: string;
 }
 
 export default function TemplateLoadDialog({
@@ -98,6 +100,7 @@ export default function TemplateLoadDialog({
   onInputChange,
   onCancel,
   onConfirm,
+  note,
 }: TemplateLoadDialogProps) {
   const loads = bcs.map((bc, index) => ({ bc, index })).filter((x) => isLoadBc(x.bc));
   const constraints = bcs.filter((bc) => !isLoadBc(bc));
@@ -134,7 +137,9 @@ export default function TemplateLoadDialog({
           </div>
         )}
 
-        {loads.length === 0 ? (
+        {note ? (
+          <p className="filename" data-testid="template-dialog-note">{note}</p>
+        ) : loads.length === 0 ? (
           <p className="filename">Bu şablonda düzenlenecek yük yok.</p>
         ) : (
           <div className="template-dialog-section">
