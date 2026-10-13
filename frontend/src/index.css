@@ -7532,3 +7532,153 @@ p {
   flex-direction: column;
   gap: 8px;
 }
+
+/* 1.22d — crash ham kart editörü (popup; satır no + 10'luk kolon cetveli) */
+.raw-cards-dialog {
+  --rc-font: 12.5px/1.5 var(--font-mono);
+  --rc-pad: 8px;
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 94vw);
+  height: min(640px, 86vh);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.raw-cards-dialog .crash-doe-x {
+  margin-left: auto;
+}
+
+.raw-cards-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.raw-cards-picks {
+  color: var(--muted);
+}
+
+.raw-cards-pos {
+  margin-left: auto;
+  font: 12px var(--font-mono);
+  color: var(--muted);
+}
+
+.raw-cards-editor {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--surface);
+}
+
+.raw-cards-corner,
+.raw-cards-gutter {
+  background: var(--surface-2);
+  border-right: 1px solid var(--border-soft);
+}
+
+.raw-cards-corner {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.raw-cards-ruler {
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-2);
+}
+
+.raw-cards-ruler pre {
+  margin: 0;
+  padding: 0 var(--rc-pad);
+  font: var(--rc-font);
+  color: var(--muted);
+  white-space: pre;
+}
+
+.raw-cards-gutter {
+  overflow: hidden;
+  padding: var(--rc-pad) 0;
+  min-width: 44px;
+  font: var(--rc-font);
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+
+.raw-cards-gutter > div {
+  padding: 0 8px 0 10px;
+}
+
+.raw-cards-gutter > div.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.raw-cards-area {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: var(--rc-pad);
+  border: 0;
+  outline: none;
+  resize: none;
+  font: var(--rc-font);
+  color: var(--ink);
+  background-color: var(--surface);
+  /* Her 10 karakterde ince alan çizgisi (içerikle birlikte kayar). */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(10ch - 1px),
+    var(--border-soft) calc(10ch - 1px),
+    var(--border-soft) 10ch
+  );
+  background-origin: content-box;
+  background-clip: content-box;
+  background-attachment: local;
+  tab-size: 10;
+  white-space: pre;
+}
+
+.raw-cards-area:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.raw-cards-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.raw-cards-foot .material-assign-button {
+  margin: 0 0 0 auto;
+  width: auto;
+  padding: 9px 28px;
+}
+
+.raw-cards-toolbar .material-secondary-button,
+.raw-cards-open .material-secondary-button {
+  margin-top: 0;
+  width: auto;
+  padding: 7px 14px;
+  flex-shrink: 0;
+}
+
+.raw-cards-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}

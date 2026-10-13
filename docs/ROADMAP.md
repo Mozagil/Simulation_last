@@ -1431,9 +1431,16 @@ düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart →
   (`starter_message_blocks`), çıkış kodu, ham kartın deck'teki ilk satırı;
   starter yoksa 503. Gerçek koşu (Docker imajı): üretilenle aynı MAT ID →
   ERROR 79 "DUPLICATE ID", ~1 s. Test: `test_crash_raw_card_check.py`.
-- 1.22d ⏳ Frontend: popup editör (monospace, satır no, 10 karakterlik kolon
-  cetveli); 3 · Malzeme ve 4 · Crash'ten açılır, içerik ortak; viewport'ta seçili
-  düğüm/eleman ID'leri imlece eklenir. Koşu isteğine `raw_cards` eklenir.
+- 1.22d ✅ Frontend: popup editör `CrashRawCardsEditor` (monospace, satır no,
+  10 karakterlik kolon cetveli + alan çizgileri, Tab = sonraki 10'luk alan, imleç
+  satır/kolon/alan); 3 · Malzeme ve 4 · Crash'teki "Ham kart editörü" satırından
+  açılır, içerik App'te ortak; viewport "Mesh düğüm" seçimi imlece 10'luk
+  alanlarla eklenir; koşu isteğine `raw_cards` (boşsa alan yok).
+  Ölçüldü: düğüm seçimi gmsh düğüm no'su = deck düğüm no'su (köşe düğümler);
+  Tet10'un ara düğümleri deck'te yok (TETRA4) — seçilirse starter "UNDEFINED
+  NODE" verir (1.22c). Eleman ID ekleme YOK: export elemanları 1'den yeniden
+  numaralıyor, viewport eleman no'su ile eşlenmedi (ayrı karar).
+  Test: `rawCards.test.ts`, `CrashRawCardsEditor.test.tsx`, `CrashPanel.test.tsx`.
 - 1.22e ⏳ Frontend: "Kontrol et" sonucu + ID envanteri/çakışma paneli editörde.
 - 1.22f ⏳ Ham kartlı koşu crash geçmişinde "ham kart" etiketli; ML korpusu
   bunları varsayılan dışarıda bırakır (ham kart parametre değil, taranamaz);

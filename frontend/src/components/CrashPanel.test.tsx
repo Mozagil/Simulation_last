@@ -132,6 +132,33 @@ describe("CrashPanel", () => {
     expect(body.parts?.[0]).not.toHaveProperty("thickness_mm");
   });
 
+  it("1.22d: ham kart doluysa istekte raw_cards aynen, boşsa alan yok; satır editörü açar", async () => {
+    const res = {
+      job_id: "j10", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    };
+    vi.mocked(postCrashSolve).mockResolvedValue(res);
+    const onOpen = vi.fn();
+    const raw = "/BCS/900001\nham\n";
+    const { unmount } = render(
+      <CrashPanel geometryId={1} meshDimension={3} partIds={[0]} rawCards={raw} onOpenRawCards={onOpen} />,
+    );
+    expect(screen.getByTestId("raw-cards-open")).toHaveTextContent("2 satır ham kart");
+    fireEvent.click(screen.getByRole("button", { name: "Ham kart editörü" }));
+    expect(onOpen).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].raw_cards).toBe(raw);
+    unmount();
+
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} rawCards="  " />);
+    expect(screen.queryByTestId("raw-cards-open")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(postCrashSolve).mock.calls[1][0]).not.toHaveProperty("raw_cards");
+  });
+
   it("bariyer gönderir ve rad_only durumunu gösterir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j1",
