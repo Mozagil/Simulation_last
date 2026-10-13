@@ -418,20 +418,27 @@ def _apply_cfc(
     curves: dict[str, Any],
     scalars: dict[str, float],
     acc_comp: tuple[list[float], list[float], list[float]] | None,
+    filters_override: dict[str, Any] | None = None,
 ) -> None:
     """1.17e — postprocess.json'daki CFC sınıflarıyla süzülmüş eğri / skaler
-    ekler; ham olanlar değişmez. Zaman ms (deck birimi)."""
+    ekler; ham olanlar değişmez. Zaman ms (deck birimi). `filters_override`
+    verilirse dosya yerine o kullanılır (koşu sonrası yeniden süzme)."""
     import json
 
     from app.postprocess.cfc import cfc_filter, sample_ratio
 
-    p = work_dir / "postprocess.json"
-    if not p.is_file() or not time:
+    if not time:
         return
-    try:
-        flt = json.loads(p.read_text(encoding="utf-8")).get("filters") or {}
-    except ValueError:
-        return
+    if filters_override is not None:
+        flt = filters_override
+    else:
+        p = work_dir / "postprocess.json"
+        if not p.is_file():
+            return
+        try:
+            flt = json.loads(p.read_text(encoding="utf-8")).get("filters") or {}
+        except ValueError:
+            return
     fc, ac = flt.get("force_cfc"), flt.get("acc_cfc")
     if fc:
         for key in [k for k in curves if re.fullmatch(r"(rwall|contact_\d+|section_\d+)_force", k)]:
@@ -466,7 +473,7 @@ def _read_th_spec(work_dir: Path) -> dict[str, Any] | None:
         return None
 
 
-def parse_openradioss_dir(work_dir: Path) -> ResultSet:
+def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | None = None) -> ResultSet:
     work_dir = Path(work_dir)
     csv_path = _find_csv(work_dir)
     out_path = _find_listing(work_dir)
@@ -628,7 +635,7 @@ def parse_openradioss_dir(work_dir: Path) -> ResultSet:
     # 1.17h — hourglass enerjisi eğrisi (global sütun), grafikte IE / KE yanında
     if hg_e and len(hg_e) == len(time):
         curves["hourglass_energy"] = hg_e
-    _apply_cfc(work_dir, time, time_header, curves, scalars, acc_comp)
+    _apply_cfc(work_dir, time, time_header, curves, scalars, acc_comp, filters_override)
     if unmapped:
         diag["th_unmapped_groups"] = unmapped
     raw = csv_path or out_path or work_dir

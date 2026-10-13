@@ -1413,8 +1413,9 @@ ortalama kuvvet …) mühendisten.
 ## Faz 2 — CFD / akış (OpenFOAM)
 
 **Sıra değişikliği (kullanıcı, 2026-10-07):** Faz 2 artık OpenFOAM ile akış;
-kompozit Faz 3'e kaydı. **Durum: PLAN — başlamak için kullanıcı onayı
-bekleniyor.** Faz 0 (CalculiX `/solve`) ve Faz 1 (crash) yollarına dokunulmaz;
+kompozit Faz 3'e kaydı. **Durum: BAŞLADI (kullanıcı onayı 2026-10-08)** —
+arayüzde "AKIŞ · OpenFOAM" sekmesi iskeleti (plan + açık kararlar, çözücü
+bağlı değil). 2.0 / 2.1 aşağıdaki açık soruların 1 ve 2'sinin cevabını bekliyor. Faz 0 (CalculiX `/solve`) ve Faz 1 (crash) yollarına dokunulmaz;
 yeni CFD yolu eklenir. Solver/mesh çağrıları yalnız sunucuda (Docker imajı).
 ML en sonda (2.9), crash'teki sırayla aynı.
 
@@ -1425,7 +1426,7 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
 İlerleme: solver log'undan iterasyon / residual (crash'teki websocket deseni).
 
 **Kullanıcıya açık sorular (başlamadan önce):**
-1. OpenFOAM dağıtımı + Docker imajı: ESI (openfoam.com, v2406/v2412 —
+1. ✅ ESI seçildi (2026-10-08). OpenFOAM dağıtımı + Docker imajı: ESI (openfoam.com, v2406/v2412 —
    resmi Docker imajı var) mı, Foundation (openfoam.org v12) mı?
 2. İlk hedef vaka: iç akış (boru/kanal — basınç düşümü) mı, dış akış
    (silindir/küre/araç — Cd/Cl) mı?
@@ -1436,34 +1437,282 @@ geometride `blockMesh`, STEP geometride Gmsh → STL → `snappyHexMesh`.
 5. DB şeması: `cfd_runs` tablosu (crash_runs deseni) — Alembic migration.
 
 **Mikro-adımlar (her biri ayrı onay; bir adım bitince dur):**
-- 2.0 ⏳ Altyapı: OpenFOAM Docker imajı (`.env`: `OPENFOAM_DOCKER_IMAGE`),
+- 2.0 ✅ (2026-10-08) Altyapı: OpenFOAM Docker imajı (`.env`: `OPENFOAM_DOCKER_IMAGE`),
   Codespace devcontainer'a ekleme; duman testi (resmi `pitzDaily`
   öğretici vakası `simpleFoam` ile koşar, log okunur). Lisans notu
-  `LICENSING.md` (GPL, sunucu tarafı).
-- 2.1 ⏳ Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
+  `LICENSING.md` (GPL, sunucu tarafı). **Sonuç:** ESI v2412 resmi imajı
+  (`opencfd/openfoam-default:2412`); `app/solvers/openfoam.py` (imaj, `docker
+  run` komutu, log → iterasyon + başlangıç residual), `scripts/openfoam_smoke.py`;
+  pitzDaily 281 iterasyonda yakınsadı (SIMPLE residualControl), ~13 s; test
+  `tests/test_openfoam_runtime.py` (Docker testi imaj yoksa atlanır). Codespace:
+  docker-in-docker zaten var, imaj isteğe bağlı çekilir.
+- 2.1 ✅ (2026-10-08) Case yazıcı: `solvers/openfoam.py` `build_input` — parametrelerden
   `0/U`, `0/p`, (`k`, `omega`, `nut`), `constant/transportProperties` /
   `momentumTransport`, `system/controlDict|fvSchemes|fvSolution` üretimi;
-  Docker'sız birim testi (dosya içerikleri).
-- 2.2 ⏳ Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
+  Docker'sız birim testi (dosya içerikleri). **Sonuç:** `app/solvers/openfoam_case.py`
+  (`CfdCaseParams`: ν, ρ, yamalar inlet/outlet/wall/symmetry/empty, laminer | k-ω SST —
+  giriş k/ω yoğunluk I ve uzunluk ölçeği L'den, SIMPLE ayarları; varsayılanlar pitzDaily),
+  `OpenFoamAdapter.build_input` → case klasörü. Kontrol: yazıcının dosyaları + pitzDaily
+  ağı (`scripts/openfoam_case_check.py`) — k-ω SST 382 iterasyonda yakınsadı (~15 s);
+  laminer aynı ağda (Re ≈ 25 000) 2000 iterasyonda yakınsamadı (daimi laminer çözüm
+  yok; laminer doğrulama 2.3'te düşük Re kanalda). Test `tests/test_openfoam_case.py`.
+  İlk vaka kararı gelmeden yapıldı: yazıcı iç/dış akıştan bağımsız; varsayım iç akış (2.3 kanal).
+- 2.2 ✅ (2026-10-08) Koşu + ilerleme: `submit` / `poll_status` Docker'da; log'dan iterasyon
   + başlangıç residual'ları; `/cfd/solve` + `/cfd/jobs/{id}` (+ ws); test.
-- 2.3 ⏳ İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
+  **Sonuç:** `OpenFoamAdapter.submit` (Docker; `blockMeshDict` varsa önce
+  blockMesh, ardından controlDict'teki application; çıktı satır satır →
+  `SolverLogStream`, her iterasyonda geri çağırma), `parse_results` residual
+  geçmişi + yakınsama; `app/api/cfd.py` (arka plan işi, `uploads/cfd/<id>/job.json`,
+  canlı residual geçmişi GET'te, ws). Mesh şimdilik ham `blockMeshDict` metni
+  (2.3 parametrik kanal, 2.5 STEP). Canlı deneme: pitzDaily k-ω SST, 2 s'de bir
+  iterasyon + residual'lar, 382 iterasyonda yakınsadı (~12 s). Yüzde = iterasyon /
+  iterasyon sınırı (yakınsayınca erken biter). DB kaydı yok (2.4, ayrı onay).
+  Test `tests/test_cfd_api.py` (sahte süreç + gerçek Docker).
+- 2.3 ✅ (2026-10-08) İlk doğrulama vakası (blockMesh): 2B kanal laminer Poiseuille —
   basınç düşümü analitik değerle karşılaştırılır (V-C1, veri olarak).
-- 2.4 ⏳ Sonuç okuma (`parse_results`): function object çıktıları (forces /
+  **Sonuç:** `app/mesh/cfd_blockmesh.py` (parametrik kanal: L, H, D, nx/ny/nz, 2B/3B,
+  duvara sıklaşma; yamalar inlet/outlet/walls/frontAndBack; Poiseuille referansı),
+  case yazıcıda izleme fonksiyonları (`pAvg_<yama>` alan ortalaması p, `uMax`),
+  `read_monitors`; `/cfd/solve` `channel` alanı → Δp (kinematik + Pa) ve
+  `reference` (analitik / CFD / % fark). V-C1 (Re 10, L = 20H, 200×20 hücre,
+  643 iterasyon, ~7 s): Δp %+2.9 (girişteki gelişme bölgesi dahil, L_e ≈ 0.5H),
+  u_max %−0.5. Test `tests/test_cfd_channel.py`.
+- 2.4 ✅ (2026-10-08) Sonuç okuma (`parse_results`): function object çıktıları (forces /
   forceCoeffs, patch ortalama basınç / debi), residual geçmişi →
   `ResultSet`; `cfd_runs` kaydı (şema ayrı onay).
-- 2.5 ⏳ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
+  **Sonuç:** case yazıcıda `forces` bloğu (`CfdForces`: gövde yamaları, CofR,
+  sürükleme/kaldırma/yunuslama yönleri, U_ref, l_ref, A_ref, son N iterasyon) →
+  `forceCoeffs` (`coeffs`) + `forces_total` + yama başına `forces_<yama>`;
+  `read_forces`: Cd/Cl/Cs/Cm son değer + son N ortalama ve std, kuvvet/moment
+  toplam/basınç/viskoz bileşenleri, katsayı geçmişi; API'de CdA. **`cfd_runs`
+  tablosu** (kullanıcı onayı 2026-10-08; migration `b8c9d0e1f2a3`, geometri
+  bağı isteğe bağlı) + `/cfd/runs` (liste, ayrıntı + eğriler, karşılaştır, ad /
+  dışla). Canlı: pitzDaily duvarları Cd 0.318 (son 50 ort. 0.320, std 0.003),
+  toplam = yamaların toplamı. Test `tests/test_cfd_forces_runs.py`.
+- 2.5 ✅ CFD mesh: STEP → Gmsh yüzey STL → `snappyHexMesh` (arka plan
   blockMesh kutusu, yüzey/bölge inceltme, sınır tabakası katmanları —
   değerler mühendisten); `checkMesh` çıktısı veri olarak.
-- 2.6 ⏳ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
-  `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3).
-- 2.7 ⏳ Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
+  **Mesh kurgusu (kullanıcı 2026-10-08):** CFD mesh'i FEA mesh'inden ayrıdır —
+  parçanın değil akışkan hacminin sonlu hacim ağı (hex ağırlıklı, duvarda sınır
+  tabakası, adlandırılmış yamalar). `MesherAdapter`'ın CFD uygulaması
+  (`mesh/cfd_mesher.py`); AKIŞ sekmesinde FEA mesh panelinden ayrı bir CFD mesh
+  paneli (tünel boyutu, taban hücre, inceltme, katmanlar, checkMesh tablosu, y+).
+  Geometri adımı ortak. Parça/bölge başına ayrı STL yüzeyi → ayrı yama → parça
+  başına kuvvet (roket: burun / gövde / kanatçık / taban).
+  - 2.5a ✅ (2026-10-08) `snappyHexMesh` (varsayılan; akademi ve yarışmalarda standart).
+    `app/mesh/cfd_mesher.py`: STEP → Gmsh yüzey üçgenlemesi → çok-katılı STL
+    (yüzey Physical Group'u başına ayrı solid → ayrı yama; kalanı `body`; mm → m;
+    açık kenar sayısı veri), tünel kutusu (gövde boyu L'nin katları: önde 3,
+    arkada 6, yanlarda 3 — parametre; zemin isteğe bağlı), blockMeshDict,
+    surfaceFeatureExtractDict, snappyHexMeshDict (yüzey / kenar / iz kutusu
+    inceltmesi, sınır tabakası), ESI meshQualityDict; checkMesh ve snappy
+    günlüğü okuyucuları (hücre tipleri, non-orthogonality, skewness, aspect ratio,
+    yama yüzleri, seviye dağılımı, katman kapsaması). API: `POST /cfd/mesh`
+    (arka plan), `GET /cfd/mesh/{id}`; `/cfd/solve` `mesh_id` ile polyMesh'i
+    kullanır (yama adı denetimi). Case yazıcıya `slip` yaması (tünel yanları).
+    Uçtan uca: 100 mm küre, taban 50 mm, yüzey seviyesi 3 → 13 615 hücre,
+    checkMesh OK, 3 katman %100, mesh 7 s; k-ω SST 10 m/s (Re 6.7e4) 203
+    iterasyon, Cd 0.406 (kaba ağ; doğrulama 2.6). Test `tests/test_cfd_mesh.py`.
+  - 2.5b ✅ (2026-10-09) `cfMesh` (`cartesianMesh`; daha az ayar, sınır
+    tabakasını kendisi ekler) — NLGEOM gibi seçilebilir ikinci mesh'leyici.
+    **Düzeltme:** resmi ESI imajında cfMesh YOK (önce "hazır" denmişti, yanlıştı).
+    Kullanıcı kararı 2026-10-09 ("ikisini de yap"): `backend/docker/openfoam/Dockerfile`
+    resmi imajın üzerine ESI cfMesh modülünü (GPL, v2406 etiketi) derler →
+    `simsurrogate-openfoam:2412-cfmesh` (derleme ~2 dk); snappy ve geri kalanı aynı.
+    `cfd_mesher.py`: tünel kutusu + gövde tek STL (`domain.stl`), `meshDict`
+    (snappy ayarlarıyla aynı anlam: gövde hücresi = taban/2^seviye_maks, iz kutusu,
+    katman sayısı + büyüme oranı, `renameBoundary` ile yama türleri). `/cfd/mesh`
+    `mesher: snappy | cfmesh` (otomatik seçim yok). Küre: cfMesh 17 094 hücre,
+    checkMesh OK, max non-orthogonality 24.6° (snappy 13 615 hücre, 34.5°). Ogive roket (aynı tünel, taban 0.15 m): cfMesh 27 s'de 328 233 hücre (snappy 124 s / 142 346), checkMesh 1 kontrol başarısız (max non-orth 71°, skewness 4.1); 50 m/s k-ω SST salınımlı (Cd 0.78, son 100 ort. 0.70, std 0.12) — snappy ile karşılaştırma için ayar eşlemesi ve ağ yakınsaması 2.6'da (veri, yorum yok). Test `tests/test_cfd_cfmesh.py`.
+  - (seçenek) Gmsh hacim tet ağı + `gmshToFoam` — yalnız gerekirse.
+- 2.6 ✅ Dış akış doğrulaması: silindir (Re 20/40 — Cd literatür), ardından
+  `pitzDaily` yeniden bağlanma uzunluğu (V-C2, V-C3). Sonuçlar `docs/CFD_VALIDATION.md`.
+  - 2.6a ✅ (2026-10-09) V-C2 küre (silindir yerine 3B küre — mevcut tünel akışı):
+    şablon `cfd_sphere`, Re 20/40/100 laminer, snappy seviye 2/3/4 + cfMesh; referans
+    Schiller–Naumann ve Clift–Grace–Weber. En ince ağ CGW'ye +%1.4–1.9, seviye 3→4
+    değişim ≤ %0.8; cfMesh snappy s3'ten %0.2–0.9 farklı. Betik
+    `scripts/cfd_validation_sphere.py`, test `tests/test_cfd_sphere_validation.py`.
+  - 2.6b ✅ (2026-10-09) V-C3 pitzDaily: k-ω SST, öğretici ağı → x_r/h 7.89 (deney
+    7.0, %+12.7); residual ~1e-4'te plato; yeniden bağlanma daralma başlangıcına
+    (206 mm) yakın. `app/postprocess/openfoam_fields.py` (yama değerleri, τ_x işaret
+    değişimi), betik `scripts/cfd_validation_pitzdaily.py`, test `tests/test_openfoam_fields.py`.
+  - 2.6c ✅ (2026-10-09) V-C4 Ahmed gövdesi: şablon `ahmed_body` (φ 0–40°, bacaksız),
+    zeminli tünel, φ 25°: 217k hücre, k-ω SST 40 m/s → Cd 0.367 (deney 0.285, %+29;
+    kaba ağ, residual hedefe inmedi). Betik `scripts/cfd_validation_ahmed.py`, test
+    `tests/test_template_ahmed.py`. **2.6 kapandı**; V-C5 Basic Finner
+    (sıkıştırılabilir) R4 ile.
+- 2.7 ✅ (2026-10-09) Frontend: Analiz tipi "CFD · OpenFOAM" sekmesi; adımlar
   1 Geometri · 2 Mesh (blockMesh / snappy ayarları) · 3 Akışkan (ρ, ν) ·
   4 Sınır koşulları (giriş hızı, çıkış basıncı, duvar, simetri,
   türbülans modeli) · 5 Sonuçlar (residual grafiği, Cd/Cl, Δp). İşlevle
   birlikte sunulabilir kalitede; öneri/uyarı mekanizması yok.
-- 2.8 ⏳ Alan görselleştirme: yüzey basıncı + kesit hız alanı viewport'ta
-  (mesh önizleme JSON deseni; gerekirse PyVista — onay).
-- 2.9 ⏳ CFD DOE + vekil model (ML tezgahı, crash 1.19 deseni) — en sonda.
+  - 2.7a ✅ (2026-10-09) CFD mesh paneli (AKIŞ · 2 · Mesh, FEA panelinden ayrı):
+    tünel (önde / arkada / yan × L, taban hücre, zemin + açıklık), mesh'leyici
+    snappyHexMesh | cfMesh, yüzey / kenar / iz seviyeleri, katmanlar; "Mesh üret" →
+    `/cfd/mesh` arka plan + yoklama; sonuç tablosu (yüzey, tünel, hücre tipleri,
+    non-orthogonality, skewness, aspect ratio, checkMesh), katman kapsaması, yama
+    listesi. `api/cfd.ts`, `CfdMeshPanel.tsx` (+ test). Tarayıcı: roket, taban 0.3 m,
+    seviye 2–3 → 56 298 hücre, Mesh OK.
+  - 2.7b ✅ (2026-10-09) Çözüm paneli (AKIŞ · 3 · Akış): yama rolleri (mesh yamalarından;
+    giriş / çıkış / duvar / kaymalı / serbest akım / simetri / boş), hız vektörü, ν, ρ,
+    laminer | k-ω SST, Re verisi, iterasyon / residual / gevşetme, kuvvet yamaları + A, l;
+    Çalıştır → `/cfd/solve` + `/cfd/jobs` yoklama, canlı residual grafiği (log ölçek,
+    `CfdResidualChart`), özet (iterasyon, Cd ± std, Cl, CdA, Fx). Tarayıcı: roket kaba ağ
+    50 m/s → 202 iterasyon, Cd 0.247 (kaba ağ, yalnız arayüz denemesi).
+  - 2.7c ✅ Sonuçlar (`CfdResults`): özet (Cd/Cl/Cm, CdA, toplam ve basınç/viskoz
+    kuvvet, Δp), yama başına kuvvet tablosu, katsayı geçmişi (doğrusal grafik). Roket
+    modu (roket yamaları varsa, `Genel akış | Roket rüzgâr tüneli`): hız, α, CG,
+    sıcaklık → Mach verisi, Barrowman ön izleme (bileşen tablosu + kararlılık),
+    `/cfd/rocket/solve`; sonuçta CA/CN, CD/CL, Cm, basınç merkezi, CNα, kararlılık
+    payı ve Barrowman ile yan yana. Tarayıcı: kaba ağ α 4°, CG 900 → CNα 13.86
+    (Barrowman 10.81), x_cp 1159.6 mm (1176.6), kararlılık 2.60 kal.
+  - 2.7d ✅ Koşu geçmişi (`CfdRunsPanel`, `cfd_runs`): bu geometri / tümü, en çok 6
+    koşuyu yan yana (Cd, Cl, CdA, Fx, Δp, roket CN / CNα / x_cp / kararlılık), dışla /
+    geri al; çözüm bitince liste yenilenir.
+  - 2.7e ✅ (2026-10-09) Koşu başına PDF rapor (`GET /cfd/runs/{id}/report.pdf`,
+    `cfd_report.py`, reportlab: kurulum, yamalar, katsayılar ort.±std, yama kuvvetleri,
+    roket / Barrowman, residual (log) + Cd grafikleri; Türkçe TTF) ve Belgeler'de
+    "Akış" kitabı (`docs/cfdDoc.ts`: 8 bölüm + 3 şablon, görsel `public/docs/cfd/`).
+- 2.8 ✅ Alan görselleştirme (2026-10-09; yeni bağımlılık yok, PyVista gerekmedi):
+  case yazıcıda `CfdViz` → controlDict'e `surfaces` (raw: gövde yamaları p/U +
+  `cuttingPlane` kesit) ve `streamLine` (düz metin eski VTK) fonksiyon nesneleri,
+  `writeTime`'da yazılır. Tünel mesh'li koşularda (`/cfd/solve` mesh_id,
+  `/cfd/rocket/solve`) varsayılan: gövde duvarları, gövde merkezinden y-kesiti,
+  gövde önünde 5×5 tohum. `GET /cfd/jobs/{id}/fields` (`openfoam_viz.build_fields`):
+  gövde Cp = (p − p∞)/(½ρ∞U∞²), kesit |U|, akım çizgileri |U|; `fields.json`
+  önbelleği. Arayüz `CfdFieldViewer` (three.js; katman aç/kapa, min–max aralığı).
+  Roket 56k hücre, 40 m/s, α 4°: 384 gövde, 2249 kesit noktası, 25 akım çizgisi.
+  Testler `test_openfoam_viz.py`, `CfdFieldViewer.test.tsx`.
+- 2.9 ✅ CFD DOE + vekil model (2026-10-09; crash 1.19 deseni, yeni bağımlılık /
+  DB şeması yok): `POST /cfd/ml/doe` — roket şablonu, taranan değişkenler sayısal
+  şablon parametreleri ve/veya mach / alpha_deg (LHS, tohumlu); her örnek şablondan
+  geometri → tünel mesh'i → R3 koşusu (aynı çözücü), sıralı, örnek hatası taramayı
+  durdurmaz; durum `uploads/cfd_doe/<id>/doe.json`. Korpus `app/ml/cfd/corpus.py`
+  (cfd_runs roket koşuları, çözücü başına; girdiler flow.mach / alpha_deg / x_ref_m +
+  geom.*; hedefler CD, CL, CA, CN, Cm, x_cp), eğitim / tahmin crash RF + K-fold
+  koduyla (`/cfd/ml/corpus|train|models|predict`, model `uploads/models/cfd/rocket/`).
+  Arayüz: ML Stüdyo → "Akış" (`CfdMlPanel`: DOE, model + CV tablosu, tahmin + aralık
+  dışı). Deneme: 10 örnek (kanatçık açıklığı 70–130 mm × M 0.1–0.3 × α 0–6°),
+  53–57k hücre, simpleFoam, 10/10 çözüldü, 630 s. 5-kat CV R²: CN 0.63, CL 0.62,
+  CD 0.49, CA 0.15, Cm −0.20, x_cp −0.42 (10 örnek; küçük α'da x_cp = −Cm/CN oranı
+  oynak — örn. α 1.46°'de 0.56 m). Veri; örnek sayısı mühendisin kararı.
+  Testler `test_cfd_ml.py`, `CfdMlPanel.test.tsx`.
+
+**Kapsam ve hedef (kullanıcı, 2026-10-08):** Akışta hem iç hem dış akış ve
+aerodinamik olacak. Ek hedef: akademik yarışmalar — savunma sanayii roket
+yarışmaları. Bunun için hazır şablon mantığımızın rokete özel ayrı bir modülü
+(aşağıda **Roket modülü R1–R6**): parametrik roket şablonu ya da gerçek roketin
+STEP modeli ile dış akış çözümü. Referans ürünler (yalnız fikir; kod/veri
+alınmaz): AirShaper (bulut "sanal rüzgâr tüneli": Cd/Cl, parça başına kuvvet,
+Cp haritası, akım çizgileri, tasarım karşılaştırma) ve OpenRocket (parametrik
+parça ağacı, Barrowman, kararlılık; GPL — kodu kullanılmaz, formüller
+literatürden). AirShaper'ın "AI tasarım önerisi / morphing" özellikleri
+alınmaz (kural 4: araç öneri vermez); karşılığı parametrik DOE + vekil model.
+
+**Mevcut adımlara eklenenler (2026-10-08):**
+- 2.4'e: CdA (sürükleme alanı), yama/parça başına kuvvet ve moment kırılımı,
+  kuvvet katsayısının iterasyon geçmişi (son N iterasyon ortalaması ve salınımı
+  — yalnız veri), basınç merkezi için moment (CofR mühendisten).
+- 2.5'e: "sanal rüzgâr tüneli" — akış alanı geometrinin sınır kutusundan
+  (önde/arkada/yanda kaç boy: parametre), zemin var/yok, hız + hücum (α) /
+  sapma (β) açısı; STL kapalılık (watertight) kontrolü veri olarak.
+- 2.6'ya: Ahmed gövdesi (otomotiv benchmark'ı) ve roket benchmark'ı
+  "Basic Finner" (deneysel Cd / CNα / CP verisi Mach'a göre literatürde).
+- 2.8'e: akım çizgileri (ESI `streamLine`), yüzey Cp haritası.
+- Karşılaştırma / PDF: durability ve crash'teki geçmiş–karşılaştır–PDF deseni
+  `cfd_runs` için (2.4 kaydı ile).
+
+**Roket modülü (R1–R6; her biri ayrı onay, Faz 2 içinde):**
+- R1 ✅ (2026-10-09) Parametrik roket şablonu (Gmsh OCC): burun konisi (konik / ogive /
+  elips / von Kármán; boy, çap), gövde tüpü (boy, çap), kanatçıklar (adet,
+  kök/uç veter, açıklık, ok açısı, kalınlık), isteğe bağlı boat-tail;
+  bölgeler: burun, gövde, kanatçık, taban. Gerçek roket STEP'i de aynı akışa
+  girer (bölgeler elle).
+  **Sonuç:** `app/templates/rocket.py` (`rocket`, etiket `cfd`): burun konik /
+  ogive / elips / von Kármán (formüller docstring'de), gövde, 2–8 kanatçık (kök /
+  uç veteri, açıklık, ok, kalınlık, firar konumu), boat-tail; eksen +x, burun ucu
+  x = 0. Bölgeler `burun`, `govde`, `kanatcik`, `taban` (boat-tail yüzeyi `body`
+  yamasına düşer). Kurulum: profil eğrileri döndürülüp dikişli kabuktan hacim
+  (yüzey döndürme iç dikiş yüzü bırakıyordu), kanatçıklar birleştirilir. STL
+  dışa aktarımı: ikiz düğümler 10 nm ızgarada birleştirilir; dikişsiz okumada
+  açık kenar kalırsa dikişli okuma (yüz merkezi + alanla bölge eşleme) — 4 burun ×
+  boat-tail'li/siz hepsi kapalı. Arayüz: AKIŞ sekmesi şablon listesi yalnız `cfd`
+  etiketlileri gösterir (durability görmez), roket şeması. Uçtan uca: ogive roket,
+  tünel 2/4/1 × L, taban 0.15 m, seviye 3–5, 2 katman → 142 346 hücre, checkMesh
+  OK (mesh 124 s); k-ω SST 50 m/s: Cd 0.53 (power-off, kaba ağ), yama başına Fx:
+  taban 2.32 N · kanatçık 2.16 · gövde 1.55 · burun 0.36 (toplam 6.40). Test
+  `tests/test_template_rocket.py` (+ Docker'da kaba tünel).
+- R2 ✅ (2026-10-09) Analitik referans: Barrowman (sesaltı) — basınç merkezi (CP) ve CNα;
+  durability'deki "analitik referans tablosu" deseni, CFD sonucunun yanında
+  veri olarak.
+  **Sonuç:** `app/postprocess/barrowman.py`: burun (ince gövde: CNα = 2, X = Ln −
+  V/A — her profil sayısal integralle; koni 0.667·Ln, ogive 0.46, elips 0.333, von
+  Kármán 0.5), gövde (0), boat-tail (konik geçiş), kanatçık (4N(s/d)², gövde
+  etkileşimi K = 1 + R/(s+R), orta veter çizgisi), toplam CNα ve X_cp, CG
+  verilirse kararlılık payı (kalibre). N > 4 kanatçıkta not düşülür. API
+  `POST /cfd/rocket/barrowman` (params ya da roket şablonundan geometry_id).
+  Varsayılan roket: CNα 10.81 /rad, X_cp 1177 mm (ogive). Test `tests/test_barrowman.py`.
+  Arayüzde gösterim 2.7'de.
+- R3 ✅ (2026-10-09) Roket rüzgâr tüneli kurulumu: Mach / hız, α, ağırlık merkezi (CG,
+  mühendisten) → sonuçta CP, CN, CA, Cd, Cm ve kararlılık payı
+  (CP − CG)/D kalibre cinsinden — yalnız veri.
+  **Sonuç:** case yazıcıya `farfield` yaması (`freestreamVelocity` /
+  `freestreamPressure`, k/ω `inletOutlet`) — hücum açısında tünel sınırları serbest
+  akım. `POST /cfd/rocket/solve` (mesh_id roket şablonundan; hız, α, CG, ρ, ν, T,
+  türbülans, iterasyon, gevşetme): U∞ = V(cos α, 0, sin α), gövde yamaları kuvvet,
+  moment CG'ye göre. Koşu sonunda `rocket_aero`: CA, CN (gövde), CD, CL (rüzgâr), Cm,
+  x_cp = x_ref − M_y/F_z, CNα = CN/α, kararlılık payı, Barrowman ile fark; Mach veri
+  (a = √γRT). Kayıt `cfd_runs.reference.kind = rocket_r3`. Gerçek koşu (ogive, 142k
+  hücre, 50 m/s, Mach 0.147, CG 900 mm): α 0° → CA 0.531, CN 0.002; α 4° gevşetme
+  0.9/0.9 ile ıraksadı (k, ω negatif, çıkış 136), 0.5/0.3 ile 113 iterasyon: CN 1.10,
+  CNα 15.8/rad (Barrowman 10.8, %+46), x_cp 1.221 m (Barrowman 1.177, +0.44 kal.),
+  kararlılık 3.21 kal. Kaba ağ + varsayılan p residual 1e-2 — doğrulama değil (2.6).
+  Test `tests/test_rocket_r3.py`.
+- R4 ✅ Çözücü seçimi (**karar verildi 2026-10-08:** üçü de bulunur, NLGEOM gibi
+  kullanıcı seçer; otomatik seçim yok — Mach sayısı yalnız veri olarak
+  gösterilir). Case yazıcıda `solver` alanı: `simpleFoam` (sıkıştırılamaz,
+  Mach ≲ 0.3, iç akış) | `rhoSimpleFoam` | `rhoCentralFoam`; üst katmanlar
+  değişmez (adaptör deseni). Her çözücünün doğrulandığı Mach aralığı belgede veri.
+  Not: hesaplanan Cd motor kapalı (power-off); y+ veri olarak gösterilir.
+  - R4a ✅ `rhoSimpleFoam` (daimi, sıkıştırılabilir, `transonic` seçeneği;
+    Mach ~0.3–0.8): `0/T`, `0/alphat`, mutlak `0/p` (Pa),
+    `thermophysicalProperties` (hePsiThermo, mükemmel gaz, μ = ρ·ν), NACA0012
+    öğretici ayarları (`openfoam_compressible.py`). Roket 56k hücre, 170 m/s
+    (M 0.50), α 4°: 182 iterasyon yakınsadı, 102 s; CNα 16.4 /rad (Barrowman
+    10.8, +%51 — kaba ağ, doğrulama değil), x_cp 1183.8 mm (1176.6).
+  - R4b ✅ `rhoCentralFoam` (yoğunluk tabanlı, Kurganov akısı, yerel zaman
+    adımı `localEuler`, `maxCo` parametre) + paralel koşu (`n_procs` →
+    `decomposeParDict` scotch, `decomposePar -force`, `mpirun -np N … -parallel`,
+    `reconstructPar -latestTime`; docker `--shm-size 1g`). Roket 510 m/s (M 1.50),
+    α 4°, 1500 iterasyon, 362 s: CD 0.703, CNα 17.9 /rad, x_cp 1042.7 mm.
+    Basic Finner doğrulaması ayrı (ağ yakınsaması ile). Arayüz: "Çözücü ve
+    çözüm ayarları" grubunda üç düğme, Mach yalnız veri. Test
+    `test_openfoam_compressible.py`.
+- R5 ✅ Mach × α taraması (2026-10-09): `POST /cfd/rocket/sweep` (Mach listesi ×
+  α listesi, her nokta bir R3 koşusu, sıralı, aynı mesh + çözücü — çözücü Mach'a
+  göre değişmez), `GET /cfd/rocket/sweep/{id}`, `…/csv?kind=table|points`.
+  Tablo (`rocket_table.aero_table`): Mach başına CD (en küçük |α|), CNα (CN–α
+  en küçük kareler eğimi), x_cp ortalaması. Arayüz `CfdSweepPanel` (roket modu).
+  Deneme: 56k hücre, simpleFoam, M 0.1 / 0.2 × α 0 / 2 / 4, 149 s: CNα 10.74 /rad
+  (Barrowman 10.81), CD₀ 0.248 / 0.242, x_cp ort. 1194.7 mm. Not (veri): α 0'da
+  CN 0.218 — kaba ağın simetri dışı olması; eğim bundan etkilenmez.
+  Test `test_rocket_sweep.py`, `CfdSweepPanel.test.tsx`.
+- R6 ✅ OpenRocket `.ork` içe aktarma (2026-10-09; yeni bağımlılık yok):
+  `POST /cfd/rocket/ork` (zip ya da düz XML, ≤ 5 MB, DOCTYPE/ENTITY reddedilir) →
+  R1 parametreleri (mm) + eşlenemeyenler notu; geometri üretmez. Eşleme: ilk
+  aşama; nosecone (ogive / conical → konik / ellipsoid → elips / haack 0 →
+  von_karman), bodytube'lar toplam boy + ilk çap, ilk trapezoidfinset (N, Cr, Ct,
+  s, Xs, t; `axialoffset`/`position` bottom → Xf), son tüpten sonra daralan
+  transition → boat-tail. Arayüz: roket şablonunda "OpenRocket .ork içe aktar"
+  formu doldurur. 2026-10-10: OpenRocket deposundaki 6 örnek (.ork) ile denendi → 6/6 şablon
+  doğrulamasından geçti ve geometri üretildi; düzeltmeler: tüm kademeler fırlatma
+  konfigürasyonunda birleşir, kanatçık en arkadaki tüpten, çap kanatçık tüpünden,
+  aynı geometrideki tek kanatçıklı setler toplanır (tüp kanatçık: not, varsayılan).
+  Test `test_rocket_ork.py`, `TemplatePanel.test.tsx`.
+
+**Sonraya (ayrı adım/faz):** zamana bağlı çözüm (`pimpleFoam` — girdap
+kopması, kuvvet salınımı), dönen tekerlek / hareketli zemin (MRF), kapalı
+olmayan geometri desteği.
 
 ## Faz 3 — Kompozit modelleme (CalculiX üzerine katman; Dalga 1)
 

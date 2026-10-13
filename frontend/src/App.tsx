@@ -72,11 +72,20 @@ import type { CrashScenarioResponse, CrashScenarioSetup } from "./api/crash";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
+import DocsDialog from "./components/DocsDialog";
+import CrashMaterialStep from "./components/CrashMaterialStep";
+import CfdPlanPanel from "./components/CfdPlanPanel";
+import CfdMeshPanel from "./components/CfdMeshPanel";
+import CfdSolvePanel from "./components/CfdSolvePanel";
+import CfdRunsPanel from "./components/CfdRunsPanel";
+import type { CfdMeshMeta } from "./api/cfd";
 import type { CrashMarkers } from "./components/GeometryViewer";
-import CrashMaterialSection from "./components/CrashMaterialSection";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
+import { matCardSummary } from "./components/CrashMaterialSection";
+import type { CrashTreeGroup } from "./components/CrashPanel";
 import CrashDoePanel from "./components/CrashDoePanel";
 import CrashMlNav, { type CrashMlStage } from "./components/CrashMlNav";
+import CfdMlPanel from "./components/CfdMlPanel";
 import CrashModelPanel from "./components/CrashModelPanel";
 import CrashPredictPanel from "./components/CrashPredictPanel";
 import CrashValidation from "./components/CrashValidation";
@@ -321,12 +330,12 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  type WizardStep = "geometry" | "mesh" | "material" | "composite" | "bc" | "modal" | "results";
+  type WizardStep = "geometry" | "mesh" | "material" | "composite" | "bc" | "modal" | "results" | "flow";
   // Üst düzey analiz sekmesi — Durability (mevcut statik BC/sonuç akışı) ve
   // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
   // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
   // sekmede de aynı). KOMPOZIT (Faz 3) ayrı hazırlık bölümü; 3.0 iskelet.
-  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "composite">("durability");
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "cfd" | "composite">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -352,6 +361,8 @@ function App() {
         ? ["geometry", "mesh", "material", "bc", "results"]
         : analysisTab === "composite"
           ? ["geometry", "mesh", "composite"]
+        : analysisTab === "cfd"
+          ? ["geometry", "mesh", "flow"]
           : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
@@ -383,14 +394,19 @@ function App() {
   const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
   // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
+  const [crashTree, setCrashTree] = useState<CrashTreeGroup[] | null>(null);
+  // AKIŞ (CFD) — 2.7a: son hazır CFD mesh'i (çözüm adımı yamaları buradan alır).
+  const [cfdMesh, setCfdMesh] = useState<CfdMeshMeta | null>(null);
+  const [cfdRunsKey, setCfdRunsKey] = useState(0);
   const [pickingPoint, setPickingPoint] = useState(false);
   const [showBcMarkers, setShowBcMarkers] = useState(true);
   const [fiberZero, setFiberZero] = useState<FiberZero | null>(null);
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [scenarioJob, setScenarioJob] = useState<
-    { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null
+    { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null
   >(null);
   const pointPickDoneRef = useRef<((p: [number, number, number]) => void) | null>(null);
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
@@ -533,7 +549,7 @@ function App() {
   const [mlStage, setMlStage] = useState<MlStage>("doe");
   // Stüdyo alanı: durability (CalculiX) ya da crash (OpenRadioss, 1.19f) —
   // ayrı korpus, ayrı model; crash kendi panellerini taşır.
-  const [mlDomain, setMlDomain] = useState<"durability" | "crash">("durability");
+  const [mlDomain, setMlDomain] = useState<"durability" | "crash" | "cfd">("durability");
   const [crashMlStage, setCrashMlStage] = useState<CrashMlStage>("doe");
   // Stüdyonun şablonu: tezgahtaki seçimden başlar, üst şerit çipleriyle
   // değişir; tezgaha geri yazmaz (geometri seçimi ayrı iş).
@@ -1146,7 +1162,7 @@ function App() {
    * koşu 5 · Sonuçlar'a, çarpma kurulumu crash paneline. */
   async function loadScenario(res: CrashScenarioResponse) {
     const geoId = res.geometry_id;
-    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, setup: res.scenario });
+    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, runId: res.crash.run_id ?? null, setup: res.scenario });
     setExpandedSteps(new Set(["results"]));
     const cadParts = await loadGeometryById(geoId, `${res.scenario.template_id ?? "senaryo"}.step`);
     const m = res.mesh;
@@ -2029,6 +2045,15 @@ function App() {
 
   const selectedMaterial =
     materials.find((m) => m.id === selectedMaterialId) ?? null;
+  // Crash malzeme adımı: 2D'de mesh parça no, 3D'de hacim parçaları.
+  const crashMaterialPartIds =
+    meshResult?.dimension === 2
+      ? uniquePartIdsFromPreview(meshPreview).length
+        ? uniquePartIdsFromPreview(meshPreview)
+        : [0]
+      : volumePartIds.length
+        ? volumePartIds
+        : [0];
 
   const meshPartIds = [...new Set(meshPicks.map((p) => p.partId))];
   // Atama 2D'de mesh parça numarasıyla yapılır; CAD seçimini çevir.
@@ -2049,13 +2074,14 @@ function App() {
 
   const canCreateComponent = geometryId !== null && meshPartIds.length > 0;
 
-  async function handleAssignMaterial() {
+  async function handleAssignMaterial(explicitPartIds?: number[]) {
     const partIds =
-      meshPartIds.length > 0
+      explicitPartIds ??
+      (meshPartIds.length > 0
         ? meshPartIds
         : assignPartId !== null
           ? [assignPartId]
-          : [];
+          : []);
     if (!geometryId || selectedMaterialId === null || partIds.length === 0) {
       return;
     }
@@ -2073,7 +2099,7 @@ function App() {
       }
       const tree = await fetchProductTree(geometryId, 0);
       setProductTree(tree);
-      ensureStepExpanded("bc");
+      if (!explicitPartIds) ensureStepExpanded("bc");
       setInfoMessage(
         last
           ? `Malzeme atandı: parça #${partIds.join(", #")} → ${last.material_name}.`
@@ -2181,7 +2207,9 @@ function App() {
     const nu = parseFloat(customNu);
     const rho = parseFloat(customRho);
     const fy = parseFloat(customFy) * 1e6;
-    const rm = parseFloat(customRm) * 1e6;
+    // Crash (explicit) Rm kullanmaz — boşsa kayıt için akma değeri yazılır.
+    const rmRaw = analysisTab === "crash" && !customRm.trim() ? customFy : customRm;
+    const rm = parseFloat(rmRaw) * 1e6;
     if (!name || ![E, nu, rho, fy, rm].every((v) => Number.isFinite(v) && v > 0)) {
       setErrorMessage("Özel malzeme alanlarını kontrol edin (E GPa, akma/Rm MPa).");
       return;
@@ -2196,7 +2224,7 @@ function App() {
         poisson_ratio: nu,
         yield_strength: fy,
         ultimate_strength: rm,
-        sn_mode: snEstimate ? "estimated" : "none",
+        sn_mode: analysisTab !== "crash" && snEstimate ? "estimated" : "none",
       });
       setMaterials((prev) => [...prev, mat].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedMaterialId(mat.id);
@@ -2828,7 +2856,7 @@ function App() {
             </span>
             <span className="app-brand-divider" />
             <span className="ml-domain-switch" role="group" aria-label="Analiz alanı">
-              {(["durability", "crash"] as const).map((d) => (
+              {(["durability", "crash", "cfd"] as const).map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -2836,7 +2864,7 @@ function App() {
                   aria-pressed={mlDomain === d}
                   onClick={() => setMlDomain(d)}
                 >
-                  {d === "durability" ? "Durability" : "Crash"}
+                  {d === "durability" ? "Durability" : d === "crash" ? "Crash" : "Akış"}
                 </button>
               ))}
             </span>
@@ -2865,7 +2893,11 @@ function App() {
           </div>
         </div>
 
-        {mlDomain === "crash" ? (
+        {mlDomain === "cfd" ? (
+          <div className="ml-studio-body">
+            <CfdMlPanel />
+          </div>
+        ) : mlDomain === "crash" ? (
           <>
             <CrashMlNav stage={crashMlStage} onSelect={setCrashMlStage} />
             <div className="ml-studio-body">
@@ -2955,7 +2987,9 @@ function App() {
               ? "OPENRADIOSS · CRASH"
               : analysisTab === "modal"
                 ? "CALCULIX · MODAL"
-                : analysisTab === "composite"
+                : analysisTab === "cfd"
+                  ? "OPENFOAM · AKIŞ"
+                  : analysisTab === "composite"
                   ? "CALCULIX · KOMPOZIT"
                   : "CALCULIX · DURABILITY"}
             {fileName ? ` / ${fileName}` : ""}
@@ -3041,6 +3075,18 @@ function App() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
+            className="ml-studio-chip ml-studio-chip-button docs-open-button"
+            onClick={() => setShowDocs(true)}
+            title="Belgeler — crash özellikleri, kartlar, senaryolar, LS-DYNA karşılıkları"
+          >
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 3h4a2 2 0 0 1 2 2v8.5a1.5 1.5 0 0 0-1.5-1.5h-4.5z" />
+              <path d="M13.5 3h-4a2 2 0 0 0-1 .3M13.5 3v9h-4.5a1.5 1.5 0 0 0-1.5 1.5" />
+            </svg>
+            Belgeler
+          </button>
+          <button
+            type="button"
             className="ml-studio-chip ml-studio-chip-button"
             onClick={() => setWorkspace("ml")}
             title="ML Stüdyo — veri seti, DOE ve vekil model"
@@ -3080,6 +3126,17 @@ function App() {
         </button>
         <button
           type="button"
+          className={analysisTab === "cfd" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => {
+            setAnalysisTab("cfd");
+            setExpandedSteps(new Set(["flow"]));
+          }}
+        >
+          <span className="analysis-tab-label">AKIŞ</span>
+          <span className="analysis-tab-meta">OpenFOAM · Faz 2</span>
+        </button>
+        <button
+          type="button"
           className={analysisTab === "composite" ? "analysis-tab active" : "analysis-tab"}
           onClick={() => {
             setAnalysisTab("composite");
@@ -3104,13 +3161,22 @@ function App() {
       >
         2 · MESH
       </button>
-      {analysisTab !== "composite" && (
+      {analysisTab !== "composite" && analysisTab !== "cfd" && (
       <button
         type="button"
         className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
         onClick={() => toggleStep("material")}
       >
         3 · MATERIAL
+      </button>
+      )}
+      {analysisTab === "cfd" && (
+      <button
+        type="button"
+        className={expandedSteps.has("flow") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("flow")}
+      >
+        3 · AKIŞ (FAZ 2)
       </button>
       )}
       {analysisTab === "composite" && (
@@ -3158,7 +3224,7 @@ function App() {
         5 · SONUÇLAR
       </button>
       )}
-      {analysisTab !== "crash" && analysisTab !== "composite" && (
+      {(analysisTab === "durability" || analysisTab === "modal") && (
       <button
         type="button"
         className={expandedSteps.has("results") ? "step-nav-item active" : "step-nav-item"}
@@ -3481,6 +3547,67 @@ function App() {
             {meshResult ? `${meshResult.element_scheme} · ${meshResult.element_size} mm` : "—"}
           </span>
         </div>
+        {analysisTab === "crash" && (
+          <>
+            <div className="model-tree-row model-tree-depth-1">
+              <span>Malzeme modeli</span>
+            </div>
+            <div className="model-tree-row model-tree-depth-2" title={matCardSummary(crashMatCard)}>
+              <span className="model-tree-leaf">{Object.keys(crashPartCards).length ? "Ortak" : "Tüm parçalar"}</span>
+              <span className="model-tree-value model-tree-value-fit" data-testid="tree-crash-law">
+                {matCardSummary(crashMatCard)}
+              </span>
+            </div>
+            {Object.entries(crashPartCards).map(([pid, card]) => (
+              <div className="model-tree-row model-tree-depth-2" key={pid} title={matCardSummary(card)}>
+                <span className="model-tree-leaf">Parça #{pid}</span>
+                <span className="model-tree-value model-tree-value-fit">{matCardSummary(card)}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {(() => {
+          // Kullanıcı 2026-10-08: sınır koşullarının hepsi ürün ağacında.
+          const groups: CrashTreeGroup[] =
+            analysisTab === "crash"
+              ? (crashTree ?? [])
+              : analysisTab === "cfd"
+                ? []
+                : [{ title: "", rows: bcList.map((b) => ({ label: BC_KIND_LABELS[b.kind] ?? b.kind, value: b.summary })) }];
+          const count = groups.reduce((n, g) => n + g.rows.length, 0);
+          if (analysisTab === "cfd") return null;
+          return (
+            <>
+              <div className="model-tree-row model-tree-depth-1">
+                <span>Sınır koşulları</span>
+                <span className="model-tree-value" data-testid="tree-bc-count">{count || "—"}</span>
+              </div>
+              {groups.map((g) =>
+                g.title ? (
+                  <div key={g.title}>
+                    <div className="model-tree-row model-tree-depth-2">
+                      <span className="model-tree-leaf">{g.title}</span>
+                      <span className="model-tree-value">{g.rows.length || "—"}</span>
+                    </div>
+                    {g.rows.map((row, i) => (
+                      <div className="model-tree-row model-tree-depth-3" key={i} title={`${row.label} · ${row.value}`}>
+                        <span className="model-tree-leaf">{row.label}</span>
+                        <span className="model-tree-value model-tree-value-fit">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  g.rows.map((row, i) => (
+                    <div className="model-tree-row model-tree-depth-2" key={i} title={row.value}>
+                      <span className="model-tree-leaf">{row.label}</span>
+                      <span className="model-tree-value model-tree-value-fit">{row.value}</span>
+                    </div>
+                  ))
+                ),
+              )}
+            </>
+          );
+        })()}
       </div>
       <div
         className="resize-handle resize-handle-bottom"
@@ -4056,7 +4183,7 @@ function App() {
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
           onTemplateSelected={setActiveTemplateId}
-          kind={analysisTab === "crash" ? "crash" : "durability"}
+          kind={analysisTab === "crash" ? "crash" : analysisTab === "cfd" ? "cfd" : "durability"}
         />
         </div>
           </div>
@@ -4190,7 +4317,10 @@ function App() {
       </div>
       )}
 
-      {expandedSteps.has("mesh") && (
+      {analysisTab === "cfd" && expandedSteps.has("mesh") && (
+        <CfdMeshPanel geometryId={geometryId} onMeshReady={setCfdMesh} />
+      )}
+      {analysisTab !== "cfd" && expandedSteps.has("mesh") && (
       <div className="panel material-panel">
         <span className="eyebrow">Faz 0 · Mesh</span>
         <h1>Mesh</h1>
@@ -4453,15 +4583,75 @@ function App() {
           <CompositePlanPanel />
         </>
       )}
-
+      {analysisTab === "cfd" && expandedSteps.has("flow") && (
+        <>
+          <CfdSolvePanel mesh={cfdMesh} geometryId={geometryId} onSolved={() => setCfdRunsKey((k) => k + 1)} />
+          <div className="panel material-panel">
+            <CfdRunsPanel geometryId={geometryId} refreshKey={cfdRunsKey} />
+          </div>
+          <CfdPlanPanel mesh={cfdMesh} />
+        </>
+      )}
       {expandedSteps.has("material") && analysisTab !== "composite" && (
       <div className="panel material-panel">
-        <span className="eyebrow">Faz 0 · Malzeme</span>
+        <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>
         <h1>Malzeme</h1>
         {materials.length === 0 ? (
           <p className="filename">Malzeme listesi yükleniyor…</p>
         ) : (
           <>
+            {analysisTab === "crash" ? (
+              <CrashMaterialStep
+                materials={materials}
+                selectedMaterialId={selectedMaterialId}
+                onSelectMaterial={setSelectedMaterialId}
+                partIds={crashMaterialPartIds}
+                assignments={materialAssignments}
+                thicknessByPart={Object.fromEntries(
+                  (productTree?.items ?? []).map((it) => [it.part_id, it.thickness]),
+                )}
+                isShell={meshResult?.dimension === 2}
+                hasModel={geometryId !== null && meshResult !== null}
+                busy={busyAction !== null}
+                onAssign={(ids) => void handleAssignMaterial(ids)}
+                onCustom={() => setShowCustomMaterialForm((prev) => !prev)}
+                crashCurves={
+                  selectedMaterial && (
+                    <MaterialCrashCurves
+                      material={selectedMaterial}
+                      onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
+                    />
+                  )
+                }
+                treeEditor={
+                  productTree && productTree.items.filter((i) => i.component).length > 0 ? (
+                    <div className="product-tree">
+                      <p className="material-assignments-title">Bileşenler (kalınlık / malzeme)</p>
+                      <ul className="product-tree-list">
+                        {productTree.items
+                          .filter((i) => i.component)
+                          .map((item) => (
+                            <ProductTreeRow
+                              key={item.component?.id ?? item.part_id}
+                              item={item}
+                              materials={materials}
+                              busy={busyAction !== null}
+                              onSave={(componentId, thickness, materialId) =>
+                                void handlePatchTreeComponent(componentId, thickness, materialId)
+                              }
+                            />
+                          ))}
+                      </ul>
+                    </div>
+                  ) : null
+                }
+                matCard={crashMatCard}
+                setMatCard={setCrashMatCard}
+                partCards={crashPartCards}
+                setPartCards={setCrashPartCards}
+              />
+            ) : (
+            <>
             <label className="mesh-field material-field">
               <span>Kütüphane</span>
               <select
@@ -4521,12 +4711,6 @@ function App() {
                 </p>
               </div>
             )}
-            {selectedMaterial && (
-              <MaterialCrashCurves
-                material={selectedMaterial}
-                onSaved={(m) => setMaterials((list) => list.map((x) => (x.id === m.id ? m : x)))}
-              />
-            )}
             <div className="material-action-row">
               <button
                 type="button"
@@ -4544,23 +4728,6 @@ function App() {
                 + ÖZEL
               </button>
             </div>
-            {analysisTab === "crash" && (
-              <CrashMaterialSection
-                partIds={
-                  meshResult?.dimension === 2
-                    ? uniquePartIdsFromPreview(meshPreview).length
-                      ? uniquePartIdsFromPreview(meshPreview)
-                      : [0]
-                    : volumePartIds.length
-                      ? volumePartIds
-                      : [0]
-                }
-                matCard={crashMatCard}
-                setMatCard={setCrashMatCard}
-                partCards={crashPartCards}
-                setPartCards={setCrashPartCards}
-              />
-            )}
             <button
               type="button"
               className="material-advanced-toggle"
@@ -4660,6 +4827,8 @@ function App() {
                 </ul>
               </div>
             )}
+            </>
+            )}
             {showCustomMaterialForm && (
             <div className="material-custom">
               <p className="material-assignments-title">Özel malzeme</p>
@@ -4688,11 +4857,14 @@ function App() {
                   <span>Rp0.2 (MPa)</span>
                   <input value={customFy} onChange={(e) => setCustomFy(e.target.value)} />
                 </label>
+                {analysisTab !== "crash" && (
                 <label className="mesh-field">
                   <span>Rm (MPa)</span>
                   <input value={customRm} onChange={(e) => setCustomRm(e.target.value)} />
                 </label>
+                )}
               </div>
+              {analysisTab !== "crash" && (
               <label className="material-check">
                 <input
                   type="checkbox"
@@ -4701,6 +4873,12 @@ function App() {
                 />
                 Oluştururken tahmini S-N ekle
               </label>
+              )}
+              {analysisTab === "crash" && (
+                <p className="crash-behavior-hint">
+                  Crash yalnız E, ν, ρ ve akmayı kullanır; çekme dayanımı / S-N durability'ye aittir.
+                </p>
+              )}
               <button
                 type="button"
                 className="material-secondary-button"
@@ -5221,18 +5399,22 @@ function App() {
 
       {analysisTab === "crash" && (
       <>
-      {(expandedSteps.has("bc") || expandedSteps.has("results")) && (
+      {/* Kullanıcı 2026-10-08: adım değişince kurulum kaybolmasın — panel hep
+          bağlı kalır, 4 · Crash / 5 · Sonuçlar dışında yalnız gizlenir. */}
+      <div hidden={!(expandedSteps.has("bc") || expandedSteps.has("results"))} data-testid="crash-panel-host">
         <CrashPanel
           geometryId={geometryId}
           view={expandedSteps.has("results") ? "results" : "setup"}
           onRunStarted={() => setExpandedSteps(new Set(["results"]))}
           onJobKey={setCrashJobKey}
           externalJob={scenarioJob}
+          onSolved={setCrashAnim}
           selectedPartIds={selectedPartIds}
           onPartSelect={selectPart}
           onPartHover={setHoverPartId}
           regions={physicalGroups.map((g) => g.name)}
           onMarkersChange={setCrashMarkers}
+          onTreeChange={setCrashTree}
           pickingPoint={pickingPoint}
           onRequestPointPick={(done) => {
             pointPickDoneRef.current = done;
@@ -5258,7 +5440,7 @@ function App() {
               .map((it) => [it.part_id, it.thickness]),
           )}
         />
-      )}
+      </div>
       </>
       )}
 
@@ -5381,6 +5563,7 @@ function App() {
           onAnimate={setCrashAnim}
         />
       )}
+      {showDocs && <DocsDialog onClose={() => setShowDocs(false)} />}
       {showNewCrashCase && (
         <CrashNewCaseDialog
           onClose={() => setShowNewCrashCase(false)}
@@ -5389,7 +5572,7 @@ function App() {
           onJobStarted={(res) => void loadScenario(res)}
         />
       )}
-      {analysisTab !== "crash" && (
+      {(analysisTab === "durability" || analysisTab === "modal") && (
       <HistoryFooter
         runs={runsHistory}
         compareSelection={compareSelection}

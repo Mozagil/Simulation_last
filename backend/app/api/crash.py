@@ -533,6 +533,29 @@ def crash_job_snapshot(job_id: str) -> dict:
     return snap
 
 
+_CFC_CLASSES = (60, 180, 600, 1000)
+
+
+@router.get("/jobs/{job_id}/cfc")
+def crash_job_refilter(job_id: str, force_cfc: int | None = None, acc_cfc: int | None = None) -> dict[str, Any]:
+    """Koşu sonrası yeniden süzme (post-process, kullanıcı 2026-10-08): kayıtlı ham
+    TH'den farklı CFC sınıfıyla süzülmüş kuvvet / ivme eğrileri ve tepe / HIC.
+    Çözücü yeniden koşmaz; koşunun kendi kaydı değişmez."""
+    for name, v in (("force_cfc", force_cfc), ("acc_cfc", acc_cfc)):
+        if v is not None and v not in _CFC_CLASSES:
+            raise HTTPException(status_code=422, detail=f"{name}: {', '.join(map(str, _CFC_CLASSES))} olmalı")
+    work = _job_dir(job_id)
+    if not work.is_dir():
+        raise HTTPException(status_code=404, detail="crash job yok")
+    from app.postprocess.openradioss_th import parse_openradioss_dir
+
+    res = parse_openradioss_dir(work, filters_override={"force_cfc": force_cfc, "acc_cfc": acc_cfc})
+    suffixes = tuple(f"_cfc{c}" for c in (force_cfc, acc_cfc) if c)
+    curves = {k: v for k, v in res.curves.items() if k == "time" or k.endswith(suffixes)}
+    scalars = {k: v for k, v in res.scalars.items() if suffixes and k.endswith(suffixes)}
+    return {"job_id": job_id, "force_cfc": force_cfc, "acc_cfc": acc_cfc, "curves": curves, "scalars": scalars}
+
+
 @router.websocket("/jobs/{job_id}/ws")
 async def crash_job_ws(websocket: WebSocket, job_id: str) -> None:
     hub = get_hub()

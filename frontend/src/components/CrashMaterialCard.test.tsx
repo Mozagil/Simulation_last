@@ -32,8 +32,9 @@ describe("CrashMaterialCard", () => {
     expect(() => parseCurvePoints("a 235", "e")).toThrow(/sayı geçersiz/);
   });
 
-  it("LAW1 yalnız temel alanları, /FAIL kapalıyken fail göndermez", () => {
-    const p = matCardPayload(defaultMatCard());
+  it("varsayılan LAW2 plastik; LAW1 yalnız temel alanları, /FAIL kapalıyken fail göndermez", () => {
+    expect(defaultMatCard().law).toBe("plastic");
+    const p = matCardPayload({ ...defaultMatCard(), law: "elastic" });
     expect(p).toEqual({ law: "elastic", sigma_y_pa: null, harden_b_mpa: 0, harden_n: 1 });
   });
 
@@ -78,5 +79,19 @@ describe("CrashMaterialCard", () => {
   it("geçersiz sayıda alan adını içeren hata", () => {
     const s = { ...defaultMatCard(), law: "plastic" as const, jcC: "x" };
     expect(() => matCardPayload(s, "Parça #1")).toThrow(/Parça #1 c/);
+  });
+});
+
+describe("CrashMaterialCard · LAW seçici (kullanıcı 2026-10-08)", () => {
+  it("seçili model ✓ ve 'Seçili:' satırıyla görünür; tıklayınca değişir", () => {
+    render(<Harness onState={() => undefined} />);
+    const law2 = screen.getByRole("button", { name: "LAW2 plastik" });
+    expect(law2).toHaveAttribute("aria-pressed", "true");
+    expect(law2).toHaveTextContent("✓");
+    expect(screen.getByTestId("crash-law-selected")).toHaveTextContent("Seçili: LAW2 elasto-plastik");
+    fireEvent.click(screen.getByRole("button", { name: "LAW1 elastik" }));
+    expect(screen.getByRole("button", { name: "LAW1 elastik" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "LAW2 plastik" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("crash-law-selected")).toHaveTextContent("Seçili: LAW1 elastik");
   });
 });

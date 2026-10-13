@@ -1,7 +1,8 @@
 # Crash Sınır Koşulları — Başvuru
 
-> Panel'deki her ayarın ne yaptığı, OpenRadioss kart karşılığı ve hangi
-> analizde kullanıldığı.
+> Panel'deki her ayarın ne yaptığı, OpenRadioss kart karşılığı, LS-DYNA
+> keyword eşleniği (≈, yalnız bilgi amaçlı ad — LS-DYNA kullanılmaz) ve
+> hangi analizde kullanıldığı.
 >
 > Kaynak: `backend/app/solvers/crash_params.py`, `app/api/crash.py`,
 > `app/solvers/openradioss.py`. Genel bilgi değil, bu projedeki kod.
@@ -25,11 +26,11 @@ süresi (`t_end_ms`) modelin bir parçası.
 
 Panelde her parçaya bir rol veriyorsun. Üç seçenek:
 
-| rol | ne yapar | OpenRadioss |
-|---|---|---|
-| `moving` | Parçanın tüm düğümlerine **ilk hız** verilir | `/INIVEL` |
-| `fixed` | Tüm düğümler **tamamen kilitlenir** | `/BCS` (111111) |
-| `free` | Ne ilk hız ne kilit — sadece temasla hareket eder | — |
+| rol | ne yapar | OpenRadioss | LS-DYNA |
+|---|---|---|---|
+| `moving` | Parçanın tüm düğümlerine **ilk hız** verilir | `/INIVEL` | `*INITIAL_VELOCITY_GENERATION` |
+| `fixed` | Tüm düğümler **tamamen kilitlenir** | `/BCS` (111111) | `*BOUNDARY_SPC_SET` |
+| `free` | Ne ilk hız ne kilit — sadece temasla hareket eder | — | — |
 
 **Ne zaman hangisi:** Crash box eksenel ezilmede kutu `moving`, çarpma
 plakası `fixed`. Kuş çarpması gibi senaryolarda hedef `fixed`, mermi
@@ -50,7 +51,7 @@ edecekse (zincirleme çarpışma) ne ilk hız vermek ne kilitlemek doğru.
 | `wall.point`, `wall.normal` | Duvarın konumu ve yönü | mm |
 | `wall.diameter_mm` | Silindirik duvarda çap | mm |
 
-OpenRadioss: `/RWALL`
+OpenRadioss: `/RWALL` · LS-DYNA: `*RIGIDWALL_PLANAR` / `_GEOMETRIC_CYLINDER`
 
 **Birim notu:** Çözücü kg–mm–ms biriminde çalışıyor, orada 1 m/s = 1 mm/ms.
 Panel m/s alıyor, dönüşümü deck yazarken yapıyor.
@@ -75,10 +76,10 @@ Crash'in kalbi. Temas tanımlanmazsa parçalar birbirinin içinden geçer.
 | `istf` | Rijitlik nasıl hesaplanır | 0 (varsayılan) |
 | `inacti` | İlk penetrasyon nasıl ele alınır | 0 |
 
-| | OpenRadioss |
-|---|---|
-| genel temas | `/INTER/TYPE7` |
-| kenar dahil | `/INTER/TYPE24` |
+| | OpenRadioss | LS-DYNA |
+|---|---|---|
+| genel temas | `/INTER/TYPE7` | `*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE` |
+| kenar dahil | `/INTER/TYPE24` | `*CONTACT_AUTOMATIC_SINGLE_SURFACE` |
 
 **TYPE7 vs TYPE24:** TYPE7 düğüm–yüzey, çoğu durumda yeterli ve hızlı.
 TYPE24 kenar–kenar teması da yakalar; ince kabuklar katlanırken (crash
@@ -101,7 +102,7 @@ Belirli bir bölgenin ya da parçanın serbestliklerini kilitler.
 | `dofs` | 6 haneli: `Tx Ty Tz Rx Ry Rz`. `111000` = öteleme kilitli, dönme serbest |
 | `region` / `part_id` / `rigid_body` | Nereye uygulanacak |
 
-OpenRadioss: `/BCS`
+OpenRadioss: `/BCS` · LS-DYNA: `*BOUNDARY_SPC_SET`
 
 **`parts[].role = fixed` ile farkı:** Rol tüm parçayı 111111 kilitler.
 `boundary_conditions` ise **seçili serbestlikleri** ve **bölge bazında**
@@ -120,7 +121,7 @@ yarısını alıp simetri yüzeyinde normal ötelemeyi kilitlemek.
 | `velocity_m_s` | İşaretli. Dönmede rad/ms |
 | `t_start_ms` / `t_stop_ms` | Hangi aralıkta etkin |
 
-OpenRadioss: `/IMPVEL`
+OpenRadioss: `/IMPVEL` · LS-DYNA: `*BOUNDARY_PRESCRIBED_MOTION_SET`
 
 **Ne zaman:** Sled testi benzetimi, ya da çarpma kütlesinin yavaşlamasını
 engellemek istediğinde. `moving` rolü ilk hız verir ve parça yavaşlar;
@@ -140,7 +141,8 @@ düğümde toplar.
 | `icog` | Ağırlık merkezi işlemi (0 = Radioss varsayılanı) |
 | `th_accel` | Ana düğüm ivmesini TH'ye yaz — **HIC kanalı** |
 
-OpenRadioss: `/RBODY`
+OpenRadioss: `/RBODY` · LS-DYNA: `*CONSTRAINED_NODAL_RIGID_BODY` +
+`*ELEMENT_MASS`
 
 **Ne zaman:** Çarpma kütlesini (impactor) modellemek. Deforme olması
 gerekmiyorsa rijit yapmak hem doğru hem çok daha hızlı — rijit cisim
@@ -158,7 +160,7 @@ geçmişinden hesaplanıyor, o kanal buradan açılıyor.
 | `mass_kg` | Eklenecek kütle |
 | `distribution` | `total` (type 1, toplam dağıtılır) \| `per_node` (type 0, her düğüme ayrı) |
 
-OpenRadioss: `/ADMAS`
+OpenRadioss: `/ADMAS` · LS-DYNA: `*ELEMENT_MASS` / `*ELEMENT_MASS_PART`
 
 **Ne zaman:** Modellenmeyen bileşenlerin kütlesini temsil etmek (motor,
 batarya, yolcu). Kütle doğru değilse momentum yanlış olur, tüm sonuç
@@ -173,7 +175,7 @@ kayar.
 | `accel_m_s2` | İşaretli ivme, ör. −9.81 |
 | `direction` | `X \| Y \| Z` |
 
-OpenRadioss: `/GRAV`
+OpenRadioss: `/GRAV` · LS-DYNA: `*LOAD_BODY_Z`
 
 **Ne zaman:** Düşme testleri. Yatay çarpışmalarda 10 ms'lik sürede
 yerçekiminin etkisi ihmal edilebilir — gereksiz yere açma.
@@ -184,21 +186,21 @@ yerçekiminin etkisi ihmal edilebilir — gereksiz yere açma.
 
 Zamana bağlı basınç. Friedlander dalgası (patlama) için.
 
-OpenRadioss: `/PLOAD`
+OpenRadioss: `/PLOAD` · LS-DYNA: `*LOAD_SEGMENT_SET`
 
 ## 10. Patlama — `blast_loads[]` (`/LOAD/PBLAST`)
 
 Ampirik patlama modeli (mayın senaryosu). Patlayıcı kütlesi ve mesafeden
 basınç dalgası üretir.
 
-OpenRadioss: `/LOAD/PBLAST`
+LS-DYNA: `*LOAD_BLAST_ENHANCED`
 
 ## 11. SPH mermi — `sph_projectiles[]`
 
 Kuş çarpması gibi senaryolar. Mermi sonlu eleman yerine parçacıklarla
 modellenir (çok büyük deformasyon, mesh bozulmaz).
 
-OpenRadioss: `/SPHCEL` + `/PROP/SPH` + `/MAT/HYDRO`
+LS-DYNA: `*SECTION_SPH` + `*ELEMENT_SPH`
 
 ---
 
@@ -215,12 +217,12 @@ OpenRadioss: `/SPHCEL` + `/PROP/SPH` + `/MAT/HYDRO`
 | `eps_p_max` | Kopma plastik şekil değiştirmesi | LAW2 |
 | `jc_c`, `jc_eps_dot0_per_s` | Johnson-Cook hız terimleri | LAW2 |
 
-| | OpenRadioss |
-|---|---|
-| elastik | LAW1 |
-| plastik | LAW2 |
-| Johnson-Cook | LAW2 + hız terimleri |
-| tablolu | LAW36 |
+| | OpenRadioss | LS-DYNA |
+|---|---|---|
+| elastik | LAW1 | `*MAT_ELASTIC` (001) |
+| plastik | LAW2 | `*MAT_PIECEWISE_LINEAR_PLASTICITY` (024) |
+| Johnson-Cook | LAW2 + hız terimleri | `*MAT_JOHNSON_COOK` (015) |
+| tablolu | LAW36 | `*MAT_024` eğri ile |
 
 **Crash'te `elastic` neredeyse hiç doğru değil.** Enerji yutulması
 plastik deformasyonla olur; elastik malzeme çarpıp geri seker, ezilme
@@ -234,7 +236,7 @@ mesafesi ve yutulan enerji anlamsız çıkar.
 | `nip` | Kalınlık boyunca integrasyon noktası |
 | `hm`, `hf`, `hr` | Hourglass katsayıları (membran / eğilme / dönme) |
 
-OpenRadioss: `/PROP/TYPE1` (Ishell, N) — hourglass katsayıları aynı kartta
+LS-DYNA: `*SECTION_SHELL` (ELFORM, NIP) + `*HOURGLASS`
 
 **Hourglass nedir:** Tek integrasyon noktalı elemanlar sıfır enerjili
 sahte deformasyon modlarına girebilir — eleman "saat camı" gibi burkulur
@@ -246,14 +248,14 @@ model şüphelidir.
 
 ## 13. Çıktı ve zaman adımı — `engine`, `th`, `sections`, `filters`
 
-| | ne | OpenRadioss |
-|---|---|---|
-| `t_end_ms` | Simülasyon bitiş zamanı | `/RUN` veri satırı |
-| `engine.anim_dt_ms` | Animasyon kare aralığı | `/ANIM/DT` |
-| `engine.th_dt_ms` | Zaman geçmişi aralığı | `/TFILE` |
-| `th` | Hangi büyüklükler kaydedilsin | `/TH` grupları |
-| `sections` | Kesit kuvveti ölçümü | `/SECT/PARAL` |
-| `filters` | SAE J211 CFC filtre sınıfı | — (post-process) |
+| | ne | OpenRadioss | LS-DYNA |
+|---|---|---|---|
+| `t_end_ms` | Simülasyon bitiş zamanı | `/RUN` veri satırı | `*CONTROL_TERMINATION` |
+| `engine.anim_dt_ms` | Animasyon kare aralığı | `/ANIM/DT` | `*DATABASE_BINARY_D3PLOT` |
+| `engine.th_dt_ms` | Zaman geçmişi aralığı | `/TFILE` | `*DATABASE_BINARY_D3THDT` |
+| `th` | Hangi büyüklükler kaydedilsin | `/TH` grupları | `*DATABASE_HISTORY_*` |
+| `sections` | Kesit kuvveti ölçümü | `/SECT/PARAL` | `*DATABASE_CROSS_SECTION_PLANE` |
+| `filters` | SAE J211 CFC filtre sınıfı | — (post-process) | `*DATABASE_..._FILTER` |
 
 **CFC filtresi:** Explicit çözüm ham kuvvet sinyali çok gürültülüdür.
 SAE J211, crash verisi için standart filtre sınıfları tanımlar
@@ -302,8 +304,13 @@ Crash paneli üç akordeon grubunda (Claude Design "Crash BC Sidebar"):
    kırmızı, serbest mor); "SINIR KOŞ." düğmesi işaretleri ve renkleri
    gizler.
 3. **Temaslar** — isteğe bağlı TYPE7 / TYPE24 satırları.
+4. **Ek tanımlar** — bölgeyi kilitle, kütle / kızak (rayda seçeneği),
+   sabit hızla it, parçaya ayrı ilk hız; hazır kurulumlar (Kızak testi,
+   Ankastre kenar).
 
-Seyrek ayarlar (ilk hız / sabitle / dayatılmış hız / rijit gövde kartları,
-yerçekimi, kabuk/solid kartı, hourglass, çıktı) grupların altında ayrı
-kartlarda. Malzeme kanunu ve /FAIL 3 · Malzeme adımında. Koşu sonucu
+"LS-DYNA karşılıklarını göster" anahtarı açıkken kart adlarının yanında
+yaklaşık LS-DYNA keyword'ü görünür (`frontend/src/lib/dynaKeywords.ts`).
+
+Eleman formülasyonu ve hourglass "Uzman ayarları"nda (son koşunun HG/IE
+değeri orada); yerçekimi 1 · Çarpma'da; çıktı kartları 5 · Sonuçlar'da. Malzeme kanunu ve /FAIL 3 · Malzeme adımında. Koşu sonucu
 5 · Sonuçlar'da, koşu geçmişi alttaki dock'ta.

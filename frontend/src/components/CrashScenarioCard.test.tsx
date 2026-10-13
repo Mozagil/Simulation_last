@@ -117,4 +117,12 @@ describe("CrashScenarioCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Senaryoyu koş" }));
     await waitFor(() => expect(onGeometry).toHaveBeenCalledWith(4000, "crash_box_shell.step"));
   });
+
+  it("yeni vaka penceresinde seçili örneğin kendi şeması (genel duvar çizimi değil)", async () => {
+    render(<CrashScenarioCard showSchematic />);
+    await waitFor(() => expect(screen.getByTestId("crash-scenario-schematic")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Senaryo şablonu"), { target: { value: "plate_perforation" } });
+    expect(screen.getByTestId("crash-scenario-schematic")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Rigid wall: cisim -Z/)).toBeNull();
+  });
 });

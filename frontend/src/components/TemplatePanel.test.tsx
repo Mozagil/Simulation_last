@@ -229,4 +229,46 @@ describe("templatesForKind", () => {
     expect(templatesForKind(list, "crash").map((t) => t.id)).toEqual(["crash_box_shell", "plate_ball_shell"]);
     expect(templatesForKind(list, "durability").map((t) => t.id)).toEqual(["cantilever_beam"]);
   });
+
+  it("akış (cfd) sekmesi yalnız cfd etiketli şablonları (roket) görür; durability görmez", () => {
+    const mk = (id: string, tags: string[]) => ({ id, tags }) as unknown as Parameters<typeof templatesForKind>[0][number];
+    const list = [mk("cantilever_beam", ["grup1"]), mk("rocket", ["cfd", "roket"]), mk("crash_box_shell", ["crash"])];
+    expect(templatesForKind(list, "cfd").map((t) => t.id)).toEqual(["rocket"]);
+    expect(templatesForKind(list, "durability").map((t) => t.id)).toEqual(["cantilever_beam"]);
+    expect(templatesForKind(list, "crash").map((t) => t.id)).toEqual(["crash_box_shell"]);
+  });
+});
+
+describe("TemplatePanel · R6 .ork içe aktarma", () => {
+  it("roket şablonunda .ork parametreleri forma doldurur ve notları gösterir", async () => {
+    const cfd = await import("../api/cfd");
+    const spy = vi.spyOn(cfd, "postRocketOrk").mockResolvedValue({
+      name: "Deneme",
+      params: { nose_length: 280, nose_shape: "von_karman" },
+      notes: ["2 gövde tüpü tek tüp olarak birleştirildi (toplam boy)."],
+      valid: true,
+    });
+    const ROCKET = {
+      ...CANTILEVER,
+      id: "rocket",
+      name: "Roket",
+      tags: ["cfd"],
+      regions: [],
+      default_bcs: [],
+      params_schema: {
+        properties: {
+          nose_shape: { type: "string", enum: ["ogive", "von_karman"], default: "ogive", title: "Burun" },
+          nose_length: { type: "number", default: 300, exclusiveMinimum: 0, unit: "mm", symbol: "Ln" },
+        },
+      },
+    };
+    vi.mocked(fetchTemplates).mockResolvedValue([ROCKET] as never);
+    render(<TemplatePanel busy={false} onCreated={vi.fn()} kind="cfd" />);
+    const input = await screen.findByLabelText("OpenRocket dosyası");
+    fireEvent.change(input, { target: { files: [new File(["x"], "d.ork")] } });
+    await waitFor(() => expect(screen.getByTestId("ork-notes")).toHaveTextContent("2 parametre dolduruldu"));
+    expect(spy).toHaveBeenCalled();
+    expect(screen.getByDisplayValue("280")).toBeInTheDocument();
+    spy.mockRestore();
+  });
 });

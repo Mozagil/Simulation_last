@@ -40,4 +40,18 @@ kök dizin / engine dosyası) yerel ikili varsa hâlâ geçerli.
 
 ## Gmsh / OpenFOAM
 
-Gmsh: GPL. OpenFOAM (ileride): GPL — OpenRadioss AGPL'inden ayrı.
+Gmsh: GPL. OpenFOAM: GPL — OpenRadioss AGPL'inden ayrı.
+
+**OpenFOAM (Faz 2, kullanıcı kararı 2026-10-08): ESI dağıtımı** (openfoam.com,
+OpenCFD Ltd.). Resmi Docker imajı `opencfd/openfoam-default:2412` (GPL v3).
+Yalnız sunucu tarafında `docker run` ile koşar (`OPENFOAM_DOCKER_IMAGE`);
+kullanıcıya OpenFOAM dağıtılmaz, lisans sunucusu yok. GPL, ikiliyi dağıtmadan
+sunucuda çalıştırmayı serbest bırakır; imaj değiştirilip dağıtılırsa kaynak
+verme yükümlülüğü doğar. "OpenFOAM" OpenCFD Ltd.'nin tescilli markasıdır —
+ürün adında kullanılmaz, yalnız "OpenFOAM ile çözülür" şeklinde anılır.
+
+**cfMesh (Faz 2.5b, kullanıcı kararı 2026-10-09):** resmi imajda yok; ESI'nin
+topluluk modülü (https://develop.openfoam.com/Community/integration-cfmesh, GPL v3)
+`backend/docker/openfoam/Dockerfile` ile resmi imajın üzerine derlenir
+(`simsurrogate-openfoam:2412-cfmesh`). İmaj yalnız sunucuda koşar, dağıtılmaz;
+dağıtılırsa GPL kaynak verme yükümlülüğü (Dockerfile + modül kaynağı) doğar.

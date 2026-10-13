@@ -390,6 +390,25 @@ p {
   color: var(--muted);
 }
 
+.model-tree-depth-3 {
+  padding-left: 52px;
+  color: var(--muted);
+}
+
+.model-tree-depth-3 .model-tree-leaf {
+  flex-shrink: 0;
+}
+
+/* Uzun özetler (sınır koşulu, malzeme modeli): satıra sığar, tamamı title'da. */
+.model-tree-value.model-tree-value-fit {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .model-tree-leaf {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1368,7 +1387,9 @@ p {
   border-radius: var(--radius-md);
   background: var(--surface);
   text-align: left;
-  overflow: hidden;
+  /* Çok parametreli şablonda (roket: 13 alan) form sığmazsa kaydırılır. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .geo-upload-columns .template-panel .material-assignments-title {
@@ -1381,8 +1402,9 @@ p {
 }
 
 .geo-upload-columns .template-schematic {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 1 0 auto;
+  /* Şema alan çoğalınca 0 yüksekliğe çökmesin (roket şablonu). */
+  min-height: 84px;
   max-height: 120px;
   margin: 0;
   padding: 4px 6px;
@@ -6842,20 +6864,85 @@ p {
   margin: 12px 0;
 }
 
-.crash-cards-add {
+/* 4 · Ek tanımlar (Claude Design taslağı 2026-10-08) */
+.crash-cards-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-presets {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
-.crash-card {
+.crash-cards-add {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.crash-add-tile {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+  min-height: 64px;
   padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  cursor: pointer;
+}
+
+.crash-add-tile:hover:not(:disabled) {
+  border-color: var(--accent, #3f5f8a);
+}
+
+.crash-add-tile:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.crash-add-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.crash-add-tile-when {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.crash-card {
+  --card-tint: #8a94a0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--card-tint) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-tint) 8%, var(--surface));
+}
+
+.crash-card-bcs { --card-tint: #c94a4a; }
+.crash-card-rbody { --card-tint: #d9a62e; }
+.crash-card-impvel { --card-tint: #3f5f8a; }
+.crash-card-inivel { --card-tint: #d9a62e; }
+
+.crash-card.open {
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, var(--card-tint) 75%, var(--border));
 }
 
 .crash-card-head {
@@ -6864,32 +6951,146 @@ p {
   gap: 8px;
 }
 
-.crash-card-head select {
+.crash-card-text {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
-  font: inherit;
-  font-size: 12px;
 }
 
 .crash-card-kind {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
+}
+
+.crash-card-summary {
+  font-size: 12px;
+  color: var(--ink);
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.crash-card-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .crash-card-body {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crash-card-targets {
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  align-items: center;
+  gap: 6px;
+}
+
+.crash-card-sub {
+  width: 100%;
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .crash-card-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 11.5px;
   color: var(--muted);
+}
+
+.crash-card-input {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-right: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.crash-card-input input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  background: none;
+  border: none;
+}
+
+.crash-card-unit {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-card-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.crash-radio-row.active {
+  border: 1.5px solid var(--accent, #3f5f8a);
+}
+
+.crash-radio-row > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.crash-dof {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-dof-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crash-dof-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.crash-dof-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .crash-card-field input,
@@ -7532,6 +7733,1068 @@ p {
   flex-direction: column;
   gap: 8px;
 }
+
+.crash-hg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--doe-warn-bg, #f6ecdc);
+  border: 1px solid color-mix(in srgb, var(--doe-warn, #8a5a1f) 35%, var(--border));
+  border-radius: 6px;
+}
+
+.crash-link-btn {
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Uzman ayarları (Claude Design taslağı B) */
+.crash-acc-gear {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.crash-expert .crash-acc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-expert .crash-acc-body[hidden] {
+  display: none;
+}
+
+.crash-expert-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 6px 0 0;
+  font-family: "Barlow Condensed", var(--font-sans, sans-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crash-expert-title code {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.crash-expert-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.crash-expert-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.crash-expert-grid.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.crash-expert-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-expert-field input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* LS-DYNA karşılıkları (bilgi amaçlı, kullanıcı tercihi) */
+.kw {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.kw-dyna {
+  flex-basis: 100%;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+
+.kw-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0 8px;
+}
+
+.kw-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.kw-toggle:hover {
+  border-color: var(--accent);
+}
+
+.kw-toggle.active {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.kw-toggle-state {
+  padding: 1px 7px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.kw-toggle.active .kw-toggle-state {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.crash-expert-title .kw {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.crash-expert-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.crash-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-output .crash-th-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+/* Belgeler penceresi (navbar) */
+.docs-open-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.docs-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.docs-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  height: min(92vh, 100%);
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+}
+
+.docs-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-head-title {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docs-head-title strong {
+  font-size: 16px;
+}
+
+.docs-head-title span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.docs-search {
+  flex: 0 1 320px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-close {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.docs-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.docs-nav {
+  display: flex;
+  flex: 0 0 240px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.docs-nav button {
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.docs-nav button:hover {
+  background: var(--surface);
+}
+
+.docs-main {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 22px 40px;
+  overflow-y: auto;
+}
+
+.docs-note {
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-section {
+  padding-top: 8px;
+  margin-bottom: 26px;
+}
+
+.docs-section h2 {
+  margin: 12px 0 6px;
+  font-size: 18px;
+}
+
+.docs-section > p {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.docs-figure {
+  margin: 10px 0 14px;
+}
+
+.docs-img-btn {
+  display: block;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.docs-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.docs-figure figcaption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.docs-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.docs-table th,
+.docs-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-table th {
+  position: sticky;
+  top: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.docs-table tr:last-child td {
+  border-bottom: none;
+}
+
+.docs-name {
+  min-width: 150px;
+  font-weight: 600;
+}
+
+.docs-when {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.docs-dyna {
+  min-width: 180px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: break-word;
+}
+
+.docs-tpl {
+  display: block;
+  margin-top: 3px;
+  font-weight: 400;
+  font-size: 11.5px;
+}
+
+.docs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.docs-chip {
+  padding: 2px 8px;
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.docs-zoom {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.75);
+  cursor: zoom-out;
+}
+
+.docs-zoom img {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 8px;
+}
+
+.docs-zoom figcaption {
+  margin-top: 8px;
+  color: #ffffff;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .docs-nav {
+    display: none;
+  }
+  .docs-main {
+    padding: 12px 16px 32px;
+  }
+}
+
+/* Crash · 3 Material adımı (BC gibi akordeon) */
+.crash-mat-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crash-mat-props {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.crash-mat-props span {
+  color: var(--muted);
+}
+
+.crash-mat-props b {
+  font-weight: 600;
+  text-align: right;
+}
+
+.crash-mat-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crash-mat-part {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.crash-mat-part code {
+  font-weight: 600;
+}
+
+.crash-mat-part-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.crash-mat-part-text span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-mat-props code {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-expert-field select {
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* LAW2 / FAIL — Uzman düzeni */
+.crash-law-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.crash-expert-grid.cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.crash-fail-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.crash-fail-tile.active {
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.crash-fail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.crash-fail-head input {
+  margin-top: 3px;
+}
+
+.crash-fail-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+
+.crash-fail-text span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-fail-head code {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.crash-formula {
+  margin-left: 6px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.crash-expert-field .crash-card-input {
+  height: 34px;
+  min-width: 0;
+}
+
+.crash-expert-field .crash-card-input input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+}
+
+/* Aç/kapa bölümler (crash malzeme davranışı / kopma) */
+.crash-fold {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.crash-fold.open {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.crash-fold-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.crash-fold-head strong {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.crash-fold-head .crash-formula {
+  margin-left: 0;
+  color: var(--ref-blue);
+}
+
+.crash-fold-chev {
+  width: 12px;
+  color: var(--muted);
+}
+
+.crash-fold-summary {
+  flex-basis: 100%;
+  padding-left: 20px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.crash-fold-body[hidden] {
+  display: none;
+}
+
+/* Kullanıcı 2026-10-08: açıklamalar kırmızı, başlıklar kalın, karşılıklar mavi */
+.crash-mat-step .crash-behavior-hint,
+.crash-mat-step .material-assign-hint {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
+
+.crash-expert-title {
+  font-weight: 700;
+}
+
+.kw-dyna,
+.crash-fail-head code,
+.crash-mat-props code,
+.crash-expert-title .kw code,
+.docs-dyna {
+  color: var(--ref-blue);
+}
+
+.crash-mat-step .crash-fail-text span {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
+
+/* Kullanıcı 2026-10-08: açıklama metinleri tüm adımlarda (crash + durability)
+   belirgin teal — mavi karşılıklardan (--ref-blue) ayrışır. */
+.crash-behavior-hint,
+.material-assign-hint,
+.mesh-side-hint,
+.mesh-quality-hint,
+.bc-type-hint,
+.doe-material-hint,
+.new-case-hint,
+.crash-fail-text span {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
+
+/* Belgeler — eğitim testleri sayfası */
+.docs-nav-train {
+  margin-top: 8px;
+  font-weight: 600 !important;
+  color: var(--ref-blue) !important;
+}
+
+.docs-train-base {
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-train-base ol,
+.docs-train-card ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.docs-train-group h3 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.docs-train-card {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.docs-train-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docs-train-id {
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.docs-train-card p {
+  margin: 4px 0;
+}
+
+.docs-train-learn {
+  color: var(--hint-ink);
+  font-weight: 500;
+}
+
+.docs-train-answer {
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.docs-train-change {
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-radius: 6px;
+}
+
+.docs-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.docs-pdf:hover {
+  background: var(--accent-hover);
+}
+
+.docs-pdf-warn {
+  font-size: 12px;
+  color: var(--hint-ink);
+}
+
+/* Belgeler sekmeleri (Crash · Durability · ML) */
+.docs-tabs {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.docs-tab {
+  min-height: 32px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.docs-tab.active {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.docs-example ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+/* AKIŞ (CFD) — Faz 2 plan paneli */
+.cfd-decisions {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+
+.cfd-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cfd-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.cfd-step-id {
+  flex: none;
+  min-width: 34px;
+  padding: 1px 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.cfd-step-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+/* Crash malzeme modeli seçici (kullanıcı 2026-10-08): üç kutucuk, seçili olan ✓ ile */
+.crash-law-pick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.crash-law-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+}
+
+.crash-law-tile strong {
+  font-size: 14px;
+}
+
+.crash-law-tile:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.crash-law-tile.active {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.crash-law-tile-check {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.crash-law-selected {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.crash-law-jump {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--hint-ink);
+  cursor: pointer;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+/* AKIŞ (CFD) — 2.7 mesh / sonuç tabloları */
+.cfd-table {
+  width: 100%;
+  margin: 4px 0 8px;
+  font-size: 12.5px;
+  border-collapse: collapse;
+}
+
+.cfd-table th,
+.cfd-table td {
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.cfd-table th {
+  width: 42%;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cfd-table thead th {
+  width: auto;
+}
+
+.cfd-ok {
+  font-weight: 600;
+  color: var(--success);
+}
+
+.cfd-warn {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.cfd-chart {
+  margin: 6px 0;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.cfd-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cfd-chart-grid {
+  stroke: var(--border-soft);
+  stroke-width: 0.6;
+}
+
+.cfd-chart-tick {
+  font-size: 8px;
+  fill: var(--muted);
+}
+
+.cfd-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cfd-chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.cfd-run {
+  margin-top: 8px;
+}
+
+.cfd-run-excluded td {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* 2.8 alan görselleştirme */
+.cfd-fields { margin-top: 12px; }
+.cfd-fields-toolbar { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 6px; }
+.cfd-fields-view { width: 100%; height: 380px; border: 1px solid var(--border, #d0d5dd); border-radius: 6px; overflow: hidden; }
+.cfd-fields-scale { height: 8px; margin-top: 6px; border-radius: 4px; background: linear-gradient(90deg, #00008f, #0000ff, #00ffff, #ffff00, #ff0000, #800000); }
+
+/* R5 tarama */
+.cfd-sweep { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border, #d0d5dd); }
+.cfd-sweep-links { margin-top: 6px; font-size: 13px; }
+
+/* R6 .ork içe aktarma */
+.template-ork { margin: 6px 0 10px; }
+.template-ork label { cursor: pointer; display: inline-block; }
+.template-ork ul { margin: 6px 0 0; padding-left: 18px; }
 
 /* KOMPOZIT — Faz 3 plan paneli */
 .composite-expert-title {

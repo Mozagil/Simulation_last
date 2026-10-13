@@ -6,6 +6,7 @@ vi.mock("../api/crash", () => ({
   CrashApiError: class CrashApiError extends Error {},
   postCrashSolve: vi.fn(),
   fetchCrashJob: vi.fn(),
+  fetchCrashRefilter: vi.fn(),
   crashJobWsUrl: vi.fn(() => "ws://localhost/crash/jobs/j1/ws"),
   fetchCrashRuns: vi.fn(() => Promise.resolve([])),
   patchCrashRun: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock("../api/crash", () => ({
 vi.mock("../api/materials", () => ({ fetchMaterials: vi.fn(() => Promise.resolve([])) }));
 vi.mock("../api/templates", () => ({ fetchTemplates: vi.fn(() => new Promise(() => undefined)) }));
 
-import { fetchCrashJob, postCrashSolve } from "../api/crash";
+import { fetchCrashJob, fetchCrashRefilter, postCrashSolve } from "../api/crash";
 
 /** Akordeon grubunu aç (Çarpma açık başlar; Parçalar / Temaslar kapalı). */
 const openGroup = (title: string) =>
@@ -93,8 +94,8 @@ describe("CrashPanel", () => {
     render(
       <CrashPanel geometryId={1} meshDimension={2} partIds={[0, 1]} componentThickness={{ 0: 3, 1: null }} />,
     );
-    expect(screen.getByText("Kabuk — /PROP/TYPE1")).toBeInTheDocument();
-    expect(screen.queryByText("Eleman — /PROP/TYPE14")).not.toBeInTheDocument();
+    expect(screen.getByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent?.replace(/\s+/g, " ").trim() === "Eleman · kabuk /PROP/TYPE1"))).toBeInTheDocument();
+    expect(screen.queryByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent?.replace(/\s+/g, " ").trim() === "Eleman · solid /PROP/TYPE14"))).not.toBeInTheDocument();
     // kalınlık yalnız gösterilir (tek kaynak: ürün ağacı); girdi yok
     openGroup("Parçalar");
     expect(screen.getByTestId("crash-parts")).toHaveTextContent("t 3 mm");
@@ -122,7 +123,7 @@ describe("CrashPanel", () => {
       cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
     });
     render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} />);
-    expect(screen.getByText("Eleman — /PROP/TYPE14")).toBeInTheDocument();
+    expect(screen.getByText(((_: string, el: Element | null) => el?.tagName === "P" && el.textContent?.replace(/\s+/g, " ").trim() === "Eleman · solid /PROP/TYPE14"))).toBeInTheDocument();
     expect(screen.queryByLabelText("Parça 0 t")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
@@ -157,7 +158,7 @@ describe("CrashPanel", () => {
         run_solver: false,
         barrier: expect.objectContaining({ speed_m_s: 15, wall: { point: [0, 0, 0], normal: [0, 0, 1] } }),
         model: expect.objectContaining({
-          law: "elastic",
+          law: "plastic",
           isolid: 1,
           nip: 1,
         }),
@@ -377,6 +378,7 @@ describe("CrashPanel", () => {
       },
     });
     render(<CrashPanel geometryId={1} meshDimension={2} partIds={[0]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Çıktı ayarları/ }));
     fireEvent.change(screen.getByLabelText("TH aralığı (ms)"), { target: { value: "0.002" } });
     fireEvent.click(screen.getByRole("button", { name: "+ Kesit ekle" }));
     fireEvent.change(screen.getByLabelText("Kesit 1 M1 y"), { target: { value: "60" } });
@@ -391,17 +393,24 @@ describe("CrashPanel", () => {
     expect(await screen.findByText(/Kesit 1 Fmax 123\.9 kN · impuls 13\.420 N·s/)).toBeInTheDocument();
     expect(screen.getByTestId("crash-timestep")).toHaveTextContent("Δt_min 1.000e-3 ms · eklenen kütle %56.5");
   });
-  it("1.17e: CFC sınıfı gönderilir, süzülmüş tepeler gösterilir", async () => {
+  it("CFC koşu sonrası post-process: kurulumda yok, sonuçta seçilip uygulanır, süzülmüş tepe gösterilir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j13", geometry_id: 1, status: "solved", message: "", starter_url: "", engine_url: "",
       progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: true,
-      scalars: { rwall_force_max: 130.9, rwall_force_max_cfc600: 101.2, sample_ratio_cfc600: 833 },
+      scalars: { rwall_force_max: 130.9 },
+    });
+    vi.mocked(fetchCrashRefilter).mockResolvedValue({
+      curves: { rwall_force_cfc600: [0, 1] },
+      scalars: { rwall_force_max_cfc600: 101.2, sample_ratio_cfc600: 833 },
     });
     render(<CrashPanel geometryId={1} meshDimension={2} />);
-    fireEvent.change(screen.getByLabelText("Kuvvet CFC"), { target: { value: "600" } });
+    expect(screen.queryByLabelText("Kuvvet CFC")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(postCrashSolve).mock.calls[0][0].filters).toEqual({ force_cfc: 600, acc_cfc: null });
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].filters).toEqual({ force_cfc: null, acc_cfc: null });
+    fireEvent.change(await screen.findByLabelText("Sonuç Kuvvet CFC"), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "Uygula" }));
+    await waitFor(() => expect(fetchCrashRefilter).toHaveBeenCalledWith("j13", 600, null));
     const peaks = await screen.findAllByTestId("crash-cfc-peak");
     expect(peaks.map((p) => p.textContent)).toEqual(["rwall_force_max CFC600 101.2"]);
   });
@@ -499,13 +508,14 @@ describe("CrashPanel", () => {
       <CrashPanel geometryId={1} meshDimension={3} view="setup" onRunStarted={onRunStarted} onJobKey={onJobKey} />,
     );
     expect(screen.queryByLabelText("Sonuçlar")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Çıktı — kayıt aralığı/)).not.toBeInTheDocument();
+    // çıktı ayarları preprocess: kurulumda (Çalıştır'dan önce)
+    expect(screen.getByRole("button", { name: /Çıktı ayarları/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     await waitFor(() => expect(onRunStarted).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onJobKey).toHaveBeenCalledWith("j20:rad_only"));
     rerender(<CrashPanel geometryId={1} meshDimension={3} view="results" onRunStarted={onRunStarted} onJobKey={onJobKey} />);
     expect(screen.getByLabelText("Sonuçlar")).toHaveTextContent("j20");
-    expect(screen.getByText(/Çıktı — kayıt aralığı/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Çıktı ayarları/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ".rad üret / çöz" })).not.toBeInTheDocument();
   });
 
@@ -542,6 +552,20 @@ describe("CrashPanel", () => {
     );
   });
 
+  it("ürün ağacı: çarpma, parça rolleri, temaslar ve ek tanımlar bildirilir", async () => {
+    const onTreeChange = vi.fn();
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} onTreeChange={onTreeChange} />);
+    await waitFor(() => expect(onTreeChange).toHaveBeenCalled());
+    const groups = onTreeChange.mock.calls.at(-1)![0] as { title: string; rows: { label: string; value: string }[] }[];
+    expect(groups.map((g) => g.title)).toEqual(["Çarpma", "Parça rolleri", "Temaslar", "Ek tanımlar"]);
+    expect(groups[0].rows[0].label).toBe("Rijit duvar");
+    expect(groups[0].rows).toContainEqual({ label: "İlk hız", value: expect.stringContaining("10 m/s") });
+    expect(groups[1].rows).toEqual([
+      { label: "Parça #0", value: "hareketli" },
+      { label: "Parça #1", value: "hareketli" },
+    ]);
+  });
+
   it("dışarıda başlatılan senaryo koşusunu sonuç görünümünde izler", async () => {
     vi.mocked(fetchCrashJob).mockResolvedValue({
       job_id: "scn1",
@@ -571,5 +595,44 @@ describe("CrashPanel", () => {
     expect(await screen.findByText(/7 m\/s · −X yönü · rijit duvar x=0/)).toBeInTheDocument();
     expect(screen.getByLabelText("Duvar konumu")).toHaveValue("0, 25, 20");
     expect(screen.getByLabelText("Süre")).toHaveValue("4");
+  });
+
+  it("hareketli parça yoksa hız oku çizilmez; duvarsız senaryoda duvar yok (kapı)", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "door", status: "solved" });
+    const onMarkersChange = vi.fn();
+    render(
+      <CrashPanel
+        geometryId={9}
+        meshDimension={2}
+        partIds={[0, 1]}
+        onMarkersChange={onMarkersChange}
+        externalJob={{
+          jobId: "door",
+          geometryId: 9,
+          setup: { use_rigid_wall: false, wall: { point: [0, 0, 0], normal: [0, 0, 1] }, part_roles: { 0: "free", 1: "free" } },
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(onMarkersChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ wall: null, velocity: null, partRoles: { 0: "free", 1: "free" } }),
+      ),
+    );
+  });
+
+  it("koşu çözülünce 3B sonuç açılır (onSolved bir kez, koşu kimliğiyle)", async () => {
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "s1", status: "solved" });
+    const onSolved = vi.fn();
+    render(
+      <CrashPanel
+        geometryId={3}
+        meshDimension={2}
+        view="results"
+        onSolved={onSolved}
+        externalJob={{ jobId: "s1", geometryId: 3, runId: 77 }}
+      />,
+    );
+    await waitFor(() => expect(onSolved).toHaveBeenCalledWith({ id: 77, title: "#77" }));
+    expect(onSolved).toHaveBeenCalledTimes(1);
   });
 });

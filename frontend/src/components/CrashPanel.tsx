@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import {
   crashJobWsUrl,
   fetchCrashJob,
+  fetchCrashRefilter,
   postCrashSolve,
   type CrashContactSpec,
   type CrashJobSnapshot,
@@ -11,11 +12,12 @@ import {
   type CrashScenarioSetup,
 } from "../api/crash";
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
-import CrashMaterialSection, { matCardSummary } from "./CrashMaterialSection";
+import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
-import CrashOutputCard, { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
+import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
-import CrashLoadCards, { cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
+import Kw, { DynaToggle, KwRef } from "./Kw";
+import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -61,6 +63,13 @@ const DIR_PRESETS: { id: DirPreset; v: number[] }[] = [
   { id: "-Z", v: [0, 0, -1] },
   { id: "custom", v: [0, 0, 1] },
 ];
+
+/** Ürün ağacı (kullanıcı 2026-10-08: "sınır koşullarının hepsi ürün ağacında
+ * görünmeli"): 4 · Crash'teki tanımlar grup grup, tek satırlık özetlerle. */
+export interface CrashTreeGroup {
+  title: string;
+  rows: { label: string; value: string }[];
+}
 
 export const ROLE_OPTIONS: { id: PartRole; label: string; short: string; hint: string }[] = [
   { id: "moving", label: "Hareketli", short: "hareketli", hint: "Çarpma hızını alır; rijit duvarla temas eder." },
@@ -160,12 +169,14 @@ export default function CrashPanel({
   regions = [],
   material,
   onMarkersChange,
+  onTreeChange,
   onRequestPointPick,
   pickingPoint = false,
   view = "both",
   onRunStarted,
   onJobKey,
   externalJob = null,
+  onSolved,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -192,6 +203,8 @@ export default function CrashPanel({
   };
   /** Viewport işaretleri (duvar düzlemi, hız oku, parça rol etiketleri). */
   onMarkersChange?: (markers: CrashMarkers | null) => void;
+  /** Ürün ağacına sınır koşulu satırları (çarpma, roller, temaslar, ek tanımlar). */
+  onTreeChange?: (groups: CrashTreeGroup[] | null) => void;
   /** "Modelden seç": viewport'ta tıklanan nokta geri verilir. */
   onRequestPointPick?: (done: (p: [number, number, number]) => void) => void;
   pickingPoint?: boolean;
@@ -202,7 +215,9 @@ export default function CrashPanel({
   /** Koşu geçmişini yenilemek için iş anahtarı (job/status). */
   onJobKey?: (key: string) => void;
   /** Panel dışında başlatılan koşu (ör. "+ Yeni crash vakası" senaryosu) — sonuçlar burada izlenir. */
-  externalJob?: { jobId: string; geometryId: number; setup?: CrashScenarioSetup } | null;
+  externalJob?: { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null;
+  /** Koşu çözülünce (kullanıcı 2026-10-08): viewport'ta 3B sonuç (deforme şekil) açılır. */
+  onSolved?: (run: { id: number; title: string }) => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -210,7 +225,7 @@ export default function CrashPanel({
   // "bu parça ne yapıyor?". Hız yalnız buradan girilir.
   const [partRoles, setPartRoles] = useState<Record<number, PartRole>>({});
   // Claude Design "Crash BC Sidebar" (2026-10-07): üç akordeon grubu.
-  const [openGroup, setOpenGroup] = useState<1 | 2 | 3 | null>(1);
+  const [openGroup, setOpenGroup] = useState<1 | 2 | 3 | 4 | null>(1);
   const [impactMode, setImpactMode] = useState<"wall" | "free">("wall");
   const [speed, setSpeed] = useState("10");
   const [angle, setAngle] = useState("0");
@@ -251,6 +266,13 @@ export default function CrashPanel({
   const [hgHf, setHgHf] = useState("");
   const [hgHr, setHgHr] = useState("");
   const [hgSolid, setHgSolid] = useState("");
+  const [expertOpen, setExpertOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
+  // 5 · Sonuçlar — koşu sonrası CFC (post-process)
+  const [postForceCfc, setPostForceCfc] = useState("");
+  const [postAccCfc, setPostAccCfc] = useState("");
+  const [cfcBusy, setCfcBusy] = useState(false);
+  const [cfcError, setCfcError] = useState<string | null>(null);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +282,13 @@ export default function CrashPanel({
   // 2D mesh → kabuk parçalar (/SHELL, /SH3N, /PROP/TYPE1); 3D → solid (TYPE14).
   const isShell = meshDimension === 2;
   const jobId = result?.job_id ?? snapshot?.job_id ?? null;
+  // Uzman ayarları: son koşunun hourglass / iç enerji oranı (veri; eşik yok).
+  const hgRatio = (() => {
+    const sc = snapshot?.scalars ?? result?.scalars;
+    const hg = sc?.hourglass_energy_final;
+    const ie = sc?.internal_energy_final;
+    return hg != null && ie ? hg / ie : null;
+  })();
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
 
@@ -334,6 +363,17 @@ export default function CrashPanel({
     };
   }, [jobId, polling]);
 
+  // pending → solved geçişinde bir kez: 3B sonucu viewport'ta aç.
+  const prevStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (status !== "solved" || prev === "solved" || prev === null) return;
+    const runId = result?.run_id ?? (externalJob?.jobId === jobId ? externalJob?.runId : null);
+    if (runId != null) onSolved?.({ id: runId, title: `#${runId}` });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
   useEffect(() => {
     if (jobId) onJobKey?.(`${jobId}:${status ?? ""}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,11 +419,17 @@ export default function CrashPanel({
     };
   }
 
-  const toggleGroup = (g: 1 | 2 | 3) => setOpenGroup((cur) => (cur === g ? null : g));
+  const toggleGroup = (g: 1 | 2 | 3 | 4) => setOpenGroup((cur) => (cur === g ? null : g));
   // Yön: duvar modunda düğme duvar normalidir (parça tersine gider); duvarsızda doğrudan hız yönü.
   const dirVec: number[] =
     dirPreset === "custom" ? customDir.map(Number) : DIR_PRESETS.find((d) => d.id === dirPreset)!.v;
   const approachDir = dirVec.map((c) => (c === 0 ? 0 : -c));
+  // Ek tanımlar "rayda": çarpma (hız) vektörünün baskın ekseni.
+  const impactAxis: "X" | "Y" | "Z" = (() => {
+    const v = (impactMode === "wall" ? approachDir : dirVec).map((c) => Math.abs(Number(c) || 0));
+    const i = v.indexOf(Math.max(...v));
+    return (["X", "Y", "Z"] as const)[i < 0 ? 0 : i];
+  })();
   const wallXYZ = parseTriple(wallPoint);
 
   // --- grup özetleri / hazır durumu (öneri değil: eksik bilginin listesi) ---
@@ -404,7 +450,10 @@ export default function CrashPanel({
   const partsSummary = partOptions.map((pid) => `#${pid} ${ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short}`).join(" · ");
   const noMaterial = partOptions.filter((pid) => materialAssignments.length > 0 && !materialAssignments.some((a) => a.part_id === pid && a.material_name));
   const partsMissing = [
-    !partOptions.some((pid) => roleOfPart(pid) === "moving") && !gravOn && "Parçalar: hareketli parça yok",
+    !partOptions.some((pid) => roleOfPart(pid) === "moving") &&
+      !gravOn &&
+      !loadCards.some((c) => c.kind === "inivel" || c.kind === "impvel") &&
+      "Parçalar: hareketli parça yok",
     noMaterial.length > 0 && `Parçalar: malzemesiz ${noMaterial.map((p) => "#" + p).join(", ")}`,
   ].filter(Boolean) as string[];
   const partsState: GroupState = partsMissing.length ? `${partsMissing.length} eksik` : "hazır";
@@ -416,10 +465,23 @@ export default function CrashPanel({
   const contactsState: GroupState = contactsMissing.length ? `${contactsMissing.length} eksik` : contacts.length ? "hazır" : "isteğe bağlı";
   const readyCount = [impactState, partsState, contactsState].filter((st) => !st.endsWith("eksik")).length;
   // --- viewport işaretleri: panel değişince App'e bildir ---
+  // Uzman ayarları özeti: yalnız değiştirilen alanlar (boş = varsayılan).
+  const expertSet = (
+    isShell
+      ? ([["Ishell", ishell], ["Ish3n", ish3n], ["Ismstr", shellIsmstr], ["N", shellNip], ["Hm", hgHm], ["Hf", hgHf], ["Hr", hgHr]] as const)
+      : ([["Isolid", isolid === "1" ? "" : isolid], ["Ismstr", ismstr], ["NIP", nip === "1" ? "" : nip], ["h", hgSolid]] as const)
+  ).filter(([, v]) => v.trim() !== "");
+  const expertChanged = expertSet.length > 0;
+  const expertSummary = expertChanged
+    ? expertSet.map(([k, v]) => `${k} ${v}`).join(" · ")
+    : "Eleman formülasyonu, hourglass · hepsi varsayılan";
+  const anyMoving = partOptions.some((pid) => roleOfPart(pid) === "moving");
   const markers: CrashMarkers = {
     wall: impactMode === "wall" && wallXYZ && dirOk ? { point: wallXYZ, normal: dirVec as [number, number, number] } : null,
+    // Hız oku yalnız ilk hız alan bir parça varsa (hareketli rol): ör. kapı
+    // senaryosunda iki parça serbest, impaktör dayatılmış hızla itilir — ok yok.
     velocity:
-      speedOk && dirOk
+      speedOk && dirOk && anyMoving
         ? { dir: (impactMode === "wall" ? approachDir : dirVec) as [number, number, number], label: `${speed} m/s` }
         : null,
     partLabels: Object.fromEntries(
@@ -433,6 +495,42 @@ export default function CrashPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markersKey]);
   useEffect(() => () => onMarkersChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const treeGroups: CrashTreeGroup[] = [
+    {
+      title: "Çarpma",
+      rows: [
+        {
+          label: impactMode === "wall" ? "Rijit duvar" : "Duvarsız",
+          value: impactMode === "wall" ? wallLabel(dirVec, wallXYZ) : "yalnız ilk hız",
+        },
+        ...(anyMoving ? [{ label: "İlk hız", value: `${speed} m/s · ${vecLabel(impactMode === "wall" ? approachDir : dirVec)}` }] : []),
+        { label: "Süre", value: `${tEnd} ms` },
+        ...(gravOn ? [{ label: "Yerçekimi", value: `${gravAccel} m/s² · ${gravDir}` }] : []),
+      ],
+    },
+    {
+      title: "Parça rolleri",
+      rows: partOptions.map((pid) => ({ label: `Parça #${pid}`, value: ROLE_OPTIONS.find((o) => o.id === roleOfPart(pid))!.short })),
+    },
+    {
+      title: "Temaslar",
+      rows: contacts.map((c) => ({
+        label: `TYPE${c.type}`,
+        value: c.master === c.slave ? `#${c.master} kendi kendine` : `#${c.slave} → #${c.master}`,
+      })),
+    },
+    {
+      title: "Ek tanımlar",
+      rows: loadCards.map((c) => ({ label: CARD_LABEL[c.kind], value: cardSummary(c, impactAxis) })),
+    },
+  ];
+  const treeKey = JSON.stringify(treeGroups);
+  useEffect(() => {
+    onTreeChange?.(JSON.parse(treeKey) as CrashTreeGroup[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeKey]);
+  useEffect(() => () => onTreeChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const blockers = [
     ...(meshDimension !== 2 && meshDimension !== 3 ? ["Önce mesh üretin (2 · Mesh)"] : []),
@@ -494,7 +592,7 @@ export default function CrashPanel({
         ),
         contacts: contacts.map(contactPayload),
         use_rigid_wall: useRigidWall,
-        ...cardsPayload(loadCards),
+        ...cardsPayload(loadCards, impactAxis),
         model: modelFor(matCard, "Global"),
         ...outputPayload(output),
       });
@@ -512,6 +610,24 @@ export default function CrashPanel({
       setError(e instanceof Error ? e.message : "Crash isteği başarısız.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyPostCfc() {
+    if (!jobId) return;
+    setCfcBusy(true);
+    setCfcError(null);
+    try {
+      const r = await fetchCrashRefilter(jobId, postForceCfc ? Number(postForceCfc) : null, postAccCfc ? Number(postAccCfc) : null);
+      setSnapshot((prev) =>
+        prev
+          ? { ...prev, curves: { ...(prev.curves ?? {}), ...r.curves }, scalars: { ...(prev.scalars ?? {}), ...r.scalars } }
+          : prev,
+      );
+    } catch (e) {
+      setCfcError(e instanceof Error ? e.message : "Süzme yapılamadı.");
+    } finally {
+      setCfcBusy(false);
     }
   }
 
@@ -548,6 +664,7 @@ export default function CrashPanel({
         Üç adım: her parçanın ne yaptığını seç, neye çarptığını seç, çalıştır. Önce mesh ve her
         parçaya malzeme gerekir (2 · Mesh, 3 · Material).
       </p>
+      <DynaToggle />
       {meshDimension !== 2 && meshDimension !== 3 && (
         <p className="material-assign-hint">Mesh yok — crash 3D (solid) ya da 2D (kabuk) mesh ister.</p>
       )}
@@ -590,7 +707,7 @@ export default function CrashPanel({
             </div>
             <div className="crash-field-label">
               <span>{impactMode === "wall" ? "Duvarın baktığı yön" : "Hız yönü"}</span>
-              <code>{impactMode === "wall" ? "/RWALL normal" : "/INIVEL"}</code>
+              {impactMode === "wall" ? <Kw card="/RWALL" text="/RWALL normal" /> : <Kw card="/INIVEL" />}
             </div>
             <div className="crash-dir-buttons" role="radiogroup" aria-label={impactMode === "wall" ? "Duvarın baktığı yön" : "Hız yönü"}>
               {DIR_PRESETS.map((d) => (
@@ -630,7 +747,7 @@ export default function CrashPanel({
               <>
                 <div className="crash-field-label">
                   <span>Duvar konumu</span>
-                  <code>/RWALL nokta</code>
+                  <Kw card="/RWALL" text="/RWALL nokta" />
                 </div>
                 <div className="crash-unit-row">
                   <UnitField label="Duvar konumu" hideLabel unit="mm" wide value={wallPoint} onChange={setWallPoint} disabled={busy} placeholder="0, 0, 0" />
@@ -650,6 +767,7 @@ export default function CrashPanel({
             <label className="crash-grav-check">
               <input type="checkbox" checked={gravOn} disabled={busy} onChange={(e) => setGravOn(e.target.checked)} />
               <span>yerçekimi</span>
+              <KwRef card="/GRAV" />
             </label>
             {gravOn && (
               <div className="crash-unit-row">
@@ -777,6 +895,7 @@ export default function CrashPanel({
                             </button>
                           ))}
                         </span>
+                        <KwRef card={`/INTER/TYPE${c.type}`} />
                         <button
                           type="button"
                           className="crash-contact-remove"
@@ -822,6 +941,185 @@ export default function CrashPanel({
         )}
       </section>
 
+      <section className="crash-acc" aria-label="Ek tanımlar">
+        <AccHead
+          n={4}
+          title="Ek tanımlar"
+          summary={loadCards.length ? `${loadCards.length} tanım · rollerin yetmediği yerler` : "rollerin yetmediği yerler"}
+          state="isteğe bağlı"
+          open={openGroup === 4}
+          onToggle={() => toggleGroup(4)}
+        />
+        {openGroup === 4 && (
+          <div className="crash-acc-body">
+            <p className="crash-behavior-hint">
+              Parça rolü bütün parçaya uygulanır. Buradakiler bir bölgeye ya da parçaya ek tanım ekler.
+            </p>
+            <CrashLoadCards
+              cards={loadCards}
+              onChange={setLoadCards}
+              partIds={partOptions}
+              regions={regions}
+              disabled={busy}
+              impactAxis={impactAxis}
+            />
+          </div>
+        )}
+      </section>
+
+      <section className="crash-acc crash-expert" aria-label="Uzman ayarları">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={expertOpen}
+          onClick={() => setExpertOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="8" cy="8" r="2.2" />
+              <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Uzman ayarları</strong>
+            <span className="crash-acc-summary">{expertSummary}</span>
+          </span>
+          <span className={expertChanged ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {expertChanged ? "değiştirildi" : "varsayılan"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{expertOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!expertOpen}>
+          {hgRatio != null && (
+            <div className="crash-hg-line" data-testid="crash-hg-line">
+              <span>
+                Son koşu: HG/IE <strong>%{(hgRatio * 100).toFixed(1)}</strong> (kayıtlı değer)
+              </span>
+              <button
+                type="button"
+                className="crash-link-btn"
+                onClick={() => document.getElementById("crash-expert-hourglass")?.scrollIntoView({ block: "center" })}
+              >
+                hourglass alanları ↓
+              </button>
+            </div>
+          )}
+          <p className="crash-behavior-hint">
+            Boş alan = OpenRadioss varsayılanı. Elemanın nasıl hesaplandığı ve "kum saati" (hourglass)
+            kontrolü: indirgenmiş integrasyonlu elemanlarda enerji yemeyen sahte zikzak deformasyonu bastırır.
+          </p>
+          {isShell ? (
+            <>
+              <p className="crash-expert-title">
+                Eleman · kabuk <Kw card="/PROP/TYPE1" />
+              </p>
+              <div className="crash-expert-grid cols-4">
+              <label className="crash-expert-field">
+                <span>Ishell</span>
+                <input aria-label="Ishell" placeholder="varsayılan" value={ishell} disabled={busy} onChange={(e) => setIshell(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ish3n</span>
+                <input aria-label="Ish3n" placeholder="varsayılan" value={ish3n} disabled={busy} onChange={(e) => setIsh3n(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ismstr</span>
+                <input aria-label="Ismstr (kabuk)" placeholder="varsayılan" value={shellIsmstr} disabled={busy} onChange={(e) => setShellIsmstr(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>N</span>
+                <input aria-label="N" placeholder="varsayılan" value={shellNip} disabled={busy} onChange={(e) => setShellNip(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-behavior-hint">
+                Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı). 0 = Radioss /DEF_SHELL varsayılanı.
+                N: 0, 1 ya da 3…10.
+              </p>
+              <p className="crash-expert-title" id="crash-expert-hourglass">
+                Hourglass · 0…0.05
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>Hm membran</span>
+                <input aria-label="Hourglass Hm" placeholder="0.01" value={hgHm} disabled={busy} onChange={(e) => setHgHm(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Hf düzlem dışı</span>
+                <input aria-label="Hourglass Hf" placeholder="0.01" value={hgHf} disabled={busy} onChange={(e) => setHgHf(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Hr dönme</span>
+                <input aria-label="Hourglass Hr" placeholder="0.01" value={hgHr} disabled={busy} onChange={(e) => setHgHr(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-behavior-hint">Ishell 1–4 hourglass formülasyonlarında etkili.</p>
+            </>
+          ) : (
+            <>
+              <p className="crash-expert-title">
+                Eleman · solid <Kw card="/PROP/TYPE14" />
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>Isolid</span>
+                <input aria-label="Isolid" placeholder="1" value={isolid} disabled={busy} onChange={(e) => setIsolid(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>Ismstr</span>
+                <input aria-label="Ismstr" placeholder="varsayılan" value={ismstr} disabled={busy} onChange={(e) => setIsmstr(e.target.value)} />
+              </label>
+              <label className="crash-expert-field">
+                <span>NIP</span>
+                <input aria-label="NIP" placeholder="1" value={nip} disabled={busy} onChange={(e) => setNip(e.target.value)} />
+              </label>
+              </div>
+              <p className="crash-expert-title" id="crash-expert-hourglass">
+                Hourglass · 0…0.15
+              </p>
+              <div className="crash-expert-grid cols-3">
+              <label className="crash-expert-field">
+                <span>h viskozite</span>
+                <input aria-label="Hourglass h" placeholder="0.10" value={hgSolid} disabled={busy} onChange={(e) => setHgSolid(e.target.value)} />
+              </label>
+              </div>
+            </>
+          )}
+          <p className="crash-behavior-hint">Çıktı (kayıt aralığı, kesit kuvveti, CFC): 5 · Sonuçlar → Çıktı.</p>
+        </div>
+      </section>
+
+      <section className="crash-acc crash-expert" aria-label="Çıktı ayarları">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={outputOpen}
+          onClick={() => setOutputOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 13V3M2 13h12M5 10l3-4 2 2 4-5" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Çıktı ayarları</strong>
+            <span className="crash-acc-summary">
+              {outputSummary(output) || "Kayıt aralığı, zaman adımı, kanallar, kesitler · hepsi varsayılan"}
+            </span>
+          </span>
+          <span className={outputSummary(output) ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {outputSummary(output) ? "değiştirildi" : "varsayılan"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{outputOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!outputOpen}>
+          <p className="crash-behavior-hint">
+            Preprocess: koşudan önce deck'e yazılır — hangi eğriler ne sıklıkla kaydedilir, zaman adımı, kesitler.
+            Boş alan = varsayılan. Filtre (CFC) koşudan sonra 5 · Sonuçlar'da uygulanır.
+          </p>
+          <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} showCfc={false} />
+        </div>
+      </section>
+
       {blockers.length > 0 && (
         <div className="crash-blockers" role="status" data-testid="crash-blockers">
           {blockers.map((b) => (
@@ -850,35 +1148,9 @@ export default function CrashPanel({
 
 
 
-      <p className="crash-q-title crash-other-title">Diğer ayarlar</p>
-      <p className="crash-behavior-hint">Çoğu koşuda dokunulmaz. Boş alan = OpenRadioss varsayılanı.</p>
-      <details className="crash-advanced">
-        <summary>Ek tanımlar — yüzey kilitleme, ek kütle, rijit gövde, parça başına hız</summary>
-        <p className="material-assign-hint">
-          Parçanın tamamı yukarıda tanımlanır. Buradaki kartlar bir bölgeye (yüzey grubu) ya da parçaya
-          ek tanım ekler: ör. yalnız taban yüzeyini kilitlemek, kızak kütlesi eklemek.
-        </p>
-        <CrashLoadCards
-          cards={loadCards}
-          onChange={setLoadCards}
-          partIds={partOptions}
-          regions={regions}
-          roles={{}}
-          disabled={busy}
-          showCoverage={false}
-        />
-      </details>
 
-      {material ? (
-        <div className="crash-mat-summary" data-testid="crash-mat-summary">
-          <span className="ml-k">Malzeme modeli</span>
-          <span>
-            {matCardSummary(matCard)}
-            {Object.keys(partCards).length > 0 ? ` · ${Object.keys(partCards).length} parçaya ayrı model` : ""}
-          </span>
-          <span className="crash-behavior-hint">3 · Material adımından değiştirilir.</span>
-        </div>
-      ) : (
+      {/* Kullanıcı 2026-10-08: malzeme modeli açıklaması yalnız 3 · Material'da. */}
+      {!material && (
         <CrashMaterialSection
           partIds={partOptions}
           matCard={matCard}
@@ -889,85 +1161,6 @@ export default function CrashPanel({
         />
       )}
 
-      <details className="crash-advanced">
-        <summary>Çözücü ayarları — eleman formülasyonu, hourglass</summary>
-        <p className="crash-behavior-hint">
-          Elemanın nasıl hesaplandığı (Ishell/Isolid) ve "kum saati" kontrolü (hourglass: indirgenmiş
-          integrasyonlu elemanlarda sahte, enerji yemeyen zikzak deformasyonu bastırır). Sonuçlarda
-          HG/IE oranı %5'i aşıyorsa buraya bakılır.
-        </p>
-      {isShell ? (
-        <>
-          <p className="material-assignments-title">Kabuk — /PROP/TYPE1</p>
-          <div className="mesh-grid">
-            <label className="mesh-field">
-              <span>Ishell</span>
-              <input placeholder="varsayılan" value={ishell} onChange={(e) => setIshell(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Ish3n</span>
-              <input placeholder="varsayılan" value={ish3n} onChange={(e) => setIsh3n(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Ismstr (kabuk)</span>
-              <input placeholder="varsayılan" value={shellIsmstr} onChange={(e) => setShellIsmstr(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>N</span>
-              <input placeholder="varsayılan" value={shellNip} onChange={(e) => setShellNip(e.target.value)} />
-            </label>
-          </div>
-          <p className="material-assignments-title">Hourglass kontrolü — /PROP/TYPE1</p>
-          <div className="mesh-grid">
-            <label className="mesh-field">
-              <span>Hm</span>
-              <input aria-label="Hourglass Hm" placeholder="varsayılan" value={hgHm} onChange={(e) => setHgHm(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Hf</span>
-              <input aria-label="Hourglass Hf" placeholder="varsayılan" value={hgHf} onChange={(e) => setHgHf(e.target.value)} />
-            </label>
-            <label className="mesh-field">
-              <span>Hr</span>
-              <input aria-label="Hourglass Hr" placeholder="varsayılan" value={hgHr} onChange={(e) => setHgHr(e.target.value)} />
-            </label>
-          </div>
-          <p className="material-assign-hint">
-            Hm membran, Hf düzlem dışı, Hr dönme katsayısı; aralık 0…0.05, 0 = Radioss
-            varsayılanı (0.01). Ishell 1–4 hourglass formülasyonlarında etkili.
-          </p>
-          <p className="material-assign-hint">
-            Kalınlık ürün ağacından (3 · Material → bileşen kalınlığı); burada yalnız
-            gösterilir. Bayraklarda 0 = Radioss /DEF_SHELL varsayılanı. N: 0, 1 ya da 3…10.
-          </p>
-        </>
-      ) : (
-        <>
-        <p className="material-assignments-title">Eleman — /PROP/TYPE14</p>
-        <div className="mesh-grid">
-          <label className="mesh-field">
-            <span>Isolid</span>
-            <input value={isolid} onChange={(e) => setIsolid(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>Ismstr</span>
-            <input placeholder="varsayılan" value={ismstr} onChange={(e) => setIsmstr(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>NIP</span>
-            <input value={nip} onChange={(e) => setNip(e.target.value)} />
-          </label>
-          <label className="mesh-field">
-            <span>h (hourglass)</span>
-            <input aria-label="Hourglass h" placeholder="varsayılan" value={hgSolid} onChange={(e) => setHgSolid(e.target.value)} />
-          </label>
-        </div>
-        <p className="material-assign-hint">
-          h: hourglass viskozite katsayısı, aralık 0…0.15, 0 = Radioss varsayılanı (0.10).
-        </p>
-        </>
-      )}
-      </details>
 
       </>
       )}
@@ -1059,16 +1252,46 @@ export default function CrashPanel({
           {curves?.time && forceSeries.length > 0 && (
             <CrashForceChart time={curves.time} series={forceSeries} />
           )}
+          {jobId && status === "solved" && (
+            <div className="crash-cfc-post" data-testid="crash-cfc-post">
+              <p className="crash-expert-title">Filtre · CFC (SAE J211) · post-process</p>
+              <p className="crash-behavior-hint">
+                Ham kuvvet / ivme sinyali gürültülü; tepe değeri okumak için süzülür. Kayıtlı ham eğriden hesaplanır —
+                çözücü yeniden koşmaz, ham eğri korunur. Kuvvet için genelde 60–600, kafa ivmesi (HIC) için 1000.
+              </p>
+              <div className="crash-expert-grid cols-3">
+                {(
+                  [
+                    ["Kuvvet CFC", postForceCfc, setPostForceCfc],
+                    ["İvme CFC", postAccCfc, setPostAccCfc],
+                  ] as const
+                ).map(([lab, v, setV]) => (
+                  <label key={lab} className="crash-expert-field">
+                    <span>{lab}</span>
+                    <select aria-label={`Sonuç ${lab}`} value={v} onChange={(e) => setV(e.target.value)}>
+                      <option value="">Yok (ham)</option>
+                      {[60, 180, 600, 1000].map((c) => (
+                        <option key={c} value={String(c)}>
+                          CFC {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  className="doe-btn crash-cfc-apply"
+                  disabled={cfcBusy || (!postForceCfc && !postAccCfc)}
+                  onClick={() => void applyPostCfc()}
+                >
+                  {cfcBusy ? "Süzülüyor…" : "Uygula"}
+                </button>
+              </div>
+              {cfcError && <p className="material-assign-hint">{cfcError}</p>}
+            </div>
+          )}
         </div>
       )}
-      <details className="crash-advanced">
-        <summary>Çıktı — kayıt aralığı, kesit kuvvetleri, filtre (CFC), zaman adımı</summary>
-        <p className="crash-behavior-hint">
-          Hangi eğrilerin ne sıklıkla kaydedileceği ve kuvvet / ivme sinyallerinin filtresi. Boş = varsayılan
-          (süre/200 aralık). Sonraki koşuya uygulanır.
-        </p>
-        <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} />
-      </details>
 
         </section>
       )}

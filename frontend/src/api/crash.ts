@@ -343,6 +343,21 @@ export async function postCrashSolve(
   return payload as CrashSolveResponse;
 }
 
+/** Koşu sonrası yeniden süzme (post-process): yalnız *_cfcN eğri / skalerleri. */
+export async function fetchCrashRefilter(
+  jobId: string,
+  forceCfc: number | null,
+  accCfc: number | null,
+): Promise<{ curves: Record<string, number[]>; scalars: Record<string, number> }> {
+  const q = new URLSearchParams();
+  if (forceCfc) q.set("force_cfc", String(forceCfc));
+  if (accCfc) q.set("acc_cfc", String(accCfc));
+  const response = await fetch(`${API_BASE_URL}/crash/jobs/${jobId}/cfc?${q.toString()}`);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as { curves: Record<string, number[]>; scalars: Record<string, number> };
+}
+
 export async function fetchCrashJob(jobId: string): Promise<CrashJobSnapshot> {
   const response = await fetch(`${API_BASE_URL}/crash/jobs/${jobId}`);
   const payload = await response.json().catch(() => null);

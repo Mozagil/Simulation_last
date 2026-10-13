@@ -1,6 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import type { CrashModelPayload } from "../api/crash";
-import ButtonGroup from "./ButtonGroup";
+import { KwRef } from "./Kw";
 
 /** Malzeme kartı (1.14e): LAW1 / LAW2 (+ Johnson-Cook hız/sıcaklık) / LAW36 tablo
  * ve /FAIL kriterleri. Alanlar ham metin; sayıya gönderimde çevrilir. Öneri yok:
@@ -73,7 +73,9 @@ function newCurve(): TabCurveRow {
 
 export function defaultMatCard(): MatCardState {
   return {
-    law: "elastic",
+    // Kullanıcı 2026-10-08: elle kurulan crash koşusu LAW2 (elasto-plastik) ile
+    // başlar — hızlı senaryo / DOE ile aynı. LAW1 elastikte kutu ezilmez, seker.
+    law: "plastic",
     sigmaY: "",
     hardenB: "0",
     hardenN: "1",
@@ -207,6 +209,12 @@ type ScalarKey = {
 }[keyof MatCardState];
 
 /** Kullanıcı 2026-10-07: "kopma / FAIL nedir, hangi senaryoda" — düz Türkçe açıklamalar. */
+const LAW_OPTIONS: { id: CrashLaw; card: string; name: string; aria: string }[] = [
+  { id: "elastic", card: "LAW1", name: "elastik", aria: "LAW1 elastik" },
+  { id: "plastic", card: "LAW2", name: "elasto-plastik", aria: "LAW2 plastik" },
+  { id: "tabulated", card: "LAW36", name: "tablolu eğri", aria: "LAW36 tablo" },
+];
+
 const LAW_HINT: Record<CrashLaw, string> = {
   elastic:
     "Elastik: malzeme yalnız yaylanır, yük kalkınca eski haline döner; kalıcı ezilme olmaz. Doğrulama koşuları ya da gerçekten esnek kalan parçalar (ör. rijit sayılan çarpıcı) için.",
@@ -215,6 +223,39 @@ const LAW_HINT: Record<CrashLaw, string> = {
   tabulated:
     "Tablolu eğri: ölçülmüş gerilme–plastik gerinim eğrilerini (farklı hızlarda) doğrudan kullanır. Elinde test eğrisi varsa.",
 };
+
+/** Aç / kapa bölüm (kullanıcı 2026-10-08: yer kaplamasın). Kapalıyken
+ * değiştirilen alanlar başlıkta özetlenir. İçerik DOM'da kalır (gizli). */
+function Fold({
+  title,
+  formula,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  formula?: string;
+  summary: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={open ? "crash-fold open" : "crash-fold"}>
+      <button type="button" className="crash-fold-head" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="crash-fold-chev" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        <strong>{title}</strong>
+        {formula && <span className="crash-formula">{formula}</span>}
+        <span className="crash-fold-summary">{summary}</span>
+      </button>
+      <div className="crash-fold-body" hidden={!open}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function CrashMaterialCard({
   value,
@@ -228,25 +269,42 @@ export default function CrashMaterialCard({
   testId?: string;
 }) {
   const set = (patch: Partial<MatCardState>) => onChange({ ...value, ...patch });
+  /** Varsayılandan farklı alanlar: "c 0.014 · ε̇₀ 1"; hiçbiri yoksa "varsayılan". */
+  const changed = (pairs: [ScalarKey, string][]) => {
+    const d = defaultMatCard();
+    const out = pairs.filter(([k]) => value[k].trim() !== "" && value[k] !== d[k]).map(([k, l]) => `${l} ${value[k]}`);
+    return out.length ? out.join(" · ") : "varsayılan";
+  };
   const field = (key: ScalarKey, label: string) => (
     <label className="mesh-field">
       <span>{label}</span>
       <input value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
     </label>
   );
-  const failField = <R extends FailJohnsonRow | FailTensRow>(
+  /** Uzman düzeni alanı: kısa etiket + birim; erişilebilir ad eski etiket (testler / ekran okuyucu). */
+  const xf = (key: ScalarKey, aria: string, label: string, unit?: string, placeholder = "boş") => (
+    <label className="crash-expert-field" key={key}>
+      <span>{label}</span>
+      <span className="crash-card-input">
+        <input aria-label={aria} value={value[key]} placeholder={placeholder} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+        {unit && <span className="crash-card-unit">{unit}</span>}
+      </span>
+    </label>
+  );
+  const xfail = <R extends FailJohnsonRow | FailTensRow>(
     row: R,
     key: keyof R & string,
+    aria: string,
     label: string,
     apply: (next: R) => void,
+    unit?: string,
   ) => (
-    <label className="mesh-field">
+    <label className="crash-expert-field" key={key}>
       <span>{label}</span>
-      <input
-        value={row[key] as string}
-        disabled={disabled}
-        onChange={(e) => apply({ ...row, [key]: e.target.value })}
-      />
+      <span className="crash-card-input">
+        <input aria-label={aria} value={row[key] as string} placeholder="boş" disabled={disabled} onChange={(e) => apply({ ...row, [key]: e.target.value })} />
+        {unit && <span className="crash-card-unit">{unit}</span>}
+      </span>
     </label>
   );
   const law = value.law;
@@ -256,50 +314,93 @@ export default function CrashMaterialCard({
 
   return (
     <div className="crash-mat-card" data-testid={testId}>
-      <ButtonGroup
-        title="LAW"
-        items={[
-          { key: "elastic", label: "LAW1 elastik", active: law === "elastic", disabled, onClick: () => set({ law: "elastic" }) },
-          { key: "plastic", label: "LAW2 plastik", active: law === "plastic", disabled, onClick: () => set({ law: "plastic" }) },
-          { key: "tabulated", label: "LAW36 tablo", active: law === "tabulated", disabled, onClick: () => set({ law: "tabulated" }) },
-        ]}
-      />
+      <p className="crash-expert-title">Malzeme modeli — birini seç</p>
+      <div className="crash-law-pick" role="group" aria-label="Malzeme modeli (LAW)">
+        {LAW_OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={law === o.id ? "crash-law-tile active" : "crash-law-tile"}
+            aria-label={o.aria}
+            aria-pressed={law === o.id}
+            disabled={disabled}
+            onClick={() => set({ law: o.id })}
+          >
+            <span className="crash-law-tile-check" aria-hidden="true">
+              {law === o.id ? "✓" : ""}
+            </span>
+            <strong>{o.card}</strong>
+            <span>{o.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="crash-law-selected" data-testid="crash-law-selected">
+        Seçili: <strong>{LAW_OPTIONS.find((o) => o.id === law)!.card}</strong> {LAW_OPTIONS.find((o) => o.id === law)!.name}
+      </p>
       <p className="crash-behavior-hint" data-testid="crash-law-hint">{LAW_HINT[law]}</p>
+      <KwRef card={law === "elastic" ? "/MAT/LAW1" : law === "plastic" ? "/MAT/LAW2" : "/MAT/LAW36"} />
 
       {law === "plastic" && (
-        <>
-          <div className="mesh-grid">
-            {field("sigmaY", "σy (Pa) — boşsa atanan malzeme")}
-            {field("hardenB", "LAW2 b (MPa)")}
-            {field("hardenN", "LAW2 n")}
-            {field("epsPMax", "EPS_p_max")}
-            {field("sigMax0", "SIG_max0 (MPa)")}
-          </div>
+        <div className="crash-law-sections">
+          <Fold
+            title="Akma ve pekleşme"
+            formula="σ = a + b·εₚⁿ"
+            summary={changed([["sigmaY", "a"], ["hardenB", "b"], ["hardenN", "n"], ["sigMax0", "SIG_max0"]])}
+            defaultOpen
+          >
           <p className="crash-behavior-hint">
-            σy: akma gerilmesi (boşsa kütüphane malzemesinin Rp0.2'si). b, n: pekleşme — b büyüdükçe
-            ezildikçe daha çok sertleşir. EPS_p_max: bu plastik gerinime ulaşan eleman silinir (boş = kapalı;
-            basit bir kopma sınırı). SIG_max0: gerilme tavanı (boş = yok).
+            a = akma (boşsa kütüphane malzemesinin Rp0.2'si); b, n pekleşme — b büyüdükçe ezildikçe daha çok
+            sertleşir. SIG_max0: gerilme tavanı (boş = yok).
           </p>
-          <details className="crash-mat-section">
-            <summary>Hız / sıcaklık etkisi — Johnson-Cook (boş = yok)</summary>
-            <p className="crash-behavior-hint">
-              Metaller hızlı yüklemede sertleşir: c hız katsayısı, ε̇₀ referans hız; m ve sıcaklıklar ısınma
-              ile yumuşamayı verir. Değerler malzemeye özgü, literatürden (ör. Johnson-Cook tabloları).
-            </p>
-            <div className="mesh-grid">
-              {field("jcC", "c")}
-              {field("jcEps0", "ε̇₀ (1/s)")}
-              {field("jcIcc", "ICC")}
-              {field("jcFsmooth", "Fsmooth")}
-              {field("jcFcut", "F_cut (Hz)")}
-              {field("jcChard", "Chard")}
-              {field("jcM", "m")}
-              {field("jcTmelt", "T_melt (K)")}
-              {field("jcRhoCp", "ρCp (J/m³K)")}
-              {field("jcTr", "T_r (K)")}
-            </div>
-          </details>
-        </>
+          <div className="crash-expert-grid cols-2">
+            {xf("sigmaY", "σy (Pa) — boşsa atanan malzeme", "a · akma σy", "Pa", "kütüphane")}
+            {xf("sigMax0", "SIG_max0 (MPa)", "SIG_max0 · tavan", "MPa")}
+            {xf("hardenB", "LAW2 b (MPa)", "b · pekleşme", "MPa")}
+            {xf("hardenN", "LAW2 n", "n · üs")}
+          </div>
+          </Fold>
+
+          <Fold
+            title="Hız etkisi"
+            formula="σ·(1 + c·ln(ε̇/ε̇₀))"
+            summary={changed([["jcC", "c"], ["jcEps0", "ε̇₀"], ["jcIcc", "ICC"], ["jcFsmooth", "Fsmooth"], ["jcFcut", "F_cut"], ["jcChard", "Chard"]])}
+          >
+          <p className="crash-behavior-hint">
+            Metaller hızlı yüklemede sertleşir: σ × (1 + c·ln(ε̇/ε̇₀)). c = 0 → hız etkisi yok. Fsmooth / F_cut
+            şekil değiştirme hızını süzer.
+          </p>
+          <div className="crash-expert-grid cols-3">
+            {xf("jcC", "c", "c · hız katsayısı")}
+            {xf("jcEps0", "ε̇₀ (1/s)", "ε̇₀ · referans", "1/s")}
+            {xf("jcIcc", "ICC", "ICC")}
+            {xf("jcFsmooth", "Fsmooth", "Fsmooth")}
+            {xf("jcFcut", "F_cut (Hz)", "F_cut", "Hz")}
+            {xf("jcChard", "Chard", "Chard")}
+          </div>
+          </Fold>
+
+          <Fold title="Sıcaklık etkisi" summary={changed([["jcM", "m"], ["jcTmelt", "T_melt"], ["jcTr", "T_r"], ["jcRhoCp", "ρCp"]])}>
+          <p className="crash-behavior-hint">
+            Plastik iş ısıya döner, malzeme yumuşar: m üssü, erime ve referans sıcaklığı, ρ·Cp. Boş = sıcaklık
+            etkisi yok.
+          </p>
+          <div className="crash-expert-grid cols-2">
+            {xf("jcM", "m", "m · yumuşama üssü")}
+            {xf("jcTmelt", "T_melt (K)", "T_melt · erime", "K")}
+            {xf("jcTr", "T_r (K)", "T_r · referans", "K")}
+            {xf("jcRhoCp", "ρCp (J/m³K)", "ρ·Cp", "J/m³K")}
+          </div>
+          </Fold>
+
+          <Fold title="Basit kopma sınırı" summary={changed([["epsPMax", "EPS_p_max"]])}>
+          <p className="crash-behavior-hint">
+            Bu plastik gerinime ulaşan eleman silinir (boş = kapalı). Daha ayrıntılı kopma için aşağıdaki /FAIL kartları.
+          </p>
+          <div className="crash-expert-grid cols-2">
+            {xf("epsPMax", "EPS_p_max", "EPS_p_max · kopma gerinimi")}
+          </div>
+          </Fold>
+        </div>
       )}
 
       {law === "tabulated" && (
@@ -382,72 +483,79 @@ export default function CrashMaterialCard({
         </>
       )}
 
-      <details className="crash-mat-section" open={failCount > 0 || undefined}>
-        <summary>
-          Kopma / hasar — /FAIL{failCount > 0 ? ` · ${failCount} kriter` : " · kapalı"}
-        </summary>
+      <div className="crash-law-sections">
+        <Fold
+          title="Kopma / hasar · /FAIL"
+          summary={failCount > 0 ? `${failCount} kriter: ${[j && "Johnson–Cook", t && "çekme gerinimi"].filter(Boolean).join(" + ")}` : "kapalı"}
+          defaultOpen={failCount > 0}
+        >
         <p className="crash-behavior-hint" data-testid="crash-fail-intro">
-          Kapalıyken malzeme ne kadar uzarsa uzasın kopmaz — sac yırtılmaz, cam kırılmaz, mermi delmez;
-          yalnız ezilir ve bükülür. Açıkken seçilen kriter sağlanan eleman modelden silinir: yırtılma,
-          delinme, kırılma görünür, silinen eleman sayısı sonuçlarda yazar.
+          Kapalıyken malzeme ne kadar uzarsa uzasın kopmaz — sac yırtılmaz, mermi delmez; yalnız ezilir ve
+          bükülür. Açıkken kriteri sağlayan eleman silinir; silinen eleman sayısı sonuçlarda yazar. Tipik:
+          delinme (plaka–küre, kuş), kırılgan parça, yırtılan sac. Yalnız ezilme incelenen koşularda (crash box)
+          çoğunlukla kapalı.
         </p>
-        <p className="crash-behavior-hint">
-          Tipik kullanım: delinme / penetrasyon (plaka–küre, mermi, kuş çarpması), kırılgan parça (cam,
-          döküm), yırtılan sac, kopan bağlantı. Yalnız ezilme / katlanma incelenen koşularda (ör. crash
-          box) çoğunlukla kapalı tutulur.
-        </p>
-        <label className="material-check">
-          <input
-            type="checkbox"
-            checked={j != null}
-            disabled={disabled}
-            onChange={(e) => set({ failJohnson: e.target.checked ? { ...JOHNSON_DEFAULT } : null })}
-          />
-          /FAIL/JOHNSON
-        </label>
-        <p className="crash-behavior-hint">
-          Johnson-Cook hasarı: kopma gerinimi gerilme durumuna (çekme / kesme / bası), hıza ve sıcaklığa
-          bağlı. D1–D5 malzeme sabitleri (literatür / test). En gerçekçi, en çok veri isteyen.
-        </p>
-        {j && (
-          <div className="mesh-grid">
-            {(["d1", "d2", "d3", "d4", "d5"] as const).map((k) => (
-              <Fragment key={k}>
-                {failField(j, k, k.toUpperCase(), (n) => set({ failJohnson: n }))}
-              </Fragment>
-            ))}
-            {failField(j, "eps0", "ε̇₀ (1/s)", (n) => set({ failJohnson: n }))}
-            {failField(j, "ifailSh", "Ifail_sh", (n) => set({ failJohnson: n }))}
-            {failField(j, "ifailSo", "Ifail_so", (n) => set({ failJohnson: n }))}
-            {failField(j, "dadv", "Dadv", (n) => set({ failJohnson: n }))}
-          </div>
-        )}
-        <label className="material-check">
-          <input
-            type="checkbox"
-            checked={t != null}
-            disabled={disabled}
-            onChange={(e) => set({ failTens: e.target.checked ? { ...TENS_DEFAULT } : null })}
-          />
-          /FAIL/TENSSTRAIN
-        </label>
-        <p className="crash-behavior-hint">
-          Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir (çekme deneyindeki kopma uzaması).
-          Basit, az veri ister; ölçüm yoksa ilk yaklaşım.
-        </p>
-        {t && (
-          <div className="mesh-grid">
-            {failField(t, "t1", "ε_t1", (n) => set({ failTens: n }))}
-            {failField(t, "t2", "ε_t2", (n) => set({ failTens: n }))}
-            {failField(t, "f1", "ε_f1", (n) => set({ failTens: n }))}
-            {failField(t, "f2", "ε_f2", (n) => set({ failTens: n }))}
-            {failField(t, "sflag", "S_Flag", (n) => set({ failTens: n }))}
-          </div>
-        )}
-        <p className="material-assign-hint">
-          S_Flag: 0, 1, 11, 21 · Ifail: 0, 1, 2 (Radioss bayrakları; boş = varsayılan).
-        </p>
-      </details>
+        <div className={j ? "crash-fail-tile active" : "crash-fail-tile"}>
+          <label className="crash-fail-head">
+            <input
+              type="checkbox"
+              aria-label="/FAIL/JOHNSON"
+              checked={j != null}
+              disabled={disabled}
+              onChange={(e) => set({ failJohnson: e.target.checked ? { ...JOHNSON_DEFAULT } : null })}
+            />
+            <span className="crash-fail-text">
+              <strong>Johnson–Cook hasarı</strong>
+              <span>Kopma gerinimi gerilme durumuna, hıza, sıcaklığa bağlı (D1–D5). En gerçekçi, en çok veri isteyen.</span>
+            </span>
+            <code>/FAIL/JOHNSON</code>
+          </label>
+          <KwRef card="/FAIL/JOHNSON" />
+          {j && (
+            <div className="crash-expert-grid cols-5">
+              {(["d1", "d2", "d3", "d4", "d5"] as const).map((k) => (
+                <Fragment key={k}>{xfail(j, k, k.toUpperCase(), k.toUpperCase(), (n) => set({ failJohnson: n }))}</Fragment>
+              ))}
+            </div>
+          )}
+          {j && (
+            <div className="crash-expert-grid cols-4">
+              {xfail(j, "eps0", "ε̇₀ (1/s)", "ε̇₀", (n) => set({ failJohnson: n }), "1/s")}
+              {xfail(j, "ifailSh", "Ifail_sh", "Ifail_sh", (n) => set({ failJohnson: n }))}
+              {xfail(j, "ifailSo", "Ifail_so", "Ifail_so", (n) => set({ failJohnson: n }))}
+              {xfail(j, "dadv", "Dadv", "Dadv", (n) => set({ failJohnson: n }))}
+            </div>
+          )}
+        </div>
+        <div className={t ? "crash-fail-tile active" : "crash-fail-tile"}>
+          <label className="crash-fail-head">
+            <input
+              type="checkbox"
+              aria-label="/FAIL/TENSSTRAIN"
+              checked={t != null}
+              disabled={disabled}
+              onChange={(e) => set({ failTens: e.target.checked ? { ...TENS_DEFAULT } : null })}
+            />
+            <span className="crash-fail-text">
+              <strong>Çekme gerinimi</strong>
+              <span>ε_t1'de hasar başlar, ε_f1'de eleman silinir (çekme deneyindeki kopma uzaması). Basit, az veri.</span>
+            </span>
+            <code>/FAIL/TENSSTRAIN</code>
+          </label>
+          <KwRef card="/FAIL/TENSSTRAIN" />
+          {t && (
+            <div className="crash-expert-grid cols-5">
+              {xfail(t, "t1", "ε_t1", "ε_t1", (n) => set({ failTens: n }))}
+              {xfail(t, "t2", "ε_t2", "ε_t2", (n) => set({ failTens: n }))}
+              {xfail(t, "f1", "ε_f1", "ε_f1", (n) => set({ failTens: n }))}
+              {xfail(t, "f2", "ε_f2", "ε_f2", (n) => set({ failTens: n }))}
+              {xfail(t, "sflag", "S_Flag", "S_Flag", (n) => set({ failTens: n }))}
+            </div>
+          )}
+        </div>
+        <p className="material-assign-hint">S_Flag: 0, 1, 11, 21 · Ifail: 0, 1, 2 (Radioss bayrakları; boş = varsayılan).</p>
+        </Fold>
+      </div>
     </div>
   );
 }

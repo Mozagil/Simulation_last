@@ -5,6 +5,7 @@
  */
 import type { Dispatch, SetStateAction } from "react";
 import CrashMaterialCard, { type MatCardState } from "./CrashMaterialCard";
+import { DynaToggle } from "./Kw";
 
 const LAW_NAME: Record<MatCardState["law"], string> = {
   elastic: "elastik (LAW1)",
@@ -25,6 +26,7 @@ export default function CrashMaterialSection({
   partCards,
   setPartCards,
   disabled = false,
+  hideToggle = false,
 }: {
   partIds: number[];
   matCard: MatCardState;
@@ -32,16 +34,23 @@ export default function CrashMaterialSection({
   partCards: Record<number, MatCardState>;
   setPartCards: Dispatch<SetStateAction<Record<number, MatCardState>>>;
   disabled?: boolean;
+  /** Üst bileşen LS-DYNA düğmesini zaten gösteriyorsa. */
+  hideToggle?: boolean;
 }) {
   return (
     <section className="crash-mat-section-wrap" aria-label="Crash malzeme modeli">
-      <p className="material-assignments-title">
-        {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — ortak" : "Crash malzeme modeli"}
-      </p>
-      <p className="crash-behavior-hint">
-        Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
-        nasıl davranacağı seçilir: akınca ne olur, kopar mı.
-      </p>
+      {!hideToggle && (
+        <>
+        <p className="material-assignments-title">
+          {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — ortak" : "Crash malzeme modeli"}
+        </p>
+        <p className="crash-behavior-hint">
+          Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
+          nasıl davranacağı seçilir: akınca ne olur, kopar mı.
+        </p>
+          </>
+      )}
+      {!hideToggle && <DynaToggle />}
       {partIds.length > 1 && (
         <div className="crash-mat-toggles">
           {partIds.map((pid) => (

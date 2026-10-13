@@ -25,7 +25,7 @@
   --radius-md: 6px;
   --radius-lg: 10px;
   --sidebar-w: 400px;
-  --step-sidebar-w: 380px;   /* adım 23/N: sağ adım sidebar'ı */
+  --step-sidebar-w: 440px;   /* adım 23/N: sağ adım sidebar'ı — 2026-10-08: 380 → 440 (LS-DYNA karşılıkları sığsın) */
 
   /* contour skalası: sonuç renk gradyanı (legend + colorbar) */
   --contour: linear-gradient(to top, #2f7fd1, #4fbf6a, #f5c63c, #d93b2b);
@@ -42,6 +42,8 @@
   --muted: #5d5d60;           /* eski: #6e757c — Workbench v4 --color-neutral-700 */
   --disabled: #b7b7ba;        /* eski: #b3b9be — Workbench v4 --color-neutral-400 */
   --accent: #5980a6;          /* eski: #00b4c8 (turkuaz) — Workbench v4 --color-accent */
+  --hint-ink: #0b7a6e;        /* açıklama metni — belirgin teal, tüm adımlar (crash + durability); --ref-blue ile ayrışır */
+  --ref-blue: #4a7099;        /* Radioss / LS-DYNA karşılıkları — buton mavisine yakın, okunur */
   --accent-hover: #416180;    /* eski: #00a0b2 — Workbench v4 --color-accent-700 */
   --accent-soft: #eef6ff;     /* eski: #e2f6f8 — Workbench v4 --color-accent-100 */
   --on-accent: #ffffff;
@@ -83,6 +85,8 @@
   --muted: #8a8d91;
   --disabled: #55585d;
   --accent: #00d9e8;
+  --hint-ink: #4fd1c5;
+  --ref-blue: #4ee7f2;
   --accent-hover: #4ee7f2;
   --accent-soft: rgba(0, 217, 232, 0.14);
   --on-accent: #04181b;
@@ -123,6 +127,8 @@
   --muted: #5d5d60;
   --disabled: #b7b7ba;
   --accent: #5980a6;
+  --hint-ink: #0b7a6e;        /* açıklama metni — belirgin teal, tüm adımlar (crash + durability); --ref-blue ile ayrışır */
+  --ref-blue: #4a7099;        /* Radioss / LS-DYNA karşılıkları — buton mavisine yakın, okunur */
   --accent-hover: #416180;
   --accent-soft: #eef6ff;
   --on-accent: #ffffff;

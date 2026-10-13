@@ -36,9 +36,13 @@ viewport işaretleri + rol renkleri, 5 · Sonuçlar, geçmiş dock'u, yeni vaka
 penceresi) bitti. Tam ALE ayrı faz. Solver: OpenRadioss artık kapalı kaynak;
 donmuş AGPL ikilisi Docker imajında koşar (`LICENSING.md`).
 
-**Sıradaki (main çizgisi): FAZ 2 — CFD / akış (OpenFOAM)** — sıra değişikliği
-2026-10-07 (kompozit Faz 3'e kaydı). Durum: **plan** (`docs/ROADMAP.md` Faz 2);
-açık sorular yanıtlanıp kullanıcı onay vermeden kod yazılmaz.
+**FAZ 2 — CFD / akış (OpenFOAM) BAŞLADI (kullanıcı onayı 2026-10-08)** —
+sıra değişikliği 2026-10-07 (kompozit Faz 3'e kaydı). Arayüzde "AKIŞ" sekmesi
+iskeleti var; **2.0 TAMAM (2026-10-08): ESI v2412 resmi Docker imajı** (`OPENFOAM_DOCKER_IMAGE`), pitzDaily duman testi; **2.1 TAMAM: case yazıcı** (`openfoam_case.py`, laminer / k-ω SST).
+**2.2 TAMAM: koşu + canlı ilerleme** (`/cfd/solve`, `/cfd/jobs`, ws). **2.3 TAMAM: parametrik kanal + Poiseuille (V-C1).** **2.4 TAMAM: kuvvet/katsayı okuma + `cfd_runs` tablosu.** **2.5a TAMAM: STEP → rüzgâr tüneli + snappyHexMesh (`/cfd/mesh`).** **R1 TAMAM: parametrik roket şablonu (`rocket`).** **2.5b TAMAM: cfMesh seçilebilir (`simsurrogate-openfoam:2412-cfmesh` imajı).** **R2 TAMAM: Barrowman CP/CNα (`/cfd/rocket/barrowman`).** **R3 TAMAM: roket rüzgâr tüneli (`/cfd/rocket/solve`, α, CG → katsayılar, CP).** **2.6 TAMAM: V-C2 küre, V-C3 pitzDaily, V-C4 Ahmed (`docs/CFD_VALIDATION.md`).** **2.7 TAMAM: AKIŞ arayüzü (mesh, çözüm, sonuçlar, roket modu, koşu geçmişi).** **R4 TAMAM: rhoSimpleFoam / rhoCentralFoam + paralel.** **2.8 TAMAM: alan görselleştirme (Cp, kesit |U|, akım çizgileri).** **R5 TAMAM: Mach × α taraması + aero tablo CSV.** **R6 TAMAM: OpenRocket .ork içe aktarma.** **2.9 TAMAM: CFD DOE + vekil model (ML Stüdyo → Akış); PDF rapor + Belgeler Akış kitabı.** Faz 2 maddeleri bitti; sonraya kalanlar ROADMAP "Sonraya". Kapsam: iç + dış akış + aero; roket modülü R1–R6 (R4: üç çözücü seçilebilir)
+(`docs/ROADMAP.md` Faz 2, 2.0–2.9). Durability
+(CalculiX `/solve`, modal, DOE, surrogate) ve crash yolları dokunulmaz; yeni
+CFD yolu eklenir. ML en sonda (2.9).
 
 **FAZ 3 — Kompozit PARALEL BAŞLADI (kullanıcı onayı 2026-10-12):** dal
 `feature/phase3-composite` (`main`'den). Bu dalda yalnız Faz 3 Dalga 1
@@ -47,7 +51,8 @@ dokunulmaz. Durability / crash / CFD yollarına dokunulmaz. Her mikro-adımda
 dur (`docs/ROADMAP.md` Faz 3, 3.0–3.14). `main`'e otomatik merge yok.
 
 **Operasyonel borç:** 200'lük durability kalite seti (ccx) ve 200 koşuluk
-crash DOE Codespace'te koşulacak.
+crash DOE Codespace'te koşulacak; roket ağ yakınsamasının 3. ağı da
+(`backend/scripts/cfd_rocket_convergence.py --only 3`, `docs/CFD_VALIDATION.md`).
 
 Grup 3 şablonları ayrı onay. `/solve` refaktör etme. Bir mikro-adımı
 bitirince dur.
@@ -73,7 +78,11 @@ o an sunulabilir kalitede tasarlanır, "sonra güzelleştiririz" diye ertelenmez
    arayüz bunu soyutlar, üst katmanlar farkı bilmez. Aynı desen mesh aracı için de geçerli:
    `MesherAdapter` — bkz. `docs/ARCHITECTURE.md#geometri-ve-mesh`.
 2. **Ticari CAE yazılımı yok.** ANSYS, HyperMesh, LS-DYNA bu projede hiçbir yerde
-   kullanılmaz/önerilmez — ne kod içinde ne dokümantasyonda. Tamamen açık kaynak yığın.
+   kullanılmaz, kurulmaz, çağrılmaz, bağımlılık ya da girdi/çıktı formatı olmaz ve
+   önerilmez. Tamamen açık kaynak yığın. **Tek istisna (kullanıcı kararı 2026-10-08):**
+   arayüzde ve dokümanda OpenRadioss kartının yanında bilgi amaçlı, yaklaşık ("≈")
+   LS-DYNA keyword adı gösterilebilir (`frontend/src/lib/dynaKeywords.ts`, kullanıcı
+   tercihiyle açılıp kapanır) — yalnız ad, işlev değil.
    Kod hiçbir noktada "kullanıcının makinesinde X kurulu" varsayımı yapmaz. Solver/mesh
    çağrıları sadece backend/worker sürecinde, sunucu tarafında olur. Detay: `docs/LICENSING.md`
    (özellikle OpenRadioss'un AGPL lisansının SaaS kullanımdaki etkisi için).

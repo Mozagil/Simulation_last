@@ -1,27 +1,38 @@
 #!/usr/bin/env bash
-# OpenRadioss resmi Linux ikilisi — lisans sunucusu yok (AGPL, bkz. docs/LICENSING.md).
-# Kaynak derlenmez. Idempotent: starter+engine varsa indirmez.
+# OpenRadioss Linux ikilisi — lisans sunucusu yok (AGPL, bkz. docs/LICENSING.md).
+#
+# Kaynak DEPODAKİ arşiv: vendor/openradioss-latest-20260728-linux64-agpl.tar.gz
+# (son açık sürüm, latest-20260728). Resmi GitHub deposu ve sürüm paketleri
+# 29 Eyl – 1 Eki 2026 arasında kalktı; eski indirme adresi 404 verip Codespace
+# imaj derlemesini düşürüyordu. Yerel Docker imajı
+# (backend/docker/openradioss/Dockerfile) da aynı arşivden kurulur.
+#
+# Kullanım: install_openradioss.sh <arşiv.tar.gz> — idempotent.
 set -euo pipefail
 
+ARCHIVE="${1:-/tmp/openradioss.tar.gz}"
 DEST="${OPENRADIOSS_HOME:-/opt/openradioss}"
-RELEASE="${OPENRADIOSS_RELEASE:-latest-20260728}"
-URL="https://github.com/OpenRadioss/OpenRadioss/releases/download/${RELEASE}/OpenRadioss_linux64.zip"
+SHA256="5ed4cad8e544a981f1b24f1b4e720570fdc4812051f259eebada4bd29f7cb3ce"
 
 if [[ -x "${DEST}/exec/starter_linux64_gf" && -x "${DEST}/exec/engine_linux64_gf" ]]; then
-  echo "OpenRadioss zaten kurulu: ${DEST} (${RELEASE})"
+  echo "OpenRadioss zaten kurulu: ${DEST}"
   exit 0
 fi
 
-echo "--- OpenRadioss ${RELEASE} indiriliyor ---"
+if [[ ! -f "$ARCHIVE" ]]; then
+  echo "HATA: arşiv yok: ${ARCHIVE} (vendor/openradioss-latest-20260728-linux64-agpl.tar.gz)"
+  exit 1
+fi
+echo "${SHA256}  ${ARCHIVE}" | sha256sum -c -
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-curl -fsSL -o "${tmp}/or.zip" "$URL"
-unzip -q "${tmp}/or.zip" -d "${tmp}/unpack"
+tar -xzf "$ARCHIVE" -C "$tmp"
 
-starter="$(find "${tmp}/unpack" -type f -name 'starter_linux64_gf' | head -n1 || true)"
+starter="$(find "$tmp" -type f -name 'starter_linux64_gf' | head -n1 || true)"
 if [[ -z "$starter" ]]; then
-  echo "HATA: zip içinde starter_linux64_gf yok"
-  find "${tmp}/unpack" -maxdepth 3 -type d
+  echo "HATA: arşivde starter_linux64_gf yok"
+  find "$tmp" -maxdepth 3 -type d
   exit 1
 fi
 root="$(cd "$(dirname "$starter")/.." && pwd)"
@@ -35,4 +46,4 @@ if [[ ! -x "${DEST}/exec/starter_linux64_gf" || ! -x "${DEST}/exec/engine_linux6
   ls -la "${DEST}/exec" || true
   exit 1
 fi
-echo "OpenRadioss kuruldu: ${DEST}"
+echo "OpenRadioss kuruldu: ${DEST} (latest-20260728, depodaki arşiv)"
