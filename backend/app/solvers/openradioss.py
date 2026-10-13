@@ -1459,6 +1459,34 @@ class OpenRadiossAdapter(SolverAdapter):
             raise SolverError(f"OpenRadioss hata (exit={exit_code}). Log: {log_path}")
         return handle
 
+    def check_starter(self, artifact: InputArtifact, timeout_s: int = 300) -> dict[str, Any]:
+        """1.22c — yalnız starter (engine yok): çıkış kodu + starter .out metni.
+
+        Ham kart "Kontrol et" için; mesajlar yorumlanmaz, çağıran aynen gösterir.
+        """
+        bins = resolve_openradioss()
+        if bins is None or bins.starter is None:
+            raise SolverError("OpenRadioss starter bulunamadı (OPENRADIOSS_DOCKER_IMAGE / OPENRADIOSS_PATH).")
+        work_dir = artifact.path.parent
+        try:
+            proc = subprocess.run(
+                launch_command(bins, bins.starter, ["-i", artifact.path.name, "-np", "1"], work_dir),
+                cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+                env=runtime_env(bins),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SolverError(f"OpenRadioss starter zaman aşımı ({timeout_s}s).") from exc
+        out = artifact.path.with_name(artifact.path.name.replace("_0000.rad", "_0000.out"))
+        return {
+            "exit_code": proc.returncode,
+            "out_text": out.read_text(encoding="utf-8", errors="replace") if out.is_file() else "",
+            "console": (proc.stdout or "") + (proc.stderr or ""),
+        }
+
     def poll_status(self, job: JobHandle) -> JobStatus:  # noqa: D102 — arayüz
         exit_code = getattr(job, "_exit_code", None)
         if exit_code is None:

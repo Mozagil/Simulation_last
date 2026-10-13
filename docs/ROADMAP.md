@@ -1425,8 +1425,12 @@ düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart →
   (üretilenle), `duplicates` (kendi içinde), `below_user_range`. /solve ile aynı
   parametreler `_starter_params` yardımcısında (davranış aynı).
   Modül `solvers/openradioss_ids.py`. Test: `test_crash_raw_card_ids.py`.
-- 1.22c ⏳ Backend: "Kontrol et" — yalnız starter koşusu (engine yok); starter
-  çıktısındaki ERROR/WARNING satırları aynen döner. Test: bozuk kartta hata satırı.
+- 1.22c ✅ Backend: "Kontrol et" — `POST /crash/raw-cards/check` (gövde =
+  /crash/solve isteği): ham kartlı deck geçici klasörde, `check_starter` yalnız
+  starter koşar (engine yok); starter .out ERROR/WARNING blokları aynen
+  (`starter_message_blocks`), çıkış kodu, ham kartın deck'teki ilk satırı;
+  starter yoksa 503. Gerçek koşu (Docker imajı): üretilenle aynı MAT ID →
+  ERROR 79 "DUPLICATE ID", ~1 s. Test: `test_crash_raw_card_check.py`.
 - 1.22d ⏳ Frontend: popup editör (monospace, satır no, 10 karakterlik kolon
   cetveli); 3 · Malzeme ve 4 · Crash'ten açılır, içerik ortak; viewport'ta seçili
   düğüm/eleman ID'leri imlece eklenir. Koşu isteğine `raw_cards` eklenir.

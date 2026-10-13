@@ -43,7 +43,7 @@ from app.solvers.crash_params import (
     CrashSectionParams,
     CrashThParams,
 )
-from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
+from app.solvers.openradioss import RAW_CARDS_MARKER, OpenRadiossAdapter, resolve_openradioss
 from app.solvers.openradioss_ids import deck_inventory, raw_card_report
 from app.solvers.openradioss_progress import ParsedCrashProgress
 
@@ -421,6 +421,44 @@ def crash_raw_cards_inventory(
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return {**deck_inventory(generated), **raw_card_report(generated, body.raw_cards)}
+
+
+@router.post("/raw-cards/check")
+def crash_raw_cards_check(
+    body: CrashSolveRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """1.22c — "Kontrol et": ham kartlı deck'te yalnız starter koşar (engine yok).
+
+    Starter'ın ERROR / WARNING blokları aynen döner; iş kaydı açılmaz, geçici
+    klasör silinir. `raw_cards_deck_line`: ham kartın deck'teki ilk satırı.
+    """
+    from app.postprocess.openradioss_th import starter_message_blocks
+
+    params, _, _ = _starter_params(body, db)
+    tmp = CRASH_DIR / "_check" / str(uuid.uuid4())
+    adapter = OpenRadiossAdapter()
+    try:
+        try:
+            artifact = adapter.build_input({**params, "output_dir": tmp, "job_name": "crash"})
+        except SolverError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        deck = artifact.path.read_text(encoding="utf-8").split("\n")
+        try:
+            res = adapter.check_starter(artifact)
+        except SolverError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    blocks = starter_message_blocks(res["out_text"])
+    marker = next((i for i, ln in enumerate(deck, start=1) if ln == RAW_CARDS_MARKER), None)
+    return {
+        "exit_code": res["exit_code"],
+        "errors": [b for b in blocks if b["kind"] == "error"],
+        "warnings": [b for b in blocks if b["kind"] == "warning"],
+        "raw_cards_deck_line": marker + 1 if marker else None,
+        # .out yoksa (starter erken düştü) konsolun sonu — aynen.
+        "console_tail": "" if res["out_text"] else "\n".join(res["console"].splitlines()[-40:]),
+    }
 
 
 @router.post("/solve")

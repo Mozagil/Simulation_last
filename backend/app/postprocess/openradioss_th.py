@@ -255,6 +255,28 @@ def parse_starter_messages(path: Path) -> dict[str, dict[str, int]]:
     return res
 
 
+def starter_message_blocks(text: str, max_lines: int = 30) -> list[dict[str, Any]]:
+    """1.22c — starter .out mesaj blokları, aynen: "ERROR ID : n" satırından ilk
+    boş satıra kadar (en çok `max_lines`). Özet tablo satırları alınmaz.
+
+    Döner: [{"kind": "error"|"warning", "id": "79", "lines": [...]}] (dosya sırası).
+    """
+    blocks: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw in text.splitlines():
+        m = _MSG_RE.match(raw)
+        if m:
+            current = {"kind": m.group(1).lower(), "id": m.group(2), "lines": [raw.rstrip()]}
+            blocks.append(current)
+            continue
+        if current is not None:
+            if not raw.strip() or len(current["lines"]) >= max_lines:
+                current = None
+            else:
+                current["lines"].append(raw.rstrip())
+    return blocks
+
+
 def _diagnostics(work_dir: Path, engine_out: Path | None) -> tuple[dict[str, Any], dict[str, float]]:
     diag: dict[str, Any] = {}
     scalars: dict[str, float] = {}
