@@ -3,7 +3,7 @@
  * malzeme kavramları (LAW, kopma /FAIL) 3 · Material adımında olmalı; 4 · Crash
  * yalnız özet gösterir. Aynı bileşen ikisinde de kullanılır (state App'te).
  */
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import CrashMaterialCard, { type MatCardState } from "./CrashMaterialCard";
 import { DynaToggle } from "./Kw";
 
@@ -46,8 +46,8 @@ export default function CrashMaterialSection({
   /** 1.23 A2: parçaya atanmış kütüphane malzemesinin adı (tabloda gösterilir). */
   materialOf?: (pid: number) => string | null;
 }) {
-  // 1.23 A2: parça başına model seçimi tek tabloda. "Ortak" = ortak kart; LAW seçilince
-  // o parçaya kendi kartı açılır (ortak karttan kopya, LAW değiştirilmiş).
+  // 1.23 A2: parça başına model seçimi tek tabloda. "Varsayılan" = varsayılan kart; LAW
+  // seçilince o parçaya kendi kartı açılır (varsayılan karttan kopya, LAW değiştirilmiş).
   const choose = (pid: number, v: string) =>
     setPartCards((c) => {
       const next = { ...c };
@@ -55,12 +55,22 @@ export default function CrashMaterialSection({
       else next[pid] = { ...(c[pid] ?? matCard), law: v as MatCardState["law"] };
       return next;
     });
+
+  // Kullanıcı 2026-10-13: varsayılan kartta LAW değişince, kendi modeli olan parça varsa
+  // küçük onay: "Tüm parçalar LAW1 olsun mu?" — Tamam = parça kartları kalkar, hepsi
+  // varsayılanı izler; Hayır = yalnız varsayılan değişir.
+  const [askAll, setAskAll] = useState<MatCardState["law"] | null>(null);
+  const ownCount = Object.keys(partCards).length;
+  const setDefault = (next: MatCardState) => {
+    if (next.law !== matCard.law && ownCount > 0) setAskAll(next.law);
+    setMatCard(next);
+  };
   return (
     <section className="crash-mat-section-wrap" aria-label="Crash malzeme modeli">
       {!hideToggle && (
         <>
         <p className="material-assignments-title">
-          {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — ortak" : "Crash malzeme modeli"}
+          {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — varsayılan" : "Crash malzeme modeli"}
         </p>
         <p className="crash-behavior-hint">
           Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
@@ -87,7 +97,7 @@ export default function CrashMaterialSection({
                   disabled={disabled}
                   onChange={(e) => choose(pid, e.target.value)}
                 >
-                  <option value="common">Ortak ({LAW_SHORT[matCard.law]})</option>
+                  <option value="common">Varsayılan ({LAW_SHORT[matCard.law]})</option>
                   <option value="elastic">{LAW_SHORT.elastic}</option>
                   <option value="plastic">{LAW_SHORT.plastic}</option>
                   <option value="tabulated">{LAW_SHORT.tabulated}</option>
@@ -97,13 +107,33 @@ export default function CrashMaterialSection({
             </div>
           ))}
           <span className="crash-behavior-hint">
-            Ortak = aşağıdaki ortak kart. LAW seçilen parçanın kendi kartı açılır (kopma ayarları dahil) — ör. çarpan
-            rijit küre LAW1 elastik, plaka LAW2 + kopma.
+            Varsayılan = aşağıdaki varsayılan kart. LAW seçilen parçanın kendi kartı açılır (kopma ayarları dahil) — ör.
+            çarpan rijit küre LAW1 elastik, plaka LAW2 + kopma.
           </span>
         </div>
       )}
-      {partIds.length > 1 && <p className="crash-expert-title">Ortak model (kendi modeli seçilmeyen parçalar)</p>}
-      <CrashMaterialCard value={matCard} onChange={setMatCard} disabled={disabled} testId="crash-mat-global" />
+      {partIds.length > 1 && <p className="crash-expert-title">Varsayılan model (kendi modeli seçilmeyen parçalar)</p>}
+      {askAll && (
+        <div className="crash-mat-ask" role="alertdialog" aria-label="Tüm parçalar">
+          <span>
+            Tüm parçalar {LAW_SHORT[askAll]} olsun mu? ({ownCount} parçanın kendi modeli var)
+          </span>
+          <button
+            type="button"
+            className="material-assign-button"
+            onClick={() => {
+              setPartCards({});
+              setAskAll(null);
+            }}
+          >
+            Tamam
+          </button>
+          <button type="button" className="material-secondary-button" onClick={() => setAskAll(null)}>
+            Hayır, yalnız varsayılan
+          </button>
+        </div>
+      )}
+      <CrashMaterialCard value={matCard} onChange={setDefault} disabled={disabled} testId="crash-mat-global" />
       {partIds
         .filter((pid) => partCards[pid])
         .map((pid) => (

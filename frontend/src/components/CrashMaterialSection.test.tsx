@@ -80,3 +80,29 @@ describe("CrashMaterialSection · parça tablosu (1.23 A2)", () => {
     expect(screen.queryByTestId("crash-mat-part-1")).not.toBeInTheDocument();
   });
 });
+
+describe("CrashMaterialSection · varsayılan LAW değişince onay (kullanıcı 2026-10-13)", () => {
+  it("kendi modeli olan parça varken varsayılan LAW değişirse sorar; Tamam hepsini varsayılana bağlar", () => {
+    render(<TableHarness />);
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
+    expect(screen.getByLabelText("Parça 1 modeli")).toHaveValue("plastic");
+    expect(screen.getByLabelText("Parça 0 modeli")).toHaveDisplayValue("Varsayılan (LAW2 elasto-plastik)");
+
+    const def = screen.getByTestId("crash-mat-global");
+    fireEvent.click(within(def).getByRole("button", { name: "LAW1 elastik" }));
+    const ask = screen.getByRole("alertdialog", { name: "Tüm parçalar" });
+    expect(ask).toHaveTextContent("Tüm parçalar LAW1 elastik olsun mu?");
+    fireEvent.click(within(ask).getByRole("button", { name: "Tamam" }));
+    expect(screen.getByTestId("parts")).toHaveTextContent("{}");
+    expect(screen.getByLabelText("Parça 1 modeli")).toHaveDisplayValue("Varsayılan (LAW1 elastik)");
+  });
+
+  it("Hayır: yalnız varsayılan değişir, parçanın kendi modeli kalır", () => {
+    render(<TableHarness />);
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
+    fireEvent.click(within(screen.getByTestId("crash-mat-global")).getByRole("button", { name: "LAW1 elastik" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hayır, yalnız varsayılan" }));
+    expect(screen.getByTestId("parts")).toHaveTextContent('{"1":"plastic"}');
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});

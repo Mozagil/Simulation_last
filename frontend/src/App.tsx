@@ -3563,7 +3563,7 @@ function App() {
               <span>Malzeme modeli</span>
             </div>
             <div className="model-tree-row model-tree-depth-2" title={matCardSummary(crashMatCard)}>
-              <span className="model-tree-leaf">{Object.keys(crashPartCards).length ? "Ortak" : "Tüm parçalar"}</span>
+              <span className="model-tree-leaf">{Object.keys(crashPartCards).length ? "Varsayılan" : "Tüm parçalar"}</span>
               <span className="model-tree-value model-tree-value-fit" data-testid="tree-crash-law">
                 {matCardSummary(crashMatCard)}
               </span>
@@ -3573,7 +3573,7 @@ function App() {
               crashMaterialPartIds.map((pid) => {
                 const card = crashPartCards[pid];
                 const mat = materialAssignments.find((a) => a.part_id === pid)?.material_name ?? "atama yok";
-                const text = `${mat} · ${matCardSummary(card ?? crashMatCard)}${card ? "" : " (ortak)"}`;
+                const text = `${mat} · ${matCardSummary(card ?? crashMatCard)}${card ? "" : " (varsayılan)"}`;
                 return (
                   <div className="model-tree-row model-tree-depth-2" key={pid} title={text}>
                     <span className="model-tree-leaf">Parça #{pid}</span>

@@ -9223,3 +9223,23 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
+
+.crash-mat-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.crash-mat-ask .material-assign-button,
+.crash-mat-ask .material-secondary-button {
+  width: auto;
+  margin: 0;
+  padding: 5px 12px;
+}
