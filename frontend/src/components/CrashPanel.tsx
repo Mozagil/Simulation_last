@@ -18,6 +18,7 @@ import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type Outp
 import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
+import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -177,6 +178,8 @@ export default function CrashPanel({
   onJobKey,
   externalJob = null,
   onSolved,
+  rawCards = "",
+  onOpenRawCards,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -218,6 +221,10 @@ export default function CrashPanel({
   externalJob?: { jobId: string; geometryId: number; runId?: number | null; setup?: CrashScenarioSetup } | null;
   /** Koşu çözülünce (kullanıcı 2026-10-08): viewport'ta 3B sonuç (deforme şekil) açılır. */
   onSolved?: (run: { id: number; title: string }) => void;
+  /** 1.22d — ham kartlar (App'te ortak; 3 · Malzeme'den de düzenlenir). Boşsa istekte yok. */
+  rawCards?: string;
+  /** Verilirse "Ham kartlar" satırı editörü açar. */
+  onOpenRawCards?: () => void;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -595,6 +602,7 @@ export default function CrashPanel({
         ...cardsPayload(loadCards, impactAxis),
         model: modelFor(matCard, "Global"),
         ...outputPayload(output),
+        ...(rawCards.trim() ? { raw_cards: rawCards } : {}),
       });
       setResult(body);
       onRunStarted?.();
@@ -1148,6 +1156,8 @@ export default function CrashPanel({
 
 
 
+
+      {onOpenRawCards && <RawCardsOpenRow rawCards={rawCards} onOpen={onOpenRawCards} disabled={busy} />}
 
       {/* Kullanıcı 2026-10-08: malzeme modeli açıklaması yalnız 3 · Material'da. */}
       {!material && (

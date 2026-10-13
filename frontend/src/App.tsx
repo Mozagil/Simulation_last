@@ -79,6 +79,7 @@ import CfdMeshPanel from "./components/CfdMeshPanel";
 import CfdSolvePanel from "./components/CfdSolvePanel";
 import CfdRunsPanel from "./components/CfdRunsPanel";
 import type { CfdMeshMeta } from "./api/cfd";
+import CrashRawCardsEditor, { RawCardsOpenRow } from "./components/CrashRawCardsEditor";
 import type { CrashMarkers } from "./components/GeometryViewer";
 import { defaultMatCard, type MatCardState } from "./components/CrashMaterialCard";
 import { matCardSummary } from "./components/CrashMaterialSection";
@@ -413,6 +414,9 @@ function App() {
   // Crash malzeme modeli (LAW / kopma) — 3 · Material adımında düzenlenir, 4 · Crash okur.
   const [crashMatCard, setCrashMatCard] = useState<MatCardState>(defaultMatCard);
   const [crashPartCards, setCrashPartCards] = useState<Record<number, MatCardState>>({});
+  // 1.22d — ham kartlar (OpenRadioss); 3 · Material ve 4 · Crash'ten aynı editör.
+  const [crashRawCards, setCrashRawCards] = useState("");
+  const [showRawCards, setShowRawCards] = useState(false);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -4602,6 +4606,7 @@ function App() {
         ) : (
           <>
             {analysisTab === "crash" ? (
+              <>
               <CrashMaterialStep
                 materials={materials}
                 selectedMaterialId={selectedMaterialId}
@@ -4651,6 +4656,8 @@ function App() {
                 partCards={crashPartCards}
                 setPartCards={setCrashPartCards}
               />
+              <RawCardsOpenRow rawCards={crashRawCards} onOpen={() => setShowRawCards(true)} />
+              </>
             ) : (
             <>
             <label className="mesh-field material-field">
@@ -5431,6 +5438,8 @@ function App() {
             partCards: crashPartCards,
             setPartCards: setCrashPartCards,
           }}
+          rawCards={crashRawCards}
+          onOpenRawCards={() => setShowRawCards(true)}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
@@ -5569,6 +5578,14 @@ function App() {
         />
       )}
       {showDocs && <DocsDialog onClose={() => setShowDocs(false)} />}
+      {showRawCards && analysisTab === "crash" && (
+        <CrashRawCardsEditor
+          value={crashRawCards}
+          onChange={setCrashRawCards}
+          onClose={() => setShowRawCards(false)}
+          nodePicks={meshNodePicks}
+        />
+      )}
       {showNewCrashCase && (
         <CrashNewCaseDialog
           onClose={() => setShowNewCrashCase(false)}

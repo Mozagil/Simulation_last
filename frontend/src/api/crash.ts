@@ -168,6 +168,8 @@ export interface CrashSolveRequest {
   rigid_bodies?: Record<string, unknown>[];
   /** 11.2 — Yükleme: Yerçekimi */
   gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
+  /** 1.22 — OpenRadioss ham kartları; starter deck'ine /END'den önce aynen. */
+  raw_cards?: string;
 }
 
 export interface CrashSolveResponse {
@@ -275,6 +277,8 @@ export interface CrashScenarioRequest {
   drop_height_mm?: number;
   /** K2 — /GRAV; boşsa düşme şablonunda −9.81 m/s² Z */
   gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
+  /** 1.22 — OpenRadioss ham kartları; starter deck'ine /END'den önce aynen. */
+  raw_cards?: string;
   /** K3 — direk çapı (mm, /RWALL/CYL) ve uç rijit gövde ek kütlesi (kg) */
   pole_diameter_mm?: number;
   end_mass_kg?: number;

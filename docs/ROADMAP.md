@@ -1438,6 +1438,51 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
     okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
 
+*1.22 — Crash ham kart editörü (kullanıcı kararı 2026-10-12; plan onayı 2026-10-13)*
+Kullanıcı BC / malzeme kartını popup metin editöründe, düğüm/eleman ID'leriyle
+OpenRadioss sözdiziminde yazar. Yalnız crash; kompozitten paralel, ayrı dal
+(`feature/crash-raw-cards`). Mod A (ek kart) önce; Mod B (üretilen kartı önizle +
+düzenle, yerine geçer) A bittikten sonra ayrı onayla. Çift yönlü (kart → form) yok.
+- Dayanak: starter deck'teki düğüm/eleman ID'leri gmsh mesh ID'leriyle aynı
+  (`th_nodes` bugün de mesh düğüm kümesine karşı denetleniyor).
+- Mimari: metin üst katmanlarda opak string (`raw_cards`); yalnız
+  `solvers/openradioss.py` deck'e yazar. DB şeması değişmez (crash_runs params JSON).
+- Araç öneri yapmaz: doğrulama = starter'ın kendi hata satırları + ID çakışma
+  listesi, olduğu gibi gösterilir.
+- 1.22a ✅ Backend: `raw_cards` parametresi → `_write_starter` metni `/END`'den
+  önce aynen ekler (yorum işaretiyle; `/BEGIN`, `/END` reddedilir; ≤ 200 kB);
+  boşsa deck bayt bayt aynı; `crash_runs.request` içinde saklanır.
+  Test: `test_crash_raw_cards.py`.
+- 1.22b ✅ Backend: ID envanteri — `POST /crash/raw-cards/inventory` (gövde =
+  /crash/solve isteği; deck ham kartsız, geçici klasörde üretilir, iş kaydı yok).
+  Döner: düğüm/eleman sayı + aralık, ad alanı başına ID'ler (MAT, PROP, PART,
+  FUNCT, INTER, BCS, …; /GR*·/SURF·/LINE tek `GRUP` ad alanı — temkinli),
+  kullanıcı aralığı (≥ 900000, kullanıcı onayı); ham kart için `collisions`
+  (üretilenle), `duplicates` (kendi içinde), `below_user_range`. /solve ile aynı
+  parametreler `_starter_params` yardımcısında (davranış aynı).
+  Modül `solvers/openradioss_ids.py`. Test: `test_crash_raw_card_ids.py`.
+- 1.22c ✅ Backend: "Kontrol et" — `POST /crash/raw-cards/check` (gövde =
+  /crash/solve isteği): ham kartlı deck geçici klasörde, `check_starter` yalnız
+  starter koşar (engine yok); starter .out ERROR/WARNING blokları aynen
+  (`starter_message_blocks`), çıkış kodu, ham kartın deck'teki ilk satırı;
+  starter yoksa 503. Gerçek koşu (Docker imajı): üretilenle aynı MAT ID →
+  ERROR 79 "DUPLICATE ID", ~1 s. Test: `test_crash_raw_card_check.py`.
+- 1.22d ✅ Frontend: popup editör `CrashRawCardsEditor` (monospace, satır no,
+  10 karakterlik kolon cetveli + alan çizgileri, Tab = sonraki 10'luk alan, imleç
+  satır/kolon/alan); 3 · Malzeme ve 4 · Crash'teki "Ham kart editörü" satırından
+  açılır, içerik App'te ortak; viewport "Mesh düğüm" seçimi imlece 10'luk
+  alanlarla eklenir; koşu isteğine `raw_cards` (boşsa alan yok).
+  Ölçüldü: düğüm seçimi gmsh düğüm no'su = deck düğüm no'su (köşe düğümler);
+  Tet10'un ara düğümleri deck'te yok (TETRA4) — seçilirse starter "UNDEFINED
+  NODE" verir (1.22c). Eleman ID ekleme YOK: export elemanları 1'den yeniden
+  numaralıyor, viewport eleman no'su ile eşlenmedi (ayrı karar).
+  Test: `rawCards.test.ts`, `CrashRawCardsEditor.test.tsx`, `CrashPanel.test.tsx`.
+- 1.22e ⏳ Frontend: "Kontrol et" sonucu + ID envanteri/çakışma paneli editörde.
+- 1.22f ⏳ Ham kartlı koşu crash geçmişinde "ham kart" etiketli; ML korpusu
+  bunları varsayılan dışarıda bırakır (ham kart parametre değil, taranamaz);
+  ML Stüdyo'da "ham kartlı koşuları dahil et" anahtarı (kullanıcı onayı).
+  `docs/crashDoc` + görseller aynı commit'te.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse

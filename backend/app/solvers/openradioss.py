@@ -286,6 +286,30 @@ def _i(value: int, width: int = 10) -> str:
     return f"{int(value):{width}d}"
 
 
+#: 1.22a — ham kart bloğunu deck'te ayırt eden yorum satırı.
+RAW_CARDS_MARKER = "# --- 1.22 ham kartlar (kullanıcı) ---"
+
+
+def _raw_card_lines(params: dict[str, Any]) -> list[str]:
+    """1.22a — kullanıcının yazdığı ham kartlar, /END'den önce aynen.
+
+    Yalnız satır sonu normalize edilir ve sondaki boş satırlar atılır; içerik
+    dokunulmaz (kolon hizası mühendisin). /BEGIN ve /END kabul edilmez: deck'i
+    erken bitirir ya da ikinci başlık açar.
+    """
+    text = str(params.get("raw_cards") or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return []
+    for no, line in enumerate(lines, start=1):
+        head = line.strip().upper()
+        if head == "/END" or head.startswith("/BEGIN"):
+            raise SolverError(f"Ham kart satır {no}: {line.strip()} kullanılamaz (deck başı/sonu adaptörde).")
+    return [RAW_CARDS_MARKER, *lines]
+
+
 def _crash_model(params: dict[str, Any]) -> CrashModelParams:
     raw = params.get("model")
     if raw is None:
@@ -1182,6 +1206,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             lines.append("".join(_i(v) for v in ids[i : i + 10]))
         th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
                         "names": [s.name for s in sections], "vars": th.sect.vars})
+    lines.extend(_raw_card_lines(params))
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
@@ -1433,6 +1458,34 @@ class OpenRadiossAdapter(SolverAdapter):
         if exit_code != 0:
             raise SolverError(f"OpenRadioss hata (exit={exit_code}). Log: {log_path}")
         return handle
+
+    def check_starter(self, artifact: InputArtifact, timeout_s: int = 300) -> dict[str, Any]:
+        """1.22c — yalnız starter (engine yok): çıkış kodu + starter .out metni.
+
+        Ham kart "Kontrol et" için; mesajlar yorumlanmaz, çağıran aynen gösterir.
+        """
+        bins = resolve_openradioss()
+        if bins is None or bins.starter is None:
+            raise SolverError("OpenRadioss starter bulunamadı (OPENRADIOSS_DOCKER_IMAGE / OPENRADIOSS_PATH).")
+        work_dir = artifact.path.parent
+        try:
+            proc = subprocess.run(
+                launch_command(bins, bins.starter, ["-i", artifact.path.name, "-np", "1"], work_dir),
+                cwd=str(work_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+                env=runtime_env(bins),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SolverError(f"OpenRadioss starter zaman aşımı ({timeout_s}s).") from exc
+        out = artifact.path.with_name(artifact.path.name.replace("_0000.rad", "_0000.out"))
+        return {
+            "exit_code": proc.returncode,
+            "out_text": out.read_text(encoding="utf-8", errors="replace") if out.is_file() else "",
+            "console": (proc.stdout or "") + (proc.stderr or ""),
+        }
 
     def poll_status(self, job: JobHandle) -> JobStatus:  # noqa: D102 — arayüz
         exit_code = getattr(job, "_exit_code", None)
