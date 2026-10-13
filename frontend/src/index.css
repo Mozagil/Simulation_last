@@ -9243,3 +9243,27 @@ p {
   margin: 0;
   padding: 5px 12px;
 }
+
+/* 1.23 A4/A5 — deformasyon ölçeği + hız */
+.crash-anim-controls select {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 26px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.crash-anim-deform {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 12px;
+}
+
+.crash-anim-deform .mesh-field {
+  min-width: 140px;
+}

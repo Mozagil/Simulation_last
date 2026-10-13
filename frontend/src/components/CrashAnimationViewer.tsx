@@ -44,6 +44,22 @@ function fmt(v: number): string {
   return v.toExponential(2);
 }
 
+/** 1.23 A4 — deformasyon ölçeği seçenekleri (×1 = gerçek). */
+export const DEFORM_SCALES = [1, 2, 5, 10] as const;
+/** 1.23 A5 — oynatma hızı: 1× = tüm koşu ~3 sn. */
+export const PLAY_SPEEDS = [0.25, 0.5, 1, 2] as const;
+const PLAY_SECONDS = 3;
+
+/** Kareler arası doğrusal ara-değer: f kesirli kare indeksi. */
+export function lerpFrame(a: ArrayLike<number>, b: ArrayLike<number>, t: number, i: number): number {
+  return a[i] + (b[i] - a[i]) * t;
+}
+
+/** Ölçekli konum: ilk kareye göre yer değiştirme k ile çarpılır. */
+export function scaledPos(p0: number, p: number, k: number): number {
+  return p0 + (p - p0) * k;
+}
+
 /** Yüzleri üçgenlere aç: her üçgen köşesi için düğüm indeksi + kaynak yüz. */
 export function triangulate(faces: number[][]): { vtx: Int32Array; tri_face: Int32Array } {
   const vtx: number[] = [];
@@ -71,8 +87,13 @@ export default function CrashAnimationViewer({
 }) {
   const [data, setData] = useState<CrashAnimation | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [frame, setFrame] = useState(0);
+  // 1.23 A5: kesirli kare (kareler arası ara-değer); etikette en yakın kare.
+  const [frameF, setFrameF] = useState(0);
+  const frame = Math.round(frameF);
+  const setFrame = (f: number) => setFrameF(f);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<number>(1);
+  const [deform, setDeform] = useState<number>(1);
   const [scalar, setScalar] = useState("disp_mag");
   const holderRef = useRef<HTMLDivElement | null>(null);
   // Tam ekran: sidebar'daki 260px kutu deforme şekli okumak için dar.
@@ -184,16 +205,27 @@ export default function CrashAnimationViewer({
     };
   }, [data, tri]);
 
-  // Kare / skaler değişince konum + renk güncelle.
+  // Kare / skaler / ölçek değişince konum + renk güncelle. 1.23 A5: iki kare arası
+  // doğrusal ara-değer; 1.23 A4: yer değiştirme (ilk kareye göre) × ölçek.
   useEffect(() => {
     const m = meshRef.current;
     if (!m || !data || !tri) return;
-    const fr = data.frames[Math.min(frame, data.frames.length - 1)];
+    const last = data.frames.length - 1;
+    const f = Math.min(Math.max(frameF, 0), last);
+    const i0 = Math.floor(f);
+    const i1 = Math.min(i0 + 1, last);
+    const t = f - i0;
+    const fa = data.frames[i0];
+    const fb = data.frames[i1];
+    const fr = t < 0.5 ? fa : fb; // silinme: en yakın kare
+    const p0 = data.frames[0].positions;
     const pos = m.geom.getAttribute("position") as THREE.BufferAttribute;
     const col = m.geom.getAttribute("color") as THREE.BufferAttribute;
     const meta = data.scalars[scalar];
-    const nodeVals = meta?.location === "node" ? fr.node?.[scalar] : undefined;
-    const faceVals = meta?.location === "face" ? fr.face?.[scalar] : undefined;
+    const nodeA = meta?.location === "node" ? fa.node?.[scalar] : undefined;
+    const nodeB = meta?.location === "node" ? fb.node?.[scalar] : undefined;
+    const faceA = meta?.location === "face" ? fa.face?.[scalar] : undefined;
+    const faceB = meta?.location === "face" ? fb.face?.[scalar] : undefined;
     const lo = meta?.min ?? 0;
     const span = (meta?.max ?? 1) - lo || 1;
     for (let v = 0; v < tri.vtx.length; v += 1) {
@@ -202,8 +234,18 @@ export default function CrashAnimationViewer({
       const alive = !fr.face_alive || fr.face_alive[face] !== 0;
       // silinen yüz: üçgen tek noktaya çöker (görünmez)
       const src = alive ? node : tri.vtx[Math.floor(v / 3) * 3];
-      pos.setXYZ(v, fr.positions[src * 3], fr.positions[src * 3 + 1], fr.positions[src * 3 + 2]);
-      const val = nodeVals ? nodeVals[node] : faceVals ? faceVals[face] : lo;
+      pos.setXYZ(
+        v,
+        scaledPos(p0[src * 3], lerpFrame(fa.positions, fb.positions, t, src * 3), deform),
+        scaledPos(p0[src * 3 + 1], lerpFrame(fa.positions, fb.positions, t, src * 3 + 1), deform),
+        scaledPos(p0[src * 3 + 2], lerpFrame(fa.positions, fb.positions, t, src * 3 + 2), deform),
+      );
+      const val =
+        nodeA && nodeB
+          ? lerpFrame(nodeA, nodeB, t, node)
+          : faceA && faceB
+            ? lerpFrame(faceA, faceB, t, face)
+            : lo;
       const [r, g, b] = jet((val - lo) / span);
       col.setXYZ(v, r, g, b);
     }
@@ -215,15 +257,50 @@ export default function CrashAnimationViewer({
     m.geom.computeBoundingSphere();
     m.geom.computeVertexNormals();
     m.render();
-  }, [data, tri, frame, scalar]);
+  }, [data, tri, frameF, scalar, deform]);
 
+  // 1.23 A5: akıcı oynatma — requestAnimationFrame, gerçek geçen süreyle ilerler.
   useEffect(() => {
     if (!playing || !data) return;
-    const id = window.setInterval(() => {
-      setFrame((f) => (f + 1 >= data.frames.length ? 0 : f + 1));
-    }, 120);
-    return () => window.clearInterval(id);
-  }, [playing, data]);
+    const last = data.frames.length - 1;
+    if (last < 1) return;
+    let raf = 0;
+    let prev = performance.now();
+    const step = (now: number) => {
+      const dt = (now - prev) / 1000;
+      prev = now;
+      setFrameF((f) => {
+        const next = f + (dt * speed * last) / PLAY_SECONDS;
+        return next > last ? 0 : next;
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, data, speed]);
+
+  // 1.23 A4: veri — son karede en büyük yer değiştirme ve model boyutuna oranı.
+  const dispInfo = useMemo(() => {
+    if (!data || !tri || data.frames.length < 2) return null;
+    const a = data.frames[0].positions;
+    const b = data.frames[data.frames.length - 1].positions;
+    let maxU = 0;
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (const node of tri.vtx) {
+      const i = node * 3;
+      const dx = b[i] - a[i];
+      const dy = b[i + 1] - a[i + 1];
+      const dz = b[i + 2] - a[i + 2];
+      maxU = Math.max(maxU, Math.hypot(dx, dy, dz));
+      for (let k = 0; k < 3; k += 1) {
+        lo[k] = Math.min(lo[k], a[i + k]);
+        hi[k] = Math.max(hi[k], a[i + k]);
+      }
+    }
+    const size = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+    return { maxU, pct: (100 * maxU) / size };
+  }, [data, tri]);
 
   const meta = data?.scalars[scalar];
   const fr = data?.frames[frame];
@@ -301,11 +378,44 @@ export default function CrashAnimationViewer({
               max={data.frames.length - 1}
               value={frame}
               aria-label="Kare"
+              step={0.01}
               onChange={(e) => {
                 setPlaying(false);
                 setFrame(Number(e.target.value));
               }}
             />
+            <select
+              aria-label="Oynatma hızı"
+              title="Oynatma hızı"
+              value={speed}
+              onChange={(e) => setSpeed(Number(e.target.value))}
+            >
+              {PLAY_SPEEDS.map((v) => (
+                <option key={v} value={v}>
+                  {v}× hız
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Deformasyon ölçeği"
+              title="Deformasyon ölçeği — yer değiştirme bu katla çizilir"
+              value={deform}
+              onChange={(e) => setDeform(Number(e.target.value))}
+            >
+              {DEFORM_SCALES.map((k) => (
+                <option key={k} value={k}>
+                  {k === 1 ? "ölçek ×1 (gerçek)" : `ölçek ×${k}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="crash-anim-deform">
+            {dispInfo && (
+              <span className="crash-behavior-hint" data-testid="crash-anim-disp">
+                Son karede en büyük |u| {fmt(dispInfo.maxU)} mm · model boyutuna oranı %{dispInfo.pct.toFixed(1)}
+                {deform !== 1 ? ` · ×${deform} çizim (gerçek değil)` : ""}
+              </span>
+            )}
           </div>
           <div className="crash-var-chips" role="group" aria-label="Hazır görünüm">
             {(Object.keys(VIEW_VECTORS) as ViewDir[]).map((v) => (

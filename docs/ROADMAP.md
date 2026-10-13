@@ -1519,8 +1519,13 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   ayrı model yoksa "Tüm parçalar", varsa her parça satırı. Test:
   `CrashMaterialSection.test.tsx`, `CrashPanel.test.tsx`.
 - A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
-- A4 Plastik deformasyon animasyonda görünür (deformasyon ölçeği, gerçek ölçek).
-- A5 Animasyon akıcı (kareler arası ara-değer, kare sayısı).
+- A4 ✅ Animasyonda "ölçek ×1 (gerçek) / ×2 / ×5 / ×10" (yer değiştirme ilk kareye göre
+  çarpılır) + veri satırı "son karede en büyük |u| … mm · model boyutuna oranı %…".
+  Ölçüldü: Belgeler 1. örnek (crash box, LAW2, 10 m/s, 4 ms; #316) |u|max 8.2 mm = 300 mm
+  boyun %2.7'si — gerçek ölçekte katlanma görünmüyordu (koşu kısa; çizim doğru); ×10'da
+  ön uçtaki ilk katlanma görünür.
+- A5 ✅ Animasyon akıcı: requestAnimationFrame + kareler arası doğrusal ara-değer (konum ve
+  renk), hız 0.25× / 0.5× / 1× / 2× (1× = koşu ~3 sn). Test: `CrashAnimationViewer.test.tsx`.
 - A6 ✅ Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez:
   crash / akış sekmesinde "Modeli üret" pop-up'ı yük/kısıt yerine not gösterir,
   şablon BC'leri yüklenmez (`TemplatePanel` `templateBcs`). Test: `TemplatePanel.test.tsx`.

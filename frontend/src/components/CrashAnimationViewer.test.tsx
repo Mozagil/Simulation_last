@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { jet, triangulate, VIEW_VECTORS } from "./CrashAnimationViewer";
+import { DEFORM_SCALES, PLAY_SPEEDS, jet, lerpFrame, scaledPos, triangulate, VIEW_VECTORS } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -38,6 +38,21 @@ describe("CrashAnimationViewer yardımcıları", () => {
     expect(jet(0.5)).toEqual([0.5, 1, 0.5]);
     expect(jet(1)).toEqual([0.5, 0, 0]);
     expect(jet(-3)).toEqual(jet(0)); // kırpılır
+  });
+});
+
+describe("1.23 A4/A5 — ölçek ve ara-değer", () => {
+  it("kareler arası doğrusal ara-değer", () => {
+    expect(lerpFrame([0, 10], [10, 30], 0.25, 1)).toBe(15);
+    expect(lerpFrame([4], [8], 0, 0)).toBe(4);
+    expect(lerpFrame([4], [8], 1, 0)).toBe(8);
+  });
+
+  it("deformasyon ölçeği ilk kareye göre yer değiştirmeyi çarpar; ×1 gerçek konum", () => {
+    expect(scaledPos(100, 92, 1)).toBe(92);
+    expect(scaledPos(100, 92, 5)).toBe(60);
+    expect(DEFORM_SCALES[0]).toBe(1);
+    expect(PLAY_SPEEDS).toContain(1);
   });
 });
 
