@@ -125,3 +125,13 @@ def test_uploaded_step_has_null_template_origin():
         assert geo.template_params is None
     finally:
         db.close()
+
+
+def test_template_step_without_geometry_record():
+    """1.23 B1b: şablon STEP'i kayıt açmadan iner; geçersiz parametre 422, bilinmeyen 404."""
+    r = client.post("/templates/taylor_bar/step", json={"params": {"length": 60}})
+    assert r.status_code == 200, r.text
+    assert "taylor_bar.step" in r.headers["content-disposition"]
+    assert b"ISO-10303-21" in r.content[:200]
+    assert client.post("/templates/taylor_bar/step", json={"params": {"length": -1}}).status_code == 422
+    assert client.post("/templates/yok/step", json={"params": {}}).status_code == 404

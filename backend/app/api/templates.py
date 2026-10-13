@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
@@ -19,6 +22,7 @@ from app.templates import (
     TemplateError,
     UnknownTemplateError,
     bind_region_bcs,
+    build_template,
     get_template,
     list_templates,
 )
@@ -100,6 +104,31 @@ def create_from_template(
         ),
         **_tessellation_response_fields(geo.id, tess),
     }
+
+
+@router.post("/templates/{template_id}/step")
+def template_step(template_id: str, body: CreateFromTemplateRequest) -> FileResponse:
+    """1.23 B1b: şablonun STEP'i — geometri kaydı açmadan (geçici dosya, yanıt sonrası silinir)."""
+    try:
+        template = get_template(template_id)
+        params = template.parse_params(body.params)
+    except UnknownTemplateError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    tmp = Path(tempfile.mkdtemp(prefix="tpl_step_"))
+    path = tmp / f"{template.id}.step"
+    try:
+        build_template(template, params, path)
+    except (TemplateError, GmshImportError) as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=path.name,
+        background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
+    )
 
 
 @router.get("/geometry/{geometry_id}/step")

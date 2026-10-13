@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   createGeometryFromTemplate,
+  downloadTemplateStep,
   fetchTemplates,
   TemplateApiError,
   type CreateFromTemplateResponse,
@@ -179,9 +180,31 @@ export default function TemplatePanel({
   }
 
   const disabled = busy || creating;
+  // 1.23 B1b: crash'te hazır senaryolu şablonda panel sade — görsel, şablon, Model üret,
+  // STEP indir. Geometri / crash alanları "Yeni crash vakası" penceresinde.
+  const compact = kind === "crash" && !!onCrashModel && !!selected && scenarioTemplates.has(selected.id);
+  const [stepBusy, setStepBusy] = useState(false);
+
+  async function handleStep() {
+    if (!selected) return;
+    const parsed = parseParamInputs(inputs, enums.map((e) => e.name));
+    if (typeof parsed === "string") {
+      setError(parsed);
+      return;
+    }
+    setStepBusy(true);
+    setError(null);
+    try {
+      await downloadTemplateStep(selected.id, parsed);
+    } catch (e) {
+      setError(e instanceof TemplateApiError ? e.message : "STEP indirilemedi.");
+    } finally {
+      setStepBusy(false);
+    }
+  }
 
   return (
-    <div className="template-panel">
+    <div className={compact ? "template-panel template-panel-compact" : "template-panel"}>
       <p className="material-assignments-title">Şablondan üret</p>
       <p className="lead material-lead">Dosya yüklemeden parametrik geometri.</p>
       {selected && <TemplateSchematic templateId={selected.id} />}
@@ -205,7 +228,7 @@ export default function TemplatePanel({
           ))}
         </select>
       </label>
-      {selected && (
+      {selected && !compact && (
         <p className="template-panel-desc" title={selected.description}>
           {selected.description}
         </p>
@@ -236,6 +259,7 @@ export default function TemplatePanel({
           )}
         </div>
       )}
+      {!compact && (
       <div className="template-panel-fields">
       {enums.map((f) => (
         <label key={f.name} className="mesh-field">
@@ -273,9 +297,18 @@ export default function TemplatePanel({
         </label>
       ))}
       </div>
+      )}
       <div className="template-panel-actions">
         <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
           Model üret
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !selected || stepBusy}
+          onClick={() => void handleStep()}
+          title="Şablonun STEP dosyası (geçerli parametrelerle); geometri kaydı açılmaz"
+        >
+          {stepBusy ? "İndiriliyor…" : "STEP indir"}
         </button>
       </div>
       {error && !pending && (

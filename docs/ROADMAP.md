@@ -1526,7 +1526,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     örneği seçili, geometri alanları paneldeki değerlerle; ilk hız, süre, eleman,
     malzeme, CFC, Ishell senaryo kartından). Senaryosu olmayan şablon (crash_box_plate)
     eski pencere + not. Test: `TemplatePanel.test.tsx`, `CrashScenarioCard.test.tsx`.
-  - B1b Büyük görsel + STEP indir şablon panelinde.
+  - B1b ✅ Crash'te hazır senaryolu şablonda panel sade: büyük görsel + şablon +
+    Model üret + STEP indir (alanlar pencerede). STEP indir tüm sekmelerde, geometri
+    kaydı açmadan: `POST /templates/{id}/step` (geçici dosya). Test:
+    `test_templates_api.py`, `TemplatePanel.test.tsx`.
 - B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video.

@@ -93,3 +93,26 @@ export async function downloadGeometryStep(geometryId: number, filename: string)
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/** 1.23 B1b: şablon STEP'i — geometri kaydı açmadan, verilen parametrelerle. */
+export async function downloadTemplateStep(templateId: string, params: Record<string, unknown>): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/templates/${templateId}/step`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ params }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = body && typeof body.detail === "string" ? body.detail : `HTTP ${res.status}`;
+    throw new TemplateApiError(`STEP indirilemedi (${detail}).`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${templateId}.step`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

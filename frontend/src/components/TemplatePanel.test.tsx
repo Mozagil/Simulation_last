@@ -12,6 +12,7 @@ vi.mock("../api/templates", () => ({
   fetchTemplates: vi.fn(),
   createGeometryFromTemplate: vi.fn(),
   downloadGeometryStep: vi.fn(),
+  downloadTemplateStep: vi.fn(() => Promise.resolve()),
 }));
 
 import { fetchCrashCatalog } from "../api/crash";
@@ -19,6 +20,7 @@ import {
   TemplateApiError,
   createGeometryFromTemplate,
   downloadGeometryStep,
+  downloadTemplateStep,
   fetchTemplates,
 } from "../api/templates";
 
@@ -92,8 +94,9 @@ describe("TemplatePanel", () => {
     expect(
       screen.getByRole("img", { name: /ankastre kiriş/i }),
     ).toBeInTheDocument();
-    // STEP indir artık Geometri adımında (GeometryStepDownload, TODO 11.6)
-    expect(screen.queryByRole("button", { name: "STEP indir" })).toBeNull();
+    // 1.23 B1b: şablon STEP'i panelden, geometri kaydı açmadan (geçerli parametrelerle)
+    await userEvent.click(screen.getByRole("button", { name: "STEP indir" }));
+    expect(downloadTemplateStep).toHaveBeenCalledWith("cantilever_beam", { length: 500, thickness: 10, width: 50 });
 
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
     // Onay penceresi: şema, kısıt ve yük alanları
@@ -307,9 +310,11 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     vi.mocked(createGeometryFromTemplate).mockClear();
     const onCrashModel = vi.fn();
     render(<TemplatePanel busy={false} onCreated={vi.fn()} kind="crash" onCrashModel={onCrashModel} />);
-    await screen.findByDisplayValue("500");
     await waitFor(() => expect(fetchCrashCatalog).toHaveBeenCalled());
     await act(async () => {}); // katalog yanıtı state'e yazılsın
+    // B1b: sade panel — alanlar yok, Model üret + STEP indir var
+    await waitFor(() => expect(screen.queryByDisplayValue("500")).toBeNull());
+    expect(screen.getByRole("button", { name: "STEP indir" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
     expect(onCrashModel).toHaveBeenCalledWith("taylor_bar", { length: "500", thickness: "10", width: "50" });
     expect(screen.queryByRole("dialog")).toBeNull();
