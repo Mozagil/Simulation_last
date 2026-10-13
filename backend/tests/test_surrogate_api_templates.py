@@ -13,7 +13,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.ml.model_store as store
-from app.api.surrogate import ParamPredictBody, predict_from_params, surrogate_status, train_scalar
+from app.api.surrogate import (
+    ParamPredictBody,
+    predict_from_params,
+    surrogate_bounds,
+    surrogate_status,
+    train_scalar,
+)
+from fastapi import HTTPException
 from app.main import app
 from app.ml.model_store import load_model
 from app.ml.scalar_features import feature_keys_for
@@ -202,6 +209,32 @@ def test_status_sablona_gore_doner(store_root):
     assert st["scalar_hybrid"]["n_samples"] == 7
     assert st["scalar_rf"] is None
     assert st["templates"] == {PLATE: ["hybrid"]}
+
+
+def test_bounds_modelin_egitim_kutusunu_ozellik_adiyla_doner(store_root):
+    """Tahmin ekranı bantları tahminden önce çizer: bundle'daki bounds
+    feature_keys sırasıyla eşlenip döner; model yoksa 404, bant uydurulmaz."""
+    store.save_model(
+        PLATE,
+        "hybrid",
+        {
+            "kind": "scalar_hybrid",
+            "n_samples": 7,
+            "feature_keys": ["height", "width", "load_fx"],
+            "bounds": {"min": [190.0, 92.0, 25000.0], "max": [213.0, 108.0, 35000.0]},
+        },
+        root=store_root,
+    )
+    out = surrogate_bounds(template_id=PLATE)
+    assert out["model_kind"] == "hybrid" and out["n_samples"] == 7
+    assert out["features"] == [
+        {"feature": "height", "min": 190.0, "max": 213.0},
+        {"feature": "width", "min": 92.0, "max": 108.0},
+        {"feature": "load_fx", "min": 25000.0, "max": 35000.0},
+    ]
+    with pytest.raises(HTTPException) as exc:
+        surrogate_bounds(template_id="cantilever_beam")
+    assert exc.value.status_code == 404
 
 
 def test_mesajda_kullanilan_tur_dogru_yazilir(db, store_root):

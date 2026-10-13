@@ -816,6 +816,40 @@ def freeze_corpus(
     return {"manifest": payload, "corpus": corpus.as_public()}
 
 
+@router.get("/bounds")
+def surrogate_bounds(
+    template_id: str,
+    model: str = "auto",
+    nlgeom: bool = False,
+) -> dict[str, Any]:
+    """Aktif skaler modelin eğitim kutusu: özellik başına min–max.
+
+    Tahmin ekranı bantları TAHMİNDEN ÖNCE çizebilsin diye; aynı sınırlar
+    `domain_violations` için kullanılır (ham özellik uzayı, log değil).
+    Model yoksa 404 — bant uydurulmaz.
+    """
+    loaded = _load_scalar_model(model, template_id, nlgeom)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail=f"'{template_id}' için model yok; önce eğit.")
+    kind, bundle = loaded
+    keys = _bundle_keys(bundle, template_id)
+    bounds = bundle.get("bounds") or {}
+    lo = list(bounds.get("min") or [])
+    hi = list(bounds.get("max") or [])
+    features = [
+        {"feature": k, "min": float(lo[i]), "max": float(hi[i])}
+        for i, k in enumerate(keys)
+        if i < len(lo) and i < len(hi)
+    ]
+    return {
+        "template_id": template_id,
+        "model_kind": kind,
+        "nlgeom": nlgeom,
+        "n_samples": bundle.get("n_samples"),
+        "features": features,
+    }
+
+
 @router.get("/corpus")
 def corpus_index() -> dict[str, Any]:
     return {"manifests": list_manifests()}
