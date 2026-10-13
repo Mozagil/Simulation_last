@@ -355,11 +355,10 @@ describe("CrashPanel", () => {
     fireEvent.click(
       within(screen.getByTestId("crash-mat-global")).getByRole("button", { name: "LAW2 plastik" }),
     );
-    // 1.23 A2: parça tablosunda LAW seçilir → o parçanın kendi kartı (ortak karttan kopya)
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
+    // 1.23 A2: parça tablosunda farklı LAW → o parçanın kendi kartı (alttaki karttan kopya); LAW36
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "tabulated" } });
     const card = screen.getByTestId("crash-mat-part-1");
-    expect(within(card).getByRole("button", { name: "LAW2 plastik" })).toHaveClass("active");
-    fireEvent.click(within(card).getByRole("button", { name: "LAW36 tablo" }));
+    expect(within(card).getByRole("button", { name: "LAW36 tablo" })).toHaveClass("active");
     fireEvent.change(within(card).getByLabelText("Eğri 1 noktaları"), { target: { value: "0 235\n1 235" } });
     fireEvent.click(within(card).getByLabelText("/FAIL/TENSSTRAIN"));
     fireEvent.change(within(card).getByLabelText("ε_t1"), { target: { value: "0.1" } });
@@ -377,8 +376,8 @@ describe("CrashPanel", () => {
       tab_curves: [{ eps_dot_per_s: 0, points: [[0, 235], [1, 235]] }],
       fail: { tensstrain: { eps_t1: 0.1, eps_t2: 0.2 } },
     });
-    // Ortak'a dönünce parça kartı kalkar
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "common" } });
+    // Alttaki kartla aynı LAW seçilince parça kartı kalkar
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
     expect(screen.queryByTestId("crash-mat-part-1")).not.toBeInTheDocument();
   });
 

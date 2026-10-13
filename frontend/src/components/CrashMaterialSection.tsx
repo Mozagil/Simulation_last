@@ -46,23 +46,25 @@ export default function CrashMaterialSection({
   /** 1.23 A2: parçaya atanmış kütüphane malzemesinin adı (tabloda gösterilir). */
   materialOf?: (pid: number) => string | null;
 }) {
-  // 1.23 A2: parça başına model seçimi tek tabloda. "Varsayılan" = varsayılan kart; LAW
-  // seçilince o parçaya kendi kartı açılır (varsayılan karttan kopya, LAW değiştirilmiş).
-  const choose = (pid: number, v: string) =>
+  // 1.23 A2 (kullanıcı 2026-10-13): tabloda yalnız LAW adları — her parçanın geçerli
+  // modeli seçili. Alttaki kartın LAW'ından farklı seçilen parçaya kendi kartı açılır
+  // (alttaki karttan kopya); aynısı seçilirse kendi kartı kalkar.
+  const choose = (pid: number, law: MatCardState["law"]) =>
     setPartCards((c) => {
       const next = { ...c };
-      if (v === "common") delete next[pid];
-      else next[pid] = { ...(c[pid] ?? matCard), law: v as MatCardState["law"] };
+      if (law === matCard.law) delete next[pid];
+      else next[pid] = { ...(c[pid] ?? matCard), law };
       return next;
     });
 
-  // Kullanıcı 2026-10-13: varsayılan kartta LAW değişince, kendi modeli olan parça varsa
-  // küçük onay: "Tüm parçalar LAW1 olsun mu?" — Tamam = parça kartları kalkar, hepsi
-  // varsayılanı izler; Hayır = yalnız varsayılan değişir.
-  const [askAll, setAskAll] = useState<MatCardState["law"] | null>(null);
-  const ownCount = Object.keys(partCards).length;
+  // Alttaki kartta model seçilince (2+ parça) sor: "Hepsi LAW1 olsun mu?" Evet = tüm
+  // parçalar bu model (kendi kartları kalkar); Hayır = değişiklik uygulanmaz.
+  const [pending, setPending] = useState<MatCardState | null>(null);
   const setDefault = (next: MatCardState) => {
-    if (next.law !== matCard.law && ownCount > 0) setAskAll(next.law);
+    if (next.law !== matCard.law && partIds.length > 1) {
+      setPending(next);
+      return;
+    }
     setMatCard(next);
   };
   return (
@@ -70,7 +72,7 @@ export default function CrashMaterialSection({
       {!hideToggle && (
         <>
         <p className="material-assignments-title">
-          {Object.keys(partCards).length > 0 ? "Crash malzeme modeli — varsayılan" : "Crash malzeme modeli"}
+          Crash malzeme modeli
         </p>
         <p className="crash-behavior-hint">
           Yukarıdaki kütüphane malzemesi E, ν, ρ ve akma gerilmesini verir. Burada çarpışmada malzemenin
@@ -93,11 +95,10 @@ export default function CrashMaterialSection({
               <span role="cell" className="crash-mat-row-model">
                 <select
                   aria-label={`Parça ${pid} modeli`}
-                  value={partCards[pid] ? partCards[pid].law : "common"}
+                  value={(partCards[pid] ?? matCard).law}
                   disabled={disabled}
-                  onChange={(e) => choose(pid, e.target.value)}
+                  onChange={(e) => choose(pid, e.target.value as MatCardState["law"])}
                 >
-                  <option value="common">Varsayılan</option>
                   <option value="elastic">{LAW_SHORT.elastic}</option>
                   <option value="plastic">{LAW_SHORT.plastic}</option>
                   <option value="tabulated">{LAW_SHORT.tabulated}</option>
@@ -107,26 +108,27 @@ export default function CrashMaterialSection({
             </div>
           ))}
           <span className="crash-behavior-hint">
-            Varsayılan = aşağıdaki varsayılan kart. LAW seçilen parçanın kendi kartı açılır (kopma ayarları dahil) — ör.
-            çarpan rijit küre LAW1 elastik, plaka LAW2 + kopma.
+            Parçaya farklı model seçilince o parçanın kendi kartı açılır (kopma ayarları dahil) — ör. çarpan rijit küre
+            LAW1 elastik, plaka LAW2 + kopma.
           </span>
         </div>
       )}
-      {partIds.length > 1 && <p className="crash-expert-title">Varsayılan model (kendi modeli seçilmeyen parçalar)</p>}
-      {askAll && (
+      {partIds.length > 1 && <p className="crash-expert-title">Model (kendi kartı olmayan parçalar)</p>}
+      {pending && (
         <div className="crash-mat-ask" role="alertdialog" aria-label="Tüm parçalar">
-          <span>Hepsi {LAW_SHORT[askAll]} olsun mu?</span>
+          <span>Hepsi {LAW_SHORT[pending.law]} olsun mu?</span>
           <button
             type="button"
             className="material-assign-button"
             onClick={() => {
+              setMatCard(pending);
               setPartCards({});
-              setAskAll(null);
+              setPending(null);
             }}
           >
             Evet
           </button>
-          <button type="button" className="material-secondary-button" onClick={() => setAskAll(null)}>
+          <button type="button" className="material-secondary-button" onClick={() => setPending(null)}>
             Hayır
           </button>
         </div>

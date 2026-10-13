@@ -1513,9 +1513,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - A2 ✅ Crash malzemesi parça bazında: 3 · Material → 3. grupta parça tablosu (parça,
   kütüphane malzemesi, model listesi Ortak / LAW1 / LAW2 / LAW36 + kopma özeti); LAW
   seçilen parçanın kendi kartı açılır (ortak karttan kopya, /FAIL ayarları dahil).
-  Ürün ağacı: her parça "malzeme · LAW · kopma (varsayılan)". Kullanıcı düzeltmesi:
-  "Ortak" → "Varsayılan"; varsayılan kartta LAW değişince kendi modeli olan parça
-  varsa küçük onay "Hepsi LAW1 olsun mu?" (Evet = hepsi varsayılan). Test:
+  Kullanıcı düzeltmesi (2026-10-13): tabloda yalnız LAW adları (her parçanın geçerli
+  modeli seçili; "Varsayılan/Ortak" kavramı yok). Alttaki kartta model seçilince (2+
+  parça) "Hepsi LAWx olsun mu?" Evet = tüm parçalar / Hayır = uygulanmaz. Ürün ağacı:
+  ayrı model yoksa "Tüm parçalar", varsa her parça satırı. Test:
   `CrashMaterialSection.test.tsx`, `CrashPanel.test.tsx`.
 - A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
 - A4 Plastik deformasyon animasyonda görünür (deformasyon ölçeği, gerçek ölçek).

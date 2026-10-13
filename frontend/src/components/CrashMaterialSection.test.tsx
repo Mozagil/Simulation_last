@@ -10,7 +10,7 @@ function Harness() {
   const [p, setP] = useState<Record<number, MatCardState>>({});
   return (
     <>
-      <CrashMaterialSection partIds={[0, 1]} matCard={m} setMatCard={setM} partCards={p} setPartCards={setP} />
+      <CrashMaterialSection partIds={[0]} matCard={m} setMatCard={setM} partCards={p} setPartCards={setP} />
       <span data-testid="sum">{matCardSummary(m)}</span>
     </>
   );
@@ -64,45 +64,42 @@ function TableHarness() {
 }
 
 describe("CrashMaterialSection · parça tablosu (1.23 A2)", () => {
-  it("her parça: kütüphane malzemesi + model seçimi; LAW seçilince kendi kartı, Ortak'ta kalkar", () => {
+  it("her parça: kütüphane malzemesi + yalnız LAW adları; farklı LAW kendi kartını açar, aynısı kaldırır", () => {
     render(<TableHarness />);
     const row1 = screen.getByTestId("crash-mat-row-1");
     expect(within(row1).getByText("S235")).toBeInTheDocument();
-    expect(screen.getByLabelText("Parça 1 modeli")).toHaveValue("common");
+    const sel = screen.getByLabelText("Parça 1 modeli") as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(["elastic", "plastic", "tabulated"]);
+    expect(sel).toHaveValue("plastic"); // alttaki kart LAW2
 
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "elastic" } });
+    fireEvent.change(sel, { target: { value: "elastic" } });
     expect(screen.getByTestId("parts")).toHaveTextContent('{"1":"elastic"}');
     expect(screen.getByTestId("crash-mat-part-1")).toBeInTheDocument();
-    expect(screen.getByLabelText("Parça 0 modeli")).toHaveValue("common");
 
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "common" } });
+    fireEvent.change(sel, { target: { value: "plastic" } });
     expect(screen.getByTestId("parts")).toHaveTextContent("{}");
     expect(screen.queryByTestId("crash-mat-part-1")).not.toBeInTheDocument();
   });
 });
 
-describe("CrashMaterialSection · varsayılan LAW değişince onay (kullanıcı 2026-10-13)", () => {
-  it("kendi modeli olan parça varken varsayılan LAW değişirse sorar; Evet hepsini varsayılana bağlar", () => {
+describe("CrashMaterialSection · alttaki kartta model seçilince onay (kullanıcı 2026-10-13)", () => {
+  it("Evet: tüm parçalar bu model (kendi kartları kalkar)", () => {
     render(<TableHarness />);
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
-    expect(screen.getByLabelText("Parça 1 modeli")).toHaveValue("plastic");
-    expect(screen.getByLabelText("Parça 0 modeli")).toHaveDisplayValue("Varsayılan");
-
-    const def = screen.getByTestId("crash-mat-global");
-    fireEvent.click(within(def).getByRole("button", { name: "LAW1 elastik" }));
+    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "tabulated" } });
+    fireEvent.click(within(screen.getByTestId("crash-mat-global")).getByRole("button", { name: "LAW1 elastik" }));
     const ask = screen.getByRole("alertdialog", { name: "Tüm parçalar" });
     expect(ask).toHaveTextContent("Hepsi LAW1 elastik olsun mu?");
     fireEvent.click(within(ask).getByRole("button", { name: "Evet" }));
     expect(screen.getByTestId("parts")).toHaveTextContent("{}");
-    expect(screen.getByLabelText("Parça 1 modeli")).toHaveDisplayValue("Varsayılan");
+    expect(screen.getByLabelText("Parça 0 modeli")).toHaveValue("elastic");
+    expect(screen.getByLabelText("Parça 1 modeli")).toHaveValue("elastic");
   });
 
-  it("Hayır: yalnız varsayılan değişir, parçanın kendi modeli kalır", () => {
+  it("Hayır: değişiklik uygulanmaz", () => {
     render(<TableHarness />);
-    fireEvent.change(screen.getByLabelText("Parça 1 modeli"), { target: { value: "plastic" } });
     fireEvent.click(within(screen.getByTestId("crash-mat-global")).getByRole("button", { name: "LAW1 elastik" }));
     fireEvent.click(screen.getByRole("button", { name: "Hayır" }));
-    expect(screen.getByTestId("parts")).toHaveTextContent('{"1":"plastic"}');
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Parça 0 modeli")).toHaveValue("plastic");
   });
 });
