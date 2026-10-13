@@ -6,6 +6,7 @@
  * listesinden değiştirilebilir.
  */
 
+import type { ReactNode } from "react";
 import type { SolveBC } from "../api/materials";
 import type { GeometryTemplateInfo } from "../api/templates";
 import TemplateSchematic from "./TemplateSchematic";
@@ -88,6 +89,8 @@ interface TemplateLoadDialogProps {
   onConfirm: () => void;
   /** 1.23 A6: crash / akış sekmesinde BC listesi yerine gösterilen not. */
   note?: string;
+  /** 1.23 B1b: sade panelde ölçü alanları pop-up'ta (özet yerine). */
+  paramFields?: ReactNode;
 }
 
 export default function TemplateLoadDialog({
@@ -101,6 +104,7 @@ export default function TemplateLoadDialog({
   onCancel,
   onConfirm,
   note,
+  paramFields,
 }: TemplateLoadDialogProps) {
   const loads = bcs.map((bc, index) => ({ bc, index })).filter((x) => isLoadBc(x.bc));
   const constraints = bcs.filter((bc) => !isLoadBc(bc));
@@ -118,11 +122,13 @@ export default function TemplateLoadDialog({
         <p className="material-assignments-title">{template.name}</p>
         <TemplateSchematic templateId={template.id} />
 
-        <p className="template-dialog-params">
-          {Object.entries(params)
-            .map(([k, v]) => `${k} = ${v}`)
-            .join(" · ")}
-        </p>
+        {paramFields ?? (
+          <p className="template-dialog-params">
+            {Object.entries(params)
+              .map(([k, v]) => `${k} = ${v}`)
+              .join(" · ")}
+          </p>
+        )}
 
         {constraints.length > 0 && (
           <div className="template-dialog-section">

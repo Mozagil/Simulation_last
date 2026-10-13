@@ -320,4 +320,24 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(createGeometryFromTemplate).not.toHaveBeenCalled();
   });
+  it("1.23 B1b: crash'te senaryosuz şablonda ölçüler panelde değil, pop-up'ta düzenlenir", async () => {
+    vi.mocked(fetchTemplates).mockResolvedValue([
+      { ...CANTILEVER, id: "crash_box_plate", name: "Crash box + plaka", tags: ["crash"] },
+    ]);
+    vi.mocked(createGeometryFromTemplate).mockClear();
+    vi.mocked(createGeometryFromTemplate).mockResolvedValue({ ...CREATED, template_id: "crash_box_plate" });
+    render(<TemplatePanel busy={false} onCreated={vi.fn()} kind="crash" onCrashModel={vi.fn()} />);
+    await waitFor(() => expect(fetchCrashCatalog).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByDisplayValue("500")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
+    const dialog = await screen.findByRole("dialog");
+    const length = within(dialog).getByDisplayValue("500");
+    await userEvent.clear(length);
+    await userEvent.type(length, "450");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Modeli üret" }));
+    await waitFor(() =>
+      expect(createGeometryFromTemplate).toHaveBeenCalledWith("crash_box_plate", { length: 450, thickness: 10, width: 50 }),
+    );
+  });
 });

@@ -150,6 +150,16 @@ export default function TemplatePanel({
 
   async function handleConfirm() {
     if (!selected || !pending) return;
+    // Sade panelde ölçüler pop-up'ta düzenlenir — onayda yeniden okunur.
+    let params = pending.params;
+    if (compact) {
+      const parsed = parseParamInputs(inputs, enums.map((e) => e.name));
+      if (typeof parsed === "string") {
+        setError(parsed);
+        return;
+      }
+      params = parsed;
+    }
     // Önce girdileri doğrula: şablonun (id'siz) BC listesi üzerinde. Geometri
     // üretmeden hata vermek, yarım kayıt bırakmamak için.
     const check = applyLoadInputs(templateBcs, loadInputs);
@@ -160,7 +170,7 @@ export default function TemplatePanel({
     setCreating(true);
     setError(null);
     try {
-      const result = await createGeometryFromTemplate(selected.id, pending.params);
+      const result = await createGeometryFromTemplate(selected.id, params);
       // Sunucudan gelen BC'ler gerçek yüzey/kenar id'leriyle bağlı; kullanıcının
       // girdiği yük değerlerini bunların üzerine uygula (sıra aynı şablondan gelir).
       // 1.23 A6: şablonun BC'leri durability'ye ait (ör. Taylor basıncı);
@@ -180,9 +190,9 @@ export default function TemplatePanel({
   }
 
   const disabled = busy || creating;
-  // 1.23 B1b: crash'te hazır senaryolu şablonda panel sade — görsel, şablon, Model üret,
-  // STEP indir. Geometri / crash alanları "Yeni crash vakası" penceresinde.
-  const compact = kind === "crash" && !!onCrashModel && !!selected && scenarioTemplates.has(selected.id);
+  // 1.23 B1b: crash'te panel sade — görsel, şablon, Model üret, STEP indir. Ölçüler
+  // pop-up'ta: hazır senaryolu şablonda "Yeni crash vakası", diğerinde Model üret penceresi.
+  const compact = kind === "crash";
   const [stepBusy, setStepBusy] = useState(false);
 
   async function handleStep() {
@@ -202,6 +212,46 @@ export default function TemplatePanel({
       setStepBusy(false);
     }
   }
+
+  const paramFields = (
+      <div className="template-panel-fields">
+      {enums.map((f) => (
+        <label key={f.name} className="mesh-field">
+          <span>{f.label}</span>
+          <select
+            value={inputs[f.name] ?? f.defaultValue}
+            disabled={disabled}
+            title={f.description}
+            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
+          >
+            {f.options.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+      {fields.map((f) => (
+        <label key={f.name} className="mesh-field">
+          <span>
+            {f.label}
+            {/* Şemadaki harf: kullanıcı hangi ölçü olduğunu tahmin etmesin. */}
+            {f.symbol ? <em className="param-symbol">{f.symbol}</em> : null}
+            {f.unit ? ` (${f.unit})` : ""}
+          </span>
+          <input
+            type="number"
+            step="any"
+            value={inputs[f.name] ?? ""}
+            disabled={disabled}
+            title={f.description}
+            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
+          />
+        </label>
+      ))}
+      </div>
+  );
 
   return (
     <div className={compact ? "template-panel template-panel-compact" : "template-panel"}>
@@ -259,45 +309,7 @@ export default function TemplatePanel({
           )}
         </div>
       )}
-      {!compact && (
-      <div className="template-panel-fields">
-      {enums.map((f) => (
-        <label key={f.name} className="mesh-field">
-          <span>{f.label}</span>
-          <select
-            value={inputs[f.name] ?? f.defaultValue}
-            disabled={disabled}
-            title={f.description}
-            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
-          >
-            {f.options.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
-      {fields.map((f) => (
-        <label key={f.name} className="mesh-field">
-          <span>
-            {f.label}
-            {/* Şemadaki harf: kullanıcı hangi ölçü olduğunu tahmin etmesin. */}
-            {f.symbol ? <em className="param-symbol">{f.symbol}</em> : null}
-            {f.unit ? ` (${f.unit})` : ""}
-          </span>
-          <input
-            type="number"
-            step="any"
-            value={inputs[f.name] ?? ""}
-            disabled={disabled}
-            title={f.description}
-            onChange={(e) => setInputs((prev) => ({ ...prev, [f.name]: e.target.value }))}
-          />
-        </label>
-      ))}
-      </div>
-      )}
+      {!compact && paramFields}
       <div className="template-panel-actions">
         <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
           Model üret
@@ -320,6 +332,7 @@ export default function TemplatePanel({
         <TemplateLoadDialog
           template={selected}
           params={inputs}
+          paramFields={compact ? paramFields : undefined}
           bcs={templateBcs}
           note={
             kind === "crash"
