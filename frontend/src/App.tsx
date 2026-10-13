@@ -1191,6 +1191,25 @@ function App() {
     setScenarioJob(null);
     await loadScenarioModel(res);
     const rq = res.solve_request;
+    // Kabuk kalınlığı senaryoda parts[].thickness_mm; panel ürün ağacından okur → bileşene yaz
+    // (kullanıcı 2026-10-13: "Kurulumu yükle" sonrası "kalınlık yok" hatası).
+    const thick = (rq.parts ?? []).filter((p) => typeof p.thickness_mm === "number" && p.thickness_mm > 0);
+    if (thick.length) {
+      try {
+        for (const p of thick) {
+          await upsertComponent(res.geometry_id, {
+            part_id: p.part_id,
+            property_kind: "shell",
+            thickness: p.thickness_mm,
+          });
+        }
+        if (activeGeometryIdRef.current === res.geometry_id) {
+          setProductTree(await fetchProductTree(res.geometry_id, 0));
+        }
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : "Kabuk kalınlığı kaydedilemedi.");
+      }
+    }
     setCrashMatCard(matCardFromModel(rq.model));
     setCrashPartCards(
       Object.fromEntries(
