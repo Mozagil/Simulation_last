@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { fetchCrashAnimation, type CrashAnimation } from "../api/crash";
+import { fetchCrashAnimation, fetchCrashRun, type CrashAnimation } from "../api/crash";
 
 /** Crash deforme şekli (1.17d): yüzey üçgenleri, kare kaydırıcı, oynat, skaler
  * renk (yer değiştirme büyüklüğü düğümde; eleman skalerleri yüzde). Renk
@@ -60,6 +60,42 @@ export function scaledPos(p0: number, p: number, k: number): number {
   return p0 + (p - p0) * k;
 }
 
+/** 1.23 C2 — her yüzün kenarları (düğüm çiftleri) + kaynak yüz; mesh çizgileri için. */
+export function faceEdges(faces: number[][]): { pairs: Int32Array; edge_face: Int32Array } {
+  const pairs: number[] = [];
+  const ef: number[] = [];
+  faces.forEach((f, fi) => {
+    for (let k = 0; k < f.length; k += 1) {
+      pairs.push(f[k], f[(k + 1) % f.length]);
+      ef.push(fi);
+    }
+  });
+  return { pairs: Int32Array.from(pairs), edge_face: Int32Array.from(ef) };
+}
+
+/** 1.23 C3 — koşu isteğinden rijit duvar (düzlem / silindir); duvarsızda null. */
+export interface WallSpec {
+  kind: "plane" | "cylinder";
+  point: [number, number, number];
+  normal: [number, number, number];
+  axis: [number, number, number];
+  diameter: number | null;
+}
+
+export function wallFromRequest(req: Record<string, unknown> | null | undefined): WallSpec | null {
+  if (!req || req.use_rigid_wall === false) return null;
+  const barrier = req.barrier as { wall?: Record<string, unknown> } | undefined;
+  const w = barrier?.wall;
+  if (!w || !Array.isArray(w.point) || !Array.isArray(w.normal)) return null;
+  return {
+    kind: w.kind === "cylinder" ? "cylinder" : "plane",
+    point: w.point as [number, number, number],
+    normal: w.normal as [number, number, number],
+    axis: (Array.isArray(w.axis) ? w.axis : [0, 0, 1]) as [number, number, number],
+    diameter: typeof w.diameter_mm === "number" ? w.diameter_mm : null,
+  };
+}
+
 /** Yüzleri üçgenlere aç: her üçgen köşesi için düğüm indeksi + kaynak yüz. */
 export function triangulate(faces: number[][]): { vtx: Int32Array; tri_face: Int32Array } {
   const vtx: number[] = [];
@@ -100,7 +136,18 @@ export default function CrashAnimationViewer({
   // Ana viewport'a taşımak `animRun` durumunu App'e çıkarmayı gerektirirdi
   // (3 dosya); kaplama hem daha geniş (ribbon yok) hem tek dosya.
   const [expanded, setExpanded] = useState(false);
-  const meshRef = useRef<{ geom: THREE.BufferGeometry; render: () => void } | null>(null);
+  const meshRef = useRef<{
+    geom: THREE.BufferGeometry;
+    edgeGeom: THREE.BufferGeometry;
+    lines: THREE.LineSegments;
+    wall: THREE.Object3D | null;
+    render: () => void;
+  } | null>(null);
+  // 1.23 C2/C3: mesh çizgileri, rijit duvar, eleman seçimi
+  const [showMesh, setShowMesh] = useState(false);
+  const [showWall, setShowWall] = useState(true);
+  const [wallSpec, setWallSpec] = useState<WallSpec | null>(null);
+  const [pick, setPick] = useState<{ face: number; node: number } | null>(null);
   /** 1.17g — hazır görünümler: model eksenlerine göre kamera konumu */
   const viewRef = useRef<((dir: ViewDir) => void) | null>(null);
 
@@ -123,6 +170,19 @@ export default function CrashAnimationViewer({
   }, [runId]);
 
   const tri = useMemo(() => (data ? triangulate(data.faces) : null), [data]);
+  const edges = useMemo(() => (data ? faceEdges(data.faces) : null), [data]);
+
+  useEffect(() => {
+    let alive = true;
+    setWallSpec(null);
+    setPick(null);
+    fetchCrashRun(runId)
+      .then((r) => alive && setWallSpec(wallFromRequest(r.request)))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [runId]);
 
   // Sahne: veri gelince bir kez kurulur.
   useEffect(() => {
@@ -152,6 +212,19 @@ export default function CrashAnimationViewer({
     );
     scene.add(mesh);
 
+    // 1.23 C2: mesh çizgileri (yüz kenarları), konumları her karede güncellenir.
+    const edgeGeom = new THREE.BufferGeometry();
+    edgeGeom.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array((edges?.pairs.length ?? 0) * 3), 3),
+    );
+    const lines = new THREE.LineSegments(
+      edgeGeom,
+      new THREE.LineBasicMaterial({ color: dark ? 0xd8dde2 : 0x1d1f20, transparent: true, opacity: 0.55 }),
+    );
+    lines.visible = false;
+    scene.add(lines);
+
     // Kamera: ilk kare sınır kutusu
     const p0 = data.frames[0].positions;
     const box = new THREE.Box3();
@@ -166,7 +239,73 @@ export default function CrashAnimationViewer({
     controls.update();
     const render = () => renderer.render(scene, camera);
     controls.addEventListener("change", render);
-    meshRef.current = { geom, render };
+
+    // 1.23 C3: rijit duvar — düzlem kare (model boyutunun 1.2 katı) ya da silindir.
+    let wall: THREE.Object3D | null = null;
+    if (wallSpec) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x4f7ec8,
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const n = new THREE.Vector3(...wallSpec.normal).normalize();
+      const pt = new THREE.Vector3(...wallSpec.point);
+      if (wallSpec.kind === "cylinder" && wallSpec.diameter) {
+        const ax = new THREE.Vector3(...wallSpec.axis).normalize();
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(wallSpec.diameter / 2, wallSpec.diameter / 2, size * 1.2, 32, 1, true), mat);
+        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ax);
+        cyl.position.copy(pt);
+        wall = cyl;
+      } else {
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(size * 1.2, size * 1.2), mat);
+        plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+        // model merkezinin düzleme izdüşümü
+        const c = center.clone().sub(n.clone().multiplyScalar(center.clone().sub(pt).dot(n)));
+        plane.position.copy(c);
+        wall = plane;
+      }
+      scene.add(wall);
+    }
+
+    // 1.23 C2: elemana tıklayınca değeri (sürükleme döndürme sayılmaz).
+    const ray = new THREE.Raycaster();
+    let down: [number, number] | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = [e.clientX, e.clientY];
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+      const r = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(
+        new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1),
+        camera,
+      );
+      const hit = ray.intersectObject(mesh)[0];
+      if (!hit || hit.faceIndex == null) {
+        setPick(null);
+        return;
+      }
+      const t = hit.faceIndex;
+      // en yakın köşe düğümü (düğüm skalerleri için)
+      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute;
+      let best = 0;
+      let bestD = Infinity;
+      for (let k = 0; k < 3; k += 1) {
+        const v = t * 3 + k;
+        const d = hit.point.distanceTo(new THREE.Vector3(posAttr.getX(v), posAttr.getY(v), posAttr.getZ(v)));
+        if (d < bestD) {
+          bestD = d;
+          best = v;
+        }
+      }
+      setPick({ face: tri.tri_face[t], node: tri.vtx[best] });
+    };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointerup", onUp);
+
+    meshRef.current = { geom, edgeGeom, lines, wall, render };
     viewRef.current = (dir: ViewDir) => {
       const d = size * 1.25;
       const v = VIEW_VECTORS[dir];
@@ -195,15 +334,18 @@ export default function CrashAnimationViewer({
 
     return () => {
       ro.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointerup", onUp);
       controls.dispose();
       geom.dispose();
+      edgeGeom.dispose();
       (mesh.material as THREE.Material).dispose();
       renderer.dispose();
       holder.removeChild(renderer.domElement);
       meshRef.current = null;
       viewRef.current = null;
     };
-  }, [data, tri]);
+  }, [data, tri, edges, wallSpec]);
 
   // Kare / skaler / ölçek değişince konum + renk güncelle. 1.23 A5: iki kare arası
   // doğrusal ara-değer; 1.23 A4: yer değiştirme (ilk kareye göre) × ölçek.
@@ -251,13 +393,38 @@ export default function CrashAnimationViewer({
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
+    // 1.23 C2: mesh çizgileri — aynı konumlar; silinen yüzün kenarları çöker.
+    if (edges) {
+      const ep = m.edgeGeom.getAttribute("position") as THREE.BufferAttribute;
+      for (let e = 0; e < edges.pairs.length; e += 1) {
+        const face = edges.edge_face[Math.floor(e / 2)];
+        const alive = !fr.face_alive || fr.face_alive[face] !== 0;
+        const node = alive ? edges.pairs[e] : edges.pairs[Math.floor(e / 2) * 2];
+        ep.setXYZ(
+          e,
+          scaledPos(p0[node * 3], lerpFrame(fa.positions, fb.positions, t, node * 3), deform),
+          scaledPos(p0[node * 3 + 1], lerpFrame(fa.positions, fb.positions, t, node * 3 + 1), deform),
+          scaledPos(p0[node * 3 + 2], lerpFrame(fa.positions, fb.positions, t, node * 3 + 2), deform),
+        );
+      }
+      ep.needsUpdate = true;
+    }
     // Konumlar her karede değişir; sınır küresi ilk (sıfır) dizilimden kalırsa
     // three.js görüş hacmi kırpması orijin görünmeyen bakışlarda modeli siler
     // (K1 Taylor çubuğu, merkez x = 25: +Y / +Z boş ekran).
     m.geom.computeBoundingSphere();
     m.geom.computeVertexNormals();
     m.render();
-  }, [data, tri, frameF, scalar, deform]);
+  }, [data, tri, edges, frameF, scalar, deform, wallSpec]);
+
+  // 1.23 C2/C3: görünürlük düğmeleri
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    m.lines.visible = showMesh;
+    if (m.wall) m.wall.visible = showWall;
+    m.render();
+  }, [showMesh, showWall, data, tri, wallSpec]);
 
   // 1.23 A5: akıcı oynatma — requestAnimationFrame, gerçek geçen süreyle ilerler.
   useEffect(() => {
@@ -409,6 +576,26 @@ export default function CrashAnimationViewer({
               ))}
             </select>
           </div>
+          <div className="crash-var-chips" role="group" aria-label="Görünürlük">
+            <button
+              type="button"
+              className={showMesh ? "crash-var-chip active" : "crash-var-chip"}
+              aria-pressed={showMesh}
+              onClick={() => setShowMesh((v) => !v)}
+            >
+              Mesh
+            </button>
+            {wallSpec && (
+              <button
+                type="button"
+                className={showWall ? "crash-var-chip active" : "crash-var-chip"}
+                aria-pressed={showWall}
+                onClick={() => setShowWall((v) => !v)}
+              >
+                Rijit duvar
+              </button>
+            )}
+          </div>
           <div className="crash-anim-deform">
             {dispInfo && (
               <span className="crash-behavior-hint" data-testid="crash-anim-disp">
@@ -440,6 +627,18 @@ export default function CrashAnimationViewer({
               ))}
             </select>
           </label>
+          {pick && data && (
+            <p className="crash-behavior-hint" data-testid="crash-anim-pick">
+              {(() => {
+                const f = data.frames[frame];
+                const m = data.scalars[scalar];
+                const v = m?.location === "face" ? f.face?.[scalar]?.[pick.face] : f.node?.[scalar]?.[pick.node];
+                return `Eleman (yüz) #${pick.face} · parça #${data.face_part[pick.face] ?? "—"} · ${
+                  SCALAR_LABELS[scalar] ?? scalar
+                } = ${v == null ? "—" : fmt(v)}${m?.location === "node" ? " (en yakın düğüm)" : ""} · t = ${fmt(f.time ?? 0)} ms`;
+              })()}
+            </p>
+          )}
           {meta && (
             <div className="crash-anim-legend" aria-label="Renk ölçeği">
               <span>{fmt(meta.min)}</span>

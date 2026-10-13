@@ -1547,8 +1547,12 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video.
-- C2 Sonuçlarda mesh on/off + eleman bazlı sonuç.
-- C3 Animasyonda rijit duvar on/off.
+- C2 ✅ Animasyonda "Mesh" düğmesi (yüz kenarları, her karede deforme konumla) + elemana
+  tıklayınca değer satırı: yüz no, parça, seçili skaler (eleman skalerinde o elemanın,
+  düğüm skalerinde en yakın düğümün değeri), t. Döndürme sürüklemesi seçim sayılmaz.
+- C3 ✅ Animasyonda "Rijit duvar" düğmesi: koşu isteğinden (`barrier.wall`) düzlem (model
+  boyutunun 1,2 katı kare) ya da silindir (çap, eksen); duvarsız koşuda düğme yok.
+  Test (C2/C3): `CrashAnimationViewer.test.tsx` (`faceEdges`, `wallFromRequest`).
 - C4 Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği.
 - C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
 - C6 Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti.

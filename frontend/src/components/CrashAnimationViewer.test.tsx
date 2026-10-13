@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DEFORM_SCALES, PLAY_SPEEDS, jet, lerpFrame, scaledPos, triangulate, VIEW_VECTORS } from "./CrashAnimationViewer";
+import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, jet, lerpFrame, scaledPos, triangulate, VIEW_VECTORS, wallFromRequest } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -53,6 +53,30 @@ describe("1.23 A4/A5 — ölçek ve ara-değer", () => {
     expect(scaledPos(100, 92, 5)).toBe(60);
     expect(DEFORM_SCALES[0]).toBe(1);
     expect(PLAY_SPEEDS).toContain(1);
+  });
+});
+
+describe("1.23 C2/C3 — mesh kenarları ve rijit duvar", () => {
+  it("her yüzün kenarları kapalı halka; kaynak yüz korunur", () => {
+    const { pairs, edge_face } = faceEdges([[0, 1, 2, 3], [4, 5, 6]]);
+    expect(Array.from(pairs)).toEqual([0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 4]);
+    expect(Array.from(edge_face)).toEqual([0, 0, 0, 0, 1, 1, 1]);
+  });
+
+  it("duvar koşu isteğinden: düzlem / silindir; duvarsız ya da eksikse null", () => {
+    const req = {
+      use_rigid_wall: true,
+      barrier: { wall: { kind: "plane", axis: [0, 0, 1], diameter_mm: null, point: [0, 25, 20], normal: [1, 0, 0] } },
+    };
+    expect(wallFromRequest(req)).toEqual({
+      kind: "plane", point: [0, 25, 20], normal: [1, 0, 0], axis: [0, 0, 1], diameter: null,
+    });
+    const cyl = { use_rigid_wall: true, barrier: { wall: { kind: "cylinder", axis: [0, 0, 1], diameter_mm: 254, point: [0, 0, 0], normal: [1, 0, 0] } } };
+    expect(wallFromRequest(cyl)?.kind).toBe("cylinder");
+    expect(wallFromRequest(cyl)?.diameter).toBe(254);
+    expect(wallFromRequest({ ...req, use_rigid_wall: false })).toBeNull();
+    expect(wallFromRequest({ barrier: {} })).toBeNull();
+    expect(wallFromRequest(null)).toBeNull();
   });
 });
 

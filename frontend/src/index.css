@@ -4563,7 +4563,8 @@ p {
 
 .crash-anim-controls {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  /* oynat · kaydırıcı · hız · ölçek (1.23 A4/A5) */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   margin: 6px 0;
