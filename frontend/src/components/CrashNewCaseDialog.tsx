@@ -3,7 +3,7 @@
  * "Katalog + hızlı senaryo → + Yeni vaka"). Senaryo geometrisi üretilince
  * App viewport'a yükler; koşu geçmişi dock'ta görünür.
  */
-import type { CrashScenarioResponse } from "../api/crash";
+import type { CrashScenarioResponse, CrashScenarioSetupResponse } from "../api/crash";
 import CrashCatalog from "./CrashCatalog";
 import CrashScenarioCard from "./CrashScenarioCard";
 import { useBackdropClose } from "../lib/useBackdropClose";
@@ -14,6 +14,7 @@ export default function CrashNewCaseDialog({
   onDone,
   onJobStarted,
   initial,
+  onSetupLoaded,
 }: {
   onClose: () => void;
   onGeometry: (geometryId: number, name: string) => void;
@@ -21,6 +22,8 @@ export default function CrashNewCaseDialog({
   onJobStarted?: (res: CrashScenarioResponse) => void;
   /** 1.23 B1: şablon panelinden gelen seçim (şablon + geometri değerleri). */
   initial?: { templateId: string; geometry: Record<string, string> };
+  /** 1.23 B1c: "Kurulumu yükle" — koşmadan kurulum panellere. */
+  onSetupLoaded?: (res: CrashScenarioSetupResponse) => void;
 }) {
   const backdrop = useBackdropClose(onClose);
   return (
@@ -41,7 +44,7 @@ export default function CrashNewCaseDialog({
         <div className="crash-newcase-body">
           <div>
             <CrashScenarioCard
-              showSchematic onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} initial={initial} />
+              showSchematic onDone={onDone} onGeometry={onGeometry} onJobStarted={onJobStarted} initial={initial} onSetupLoaded={onSetupLoaded} />
           </div>
           <div>
             <CrashCatalog />

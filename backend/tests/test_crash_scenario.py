@@ -237,3 +237,20 @@ def test_mine_pblast_oriented_segments():
     pb = _card(deck, "/LOAD/PBLAST/1")
     assert int(pb[1][10:20]) == 2  # Exp_data zemin yansımalı
     assert [float(pb[2][i:i + 20]) for i in (0, 20, 40, 60, 80)] == [0.0, 0.0, -500.0, 0.0, 6.0]
+
+
+@requires_db
+def test_setup_only_returns_solve_request_without_run():
+    """1.23 B1c: kurulumu yükle — geometri + mesh + /crash/solve gövdesi; koşu / deck / kayıt yok."""
+    r = _scenario(name="kurulum", setup_only=True, speed_m_s=12.0, rigid_bodies=[{"name": "kizak", "region": "kutu_arka", "mass_kg": 40}])
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["crash"] is None
+    req = d["solve_request"]
+    assert req["geometry_id"] == d["geometry_id"]
+    assert req["barrier"]["speed_m_s"] == 12.0
+    assert req["barrier"]["wall"]["normal"] == [1.0, 0.0, 0.0]
+    assert req["parts"][0]["part_id"] == 0
+    assert req["rigid_bodies"][0]["mass_kg"] == 40
+    assert d["mesh"]["dimension"] == 2
+    assert client.get("/crash/runs", params={"geometry_id": d["geometry_id"]}).json()["count"] == 0

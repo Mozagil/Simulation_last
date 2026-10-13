@@ -134,6 +134,39 @@ describe("CrashPanel", () => {
     expect(body.parts?.[0]).not.toHaveProperty("thickness_mm");
   });
 
+  it("1.23 B1c: kurulum içe aktarılınca panel aynı kurulumu yeniden gönderir (koşmadan düzenlenebilir)", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j12", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    const req = {
+      geometry_id: 1,
+      barrier: { speed_m_s: 12, angle_deg: 0, wall: { point: [0, 25, 20] as [number, number, number], normal: [1, 0, 0] as [number, number, number] } },
+      parts: [{ part_id: 0, role: "moving" as const }, { part_id: 1, role: "fixed" as const }],
+      contacts: [{ type: 7 as const, master_part: 1, slave_part: 0, fric: 0.2, stfac: 1, gapmin: 0.5, istf: 0, inacti: 0, iedge: 0 }],
+      t_end_ms: 8,
+      gravity: { accel_m_s2: -9.81, direction: "Z" as const },
+      rigid_bodies: [{ name: "rbody_1", region: "kutu_arka", mass_kg: 40 }],
+      boundary_conditions: [],
+      initial_velocities: [],
+      imposed_velocities: [],
+      model: { law: "plastic" as const, isolid: 24 },
+    };
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} importRequest={{ key: 1, req }} />);
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const body = vi.mocked(postCrashSolve).mock.calls[0][0];
+    expect(body.barrier.speed_m_s).toBe(12);
+    expect(body.barrier.wall).toEqual({ point: [0, 25, 20], normal: [1, 0, 0] });
+    expect(body.t_end_ms).toBe(8);
+    expect(body.gravity).toEqual({ accel_m_s2: -9.81, direction: "Z" });
+    expect(body.parts?.map((p) => [p.part_id, p.role])).toEqual([[0, "moving"], [1, "fixed"]]);
+    expect(body.contacts?.[0]).toMatchObject({ type: 7, master_part: 1, slave_part: 0, fric: 0.2, gapmin: 0.5 });
+    expect(body.rigid_bodies?.[0]).toMatchObject({ region: "kutu_arka", mass_kg: 40 });
+    expect(body.model).toMatchObject({ isolid: 24 });
+  });
+
   it("1.23 A7: koşudan sonra starter ve engine .rad ayrı, adıyla indirilir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j11", geometry_id: 1, status: "rad_only", message: "rad üretildi",

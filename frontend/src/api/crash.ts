@@ -14,6 +14,8 @@ export interface CrashBarrierPayload {
     point: [number, number, number];
     normal: [number, number, number];
   };
+  /** Duvarsız koşuda doğrudan hız yönü. */
+  direction?: [number, number, number] | null;
 }
 
 export interface CrashModelPayload {
@@ -321,6 +323,26 @@ export interface CrashScenarioResponse {
   /** Sunucuda üretilen mesh (geometry generate_mesh yanıtı). */
   mesh?: MeshGenerateResponse;
   crash: CrashSolveResponse;
+}
+
+/** 1.23 B1c — "Kurulumu yükle": geometri + mesh + kurulum, koşu yok. */
+export interface CrashScenarioSetupResponse {
+  geometry_id: number;
+  scenario: CrashScenarioSetup;
+  mesh?: MeshGenerateResponse;
+  /** /crash/solve gövdesi — panellere dolar. */
+  solve_request: CrashSolveRequest;
+}
+
+export async function postCrashScenarioSetup(body: CrashScenarioRequest): Promise<CrashScenarioSetupResponse> {
+  const response = await fetch(`${API_BASE_URL}/crash/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, setup_only: true, run_solver: false }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as CrashScenarioSetupResponse;
 }
 
 export async function postCrashScenario(body: CrashScenarioRequest): Promise<CrashScenarioResponse> {

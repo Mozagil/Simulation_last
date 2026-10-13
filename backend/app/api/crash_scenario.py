@@ -136,6 +136,9 @@ class CrashScenarioRequest(BaseModel):
     name: str | None = None
     run_solver: bool = True
     wait: bool = False
+    #: 1.23 B1c: geometri + mesh + kurulum üretilir, koşu (deck dahil) yapılmaz; yanıtta
+    #: `solve_request` = /crash/solve gövdesi — arayüz panellere doldurur, mühendis düzenler.
+    setup_only: bool = False
 
     @model_validator(mode="after")
     def _template_ok(self) -> "CrashScenarioRequest":
@@ -453,9 +456,14 @@ def crash_scenario(
            "pressure_loads": req.pressure_loads, "blast_loads": req.blast_loads, **setup},
         filters=req.filters,
     )
-    result = crash_solve(solve, background_tasks, db)
+    if req.setup_only:
+        result = None
+        solve_request = solve.model_dump(mode="json", exclude_none=True)
+    else:
+        result = crash_solve(solve, background_tasks, db)
+        solve_request = None
     logger.info(
-        "Crash senaryo: template=%s geometry_id=%s run_id=%s", req.template_id, geo.id, result.get("run_id")
+        "Crash senaryo: template=%s geometry_id=%s run_id=%s", req.template_id, geo.id, (result or {}).get("run_id")
     )
     return {
         "geometry_id": geo.id,
@@ -490,6 +498,7 @@ def crash_scenario(
         # Sunucuda üretilen mesh — arayüz viewport'a yükler (generate_mesh yanıtı).
         "mesh": mesh,
         "crash": result,
+        **({"solve_request": solve_request} if solve_request is not None else {}),
     }
 
 

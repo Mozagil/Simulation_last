@@ -21,6 +21,7 @@ import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
+import { cardsFromRequest } from "../lib/crashSetupImport";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -183,6 +184,7 @@ export default function CrashPanel({
   rawCards = "",
   onOpenRawCards,
   onRequestBuilder,
+  importRequest = null,
 }: {
   geometryId: number | null;
   meshDimension: number | null;
@@ -230,6 +232,8 @@ export default function CrashPanel({
   onOpenRawCards?: () => void;
   /** 1.22e: güncel /crash/solve gövdesini kuran fonksiyon (panel ayrılınca null). */
   onRequestBuilder?: (build: (() => CrashSolveRequest | null) | null) => void;
+  /** 1.23 B1c: "Kurulumu yükle" — senaryonun /crash/solve gövdesi panele dolar (key değişince). */
+  importRequest?: { key: number; req: CrashSolveRequest } | null;
 }) {
   // Parça rolleri: mühendis seçer; varsayılan hepsi hareketli (tek parçalı
   // eski davranışla aynı). Sabit parça /BCS ile tutulur, ilk hız almaz.
@@ -344,6 +348,76 @@ export default function CrashPanel({
       }
     }
   }, [externalJob]);
+
+  // 1.23 B1c: senaryo kurulumu (koşmadan) panele: çarpma, duvar, yön, yerçekimi, süre,
+  // roller, temaslar, ek tanımlar, eleman bayrakları. Malzeme kartları App'te.
+  useEffect(() => {
+    if (!importRequest) return;
+    const rq = importRequest.req;
+    const b = rq.barrier;
+    const wallMode = rq.use_rigid_wall !== false;
+    setImpactMode(wallMode ? "wall" : "free");
+    if (b?.speed_m_s != null) setSpeed(String(b.speed_m_s));
+    if (b?.angle_deg != null) setAngle(String(b.angle_deg));
+    if (b?.wall?.point) setWallPoint(b.wall.point.join(", "));
+    const v = wallMode ? b?.wall?.normal : (b?.direction ?? undefined);
+    if (v && v.length === 3) {
+      const preset = DIR_PRESETS.find((d) => d.id !== "custom" && d.v.every((c, i) => c === v[i]));
+      if (preset) setDirPreset(preset.id);
+      else {
+        setDirPreset("custom");
+        setCustomDir([String(v[0]), String(v[1]), String(v[2])]);
+      }
+    }
+    setGravOn(!!rq.gravity);
+    if (rq.gravity) {
+      setGravAccel(String(rq.gravity.accel_m_s2));
+      setGravDir(rq.gravity.direction);
+    }
+    if (rq.t_end_ms != null) setTEnd(String(rq.t_end_ms));
+    if (rq.parts) setPartRoles(Object.fromEntries(rq.parts.map((p) => [p.part_id, (p.role ?? "moving") as PartRole])));
+    setContacts(
+      (rq.contacts ?? []).map((c) => {
+        contactRowSeq += 1;
+        return {
+          id: contactRowSeq,
+          type: c.type === 24 ? 24 : 7,
+          master: c.master_part,
+          slave: c.slave_part,
+          fric: String(c.fric ?? 0),
+          stfac: String(c.stfac ?? 1),
+          gapmin: String(c.gapmin ?? 0),
+          istf: String(c.istf ?? 0),
+          inacti: String(c.inacti ?? 0),
+          iedge: String(c.iedge ?? 0),
+        };
+      }),
+    );
+    // Ek tanımlar: "rayda" ekseni çarpma vektörünün baskın ekseni (panel ile aynı kural).
+    const dv = v ? (wallMode ? v.map((c) => (c === 0 ? 0 : -c)) : v) : [1, 0, 0];
+    const ax = dv.map((c) => Math.abs(Number(c) || 0));
+    const axis = (["X", "Y", "Z"] as const)[Math.max(0, ax.indexOf(Math.max(...ax)))];
+    setLoadCards(cardsFromRequest(rq as unknown as Record<string, unknown>, axis));
+    const m = (rq.model ?? {}) as Record<string, unknown>;
+    const s = (x: unknown) => (typeof x === "number" ? String(x) : "");
+    if (m.isolid != null) setIsolid(s(m.isolid));
+    if (m.ismstr != null) setIsmstr(s(m.ismstr));
+    if (m.nip != null) setNip(s(m.nip));
+    if (m.solid_hourglass_h != null) setHgSolid(s(m.solid_hourglass_h));
+    const sh = (m.shell ?? null) as Record<string, unknown> | null;
+    if (sh) {
+      setIshell(s(sh.ishell));
+      setIsh3n(s(sh.ish3n));
+      setShellIsmstr(s(sh.ismstr));
+      setShellNip(s(sh.nip));
+      setHgHm(s(sh.hm));
+      setHgHf(s(sh.hf));
+      setHgHr(s(sh.hr));
+    }
+    setResult(null);
+    setSnapshot(null);
+    setOpenGroup(1);
+  }, [importRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!jobId || !polling) return;

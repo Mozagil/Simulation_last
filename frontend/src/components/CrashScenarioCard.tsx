@@ -3,9 +3,11 @@ import {
   fetchCrashCatalog,
   fetchCrashJob,
   postCrashScenario,
+  postCrashScenarioSetup,
   type CrashCatalogEntry,
   type CrashScenarioRequest,
   type CrashScenarioResponse,
+  type CrashScenarioSetupResponse,
 } from "../api/crash";
 import { fetchMaterials, type Material } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
@@ -229,12 +231,15 @@ export default function CrashScenarioCard({
   onJobStarted,
   showSchematic = false,
   initial,
+  onSetupLoaded,
 }: {
   /** Seçili örneğin kendi şeması (yeni vaka penceresi). */
   showSchematic?: boolean;
   /** 1.23 B1: "Şablondan üret → Model üret" (crash) — bu şablonun ilk örneği seçili,
    * geometri alanları paneldeki değerlerle dolu gelir. */
   initial?: { templateId: string; geometry: Record<string, string> };
+  /** 1.23 B1c: "Kurulumu yükle" — koşmadan geometri + mesh + kurulum; App panellere doldurur. */
+  onSetupLoaded?: (res: CrashScenarioSetupResponse) => void;
   onDone?: () => void;
   /** Senaryo koşusu başladı — App bunu 5 · Sonuçlar paneline bağlar. */
   onJobStarted?: (res: CrashScenarioResponse) => void;
@@ -314,7 +319,7 @@ export default function CrashScenarioCard({
 
   const label = (k: string, p: SchemaProp) => `${p.symbol ?? k}${p.unit ? ` (${p.unit})` : ""}`;
 
-  async function run() {
+  async function run(setupOnly = false) {
     if (!entry?.template_id) return;
     setBusy(true);
     setError(null);
@@ -335,6 +340,11 @@ export default function CrashScenarioCard({
         ...(isShell && common.ishell !== "0" ? { model: { law: "plastic", shell: { ishell: Number(common.ishell) } } } : {}),
         wait: false,
       };
+      if (setupOnly) {
+        const su = await postCrashScenarioSetup(body);
+        onSetupLoaded?.(su);
+        return;
+      }
       const r = await postCrashScenario(body);
       setRes(r);
       setStatus(r.crash.status);
@@ -432,9 +442,22 @@ export default function CrashScenarioCard({
           ))}
         </select>
       </label>
-      <button type="button" className="material-assign-button" disabled={busy || !entry} onClick={() => void run()}>
-        {busy ? "Başlatılıyor…" : "Senaryoyu koş"}
-      </button>
+      <div className="crash-scenario-actions">
+        <button type="button" className="material-assign-button" disabled={busy || !entry} onClick={() => void run()}>
+          {busy ? "Başlatılıyor…" : "Senaryoyu koş"}
+        </button>
+        {onSetupLoaded && (
+          <button
+            type="button"
+            className="material-secondary-button"
+            disabled={busy || !entry}
+            onClick={() => void run(true)}
+            title="Geometri + mesh + bu senaryonun kurulumu üretilir, koşulmaz; 3 · Material ve 4 · Crash panellerine dolar, düzenleyip koşarsın"
+          >
+            Kurulumu yükle (düzenle)
+          </button>
+        )}
+      </div>
       {error && <p className="material-assign-hint">{error}</p>}
       {res && (
         <p className="material-assign-hint" data-testid="crash-scenario-status">

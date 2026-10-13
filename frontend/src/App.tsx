@@ -68,7 +68,13 @@ import DoePanel from "./components/DoePanel";
 import GeometryStepDownload from "./components/GeometryStepDownload";
 import MeshRemeshPanel from "./components/MeshRemeshPanel";
 import CrashAnimationViewer from "./components/CrashAnimationViewer";
-import type { CrashScenarioResponse, CrashScenarioSetup, CrashSolveRequest } from "./api/crash";
+import type {
+  CrashScenarioResponse,
+  CrashScenarioSetup,
+  CrashScenarioSetupResponse,
+  CrashSolveRequest,
+} from "./api/crash";
+import { matCardFromModel } from "./lib/crashSetupImport";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
@@ -422,6 +428,8 @@ function App() {
   const [showRawCards, setShowRawCards] = useState(false);
   // 1.22e: CrashPanel'in güncel /crash/solve gövde kurucusu (ham kart kontrolü için).
   const crashRequestBuilderRef = useRef<(() => CrashSolveRequest | null) | null>(null);
+  // 1.23 B1c: senaryo kurulumu → CrashPanel (key değişince uygulanır).
+  const [crashImport, setCrashImport] = useState<{ key: number; req: CrashSolveRequest } | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -1171,9 +1179,30 @@ function App() {
   /** "+ Yeni crash vakası" senaryosu: geometri + sunucu mesh'i viewport'a,
    * koşu 5 · Sonuçlar'a, çarpma kurulumu crash paneline. */
   async function loadScenario(res: CrashScenarioResponse) {
-    const geoId = res.geometry_id;
-    setScenarioJob({ jobId: res.crash.job_id, geometryId: geoId, runId: res.crash.run_id ?? null, setup: res.scenario });
+    setScenarioJob({ jobId: res.crash.job_id, geometryId: res.geometry_id, runId: res.crash.run_id ?? null, setup: res.scenario });
     setExpandedSteps(new Set(["results"]));
+    await loadScenarioModel(res);
+  }
+
+  /** 1.23 B1c: "Kurulumu yükle" — geometri + mesh yüklenir, kurulum panellere dolar (koşu yok). */
+  async function loadScenarioSetup(res: CrashScenarioSetupResponse) {
+    setShowNewCrashCase(false);
+    setCrashCaseInit(null);
+    setScenarioJob(null);
+    await loadScenarioModel(res);
+    const rq = res.solve_request;
+    setCrashMatCard(matCardFromModel(rq.model));
+    setCrashPartCards(
+      Object.fromEntries(
+        (rq.parts ?? []).filter((p) => p.model).map((p) => [p.part_id, matCardFromModel(p.model)]),
+      ),
+    );
+    setCrashImport({ key: Date.now(), req: rq });
+    setExpandedSteps(new Set(["bc"]));
+  }
+
+  async function loadScenarioModel(res: { geometry_id: number; scenario: CrashScenarioSetup; mesh?: CrashScenarioResponse["mesh"] }) {
+    const geoId = res.geometry_id;
     const cadParts = await loadGeometryById(geoId, `${res.scenario.template_id ?? "senaryo"}.step`);
     const m = res.mesh;
     if (!m || activeGeometryIdRef.current !== geoId) return;
@@ -5464,6 +5493,7 @@ function App() {
           onRequestBuilder={(build) => {
             crashRequestBuilderRef.current = build;
           }}
+          importRequest={crashImport}
           meshDimension={meshResult?.dimension ?? null}
           // 2D: mesh önizlemesinin parça numarası — ürün ağacı, malzeme "ATA" ve
           // crash/CalculiX 2D export'u aynı (mesh) numarayı kullanır. CAD yüzey
@@ -5626,6 +5656,7 @@ function App() {
             setCrashCaseInit(null);
           }}
           initial={crashCaseInit ?? undefined}
+          onSetupLoaded={(res) => void loadScenarioSetup(res)}
           onDone={() => setCrashJobKey(`scenario:${Date.now()}`)}
           onJobStarted={(res) => void loadScenario(res)}
         />
