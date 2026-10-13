@@ -639,3 +639,26 @@ export function postRawCardsInventory(body: CrashSolveRequest): Promise<RawCards
 export function postRawCardsCheck(body: CrashSolveRequest): Promise<RawCardsCheckResponse> {
   return postRawCards("check", body);
 }
+
+/** Backend `/files/crash/...` yolunu tam adrese çevirir (1.23 A7). */
+export function crashFileUrl(path: string): string {
+  return /^https?:\/\//.test(path) ? path : `${API_BASE_URL}${path}`;
+}
+
+/**
+ * Dosyayı indirir (1.23 A7). Farklı kökenli adreste `<a download>` yok
+ * sayıldığı için içerik blob olarak çekilip kaydedilir; ad = yolun son parçası.
+ */
+export async function downloadCrashFile(path: string, filename?: string): Promise<void> {
+  const response = await fetch(crashFileUrl(path));
+  if (!response.ok) throw new CrashApiError(`İndirilemedi (${response.status}).`);
+  const blob = await response.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename ?? path.split("/").pop() ?? "crash.rad";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(href);
+}

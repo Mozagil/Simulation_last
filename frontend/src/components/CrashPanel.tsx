@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import {
   crashJobWsUrl,
   fetchCrashJob,
+  downloadCrashFile,
   fetchCrashRefilter,
   postCrashSolve,
   type CrashContactSpec,
@@ -284,6 +285,7 @@ export default function CrashPanel({
   const [postAccCfc, setPostAccCfc] = useState("");
   const [cfcBusy, setCfcBusy] = useState(false);
   const [cfcError, setCfcError] = useState<string | null>(null);
+  const [radError, setRadError] = useState<string | null>(null);
   const [runSolver, setRunSolver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1219,9 +1221,33 @@ export default function CrashPanel({
             </p>
           )}
           {result?.starter_url && (
-            <a className="material-inp-link" href={result.starter_url} target="_blank" rel="noreferrer">
-              starter .rad
-            </a>
+            <div className="crash-rad-downloads" aria-label=".rad indir">
+              {/* 1.23 A7: OpenRadioss girdi dosyaları — starter = model (düğüm, eleman, malzeme, BC,
+                  temas), engine = çözüm kontrolü (süre, Δt, çıktı). */}
+              <button
+                type="button"
+                className="material-secondary-button"
+                title="Starter dosyası: düğüm, eleman, malzeme, parça, sınır koşulu, temas, duvar (LS-DYNA .k karşılığı)"
+                onClick={() =>
+                  void downloadCrashFile(result.starter_url).catch((e) => setRadError(String(e?.message ?? e)))
+                }
+              >
+                ⤓ Model .rad indir (starter)
+              </button>
+              {result.engine_url && (
+                <button
+                  type="button"
+                  className="material-secondary-button"
+                  title="Engine dosyası: bitiş süresi, zaman adımı, çıktı/animasyon kartları"
+                  onClick={() =>
+                    void downloadCrashFile(result.engine_url).catch((e) => setRadError(String(e?.message ?? e)))
+                  }
+                >
+                  ⤓ Çözüm kontrolü .rad indir (engine)
+                </button>
+              )}
+              {radError && <span className="error-message">{radError}</span>}
+            </div>
           )}
           {Object.keys(scalars).length > 0 && (
             <ul className="crash-scalar-list">

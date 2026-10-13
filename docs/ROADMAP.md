@@ -1517,7 +1517,9 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - A6 ✅ Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez:
   crash / akış sekmesinde "Modeli üret" pop-up'ı yük/kısıt yerine not gösterir,
   şablon BC'leri yüklenmez (`TemplatePanel` `templateBcs`). Test: `TemplatePanel.test.tsx`.
-- A7 ".rad indir" belirgin düğme: starter (model) ve engine (çözüm kontrolü) ayrı.
+- A7 ✅ ".rad indir" belirgin düğme: starter (model) ve engine (çözüm kontrolü) ayrı.
+  `downloadCrashFile` (blob; farklı kökende `<a download>` yok sayılıyor). Eski "starter .rad"
+  bağlantısı göreli yoldu (frontend köküne gidiyordu), düzeldi. Test: `CrashPanel.test.tsx`.
 - B1 Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
   "STEP indir"; Model üret → "Yeni crash vakası" pop-up'ı.
 - B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.

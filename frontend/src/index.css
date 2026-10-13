@@ -9152,3 +9152,18 @@ p {
   color: var(--ink);
   white-space: nowrap;
 }
+
+/* 1.23 A7 — .rad indir düğmeleri */
+.crash-rad-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.crash-rad-downloads .material-secondary-button {
+  width: auto;
+  margin-top: 0;
+  padding: 7px 12px;
+}

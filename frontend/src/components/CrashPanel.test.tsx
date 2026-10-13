@@ -16,12 +16,13 @@ vi.mock("../api/crash", () => ({
   putValidationThresholds: vi.fn(),
   postCrashScenario: vi.fn(),
   fetchCrashCatalog: vi.fn(() => new Promise(() => undefined)),
+  downloadCrashFile: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../api/materials", () => ({ fetchMaterials: vi.fn(() => Promise.resolve([])) }));
 vi.mock("../api/templates", () => ({ fetchTemplates: vi.fn(() => new Promise(() => undefined)) }));
 
-import { fetchCrashJob, fetchCrashRefilter, postCrashSolve } from "../api/crash";
+import { downloadCrashFile, fetchCrashJob, fetchCrashRefilter, postCrashSolve } from "../api/crash";
 
 /** Akordeon grubunu aç (Çarpma açık başlar; Parçalar / Temaslar kapalı). */
 const openGroup = (title: string) =>
@@ -131,6 +132,22 @@ describe("CrashPanel", () => {
     expect(body.dimension).toBe(3);
     expect(body.model).not.toHaveProperty("shell");
     expect(body.parts?.[0]).not.toHaveProperty("thickness_mm");
+  });
+
+  it("1.23 A7: koşudan sonra starter ve engine .rad ayrı, adıyla indirilir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j11", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "/files/crash/j11/crash_0000.rad", engine_url: "/files/crash/j11/crash_0001.rad",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0]} />);
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    fireEvent.click(await screen.findByRole("button", { name: "⤓ Model .rad indir (starter)" }));
+    fireEvent.click(screen.getByRole("button", { name: "⤓ Çözüm kontrolü .rad indir (engine)" }));
+    expect(vi.mocked(downloadCrashFile).mock.calls.map((c) => c[0])).toEqual([
+      "/files/crash/j11/crash_0000.rad",
+      "/files/crash/j11/crash_0001.rad",
+    ]);
   });
 
   it("1.22d: ham kart doluysa istekte raw_cards aynen, boşsa alan yok; satır editörü açar", async () => {
