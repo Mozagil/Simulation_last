@@ -140,10 +140,6 @@ export default function TemplatePanel({
       return;
     }
     setError(null);
-    if (kind === "crash" && onCrashModel && scenarioTemplates.has(selected.id)) {
-      onCrashModel(selected.id, inputs);
-      return;
-    }
     setLoadInputs(loadInputsFromBcs(templateBcs));
     setPending({ params: parsed });
   }
@@ -314,6 +310,18 @@ export default function TemplatePanel({
         <button type="button" disabled={disabled || !selected} onClick={handleOpenDialog}>
           Model üret
         </button>
+        {/* Kullanıcı 2026-10-13: Model üret yalnız geometriyi üretir (LAW / BC mühendis kurar);
+            hazır senaryo ayrı düğmeyle — geometri + kurulum + koşu pencerede. */}
+        {kind === "crash" && onCrashModel && selected && scenarioTemplates.has(selected.id) && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onCrashModel(selected.id, inputs)}
+            title="Yeni crash vakası penceresi: bu şablonun hazır senaryosu (geometri + kurulum + koşu)"
+          >
+            Hızlı senaryo koş
+          </button>
+        )}
         <button
           type="button"
           disabled={disabled || !selected || stepBusy}

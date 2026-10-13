@@ -303,7 +303,7 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
     expect(vi.mocked(onCreated).mock.calls[0][0].default_bcs).toEqual([]);
   });
-  it("1.23 B1: crash'te hazır senaryolu şablonda Model üret yeni vaka penceresini açar (geometri değerleriyle)", async () => {
+  it("1.23 B1: crash'te Model üret yalnız geometri; 'Hızlı senaryo koş' yeni vaka penceresini açar", async () => {
     vi.mocked(fetchTemplates).mockResolvedValue([
       { ...CANTILEVER, id: "taylor_bar", name: "Taylor çubuğu", tags: ["crash"] },
     ]);
@@ -315,10 +315,15 @@ describe("TemplatePanel · R6 .ork içe aktarma", () => {
     // B1b: sade panel — alanlar yok, Model üret + STEP indir var
     await waitFor(() => expect(screen.queryByDisplayValue("500")).toBeNull());
     expect(screen.getByRole("button", { name: "STEP indir" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
+    // Kullanıcı 2026-10-13: Model üret yalnız geometri (pop-up'ta ölçüler); senaryo ayrı düğme.
+    await userEvent.click(screen.getByRole("button", { name: "Hızlı senaryo koş" }));
     expect(onCrashModel).toHaveBeenCalledWith("taylor_bar", { length: "500", thickness: "10", width: "50" });
-    expect(screen.queryByRole("dialog")).toBeNull();
     expect(createGeometryFromTemplate).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Model üret" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Modeli üret" }));
+    await waitFor(() => expect(createGeometryFromTemplate).toHaveBeenCalledWith("taylor_bar", { length: 500, thickness: 10, width: 50 }));
+    expect(onCrashModel).toHaveBeenCalledTimes(1);
   });
   it("1.23 B1b: crash'te senaryosuz şablonda ölçüler panelde değil, pop-up'ta düzenlenir", async () => {
     vi.mocked(fetchTemplates).mockResolvedValue([

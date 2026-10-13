@@ -1538,6 +1538,9 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     örneği seçili, geometri alanları paneldeki değerlerle; ilk hız, süre, eleman,
     malzeme, CFC, Ishell senaryo kartından). Senaryosu olmayan şablon (crash_box_plate)
     eski pencere + not. Test: `TemplatePanel.test.tsx`, `CrashScenarioCard.test.tsx`.
+  - B1a düzeltme (kullanıcı 2026-10-13, acil): Model üret yeniden yalnız geometri üretir
+    (ölçüler pop-up'ta; LAW / BC mühendis kurar). Hazır senaryo ayrı "Hızlı senaryo koş"
+    düğmesiyle (Yeni crash vakası). Sırada: o pencerede tüm BC'ler (B1c).
   - B1b ✅ Crash'te hazır senaryolu şablonda panel sade: büyük görsel + şablon +
     Model üret + STEP indir (alanlar pencerede). STEP indir tüm sekmelerde, geometri
     kaydı açmadan: `POST /templates/{id}/step` (geçici dosya). Test:
