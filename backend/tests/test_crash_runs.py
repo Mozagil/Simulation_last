@@ -170,3 +170,15 @@ def test_summary_flags_raw_card_runs():
     assert r.status_code == 200, r.text
     flags = {x["id"]: x["has_raw_cards"] for x in client.get("/crash/runs", params={"geometry_id": gid}).json()["runs"]}
     assert flags == {plain: False, r.json()["run_id"]: True}
+
+
+def test_anim_cache_complete_and_atomic_write(tmp_path):
+    """Kullanıcı 2026-10-13: yarım anim.json 'null' gibi okunuyordu — tamlık denetimi + atomik yazım."""
+    from app.api.crash_runs import _cache_complete
+    from app.postprocess.openradioss_anim import write_animation_cache
+
+    p = write_animation_cache(tmp_path, {"faces": [], "frames": [{"time": 0}]})
+    assert _cache_complete(p) and json.loads(p.read_text(encoding="utf-8"))["frames"][0]["time"] == 0
+    assert not list(tmp_path.glob("*.tmp"))
+    p.write_text('{"faces": [1, 2', encoding="utf-8")  # yarım
+    assert not _cache_complete(p)

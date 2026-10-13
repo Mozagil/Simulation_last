@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -180,6 +182,10 @@ def build_animation(vtk_texts: list[str], max_frames: int = 60) -> dict[str, Any
 
 
 def write_animation_cache(work_dir: Path, data: dict[str, Any]) -> Path:
+    """Atomik yazım: geçici dosya + yeniden adlandırma. Aynı anda gelen ikinci istek
+    yarım yazılmış anim.json okuyup geçersiz JSON döndürmesin (kullanıcı 2026-10-13)."""
     p = Path(work_dir) / "anim.json"
-    p.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    tmp = p.with_name(f"anim.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    os.replace(tmp, p)
     return p

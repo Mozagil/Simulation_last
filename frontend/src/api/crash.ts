@@ -399,6 +399,8 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  // 200 ama gövde JSON değil / yarım (ör. animasyon önbelleği yazılırken okundu) — null döndürme.
+  if (payload == null) throw new CrashApiError("Sunucu yanıtı okunamadı (geçersiz ya da yarım JSON). Tekrar deneyin.");
   return payload as T;
 }
 

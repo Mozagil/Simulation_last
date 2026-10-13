@@ -153,6 +153,16 @@ def compare_crash_runs(
     return {"runs": out}
 
 
+def _cache_complete(path: Path) -> bool:
+    """anim.json tam mı: JSON nesnesi '}' ile biter (yarım yazılmışsa okunamaz)."""
+    try:
+        with path.open("rb") as fh:
+            fh.seek(-1, 2)
+            return fh.read(1) == b"}"
+    except OSError:
+        return False
+
+
 @router.get("/{run_id}/animation")
 def crash_run_animation(run_id: int, db: Session = Depends(get_db)) -> Any:
     """Deforme şekil (1.17d): yüzey + kare başına koordinat / skaler. İlk istekte
@@ -165,6 +175,8 @@ def crash_run_animation(run_id: int, db: Session = Depends(get_db)) -> Any:
     run = _get_or_404(db, run_id)
     work = CRASH_DIR / run.job_id
     cache = work / "anim.json"
+    if cache.is_file() and not _cache_complete(cache):
+        cache.unlink(missing_ok=True)  # yarım yazılmış önbellek (eski sürüm) — yeniden üret
     if not cache.is_file():
         bins = resolve_openradioss()
         if bins is None:
