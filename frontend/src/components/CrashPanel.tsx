@@ -1132,20 +1132,6 @@ export default function CrashPanel({
                           Temas {k}
                           {c.all ? " · tüm model" : c.master === c.slave ? " · self" : ""}
                         </strong>
-                        <span className="doe-seg" role="group" aria-label={`Temas ${k} kapsamı`}>
-                          {([false, true] as const).map((all) => (
-                            <button
-                              key={String(all)}
-                              type="button"
-                              className={c.all === all ? "doe-seg-opt active" : "doe-seg-opt"}
-                              aria-pressed={c.all === all}
-                              disabled={busy}
-                              onClick={() => updateContact(c.id, all ? { all: true, type: 24 } : { all: false })}
-                            >
-                              {all ? "Tüm model" : "Parça çifti"}
-                            </button>
-                          ))}
-                        </span>
                         <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
                           {([7, 24] as const).map((t) => (
                             <button
@@ -1171,8 +1157,25 @@ export default function CrashPanel({
                           ×
                         </button>
                       </div>
+                      <div className="crash-contact-scope">
+                        <span>Kapsam</span>
+                        <span className="doe-seg crash-contact-scope-seg" role="group" aria-label={`Temas ${k} kapsamı`}>
+                          {([false, true] as const).map((all) => (
+                            <button
+                              key={String(all)}
+                              type="button"
+                              className={c.all === all ? "doe-seg-opt active" : "doe-seg-opt"}
+                              aria-pressed={c.all === all}
+                              disabled={busy}
+                              onClick={() => updateContact(c.id, all ? { all: true, type: 24 } : { all: false })}
+                            >
+                              {all ? "Tüm model" : "Parça çifti"}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
                       {c.all ? (
-                        <p className="crash-contact-parts" data-testid={`crash-contact-${k}-all`}>
+                        <p className="crash-contact-all" data-testid={`crash-contact-${k}-all`}>
                           Tüm parçalar tek yüzey, öz temas. Kabuk ve solid birlikteyse üç TYPE24 yazılır
                           (kabuk öz, solid öz, kabuk ↔ solid).
                         </p>

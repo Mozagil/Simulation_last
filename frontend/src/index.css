@@ -4208,6 +4208,26 @@ p {
   margin-top: 8px;
 }
 
+.crash-contact-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.crash-contact-scope .doe-seg-opt {
+  white-space: nowrap;
+}
+
+.crash-contact-all {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 .crash-contact-arrow {
   padding-bottom: 7px;
   color: var(--muted);
