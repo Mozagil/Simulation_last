@@ -41,6 +41,7 @@ from app.solvers.crash_params import (
     CrashInitVelParams,
     CrashPressureLoadParams,
     CrashSphProjectileParams,
+    CrashSpringParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -620,6 +621,10 @@ _SPH_SURF_BASE = 9990
 _SPH_INTER_BASE = 50
 _SPH_INIVEL_BASE = 20
 _PBLAST_SURF_BASE = 9995
+# 1.24b1 — yay: sabit uç düğüm grupları / BCS kimlikleri, TH kimliği.
+_SPRING_GR_BASE = 9940
+_SPRING_BC_BASE = 40
+_SPRING_TH_ID = 6
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -734,6 +739,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         gravity = CrashGravityParams.model_validate(params["gravity"]) if params.get("gravity") else None
         ploads = [CrashPressureLoadParams.model_validate(r) for r in params.get("pressure_loads") or []]
         sphs = [CrashSphProjectileParams.model_validate(r) for r in params.get("sph_projectiles") or []]
+        springs = [CrashSpringParams.model_validate(r) for r in params.get("springs") or []]
         blasts = [CrashBlastLoadParams.model_validate(r) for r in params.get("blast_loads") or []]
     except ValueError as exc:
         raise SolverError(f"Geçersiz ek kütle / rijit gövde: {exc}") from exc
@@ -788,6 +794,26 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         if not ids:
             raise SolverError(f"SPH '{sp.name}': parçacık yok (çap / aralık).")
         sph_sets.append((sp, ids))
+    # 1.24b1 — yay uçları: nokta uçlar yeni düğüm (SPH parçacıklarından sonra);
+    # rijit gövde uçları ana düğüm (rbody_sets). (sp, (nA, nB), [sabit düğümler])
+    rb_master = {rb.name: master for rb, _ids, master in rbody_sets}
+    spring_sets: list[tuple[CrashSpringParams, tuple[int, int], list[int]]] = []
+    for sp in springs:
+        ends: list[int] = []
+        fixed_nodes: list[int] = []
+        for end in (sp.end_a, sp.end_b):
+            if end.rigid_body is not None:
+                if end.rigid_body not in rb_master:
+                    raise SolverError(f"Yay '{sp.name}': rijit gövde '{end.rigid_body}' tanımlı değil.")
+                ends.append(rb_master[end.rigid_body])
+            else:
+                x, y, z = end.point  # type: ignore[misc]
+                extra_nodes.append((next_node, x, y, z))
+                ends.append(next_node)
+                if end.fixed:
+                    fixed_nodes.append(next_node)
+                next_node += 1
+        spring_sets.append((sp, (ends[0], ends[1]), fixed_nodes))
 
     units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
     lines: list[str] = ["#RADIOSS STARTER"]
@@ -810,7 +836,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             else (float(n[1]), float(n[2]), float(n[3]))
         )
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
-    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri + SPH parçacıkları
+    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri + SPH parçacıkları + yay uçları
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
 
     # Radioss parça/kart kimlikleri 1 tabanlı: part_ID = mesh part_id + 1.
@@ -928,6 +954,36 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             f"{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}",
         ]
         inter_ids.append(iid)
+
+    # 1.24b1 — /PROP/TYPE4 (hm_cfg radioss140) + /PART (mat_ID 0) + /SPRING
+    # (hm_cfg radioss110 ELEM/spring). Parça kimlikleri SPH parçalarından sonra;
+    # eleman kimliği mesh elemanlarının en büyüğünden sonra. Sabit nokta uçlar
+    # /GRNOD/NODE + /BCS 111 111.
+    spring_rid0 = sph_rid0 + len(sph_sets)
+    spring_eid = max((int(el[0]) for el in [*tets, *bricks, *shells, *sh3n]), default=0)
+    spring_ids: list[int] = []
+    for k, (sp, (n_a, n_b), fixed_nodes) in enumerate(spring_sets, start=1):
+        rid = spring_rid0 + k - 1
+        spring_eid += 1
+        spring_ids.append(spring_eid)
+        lines += [
+            f"/PROP/TYPE4/{rid}",
+            f"spring_{sp.name}"[:100],
+            f"{_f(sp.mass_kg)}{' ' * 30}{_i(0)}{_i(0)}{_i(0)}",
+            f"{_f(sp.k_n_per_mm / 1e3)}{_f(sp.c_n_s_per_mm)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{' ' * 10}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"/PART/{rid}",
+            f"spring_{sp.name}"[:100],
+            f"{_i(0)}{_i(rid)}",
+            f"/SPRING/{rid}",
+            f"{_i(spring_eid)}{_i(n_a)}{_i(n_b)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{' ' * 20}{_i(0)}",
+        ]
+        if fixed_nodes:
+            gid = _SPRING_GR_BASE + k
+            lines += [f"/GRNOD/NODE/{gid}", f"spring_{sp.name}_fixed"[:100]]
+            lines += ["".join(_i(v) for v in fixed_nodes[i : i + 10]) for i in range(0, len(fixed_nodes), 10)]
+            lines += [f"/BCS/{_SPRING_BC_BASE + k}", f"spring_{sp.name}_fixed"[:100], f"   111 111{_i(0)}{_i(gid)}"]
 
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
@@ -1190,6 +1246,14 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
                 "vars": th.part.vars,
             }
         )
+    th_springs = [eid for eid, (sp, _e, _f_) in zip(spring_ids, spring_sets) if sp.th]
+    if th_springs:
+        # hm_cfg th_spring r110: değişkenler + eleman kimlikleri (10/satır).
+        spring_vars = ["FX", "FY", "FZ"]
+        lines += [f"/TH/SPRING/{_SPRING_TH_ID}", "spring_th", *th_vars(spring_vars)]
+        for i in range(0, len(th_springs), 10):
+            lines.append("".join(_i(v) for v in th_springs[i : i + 10]))
+        th_spec.append({"kind": "spring", "title": "spring_th", "objects": th_springs, "vars": spring_vars})
     if th_node_ids:
         node_set = {int(n["id"]) for n in nodes} | set(accel_masters)
         missing = [n for n in th_node_ids if n not in node_set]

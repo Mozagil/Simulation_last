@@ -1637,8 +1637,13 @@ Her madde ayrı küçük adım ve ayrı PR; sıra: a1 → a2 → b1 → b2 → d
   aynı; istekte `{type: 24, all_parts: true}` (master/slave yok). Özet ve ürün ağacında
   "tüm model (genel)". Geçmişten / içe aktarmadan yükleme `all_parts`'ı korur. Test:
   `CrashPanel.test.tsx`.
-- b1 Yay elemanı (backend): `/SPRING` + `/PROP/TYPE4` (k, opsiyonel sönüm; iki düğüm /
-  rijit gövde ana düğümü arası). Can crush resmine göre netleşir.
+- b1 ✅ (2026-10-14) Yay elemanı (backend): `springs[]` → `/PROP/TYPE4` (hm_cfg radioss140:
+  Mass; K C; fonksiyon yok) + `/PART` (mat_ID 0) + `/SPRING` (hm_cfg radioss110) + `/TH/SPRING/6`
+  (FX FY FZ → `th_spring_<k>_<var>`). Uçlar: rijit gövde ana düğümü ya da nokta (mm; yeni düğüm,
+  `fixed=True` → `/GRNOD/NODE/994k` + `/BCS/4k` 111 111). Birim: K N/mm → kN/mm (÷1000), C N·s/mm →
+  kN·ms/mm (aynı sayı), kütle kg. Parça kimliği SPH parçalarından sonra, eleman kimliği mesh en
+  büyüğü + k. Varsayım (resim yok): tek eksenli doğrusal yay yeterli; eğri (fct_ID), kopma
+  (DeltaMin/Max), skew sonraya. Test: `test_crash_spring.py`.
 - b2 Yay kartı (UI).
 - d Alüminyum can crush şablonu (ince cidarlı silindir kabuk + rijit impaktör + taban),
   resimdeki sınır koşullarıyla. a1–b2'ye bağlı.
