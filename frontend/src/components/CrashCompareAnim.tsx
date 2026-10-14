@@ -32,7 +32,7 @@ export function timeSpan(a: number[] | null, b: number[] | null): [number, numbe
   return [Math.min(...all), Math.max(...all)];
 }
 
-export default function CrashCompareAnim({ a, b, onClose }: { a: AnimRef; b: AnimRef; onClose: () => void }) {
+export default function CrashCompareAnim({ a, b, onClose }: { a: AnimRef; b: AnimRef; onClose?: () => void }) {
   const [timesA, setTimesA] = useState<number[] | null>(null);
   const [timesB, setTimesB] = useState<number[] | null>(null);
   const [t, setT] = useState(0);
@@ -73,16 +73,18 @@ export default function CrashCompareAnim({ a, b, onClose }: { a: AnimRef; b: Ani
         <span className="ds-sb" data-testid="crash-compare-anim-time">
           t = {t.toFixed(3)} ms{span ? ` / ${span[1].toFixed(3)} ms` : ""}
         </span>
-        <button
-          type="button"
-          className="crash-anim-expand"
-          data-testid="crash-compare-anim-close"
-          onClick={onClose}
-          title="Geometriye dön"
-          aria-label="Karşılaştırmayı kapat"
-        >
-          ×
-        </button>
+        {onClose && (
+          <button
+            type="button"
+            className="crash-anim-expand"
+            data-testid="crash-compare-anim-close"
+            onClick={onClose}
+            title="Geometriye dön"
+            aria-label="Karşılaştırmayı kapat"
+          >
+            ×
+          </button>
+        )}
       </span>
       <div className="crash-anim-controls crash-compare-anim-controls">
         <button

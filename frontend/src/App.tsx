@@ -79,7 +79,6 @@ import { matCardFromModel } from "./lib/crashSetupImport";
 import { meshPreviewUrl, meshResultFromPreview, meshSizeText } from "./lib/crashRunLoad";
 import { lastWorkLabel, pauseLastWork, readLastWork, saveLastWork, type LastWork } from "./lib/lastWork";
 import CrashHistoryDock from "./components/CrashHistoryDock";
-import CrashCompareAnim from "./components/CrashCompareAnim";
 import type { CrashAnimTarget } from "./components/CrashHistory";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
@@ -3148,22 +3147,13 @@ function App() {
   const crashAnimView = (
     analysisTab === "crash" && crashAnim && (
       <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
-        {crashAnim.compareWith ? (
-          <CrashCompareAnim
-            key={`${crashAnim.id}-${crashAnim.compareWith.id}`}
-            a={crashAnim}
-            b={crashAnim.compareWith}
-            onClose={() => setCrashAnim(null)}
-          />
-        ) : (
-          <CrashAnimationViewer
-            key={crashAnim.id}
-            runId={crashAnim.id}
-            title={crashAnim.title}
-            docked
-            onClose={() => setCrashAnim(null)}
-          />
-        )}
+        <CrashAnimationViewer
+          key={crashAnim.id}
+          runId={crashAnim.id}
+          title={crashAnim.title}
+          docked
+          onClose={() => setCrashAnim(null)}
+        />
       </div>
     )
   );

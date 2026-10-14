@@ -1579,6 +1579,9 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
   - Grafik + skaler karşılaştırma 1.16b'den beri var (≤ 6 koşu, eğri seçimi, skaler tablosu).
   - C5a ✅ (2026-10-14) "Animasyon yan yana": 2 koşu viewport'ta yan yana, ortak fiziksel zaman (oynat / kaydırıcı / hız); kısa koşu son karede ("koşu sonu").
+  - C5c ✅ (2026-10-14, kullanıcı: "geçmişin altında değil, yeni sayfada one pager") Karşılaştırma
+    tam ekran tek sayfa: koşu kartları + deforme şekil yan yana (3+ koşuda çift seçimi) + skaler
+    tablosu + eğriler (seçilebilir + iç enerji). Viewport'taki "Animasyon yan yana" düğmesi kalktı.
   - C5b ✅ (2026-10-14) Ortak renk ölçeği (aynı skalerde iki koşunun min–max birleşimi) + kamera eşleme; ikisi de açılıp kapanır, varsayılan kapalı. C5 ✅.
 - C6 ✅ Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti. TH global sütunları:
   temas enerjisi, dış iş, toplam (IE + KE + dönme + HG − dış iş) eğrisi; 5 · Sonuçlar'da
