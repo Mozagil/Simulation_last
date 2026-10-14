@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   compareCrashRuns,
   fetchCrashRuns,
@@ -75,6 +75,11 @@ export default function CrashHistory({
   const [showExcluded, setShowExcluded] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [compared, setCompared] = useState<CrashRunCompared[] | null>(null);
+  // karşılaştırma gelince görünür alana kaydır (uzun listede aşağıda seçilmiş olabilir)
+  const compareRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (compared?.length) compareRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [compared]);
   const [curveKey, setCurveKey] = useState("rwall_force");
   /** Grafik zaman üst sınırı (ms); boş = tüm aralık. Yalnız görünüm. */
   const [tMaxRaw, setTMaxRaw] = useState("");
@@ -159,6 +164,15 @@ export default function CrashHistory({
         <p className="material-assignments-title">
           Koşu geçmişi{geometryId == null ? " · tüm geometriler" : ""} · {visible.length}
         </p>
+        {/* kullanıcı 2026-10-14: karşılaştırma listenin altında kalıyor, "çalışmadı" sanıldı → üstte */}
+        <button
+          type="button"
+          className="doe-btn doe-btn-ghost crash-history-compare-btn"
+          disabled={selected.length === 0}
+          onClick={() => void runCompare()}
+        >
+          Karşılaştır ({selected.length}/{MAX_COMPARE})
+        </button>
         <button type="button" className="crash-contact-remove" aria-label="Geçmişi yenile" onClick={() => setTick((t) => t + 1)}>
           ↻
         </button>
@@ -168,6 +182,90 @@ export default function CrashHistory({
         Dışlananları göster{hiddenCount > 0 ? ` (${hiddenCount} gizli)` : ""}
       </label>
       {error && <p className="material-assign-hint">{error}</p>}
+      {compared && compared.length > 0 && (
+        <div className="crash-compare" data-testid="crash-compare" ref={compareRef}>
+          <div className="crash-compare-controls">
+            {curveKeys.length > 0 && (
+              <label className="mesh-field">
+                <span>Eğri</span>
+                <select aria-label="Karşılaştırma eğrisi" value={curveKey} onChange={(e) => setCurveKey(e.target.value)}>
+                  {curveKeys.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="mesh-field">
+              <span>t üst (ms)</span>
+              <input
+                aria-label="Grafik zaman üst sınırı"
+                value={tMaxRaw}
+                placeholder="tümü"
+                onChange={(e) => setTMaxRaw(e.target.value)}
+              />
+            </label>
+            {onAnimate && (
+              <button
+                type="button"
+                className="doe-btn doe-btn-ghost"
+                data-testid="crash-compare-anim-open"
+                disabled={compared.length !== 2 || !compared.every((r) => r.solver_ran && hasResults(r))}
+                title="İki koşunun deforme şeklini viewport'ta yan yana, ortak zamanla açar (tam 2 çözülmüş koşu)"
+                onClick={() => {
+                  const [a, b] = compared;
+                  onAnimate({
+                    id: a.id,
+                    title: `#${a.id} ${label(a)}`,
+                    compareWith: { id: b.id, title: `#${b.id} ${label(b)}` },
+                  });
+                }}
+              >
+                Animasyon yan yana
+              </button>
+            )}
+          </div>
+          {series.length > 0 ? (
+            <CrashForceChart
+              time={series[0].time ?? []}
+              series={series}
+              title={curveKey.startsWith("acc_g") ? "İvme · g" : "Kuvvet · kN"}
+              unit={curveKey.startsWith("acc_g") ? "g" : "kN"}
+              yLabel={curveKey.startsWith("acc_g") ? "ivme" : "kuvvet"}
+              showMean={!curveKey.startsWith("acc_g")}
+            />
+          ) : (
+            <p className="doe-empty">Seçili koşularda bu eğri yok.</p>
+          )}
+          <div className="crash-history-scroll">
+            <table className="doe-table crash-compare-table">
+              <thead>
+                <tr>
+                  <th />
+                  {compared.map((r) => (
+                    <th key={r.id} title={label(r)}>
+                      #{r.id}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(([k, title]) => (
+                  <tr key={k}>
+                    <td>{title}</td>
+                    {compared.map((r) => (
+                      <td key={r.id} className="crash-run-num">
+                        {fmt(r.scalars[k])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {visible.length === 0 ? (
         <p className="doe-empty">{loading ? "Yükleniyor…" : "Kayıtlı crash koşusu yok."}</p>
       ) : (
@@ -254,99 +352,7 @@ export default function CrashHistory({
       )}
       {chartRun && <CrashRunCharts runId={chartRun.id} title={`#${chartRun.id} ${label(chartRun)}`} />}
       {!onAnimate && animRun && <CrashAnimationViewer runId={animRun.id} title={`#${animRun.id} ${label(animRun)}`} />}
-      <button
-        type="button"
-        className="doe-btn doe-btn-ghost crash-contact-add"
-        disabled={selected.length === 0}
-        onClick={() => void runCompare()}
-      >
-        Karşılaştır ({selected.length}/{MAX_COMPARE})
-      </button>
 
-      {compared && compared.length > 0 && (
-        <div className="crash-compare" data-testid="crash-compare">
-          <div className="crash-compare-controls">
-            {curveKeys.length > 0 && (
-              <label className="mesh-field">
-                <span>Eğri</span>
-                <select aria-label="Karşılaştırma eğrisi" value={curveKey} onChange={(e) => setCurveKey(e.target.value)}>
-                  {curveKeys.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="mesh-field">
-              <span>t üst (ms)</span>
-              <input
-                aria-label="Grafik zaman üst sınırı"
-                value={tMaxRaw}
-                placeholder="tümü"
-                onChange={(e) => setTMaxRaw(e.target.value)}
-              />
-            </label>
-            {onAnimate && (
-              <button
-                type="button"
-                className="doe-btn doe-btn-ghost"
-                data-testid="crash-compare-anim-open"
-                disabled={compared.length !== 2 || !compared.every((r) => r.solver_ran && hasResults(r))}
-                title="İki koşunun deforme şeklini viewport'ta yan yana, ortak zamanla açar (tam 2 çözülmüş koşu)"
-                onClick={() => {
-                  const [a, b] = compared;
-                  onAnimate({
-                    id: a.id,
-                    title: `#${a.id} ${label(a)}`,
-                    compareWith: { id: b.id, title: `#${b.id} ${label(b)}` },
-                  });
-                }}
-              >
-                Animasyon yan yana
-              </button>
-            )}
-          </div>
-          {series.length > 0 ? (
-            <CrashForceChart
-              time={series[0].time ?? []}
-              series={series}
-              title={curveKey.startsWith("acc_g") ? "İvme · g" : "Kuvvet · kN"}
-              unit={curveKey.startsWith("acc_g") ? "g" : "kN"}
-              yLabel={curveKey.startsWith("acc_g") ? "ivme" : "kuvvet"}
-              showMean={!curveKey.startsWith("acc_g")}
-            />
-          ) : (
-            <p className="doe-empty">Seçili koşularda bu eğri yok.</p>
-          )}
-          <div className="crash-history-scroll">
-            <table className="doe-table crash-compare-table">
-              <thead>
-                <tr>
-                  <th />
-                  {compared.map((r) => (
-                    <th key={r.id} title={label(r)}>
-                      #{r.id}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(([k, title]) => (
-                  <tr key={k}>
-                    <td>{title}</td>
-                    {compared.map((r) => (
-                      <td key={r.id} className="crash-run-num">
-                        {fmt(r.scalars[k])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

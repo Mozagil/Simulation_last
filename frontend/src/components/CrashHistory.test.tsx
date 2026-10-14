@@ -161,4 +161,22 @@ describe("CrashHistory", () => {
     await screen.findByText("koşu 4");
     expect(screen.queryByLabelText("koşu 4 yükle")).not.toBeInTheDocument();
   });
+
+  it("kullanıcı 2026-10-14: Karşılaştır düğmesi ve sonucu listenin ÜSTÜNDE (uzun listede görünmüyordu)", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2)]);
+    vi.mocked(compareCrashRuns).mockResolvedValue([
+      { ...run(1), curves: { time: [0, 1], rwall_force: [0, 1] } },
+      { ...run(2), curves: { time: [0, 1], rwall_force: [0, 2] } },
+    ]);
+    render(<CrashHistory geometryId={3931} />);
+    fireEvent.click(await screen.findByLabelText("koşu 1 seç"));
+    fireEvent.click(screen.getByLabelText("koşu 2 seç"));
+    const btn = screen.getByRole("button", { name: "Karşılaştır (2/6)" });
+    const list = screen.getByRole("list", { name: "Crash koşuları" });
+    const before = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(btn, list)).toBe(true);
+    fireEvent.click(btn);
+    const box = await screen.findByTestId("crash-compare");
+    expect(before(box, list)).toBe(true);
+  });
 });

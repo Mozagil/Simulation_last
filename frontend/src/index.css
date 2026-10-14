@@ -1020,6 +1020,12 @@ p {
   display: flex;
 }
 
+/* Geometri yüklü değilken crash animasyonu (kullanıcı 2026-10-14) — panel yüksekliğini doldurur */
+.viewer-stage-anim-only {
+  height: 100%;
+  min-height: 420px;
+}
+
 .mesh-grow-bar {
   position: absolute;
   top: 10px;
@@ -4353,6 +4359,11 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.crash-history-compare-btn {
+  margin-left: auto;
 }
 
 .crash-history-scroll {

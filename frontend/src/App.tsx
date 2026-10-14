@@ -3143,6 +3143,31 @@ function App() {
     );
   }
 
+  // 1.23 C5 düzeltme (kullanıcı 2026-10-14: "animasyon çalışmadı"): deforme şekil geometri
+  // yüklü olmasa da görünür — geometrisiz ekranda yükleme alanının yerine.
+  const crashAnimView = (
+    analysisTab === "crash" && crashAnim && (
+      <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
+        {crashAnim.compareWith ? (
+          <CrashCompareAnim
+            key={`${crashAnim.id}-${crashAnim.compareWith.id}`}
+            a={crashAnim}
+            b={crashAnim.compareWith}
+            onClose={() => setCrashAnim(null)}
+          />
+        ) : (
+          <CrashAnimationViewer
+            key={crashAnim.id}
+            runId={crashAnim.id}
+            title={crashAnim.title}
+            docked
+            onClose={() => setCrashAnim(null)}
+          />
+        )}
+      </div>
+    )
+  );
+
   return (
     <main className="page" data-collapsed={sidebarCollapsed ? "" : undefined}>
       <div className="toolbar">
@@ -3955,26 +3980,7 @@ function App() {
             </div>
             <div className="viewer-body">
               <div className="viewer-stage">
-                {analysisTab === "crash" && crashAnim && (
-                  <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
-                    {crashAnim.compareWith ? (
-                      <CrashCompareAnim
-                        key={`${crashAnim.id}-${crashAnim.compareWith.id}`}
-                        a={crashAnim}
-                        b={crashAnim.compareWith}
-                        onClose={() => setCrashAnim(null)}
-                      />
-                    ) : (
-                      <CrashAnimationViewer
-                        key={crashAnim.id}
-                        runId={crashAnim.id}
-                        title={crashAnim.title}
-                        docked
-                        onClose={() => setCrashAnim(null)}
-                      />
-                    )}
-                  </div>
-                )}
+                {crashAnimView}
                 {showMesh && meshPreview !== null && meshPicks.length > 0 && (
                   <div className="mesh-grow-bar">
                     <ButtonGroup
@@ -4336,6 +4342,8 @@ function App() {
               </div>
             )}
           </>
+        ) : analysisTab === "crash" && crashAnim ? (
+          <div className="viewer-stage viewer-stage-anim-only">{crashAnimView}</div>
         ) : (
           <div className="viewer-placeholder viewer-placeholder-upload">
         <div className="geo-upload-columns">
