@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, jet, lerpFrame, scaledPos, triangulate, VIEW_VECTORS, wallFromRequest } from "./CrashAnimationViewer";
+import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, jet, lerpFrame, pickVideoMime, scaledPos, triangulate, VIEW_VECTORS, videoFileName, wallFromRequest } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -102,5 +102,19 @@ describe("CrashHistory → deforme şekil", () => {
     expect(screen.getByTestId("anim-stub")).toHaveTextContent("7 #7 çözülmüş");
     fireEvent.click(btn);
     expect(screen.queryByTestId("anim-stub")).not.toBeInTheDocument();
+  });
+});
+
+describe("1.23 C1 — animasyon video kaydı", () => {
+  it("pickVideoMime: MP4 destekleniyorsa MP4, yoksa WebM; kayıt yoksa null", () => {
+    expect(pickVideoMime((m) => m.startsWith("video/mp4"))).toBe("video/mp4;codecs=avc1");
+    expect(pickVideoMime((m) => m === "video/webm")).toBe("video/webm");
+    expect(pickVideoMime(() => false)).toBeNull();
+    expect(pickVideoMime(undefined)).toBeNull();
+  });
+
+  it("videoFileName: koşu + skaler, uzantı biçimden; güvensiz karakterler _", () => {
+    expect(videoFileName(325, "1:Plastic_Strain", "video/mp4;codecs=avc1")).toBe("crash_run325_1_Plastic_Strain.mp4");
+    expect(videoFileName(7, "disp_mag", "video/webm;codecs=vp9")).toBe("crash_run7_disp_mag.webm");
   });
 });

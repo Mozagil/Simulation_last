@@ -4570,6 +4570,13 @@ p {
   margin: 6px 0;
 }
 
+/* 1.23 C1 — dışa aktarma (video) */
+.crash-anim-export {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
 .crash-anim-controls input[type="range"] {
   width: 100%;
 }

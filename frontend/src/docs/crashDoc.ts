@@ -245,6 +245,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Kuvvet–zaman grafiği", what: "Rijit duvar / temas / kesit kuvveti (|F|, kN). Y ekseni adı + birim + ölçek; nokta = tepe değer ve zamanı. Kesikli çizgi = ortalama kuvvet: temas aralığında (gölgeli; |F| > tepenin %1'i, ilk–son örnek arası) impuls / süre. CFC eşi olan ham seriye tepe/ortalama işaretlenmez." },
       { name: "Filtre · CFC (post-process)", what: "Koşu bittikten sonra kayıtlı ham eğriden SAE J211 süzme (60, 180, 600, 1000): sınıfı seç, Uygula. Çözücü yeniden koşmaz; ham eğri korunur, süzülmüş eğri grafiğe ve tepe değerlerine eklenir (ör. ham 122 kN → CFC 60 65.4 kN).", when: "Kuvvet tepesi okumadan önce (60–600); kafa ivmesi / HIC için 1000." },
       { name: "3B animasyon", what: "Deforme şekil kareleri; renk alanı (ör. plastik şekil değiştirme), ▶ oynat, eksen görünümleri, ⤢ büyüt. Çözümden sonra kendiliğinden açılır; geçmişten ▶ ile tekrar açılır.", card: "/ANIM/DT" },
+      { name: "Video indir (MP4 / WebM)", what: "Animasyonu baştan sona bir kez oynatıp 1280×720, 30 kare/s video dosyası indirir (crash_run<no>_<skaler>.mp4). Kayıt süresi = 3 s / hız; ekrandaki kutu boyutundan bağımsız. Görünüm, renk skaleri, deformasyon ölçeği ve hız ekrandaki gibi; üstte koşu no + t (ms) + skaler, altta renk ölçeği min–max yazılı. Biçim tarayıcıya bağlı: MP4 destekliyse MP4, değilse WebM." },
     ],
   },
   {

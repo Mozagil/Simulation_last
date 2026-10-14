@@ -49,6 +49,62 @@ export const DEFORM_SCALES = [1, 2, 5, 10] as const;
 /** 1.23 A5 — oynatma hızı: 1× = tüm koşu ~3 sn. */
 export const PLAY_SPEEDS = [0.25, 0.5, 1, 2] as const;
 const PLAY_SECONDS = 3;
+const VIDEO_FPS = 30;
+/** 1.23 C1: video çözünürlüğü (ekrandaki kutudan bağımsız; 16:9, H.264 çift piksel) */
+const VIDEO_SIZE: [number, number] = [1280, 720];
+
+/** 1.23 C1 — video kaydı: tarayıcının desteklediği ilk biçim (MP4 önce; yoksa WebM). */
+export const VIDEO_MIMES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"] as const;
+
+export function pickVideoMime(isSupported: ((m: string) => boolean) | undefined): string | null {
+  if (!isSupported) return null;
+  return VIDEO_MIMES.find((m) => isSupported(m)) ?? null;
+}
+
+export function videoFileName(runId: number, scalar: string, mime: string): string {
+  const safe = scalar.replace(/[^A-Za-z0-9_-]+/g, "_");
+  return `crash_run${runId}_${safe}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
+}
+
+/** Video karesi: 3B görüntü + üstte koşu / t / renk skaleri, altta renk ölçeği (ekrandaki ile aynı veri). */
+function drawVideoFrame(
+  ctx: CanvasRenderingContext2D,
+  src: HTMLCanvasElement,
+  head: string,
+  legend: { lo: string; hi: string } | null,
+) {
+  const { width: w, height: h } = ctx.canvas;
+  ctx.drawImage(src, 0, 0, w, h);
+  const fs = Math.max(12, Math.round(h / 32));
+  ctx.font = `600 ${fs}px system-ui, sans-serif`;
+  ctx.textBaseline = "top";
+  const pad = Math.round(fs * 0.6);
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, 0, w, fs + pad * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(head, pad, pad);
+  if (legend) {
+    const barW = Math.round(w * 0.4);
+    const barH = Math.round(fs * 0.6);
+    const x = Math.round((w - barW) / 2);
+    const y = h - barH - fs - pad * 2;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x - pad * 6, y - pad, barW + pad * 12, barH + fs + pad * 2.5);
+    const g = ctx.createLinearGradient(x, 0, x + barW, 0);
+    for (const s of [0, 0.125, 0.375, 0.625, 0.875, 1]) {
+      const [r, gg, b] = jet(s);
+      g.addColorStop(s, `rgb(${Math.round(r * 255)},${Math.round(gg * 255)},${Math.round(b * 255)})`);
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, barW, barH);
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "left";
+    ctx.fillText(legend.lo, x, y + barH + pad / 2);
+    ctx.textAlign = "right";
+    ctx.fillText(legend.hi, x + barW, y + barH + pad / 2);
+    ctx.textAlign = "left";
+  }
+}
 
 /** Kareler arası doğrusal ara-değer: f kesirli kare indeksi. Iraksamış koşuda
  * null (NaN/inf) gelen değer `fallback` olur — NaN geometriyi tümden siler. */
@@ -151,6 +207,8 @@ export default function CrashAnimationViewer({
     lines: THREE.LineSegments;
     wall: THREE.Object3D | null;
     render: () => void;
+    /** 1.23 C1: video için sabit çözünürlük; null → kutu boyutuna dön */
+    videoSize: (size: [number, number] | null) => void;
   } | null>(null);
   // 1.23 C2/C3: mesh çizgileri, rijit duvar, eleman seçimi
   const [showMesh, setShowMesh] = useState(false);
@@ -159,6 +217,18 @@ export default function CrashAnimationViewer({
   const [pick, setPick] = useState<{ face: number; node: number } | null>(null);
   /** 1.17g — hazır görünümler: model eksenlerine göre kamera konumu */
   const viewRef = useRef<((dir: ViewDir) => void) | null>(null);
+  // 1.23 C1: animasyon video kaydı (MediaRecorder; ek bağımlılık yok)
+  const videoMime = useMemo(
+    () => pickVideoMime(typeof MediaRecorder === "undefined" ? undefined : (m) => MediaRecorder.isTypeSupported(m)),
+    [],
+  );
+  const [recording, setRecording] = useState(false);
+  const recRef = useRef<{
+    ctx: CanvasRenderingContext2D;
+    recorder: MediaRecorder;
+    track: CanvasCaptureMediaStreamTrack;
+  } | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -314,7 +384,21 @@ export default function CrashAnimationViewer({
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
 
-    meshRef.current = { geom, edgeGeom, lines, wall, render };
+    const fit = (w: number, h: number, ratio: number, style: boolean) => {
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(w, h, style);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      render();
+    };
+    let videoLock = false;
+    const videoSize = (sz: [number, number] | null) => {
+      videoLock = sz != null;
+      // video: piksel oranı 1, tuval CSS boyutu değişmez (ekrandaki kutu oynamaz)
+      if (sz) fit(sz[0], sz[1], 1, false);
+      else fit(holder.clientWidth || width, holder.clientHeight || height, Math.min(window.devicePixelRatio, 2), true);
+    };
+    meshRef.current = { geom, edgeGeom, lines, wall, render, videoSize };
     viewRef.current = (dir: ViewDir) => {
       const d = size * 1.25;
       const v = VIEW_VECTORS[dir];
@@ -333,7 +417,7 @@ export default function CrashAnimationViewer({
     const ro = new ResizeObserver(() => {
       const w = holder.clientWidth;
       const h = holder.clientHeight;
-      if (w < 2 || h < 2) return;
+      if (w < 2 || h < 2 || videoLock) return;
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
@@ -424,7 +508,21 @@ export default function CrashAnimationViewer({
     m.geom.computeBoundingSphere();
     m.geom.computeVertexNormals();
     m.render();
-  }, [data, tri, edges, frameF, scalar, deform, wallSpec]);
+    // 1.23 C1: kayıtta kare, render ile aynı görevde 2B tuvale kopyalanır
+    // (WebGL çizim tamponu korunmuyor; sonradan okumak boş verir).
+    const rec = recRef.current;
+    const gl = holderRef.current?.querySelector("canvas");
+    if (rec && gl) {
+      const meta = data.scalars[scalar];
+      drawVideoFrame(
+        rec.ctx,
+        gl,
+        `Koşu #${runId} · t = ${fmt((fa.time ?? 0) + t * ((fb.time ?? 0) - (fa.time ?? 0)))} ms · ${SCALAR_LABELS[scalar] ?? scalar}${deform !== 1 ? ` · ×${deform} çizim` : ""}`,
+        meta ? { lo: fmt(meta.min), hi: fmt(meta.max) } : null,
+      );
+      rec.track.requestFrame();
+    }
+  }, [data, tri, edges, frameF, scalar, deform, wallSpec, runId, recording]);
 
   // 1.23 C2/C3: görünürlük düğmeleri
   useEffect(() => {
@@ -454,6 +552,63 @@ export default function CrashAnimationViewer({
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [playing, data, speed]);
+
+  // 1.23 C1: kayıt — 0'dan son kareye bir kez, sabit adımla (VIDEO_FPS kare/s; süre =
+  // PLAY_SECONDS / hız). Her adımda kare tuvale yazılıp akışa elle itilir (requestFrame);
+  // rAF yerine zamanlayıcı: sekme arka plandayken de kareler eksiksiz biter.
+  useEffect(() => {
+    if (!recording || !data) return;
+    const last = data.frames.length - 1;
+    const n = Math.max(2, Math.round((PLAY_SECONDS / speed) * VIDEO_FPS));
+    let k = 0;
+    let timer = 0;
+    const tick = () => {
+      k += 1;
+      setFrameF(Math.min((k / n) * last, last));
+      timer = window.setTimeout(k >= n ? () => recRef.current?.recorder.stop() : tick, 1000 / VIDEO_FPS);
+    };
+    timer = window.setTimeout(tick, 1000 / VIDEO_FPS);
+    return () => clearTimeout(timer);
+  }, [recording, data, speed]);
+
+  const startRecording = () => {
+    const gl = holderRef.current?.querySelector("canvas");
+    if (!videoMime || !gl || !data || recording || !meshRef.current) return;
+    meshRef.current.videoSize(VIDEO_SIZE);
+    const out = document.createElement("canvas");
+    [out.width, out.height] = VIDEO_SIZE;
+    const ctx = out.getContext("2d");
+    if (!ctx) return;
+    const stream = out.captureStream(0);
+    const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    const recorder = new MediaRecorder(stream, {
+      mimeType: videoMime,
+      videoBitsPerSecond: 8_000_000,
+    });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
+    recorder.onstop = () => {
+      recRef.current = null;
+      meshRef.current?.videoSize(null);
+      setRecording(false);
+      if (chunks.length === 0) {
+        setVideoError("Video kaydedilemedi (tarayıcı kare vermedi).");
+        return;
+      }
+      const url = URL.createObjectURL(new Blob(chunks, { type: videoMime }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = videoFileName(runId, scalar, videoMime);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    recRef.current = { ctx, recorder, track };
+    setVideoError(null);
+    setPlaying(false);
+    recorder.start();
+    setFrameF(0);
+    setRecording(true); // çizim efekti `recording` ile de koşar → ilk kare (t = 0) yazılır
+  };
 
   // 1.23 A4: veri — son karede en büyük yer değiştirme ve model boyutuna oranı.
   const dispInfo = useMemo(() => {
@@ -546,6 +701,7 @@ export default function CrashAnimationViewer({
               type="button"
               className="doe-btn doe-btn-ghost"
               aria-label={playing ? "Durdur" : "Oynat"}
+              disabled={recording}
               onClick={() => setPlaying((p) => !p)}
             >
               {playing ? "❚❚" : "▶"}
@@ -586,6 +742,23 @@ export default function CrashAnimationViewer({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="crash-anim-export">
+            <button
+              type="button"
+              className="doe-btn doe-btn-ghost"
+              data-testid="crash-anim-video"
+              disabled={!videoMime || recording}
+              onClick={startRecording}
+              title={
+                videoMime
+                  ? "Baştan sona bir kez oynatıp video dosyası indirir (görünüm, renk, ölçek, hız ekrandaki gibi)"
+                  : "Bu tarayıcı video kaydını desteklemiyor"
+              }
+            >
+              {recording ? "● Kaydediliyor…" : `Video indir (${videoMime?.startsWith("video/mp4") ? "MP4" : "WebM"})`}
+            </button>
+            {videoError && <span className="crash-run-failed">{videoError}</span>}
           </div>
           <div className="crash-var-chips" role="group" aria-label="Görünürlük">
             <button
