@@ -578,6 +578,27 @@ describe("CrashPanel", () => {
     expect(onPartHover).toHaveBeenLastCalledWith(null);
   });
 
+  it("1.23 C4: parça 'Rijit gövde' = kütlesiz /RBODY kartı; kapatınca kalkar", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "jc4", geometry_id: 1, status: "rad_only", message: "",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Parçalar/ }));
+    const rigid = screen.getByLabelText("Parça 1 rijit");
+    fireEvent.click(rigid);
+    expect(rigid).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].rigid_bodies).toEqual([{ name: "rbody_1", part_id: 1, mass_kg: 0, ikrem: 1 }]);
+    fireEvent.click(rigid);
+    expect(rigid).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(postCrashSolve).mock.calls[1][0].rigid_bodies).toEqual([]);
+  });
+
   it("tasarım: akordeon özetleri + hazır sayacı; yön düğmeleri duvar normalini verir", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j12", geometry_id: 1, status: "rad_only", message: "",

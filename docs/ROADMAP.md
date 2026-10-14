@@ -1575,7 +1575,11 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - C3 ✅ Animasyonda "Rijit duvar" düğmesi: koşu isteğinden (`barrier.wall`) düzlem (model
   boyutunun 1,2 katı kare) ya da silindir (çap, eksen); duvarsız koşuda düğme yok.
   Test (C2/C3): `CrashAnimationViewer.test.tsx` (`faceEdges`, `wallFromRequest`).
-- C4 Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği.
+- C4 ✅ (2026-10-14) Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği. Ek tanımlar'da
+  "Ek kütle" kartı (/ADMAS, toplam / düğüm başına; tek noktalık bölge = nokta kütle); parça
+  satırında "Rijit gövde" (ek kütlesiz /RBODY, kullanıcı kararı A: Ikrem 1 — Radioss varsayılanı 0
+  düğümleri rijit duvardan çıkarıyordu, WARNING 446); /RBODY kartında "rijit duvarla temas" seçeneği.
+  Ölçüldü: #154 (plaka + küre) küre parça kartıyla rijit → Fmax 10.263 kN, IE 1.951 J (bölgeyle aynı).
 - C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
   - Grafik + skaler karşılaştırma 1.16b'den beri var (≤ 6 koşu, eğri seçimi, skaler tablosu).
   - C5a ✅ (2026-10-14) "Animasyon yan yana": 2 koşu viewport'ta yan yana, ortak fiziksel zaman (oynat / kaydırıcı / hız); kısa koşu son karede ("koşu sonu").

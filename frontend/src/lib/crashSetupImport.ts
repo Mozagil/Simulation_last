@@ -108,6 +108,7 @@ export function cardsFromRequest(req: Rec, impactAxis: Axis): LoadCard[] {
     const c = next("rbody", r);
     c.mass = str(r.mass_kg, "");
     c.hic = r.th_accel === true;
+    c.keepWall = r.ikrem === 1;
     const dofs = typeof r.name === "string" ? rbBcs.get(r.name) : undefined;
     if (dofs) {
       if (dofs === railDofs(impactAxis)) c.rbMotion = "rail";
@@ -116,6 +117,13 @@ export function cardsFromRequest(req: Rec, impactAxis: Axis): LoadCard[] {
         c.dofs = dofs;
       }
     }
+    cards.push(c);
+  }
+  // 1.23 C4 — /ADMAS ek kütle
+  for (const r of list("added_masses")) {
+    const c = next("admas", r);
+    c.mass = str(r.mass_kg, "");
+    c.massDist = r.distribution === "per_node" ? "per_node" : "total";
     cards.push(c);
   }
   return cards;

@@ -5,14 +5,17 @@
  * Parça rolü bütün parçaya uygulanır; buradaki kartlar bir bölgeye
  * (Physical Group) ya da parçaya ek tanım ekler: Bölgeyi kilitle (/BCS),
  * Kütle / kızak (/RBODY [+ ray /BCS]), Sabit hızla it (/IMPVEL), Parçaya
- * ayrı ilk hız (/INIVEL). Her kart kapalıyken tek cümleyle özetlenir.
+ * ayrı ilk hız (/INIVEL), Ek kütle (/ADMAS; 1.23 C4 — rijitlik yok, tek noktalık
+ * bölgede nokta kütle). Her kart kapalıyken tek cümleyle özetlenir.
  * "Hazır kurulumlar" yalnız kartı ekler — değerleri (kütle vb.) mühendis
  * girer; öneri yok.
  */
 import { useState } from "react";
 import Kw from "./Kw";
 
-export type CardKind = "inivel" | "bcs" | "impvel" | "rbody";
+export type CardKind = "inivel" | "bcs" | "impvel" | "rbody" | "admas";
+/** /ADMAS: toplam kütle düğümlere eşit dağıtılır (Iflag 1) ya da her düğüme bu kütle (0). */
+export type MassDist = "total" | "per_node";
 export type RbMotion = "rail" | "free" | "custom";
 export type Axis = "X" | "Y" | "Z";
 
@@ -34,6 +37,11 @@ export interface LoadCard {
   rbMotion: RbMotion;
   /** Ana düğüm ivmesi TH'ye (HIC kanalı). */
   hic: boolean;
+  /** 1.23 C4 — Ek kütle dağılımı */
+  massDist: MassDist;
+  /** 1.23 C4 — /RBODY Ikrem: false (0) = rijit gövde düğümleri rijit duvardan çıkarılır
+   * (Radioss varsayılanı; WARNING 446), true (1) = duvarda kalır. */
+  keepWall: boolean;
 }
 
 export type PartRole = "moving" | "fixed" | "free";
@@ -43,6 +51,7 @@ export const CARD_LABEL: Record<CardKind, string> = {
   rbody: "Kütle / kızak",
   impvel: "Sabit hızla it",
   inivel: "Parçaya ayrı ilk hız",
+  admas: "Ek kütle",
 };
 
 /** Ekleme düğmesinin "ne zaman" satırı. */
@@ -51,6 +60,7 @@ const CARD_WHEN: Record<CardKind, string> = {
   rbody: "Bölge rijit + kütle. Kızak, impaktör, araç kütlesi.",
   impvel: "Hız çözüm boyunca sabit. ROPS, kapı intrüzyonu.",
   inivel: "Parçalar farklı hızla gelir. 1 · Çarpma hızı yerine geçer.",
+  admas: "Kütle eklenir, rijitlik yok. Tek noktalık bölge = nokta kütle (motor, akü).",
 };
 
 const DOF_NAMES = ["Tx", "Ty", "Tz", "Rx", "Ry", "Rz"] as const;
@@ -66,9 +76,11 @@ export function newCard(id: number, kind: CardKind, target: string): LoadCard {
     speed: "10", dir: ["-1", "0", "0"],
     dofs: "111111",
     axis: "X", velocity: "-1", tStart: "0", tStop: "0",
-    mass: kind === "rbody" ? "" : "0",
+    mass: kind === "rbody" || kind === "admas" ? "" : "0",
     rbMotion: "free",
     hic: false,
+    massDist: "total",
+    keepWall: false,
   };
 }
 
@@ -109,10 +121,14 @@ export function cardSummary(c: LoadCard, impactAxis: Axis = "X"): string {
     return `${t} → ${c.axis} yönünde ${c.velocity} m/s sabit · ${until}`;
   }
   if (c.kind === "inivel") return `${t} → ${c.speed} m/s · yön (${c.dir.join(", ")})`;
+  if (c.kind === "admas") {
+    const m = c.mass.trim() === "" ? "kütle girilmedi" : `+ ${c.mass} kg`;
+    return `${t} → ${m} · ${c.massDist === "total" ? "düğümlere eşit dağıtılır" : "her düğüme"}`;
+  }
   const mass = c.mass.trim() === "" ? "kütle girilmedi" : `+ ${c.mass} kg`;
   const motion =
     c.rbMotion === "rail" ? `rayda (yalnız ${impactAxis.toLowerCase()})` : c.rbMotion === "free" ? "serbest" : dofText(c.dofs);
-  return `${t} → rijit ${mass} · ${motion}${c.hic ? " · ivme kaydı" : ""}`;
+  return `${t} → rijit ${mass} · ${motion}${c.hic ? " · ivme kaydı" : ""}${c.keepWall ? " · duvarda" : ""}`;
 }
 
 /** Kartlar → /crash/solve alanları. `impactAxis`: çarpma (hız) ekseni — ray için. */
@@ -122,6 +138,7 @@ export function cardsPayload(cards: LoadCard[], impactAxis: Axis = "X") {
     boundary_conditions: [] as Record<string, unknown>[],
     imposed_velocities: [] as Record<string, unknown>[],
     rigid_bodies: [] as Record<string, unknown>[],
+    added_masses: [] as Record<string, unknown>[],
   };
   cards.forEach((c, i) => {
     const name = `${c.kind}_${i + 1}`;
@@ -135,6 +152,10 @@ export function cardsPayload(cards: LoadCard[], impactAxis: Axis = "X") {
     } else if (c.kind === "bcs") {
       if (!/^[01]{6}$/.test(c.dofs)) throw new Error(`${lab}: DOF 6 hane 0/1 olmalı (Tx Ty Tz Rx Ry Rz).`);
       out.boundary_conditions.push({ name, ...t, dofs: c.dofs });
+    } else if (c.kind === "admas") {
+      const mass = n(c.mass, `${lab} kütle`);
+      if (!(mass > 0)) throw new Error(`${lab}: kütle pozitif olmalı.`);
+      out.added_masses.push({ name, ...t, mass_kg: mass, distribution: c.massDist });
     } else if (c.kind === "impvel") {
       out.imposed_velocities.push({
         name, ...t, direction: c.axis, velocity_m_s: n(c.velocity, `${lab} hız`),
@@ -143,6 +164,7 @@ export function cardsPayload(cards: LoadCard[], impactAxis: Axis = "X") {
     } else {
       out.rigid_bodies.push({
         name, ...t, mass_kg: n(c.mass, `${lab} kütle`), ...(c.hic ? { th_accel: true } : {}),
+        ...(c.keepWall ? { ikrem: 1 } : {}),
       });
       const dofs = c.rbMotion === "rail" ? railDofs(impactAxis) : c.rbMotion === "custom" ? c.dofs : null;
       if (dofs !== null) {
@@ -193,6 +215,13 @@ function KindIcon({ kind }: { kind: CardKind }) {
         <path d="M4 14h8" />
       </svg>
     );
+  if (kind === "admas")
+    return (
+      <svg {...common} stroke="#6b4c9a">
+        <circle cx="8" cy="9" r="4" />
+        <path d="M8 2v3" />
+      </svg>
+    );
   if (kind === "impvel")
     return (
       <svg {...common} stroke="#3f5f8a">
@@ -206,8 +235,14 @@ function KindIcon({ kind }: { kind: CardKind }) {
   );
 }
 
-const ADD_ORDER: CardKind[] = ["bcs", "rbody", "impvel", "inivel"];
-const KIND_CARD: Record<CardKind, string> = { bcs: "/BCS", rbody: "/RBODY", impvel: "/IMPVEL", inivel: "/INIVEL" };
+const ADD_ORDER: CardKind[] = ["bcs", "rbody", "admas", "impvel", "inivel"];
+const KIND_CARD: Record<CardKind, string> = {
+  bcs: "/BCS",
+  rbody: "/RBODY",
+  admas: "/ADMAS",
+  impvel: "/IMPVEL",
+  inivel: "/INIVEL",
+};
 
 export default function CrashLoadCards({
   cards,
@@ -397,6 +432,38 @@ export default function CrashLoadCards({
                   ))}
                 </div>
                 {c.kind === "bcs" && dofEditor(c, k)}
+                {c.kind === "admas" && (
+                  <>
+                    {field("Kütle", c.mass, (v) => update(c.id, { mass: v }), "kg")}
+                    <div className="crash-card-radios" role="radiogroup" aria-label={`${CARD_LABEL[c.kind]} #${k} dağılım`}>
+                      <span className="crash-card-sub">Dağılım</span>
+                      {(
+                        [
+                          ["total", "Toplam — düğümlere eşit dağıtılır", "bölgenin toplam ek kütlesi bu değer (Iflag 1)"],
+                          ["per_node", "Düğüm başına", "her düğüme bu kütle eklenir (Iflag 0)"],
+                        ] as [MassDist, string, string][]
+                      ).map(([m, title, sub]) => (
+                        <label key={m} className={c.massDist === m ? "crash-radio-row active" : "crash-radio-row"}>
+                          <input
+                            type="radio"
+                            name={`admas-${c.id}`}
+                            checked={c.massDist === m}
+                            disabled={disabled}
+                            onChange={() => update(c.id, { massDist: m })}
+                          />
+                          <span>
+                            <strong>{title}</strong>
+                            <span className="crash-behavior-hint">{sub}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="crash-behavior-hint">
+                      Rijitlik eklemez; bölgedeki düğümler esnek kalır. Kütle ağırlık merkezinde, rijit bağlı isteniyorsa
+                      "Kütle / kızak".
+                    </p>
+                  </>
+                )}
                 {c.kind === "rbody" && (
                   <>
                     {field("Ek kütle", c.mass, (v) => update(c.id, { mass: v }), "kg")}
@@ -424,6 +491,19 @@ export default function CrashLoadCards({
                         </label>
                       ))}
                     </div>
+                    <label className="crash-grav-check">
+                      <input
+                        type="checkbox"
+                        aria-label={`${CARD_LABEL[c.kind]} #${k} rijit duvarla temas`}
+                        checked={c.keepWall}
+                        disabled={disabled}
+                        onChange={(e) => update(c.id, { keepWall: e.target.checked })}
+                      />
+                      <span>Rijit duvarla temas kalsın (Ikrem 1)</span>
+                      <span className="crash-behavior-hint">
+                        kapalı = Radioss varsayılanı: rijit gövde düğümleri rijit duvardan çıkarılır (WARNING 446)
+                      </span>
+                    </label>
                     {c.rbMotion === "custom" && dofEditor(c, k)}
                     <label className="material-check">
                       <input

@@ -53,4 +53,13 @@ describe("crashSetupImport (1.23 B1c)", () => {
     expect(back.boundary_conditions).toContainEqual({ name: "bcs_2", region: "plaka_kenar", dofs: "111111" });
     expect(back.initial_velocities[0]).toMatchObject({ part_id: 1, speed_m_s: 5, direction: [0, 0, -1] });
   });
+
+  it("1.23 C4: added_masses → Ek kütle kartı; gidiş-dönüş aynı", () => {
+    const req = { added_masses: [{ name: "m1", part_id: 1, mass_kg: 3, distribution: "per_node" }] };
+    const cards = cardsFromRequest(req, "X");
+    expect(cards.map((c) => [c.kind, c.target, c.mass, c.massDist])).toEqual([["admas", "part:1", "3", "per_node"]]);
+    expect(cardsPayload(cards, "X").added_masses).toEqual([
+      { name: "admas_1", part_id: 1, mass_kg: 3, distribution: "per_node" },
+    ]);
+  });
 });

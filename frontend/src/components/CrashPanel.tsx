@@ -20,7 +20,14 @@ import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { energySeriesFromCurves, FORCE_CHART_NOTE, forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
-import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
+import CrashLoadCards, {
+  CARD_LABEL,
+  cardSummary,
+  cardsPayload,
+  newCard,
+  type LoadCard,
+  type PartRole,
+} from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
 import CrashLiveProgress from "./CrashLiveProgress";
@@ -1027,6 +1034,34 @@ export default function CrashPanel({
                     </span>
                   </div>
                   <p className="crash-behavior-hint">{ROLE_OPTIONS.find((o) => o.id === role)?.hint}</p>
+                  {/* 1.23 C4: parça rijit = parçayı hedefleyen kütlesiz /RBODY kartı (Ek tanımlar'da görünür) */}
+                  <label className="crash-grav-check crash-part-rigid">
+                    <input
+                      type="checkbox"
+                      aria-label={`Parça ${pid} rijit`}
+                      checked={loadCards.some((c) => c.kind === "rbody" && c.target === `part:${pid}`)}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setLoadCards((cs) =>
+                          e.target.checked
+                            ? [
+                                ...cs,
+                                {
+                                  ...newCard(cs.reduce((m, c) => Math.max(m, c.id), 0) + 1, "rbody", `part:${pid}`),
+                                  mass: "0",
+                                  // kullanıcı kararı A (2026-10-14): rijit parça rijit duvara çarpsın (Ikrem 1);
+                                  // Radioss varsayılanı 0 düğümleri duvardan çıkarır (WARNING 446)
+                                  keepWall: true,
+                                },
+                              ]
+                            : cs.filter((c) => !(c.kind === "rbody" && c.target === `part:${pid}`)),
+                        )
+                      }
+                    />
+                    <span>Rijit gövde</span>
+                    <KwRef card="/RBODY" />
+                    <span className="crash-behavior-hint">esnek değil; kütle parçanın kendi kütlesi (+ ek yok); rijit duvarla temas kalır</span>
+                  </label>
                 </div>
               );
             })}

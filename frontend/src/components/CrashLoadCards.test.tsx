@@ -23,7 +23,19 @@ describe("cardsPayload / özet / kapsama", () => {
       boundary_conditions: [{ name: "bcs_2", region: "taban", dofs: "111000" }],
       imposed_velocities: [{ name: "impvel_3", part_id: 1, direction: "Z", velocity_m_s: -2, t_start_ms: 0, t_stop_ms: 5 }],
       rigid_bodies: [{ name: "rbody_4", region: "kizak", mass_kg: 50 }],
+      added_masses: [],
     });
+  });
+
+  it("1.23 C4: Ek kütle (/ADMAS) — toplam / düğüm başına; pozitif olmalı; özet", () => {
+    const m: LoadCard = { ...newCard(1, "admas", "region:motor_nokta"), mass: "12.5" };
+    expect(cardsPayload([m]).added_masses).toEqual([
+      { name: "admas_1", region: "motor_nokta", mass_kg: 12.5, distribution: "total" },
+    ]);
+    expect(cardsPayload([{ ...m, massDist: "per_node" }]).added_masses[0]).toMatchObject({ distribution: "per_node" });
+    expect(cardSummary(m)).toBe("motor_nokta → + 12.5 kg · düğümlere eşit dağıtılır");
+    expect(() => cardsPayload([{ ...m, mass: "0" }])).toThrow(/pozitif/);
+    expect(() => cardsPayload([{ ...m, mass: "" }])).toThrow(/sayı olmalı/);
   });
 
   it("kızak rayda: çarpma ekseni serbest, ray /BCS'i rijit gövdeye bağlanır; ivme kaydı", () => {
@@ -97,5 +109,14 @@ describe("CrashLoadCards", () => {
   it("bölge yoksa yönlendirme metni", () => {
     render(<Harness regions={[]} />);
     expect(screen.getByText(/Bölge yok/)).toBeInTheDocument();
+  });
+});
+
+describe("1.23 C4 — rijit gövde Ikrem", () => {
+  it("duvarla temas kalsın → ikrem 1; kapalı → alan yok (Radioss varsayılanı); özet", () => {
+    const rb: LoadCard = { ...newCard(1, "rbody", "part:0"), mass: "0", keepWall: true };
+    expect(cardsPayload([rb]).rigid_bodies).toEqual([{ name: "rbody_1", part_id: 0, mass_kg: 0, ikrem: 1 }]);
+    expect(cardsPayload([{ ...rb, keepWall: false }]).rigid_bodies[0]).not.toHaveProperty("ikrem");
+    expect(cardSummary(rb)).toBe("parça #0 → rijit + 0 kg · serbest · duvarda");
   });
 });
