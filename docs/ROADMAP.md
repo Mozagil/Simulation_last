@@ -1624,6 +1624,28 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   30 mm, n 100, min 1): eğri yüzler 38 → ~380 eleman, düzlemler aynı. Test:
   `test_mesh_curved_quad.py`, `meshCurvature.test.ts`.
 
+*1.24 — Crash: can crush şablonu, genel temas, yay, malzeme kütüphanesi (kullanıcı listesi 2026-10-14)*
+Her madde ayrı küçük adım ve ayrı PR; sıra: a1 → a2 → b1 → b2 → d → e → f → g.
+- a1 ✅ (2026-10-14) Genel temas (backend): `CrashContactParams.all_parts` (yalnız TYPE24;
+  master/slave verilmez). Tüm kabuk parçalar `/SURF/PART/7901`, tüm solid parçalar
+  `/SURF/PART/EXT/7902`; yalnız biri varsa tek öz TYPE24 (surf_ID2 = 0), ikisi de varsa üç
+  TYPE24 (kabuk öz, solid öz, kabuk ↔ solid), aynı bayraklarla. Çift temaslarla birlikte
+  kullanılabilir; /INTER kimlikleri sırayla, `/TH/INTER` hepsini içerir. ≈ LS-DYNA
+  AUTOMATIC_SINGLE_SURFACE / Ansys Body Interaction. Test: `test_crash_contact.py`.
+- a2 Genel temas (UI): Temas kartında "Tüm model (genel temas)" seçeneği; geçmişten
+  yükleme `all_parts`'ı korur.
+- b1 Yay elemanı (backend): `/SPRING` + `/PROP/TYPE4` (k, opsiyonel sönüm; iki düğüm /
+  rijit gövde ana düğümü arası). Can crush resmine göre netleşir.
+- b2 Yay kartı (UI).
+- d Alüminyum can crush şablonu (ince cidarlı silindir kabuk + rijit impaktör + taban),
+  resimdeki sınır koşullarıyla. a1–b2'ye bağlı.
+- e Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
+  eğrileri (Al 5xxx/6xxx/7xxx, DP/HSLA çelikler, PP/ABS/PC), kaynak listeli. Yalnız doküman.
+  Ticari/lisanslı kart (vendor, GRANTA) kopyalanmaz.
+- f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
+  kolon önerildi).
+- g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse

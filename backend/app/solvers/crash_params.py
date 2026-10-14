@@ -411,11 +411,15 @@ class CrashContactParams(BaseModel):
     Istf/Inacti/Iedge Radioss bayrakları, mühendis doldurur.
     TYPE7: slave düğümleri (/GRNOD/PART) → master yüzey; gapmin (mm) kullanılır.
     TYPE24: slave yüzey ↔ master yüzey (simetrik); gapmin yok sayılır.
+
+    1.24a — `all_parts=True`: genel temas (tüm modelin tek yüzeyi, öz temas;
+    ≈ LS-DYNA AUTOMATIC_SINGLE_SURFACE). Yalnız TYPE24; master/slave verilmez.
     """
 
     type: int = Field(default=7, description="7 | 24")
-    master_part: int = Field(ge=0)
-    slave_part: int = Field(ge=0)
+    master_part: int | None = Field(default=None, ge=0)
+    slave_part: int | None = Field(default=None, ge=0)
+    all_parts: bool = Field(default=False, description="Genel temas: tüm parçalar, öz temas (TYPE24)")
     fric: float = Field(default=0.0, ge=0, description="Coulomb sürtünme")
     gapmin: float = Field(
         default=0.0, ge=0, description="TYPE7 GAPmin (mm)", json_schema_extra={"unit": "mm"}
@@ -433,6 +437,17 @@ class CrashContactParams(BaseModel):
         if value not in (7, 24):
             raise ValueError("temas tipi 7 veya 24 olmalı.")
         return value
+
+    @model_validator(mode="after")
+    def _parts_ok(self) -> "CrashContactParams":
+        if self.all_parts:
+            if self.type != 24:
+                raise ValueError("genel temas (all_parts) yalnız TYPE24 ile.")
+            if self.master_part is not None or self.slave_part is not None:
+                raise ValueError("genel temasta master_part / slave_part verilmez.")
+        elif self.master_part is None or self.slave_part is None:
+            raise ValueError("master_part ve slave_part gerekli (ya da all_parts).")
+        return self
 
     @model_validator(mode="after")
     def _flags_ok(self) -> "CrashContactParams":
