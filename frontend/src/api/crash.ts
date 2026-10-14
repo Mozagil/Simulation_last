@@ -694,6 +694,32 @@ export function postRawCardsCheck(body: CrashSolveRequest): Promise<RawCardsChec
   return postRawCards("check", body);
 }
 
+/** 1.23 D1 — deck kartı: başlık satırı, 1 tabanlı satır no, blok satır sayısı. */
+export interface DeckCard {
+  card: string;
+  line: number;
+  lines: number;
+}
+
+export interface DeckPreviewResponse {
+  starter: string;
+  engine: string;
+  starter_outline: DeckCard[];
+  engine_outline: DeckCard[];
+}
+
+/** 1.23 D1 — koşudaki gibi üretilecek deck (ham kartlar dahil), solver koşmaz. */
+export async function postDeckPreview(body: CrashSolveRequest): Promise<DeckPreviewResponse> {
+  const response = await fetch(`${API_BASE_URL}/crash/deck/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new CrashApiError(detailMessage(payload, response.status));
+  return payload as DeckPreviewResponse;
+}
+
 /** Backend `/files/crash/...` yolunu tam adrese çevirir (1.23 A7). */
 export function crashFileUrl(path: string): string {
   return /^https?:\/\//.test(path) ? path : `${API_BASE_URL}${path}`;

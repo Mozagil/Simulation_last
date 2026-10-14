@@ -7592,6 +7592,89 @@ p {
   white-space: nowrap;
 }
 
+/* 1.23 D1 — üretilen deck görüntüleyici */
+.crash-deck-open {
+  margin: 6px 0;
+}
+.crash-deck-dialog {
+  width: min(1180px, 96vw);
+  height: min(780px, 92vh);
+  display: flex;
+  flex-direction: column;
+}
+.crash-deck-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+.crash-deck-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.crash-deck-list ul {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.crash-deck-card {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.crash-deck-card em {
+  color: var(--muted);
+  font-style: normal;
+  white-space: nowrap;
+}
+.crash-deck-card.active,
+.crash-deck-card:hover {
+  background: var(--accent-soft);
+}
+.crash-deck-text {
+  margin: 0;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.crash-deck-line i {
+  display: inline-block;
+  width: 4.5em;
+  margin-right: 10px;
+  color: var(--muted);
+  font-style: normal;
+  text-align: right;
+  user-select: none;
+}
+.crash-deck-cut {
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .crash-deck-body {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 1.23 D3 — koşu sırasında canlı adım / Δt */
 .crash-live {
   display: grid;

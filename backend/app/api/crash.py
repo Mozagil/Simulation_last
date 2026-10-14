@@ -448,6 +448,42 @@ def crash_raw_cards_inventory(
     return {**deck_inventory(generated), **raw_card_report(generated, body.raw_cards)}
 
 
+def deck_outline(text: str) -> list[dict[str, Any]]:
+    """1.23 D1 — deck kart listesi: sütun 1'de `/` ile başlayan her satır bir kart başlığı;
+    blok bir sonraki başlığa kadar. `line` 1 tabanlı; `lines` blok satır sayısı."""
+    lines = text.split("\n")
+    heads = [i for i, ln in enumerate(lines) if ln.startswith("/")]
+    out: list[dict[str, Any]] = []
+    for k, i in enumerate(heads):
+        end = heads[k + 1] if k + 1 < len(heads) else len(lines)
+        out.append({"card": lines[i].rstrip(), "line": i + 1, "lines": end - i})
+    return out
+
+
+@router.post("/deck/preview")
+def crash_deck_preview(body: CrashSolveRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """1.23 D1 — üretilecek deck'i (ham kartlar dahil, koşudaki gibi) koşmadan döndürür:
+    starter + engine metni ve kart listesi. Geçici klasör, iş kaydı yok. Salt görüntüleme."""
+    params, _, _ = _starter_params(body, db)
+    tmp = CRASH_DIR / "_preview" / str(uuid.uuid4())
+    try:
+        try:
+            artifact = OpenRadiossAdapter().build_input({**params, "output_dir": tmp, "job_name": "crash"})
+        except SolverError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        starter = artifact.path.read_text(encoding="utf-8")
+        engine_path = artifact.path.with_name(artifact.path.name.replace("_0000.rad", "_0001.rad"))
+        engine = engine_path.read_text(encoding="utf-8") if engine_path.exists() else ""
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {
+        "starter": starter,
+        "engine": engine,
+        "starter_outline": deck_outline(starter),
+        "engine_outline": deck_outline(engine),
+    }
+
+
 @router.post("/raw-cards/check")
 def crash_raw_cards_check(
     body: CrashSolveRequest, db: Session = Depends(get_db)

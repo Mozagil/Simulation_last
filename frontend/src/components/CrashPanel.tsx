@@ -24,6 +24,7 @@ import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, t
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
 import CrashLiveProgress from "./CrashLiveProgress";
+import CrashDeckViewer from "./CrashDeckViewer";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
 
@@ -298,6 +299,8 @@ export default function CrashPanel({
   const [expertOpen, setExpertOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
   const [solverOpen, setSolverOpen] = useState(false);
+  // 1.23 D1: üretilen deck görüntüleyici (açılışta panelin o anki isteği)
+  const [deckRequest, setDeckRequest] = useState<CrashSolveRequest | null>(null);
   // 5 · Sonuçlar — koşu sonrası CFC (post-process)
   const [postForceCfc, setPostForceCfc] = useState("");
   const [postAccCfc, setPostAccCfc] = useState("");
@@ -1366,6 +1369,19 @@ export default function CrashPanel({
           ))}
         </div>
       )}
+      <button
+        type="button"
+        className="material-secondary-button crash-deck-open"
+        disabled={!canRun || blockers.length > 0}
+        title="Koşmadan, bu kurulumla üretilecek starter + engine deck'ini kart kart görüntüle / indir"
+        onClick={() => {
+          const rq = buildSolveBody();
+          if (rq) setDeckRequest({ ...rq, ...(rawCards.trim() ? { raw_cards: rawCards } : {}) });
+        }}
+      >
+        Deck'i görüntüle
+      </button>
+      {deckRequest && <CrashDeckViewer request={deckRequest} onClose={() => setDeckRequest(null)} />}
       <label className="material-check">
         <input
           type="checkbox"

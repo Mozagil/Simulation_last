@@ -1594,7 +1594,11 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     zaten A4'te (kullanıcı: "aynı şey", 2026-10-14). C7 ✅.
 - C8 ✅ (2026-10-14) Kuvvet grafiği açıklaması: y ekseni adı + birim + 1·2·2.5·5 ölçek, kılavuz çizgi, tepe noktası, ortalama kuvvet (kullanıcı kararı B: temas aralığında impuls / süre; aralık |F| > tepenin %1'i, gölgeli), kısa veri kaynağı açıklaması.
 - C8b Ortalama ezilme kuvveti (yer değiştirme tabanlı): emilen enerji / ezilme mesafesi; hareketli parçanın arka düğümü için düğüm TH çıktısı gerekir (çıktı kartı + backend + UI). Ayrı onay.
-- D1 Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
+- D1 ✅ (2026-10-14) Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
+  4 · Crash "Deck'i görüntüle": `POST /crash/deck/preview` (gövde = /crash/solve isteği, ham
+  kartlar dahil; geçici klasör, solver koşmaz) → starter + engine metni + kart listesi
+  (`deck_outline`). Pencere: kart listesi (aranır) + seçili kart bloğu satır no'lu, salt
+  okunur; starter / engine .rad indir. Test: `test_crash_deck_preview.py`, `CrashDeckViewer.test.tsx`.
 - D2 ✅ (2026-10-14) Çözüm kontrolü kartı: bitiş süresi, Δt ölçeği (güvenlik katsayısı), kütle
   ölçekleme tek yerde + açıklama. 4 · Crash'te "Çözüm kontrolü" akordeonu (süre çarpma grubundan,
   zaman adımı çıktı ayarlarından taşındı; payload aynı); son koşunun Δt_min / eklenen kütle oranı.
