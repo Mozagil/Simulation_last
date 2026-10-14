@@ -1938,8 +1938,9 @@ olmayan geometri desteği.
 
 ## Faz 3 — Kompozit modelleme (CalculiX üzerine katman; Dalga 1)
 
-**Durum: BAŞLADI (kullanıcı onayı 2026-10-12)** — paralel dal `feature/phase3-composite`
-(`main`'den; mevcut CFD/crash işine dokunulmaz). **Yeni solver yok.** Code_Aster yok.
+**Durum: BAŞLADI (kullanıcı onayı 2026-10-12); `main`'e birleşti (2026-10-14)** —
+`feature/phase3-composite` dalında başladı, `main`'e merge edildi (`a0809f0`);
+mevcut CFD/crash işine dokunulmaz. **Yeni solver yok.** Code_Aster yok.
 Dalga 1 solver'ı CalculiX (`*SHELL SECTION, COMPOSITE`). `/solve` refaktör edilmez;
 koşu 3.9'da `POST /composite/solve` → `CalculiXAdapter`. Arayüz ACP Pre benzeri
 hazırlık bölümüdür (ANALİZ TİPİ → KOMPOZIT), beşinci çözücü değil.
