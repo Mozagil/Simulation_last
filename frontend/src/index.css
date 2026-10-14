@@ -7237,6 +7237,40 @@ p {
   height: auto;
 }
 
+/* 1.23 C5 — iki koşu yan yana, ortak zaman */
+.crash-compare-anim {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 14px 12px;
+}
+.crash-compare-anim-controls {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.crash-compare-anim-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 0;
+}
+.crash-compare-anim-grid .crash-anim-docked {
+  min-height: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.crash-compare-anim-grid .crash-anim-canvas {
+  min-height: 200px;
+}
+.crash-anim-controls-synced {
+  grid-template-columns: auto;
+  justify-content: start;
+}
+
 /* Sade crash kurulumu (2026-10-07): sekmeler, parça davranışı, özet */
 .crash-tabs {
   display: flex;

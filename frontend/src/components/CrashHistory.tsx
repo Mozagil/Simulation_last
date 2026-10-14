@@ -47,6 +47,13 @@ const label = (r: CrashRunSummary) => r.name?.trim() || `#${r.id}`;
 // Iraksayan koşu (Hata #1) failed ama eğri/animasyon ıraksama anına kadar incelenir.
 const hasResults = (r: CrashRunSummary) => r.status === "solved" || r.scalars.diverged_at_ms != null;
 
+/** Ana viewport'ta açılacak deforme şekil; 1.23 C5 — ikinci koşu ile yan yana. */
+export interface CrashAnimTarget {
+  id: number;
+  title: string;
+  compareWith?: { id: number; title: string };
+}
+
 export default function CrashHistory({
   geometryId,
   refreshKey,
@@ -58,7 +65,8 @@ export default function CrashHistory({
   refreshKey?: string;
   /** TODO 11.4 — verilirse deforme şekil App'te (ana viewport) açılır. */
   activeAnimId?: number | null;
-  onAnimate?: (run: { id: number; title: string } | null) => void;
+  /** 1.23 C5 — `compareWith` verilirse iki koşu yan yana açılır. */
+  onAnimate?: (run: CrashAnimTarget | null) => void;
 }) {
   const [runs, setRuns] = useState<CrashRunSummary[]>([]);
   const [showExcluded, setShowExcluded] = useState(false);
@@ -265,6 +273,25 @@ export default function CrashHistory({
                 onChange={(e) => setTMaxRaw(e.target.value)}
               />
             </label>
+            {onAnimate && (
+              <button
+                type="button"
+                className="doe-btn doe-btn-ghost"
+                data-testid="crash-compare-anim-open"
+                disabled={compared.length !== 2 || !compared.every((r) => r.solver_ran && hasResults(r))}
+                title="İki koşunun deforme şeklini viewport'ta yan yana, ortak zamanla açar (tam 2 çözülmüş koşu)"
+                onClick={() => {
+                  const [a, b] = compared;
+                  onAnimate({
+                    id: a.id,
+                    title: `#${a.id} ${label(a)}`,
+                    compareWith: { id: b.id, title: `#${b.id} ${label(b)}` },
+                  });
+                }}
+              >
+                Animasyon yan yana
+              </button>
+            )}
           </div>
           {series.length > 0 ? (
             <CrashForceChart

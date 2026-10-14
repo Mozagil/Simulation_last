@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, frameStats, jet, lerpFrame, pickVideoMime, scaledPos, triangulate, VIEW_VECTORS, videoFileName, wallFromRequest, withDirectional } from "./CrashAnimationViewer";
+import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, frameStats, jet, lerpFrame, pickVideoMime, scaledPos, timeToFrame, triangulate, VIEW_VECTORS, videoFileName, wallFromRequest, withDirectional } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -148,5 +148,18 @@ describe("1.23 C7 — yönlü yer değiştirme + kare istatistiği", () => {
     expect(frameStats([5, 7], [1])).toEqual({ min: 7, max: 7, mean: 7, n: 1 }); // yalnız verilen kimlikler
     expect(frameStats(undefined, [0])).toBeNull();
     expect(frameStats([null], [0])).toBeNull();
+  });
+});
+
+describe("1.23 C5 — karşılaştırma: zaman → kare", () => {
+  it("timeToFrame: kareler arası kesirli; aralık dışı uca kenetlenir; null zaman sıra sayılır", () => {
+    const ts = [0, 0.2, 0.4, 1.0];
+    expect(timeToFrame(ts, 0)).toBe(0);
+    expect(timeToFrame(ts, 0.1)).toBeCloseTo(0.5);
+    expect(timeToFrame(ts, 0.7)).toBeCloseTo(2.5);
+    expect(timeToFrame(ts, 5)).toBe(3); // kısa koşu kendi son karesinde
+    expect(timeToFrame(ts, -1)).toBe(0);
+    expect(timeToFrame([null, null, null], 1.5)).toBeCloseTo(1.5);
+    expect(timeToFrame([0], 1)).toBe(0);
   });
 });

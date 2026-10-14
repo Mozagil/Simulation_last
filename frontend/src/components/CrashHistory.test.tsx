@@ -109,4 +109,41 @@ describe("CrashHistory", () => {
     fireEvent.click(screen.getByLabelText("koşu 7 deforme şekil"));
     expect(onAnimate).toHaveBeenLastCalledWith(null);
   });
+
+  it("1.23 C5: tam 2 çözülmüş koşu karşılaştırılınca 'Animasyon yan yana' iki koşuyu App'e bildirir", async () => {
+    const cmp = (id: number, extra: Partial<CrashRunSummary> = {}) => ({ ...run(id, extra), curves: { time: [0, 1], rwall_force: [0, 1] } });
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2), run(3)]);
+    vi.mocked(compareCrashRuns).mockResolvedValueOnce([cmp(1), cmp(2)]).mockResolvedValueOnce([cmp(1), cmp(2), cmp(3)]);
+    const onAnimate = vi.fn();
+    render(<CrashHistory geometryId={3931} onAnimate={onAnimate} activeAnimId={null} />);
+    fireEvent.click(await screen.findByLabelText("koşu 1 seç"));
+    fireEvent.click(screen.getByLabelText("koşu 2 seç"));
+    fireEvent.click(screen.getByRole("button", { name: "Karşılaştır (2/6)" }));
+    const open = await screen.findByTestId("crash-compare-anim-open");
+    expect(open).toBeEnabled();
+    fireEvent.click(open);
+    expect(onAnimate).toHaveBeenCalledWith({
+      id: 1,
+      title: "#1 koşu 1",
+      compareWith: { id: 2, title: "#2 koşu 2" },
+    });
+    // üç koşuda kapalı
+    fireEvent.click(screen.getByLabelText("koşu 3 seç"));
+    fireEvent.click(screen.getByRole("button", { name: "Karşılaştır (3/6)" }));
+    await waitFor(() => expect(screen.getByTestId("crash-compare-anim-open")).toBeDisabled());
+  });
+
+  it("1.23 C5: onAnimate yoksa (yan panel) buton yok", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2)]);
+    vi.mocked(compareCrashRuns).mockResolvedValue([
+      { ...run(1), curves: { time: [0, 1], rwall_force: [0, 1] } },
+      { ...run(2), curves: { time: [0, 1], rwall_force: [0, 1] } },
+    ]);
+    render(<CrashHistory geometryId={3931} />);
+    fireEvent.click(await screen.findByLabelText("koşu 1 seç"));
+    fireEvent.click(screen.getByLabelText("koşu 2 seç"));
+    fireEvent.click(screen.getByRole("button", { name: "Karşılaştır (2/6)" }));
+    await screen.findByTestId("crash-compare");
+    expect(screen.queryByTestId("crash-compare-anim-open")).not.toBeInTheDocument();
+  });
 });

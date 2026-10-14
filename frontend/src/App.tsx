@@ -76,6 +76,8 @@ import type {
 } from "./api/crash";
 import { matCardFromModel } from "./lib/crashSetupImport";
 import CrashHistoryDock from "./components/CrashHistoryDock";
+import CrashCompareAnim from "./components/CrashCompareAnim";
+import type { CrashAnimTarget } from "./components/CrashHistory";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
 import DocsDialog from "./components/DocsDialog";
@@ -400,7 +402,7 @@ function App() {
   // Remesh (kullanıcı 2026-10-07): CAD yüzey id → yerel eleman boyutu (mm)
   const [faceSizes, setFaceSizes] = useState<Record<number, number>>({});
   // TODO 11.4 — crash deforme şekli ana viewport'ta (koşu geçmişi ▶)
-  const [crashAnim, setCrashAnim] = useState<{ id: number; title: string } | null>(null);
+  const [crashAnim, setCrashAnim] = useState<CrashAnimTarget | null>(null);
   // Crash viewport işaretleri + "Modelden seç" (tasarım adım 2)
   const [crashMarkers, setCrashMarkers] = useState<CrashMarkers | null>(null);
   const [crashTree, setCrashTree] = useState<CrashTreeGroup[] | null>(null);
@@ -3853,13 +3855,22 @@ function App() {
               <div className="viewer-stage">
                 {analysisTab === "crash" && crashAnim && (
                   <div className="crash-anim-viewport" data-testid="crash-anim-viewport">
-                    <CrashAnimationViewer
-                      key={crashAnim.id}
-                      runId={crashAnim.id}
-                      title={crashAnim.title}
-                      docked
-                      onClose={() => setCrashAnim(null)}
-                    />
+                    {crashAnim.compareWith ? (
+                      <CrashCompareAnim
+                        key={`${crashAnim.id}-${crashAnim.compareWith.id}`}
+                        a={crashAnim}
+                        b={crashAnim.compareWith}
+                        onClose={() => setCrashAnim(null)}
+                      />
+                    ) : (
+                      <CrashAnimationViewer
+                        key={crashAnim.id}
+                        runId={crashAnim.id}
+                        title={crashAnim.title}
+                        docked
+                        onClose={() => setCrashAnim(null)}
+                      />
+                    )}
                   </div>
                 )}
                 {showMesh && meshPreview !== null && meshPicks.length > 0 && (

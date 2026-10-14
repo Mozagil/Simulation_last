@@ -4,7 +4,7 @@
  * durability geçmişinin yerini alır.
  */
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import CrashHistory from "./CrashHistory";
+import CrashHistory, { type CrashAnimTarget } from "./CrashHistory";
 
 // Açık dock viewport'u kapatmasın (kullanıcı 2026-10-07): varsayılan alçak,
 // üst kenardan sürüklenir, pencerenin %60'ını geçmez; yükseklik hatırlanır.
@@ -32,7 +32,7 @@ export default function CrashHistoryDock({
   geometryId: number | null;
   refreshKey: string;
   activeAnimId: number | null;
-  onAnimate: (run: { id: number; title: string } | null) => void;
+  onAnimate: (run: CrashAnimTarget | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [height, setHeight] = useState(readStoredH);

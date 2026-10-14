@@ -1567,6 +1567,9 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   Test (C2/C3): `CrashAnimationViewer.test.tsx` (`faceEdges`, `wallFromRequest`).
 - C4 Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği.
 - C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
+  - Grafik + skaler karşılaştırma 1.16b'den beri var (≤ 6 koşu, eğri seçimi, skaler tablosu).
+  - C5a ✅ (2026-10-14) "Animasyon yan yana": 2 koşu viewport'ta yan yana, ortak fiziksel zaman (oynat / kaydırıcı / hız); kısa koşu son karede ("koşu sonu").
+  - C5b (öneri, onay bekliyor) Ortak renk ölçeği (iki koşunun min–max birleşimi) + kamera eşleme.
 - C6 ✅ Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti. TH global sütunları:
   temas enerjisi, dış iş, toplam (IE + KE + dönme + HG − dış iş) eğrisi; 5 · Sonuçlar'da
   "Enerji · J" grafiği + özet (son/maks, HG/IE %, temas/IE %, |ΔE|/E %). Geçmiş 📈 aynı

@@ -102,6 +102,20 @@ export function frameStats(
   return n ? { min, max, mean: sum / n, n } : null;
 }
 
+/** 1.23 C5 — fiziksel zaman (ms) → kesirli kare; aralık dışı uca kenetlenir.
+ *  Kare zamanları artan; null zaman (eski kayıt) kare sırasıyla eşit aralık sayılır. */
+export function timeToFrame(times: (number | null)[], t: number): number {
+  const n = times.length;
+  if (n < 2) return 0;
+  const ts = times.map((v, i) => v ?? i);
+  if (t <= ts[0]) return 0;
+  if (t >= ts[n - 1]) return n - 1;
+  let i = 0;
+  while (i < n - 2 && ts[i + 1] <= t) i++;
+  const span = ts[i + 1] - ts[i];
+  return span > 0 ? i + (t - ts[i]) / span : i;
+}
+
 /** 1.23 A4 — deformasyon ölçeği seçenekleri (×1 = gerçek). */
 export const DEFORM_SCALES = [1, 2, 5, 10] as const;
 /** 1.23 A5 — oynatma hızı: 1× = tüm koşu ~3 sn. */
@@ -237,13 +251,20 @@ export default function CrashAnimationViewer({
   title,
   docked = false,
   onClose,
+  syncTime,
+  onTimes,
 }: {
   runId: number;
   title?: string;
   /** TODO 11.4 — ana viewport'un üstünde, alanı kaplar (sidebar kutusu yerine). */
   docked?: boolean;
   onClose?: () => void;
+  /** 1.23 C5 — karşılaştırma: zaman dışarıdan (ms); oynat / kaydırıcı / hız / video gizli. */
+  syncTime?: number;
+  /** 1.23 C5 — veri gelince karelerin zamanları (ms) bildirilir (ortak zaman aralığı için). */
+  onTimes?: (times: number[]) => void;
 }) {
+  const synced = syncTime !== undefined;
   const [data, setData] = useState<CrashAnimation | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 1.23 A5: kesirli kare (kareler arası ara-değer); etikette en yakın kare.
@@ -305,6 +326,16 @@ export default function CrashAnimationViewer({
       alive = false;
     };
   }, [runId]);
+
+  // 1.23 C5: karşılaştırmada zaman dışarıdan
+  const onTimesRef = useRef(onTimes);
+  onTimesRef.current = onTimes;
+  useEffect(() => {
+    if (data) onTimesRef.current?.(data.frames.map((f, i) => f.time ?? i));
+  }, [data]);
+  useEffect(() => {
+    if (data && syncTime !== undefined) setFrameF(timeToFrame(data.frames.map((f) => f.time), syncTime));
+  }, [data, syncTime]);
 
   const tri = useMemo(() => (data ? triangulate(data.faces) : null), [data]);
   const edges = useMemo(() => (data ? faceEdges(data.faces) : null), [data]);
@@ -732,18 +763,21 @@ export default function CrashAnimationViewer({
             t = {fmt(fr.time ?? 0)} ms · kare {frame + 1}/{data?.frames.length}
             {deleted ? ` · silinen ${deleted}` : ""}
             {fr.nonfinite ? ` · ${fr.nonfinite} geçersiz değer (ıraksama)` : ""}
+            {synced && data && syncTime! > (data.frames[data.frames.length - 1].time ?? 0) ? " · koşu sonu" : ""}
           </span>
         )}
-        <button
-          type="button"
-          className="crash-anim-expand"
-          data-testid="crash-anim-expand"
-          onClick={() => setExpanded((v) => !v)}
-          title={expanded ? "Küçült (ESC)" : "Tam ekran"}
-          aria-label={expanded ? "Küçült" : "Tam ekran"}
-        >
-          {expanded ? "⤡" : "⤢"}
-        </button>
+        {!synced && (
+          <button
+            type="button"
+            className="crash-anim-expand"
+            data-testid="crash-anim-expand"
+            onClick={() => setExpanded((v) => !v)}
+            title={expanded ? "Küçült (ESC)" : "Tam ekran"}
+            aria-label={expanded ? "Küçült" : "Tam ekran"}
+          >
+            {expanded ? "⤡" : "⤢"}
+          </button>
+        )}
         {onClose && (
           <button
             type="button"
@@ -762,40 +796,44 @@ export default function CrashAnimationViewer({
       <div ref={holderRef} className="crash-anim-canvas" aria-label="Deforme şekil 3B görünüm" />
       {data && (
         <>
-          <div className="crash-anim-controls">
-            <button
-              type="button"
-              className="doe-btn doe-btn-ghost"
-              aria-label={playing ? "Durdur" : "Oynat"}
-              disabled={recording}
-              onClick={() => setPlaying((p) => !p)}
-            >
-              {playing ? "❚❚" : "▶"}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={data.frames.length - 1}
-              value={frame}
-              aria-label="Kare"
-              step={0.01}
-              onChange={(e) => {
-                setPlaying(false);
-                setFrame(Number(e.target.value));
-              }}
-            />
-            <select
-              aria-label="Oynatma hızı"
-              title="Oynatma hızı"
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
-            >
-              {PLAY_SPEEDS.map((v) => (
-                <option key={v} value={v}>
-                  {v}× hız
-                </option>
-              ))}
-            </select>
+          <div className={synced ? "crash-anim-controls crash-anim-controls-synced" : "crash-anim-controls"}>
+            {!synced && (
+              <>
+                <button
+                  type="button"
+                  className="doe-btn doe-btn-ghost"
+                  aria-label={playing ? "Durdur" : "Oynat"}
+                  disabled={recording}
+                  onClick={() => setPlaying((p) => !p)}
+                >
+                  {playing ? "❚❚" : "▶"}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={data.frames.length - 1}
+                  value={frame}
+                  aria-label="Kare"
+                  step={0.01}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setFrame(Number(e.target.value));
+                  }}
+                />
+                <select
+                  aria-label="Oynatma hızı"
+                  title="Oynatma hızı"
+                  value={speed}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                >
+                  {PLAY_SPEEDS.map((v) => (
+                    <option key={v} value={v}>
+                      {v}× hız
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <select
               aria-label="Deformasyon ölçeği"
               title="Deformasyon ölçeği — yer değiştirme bu katla çizilir"
@@ -809,23 +847,25 @@ export default function CrashAnimationViewer({
               ))}
             </select>
           </div>
-          <div className="crash-anim-export">
-            <button
-              type="button"
-              className="doe-btn doe-btn-ghost"
-              data-testid="crash-anim-video"
-              disabled={!videoMime || recording}
-              onClick={startRecording}
-              title={
-                videoMime
-                  ? "Baştan sona bir kez oynatıp video dosyası indirir (görünüm, renk, ölçek, hız ekrandaki gibi)"
-                  : "Bu tarayıcı video kaydını desteklemiyor"
-              }
-            >
-              {recording ? "● Kaydediliyor…" : `Video indir (${videoMime?.startsWith("video/mp4") ? "MP4" : "WebM"})`}
-            </button>
-            {videoError && <span className="crash-run-failed">{videoError}</span>}
-          </div>
+          {!synced && (
+            <div className="crash-anim-export">
+              <button
+                type="button"
+                className="doe-btn doe-btn-ghost"
+                data-testid="crash-anim-video"
+                disabled={!videoMime || recording}
+                onClick={startRecording}
+                title={
+                  videoMime
+                    ? "Baştan sona bir kez oynatıp video dosyası indirir (görünüm, renk, ölçek, hız ekrandaki gibi)"
+                    : "Bu tarayıcı video kaydını desteklemiyor"
+                }
+              >
+                {recording ? "● Kaydediliyor…" : `Video indir (${videoMime?.startsWith("video/mp4") ? "MP4" : "WebM"})`}
+              </button>
+              {videoError && <span className="crash-run-failed">{videoError}</span>}
+            </div>
+          )}
           <div className="crash-var-chips" role="group" aria-label="Görünürlük">
             <button
               type="button"
