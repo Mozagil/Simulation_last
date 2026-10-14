@@ -46,6 +46,25 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
   return [...contacts, ...wall, ...sections, ...filtered].filter((s) => s.values.length > 1);
 }
 
+/** 1.23 C6 — enerji serileri (J): global TH sütunları; toplam = IE + KE (+ dönme + HG − dış iş). */
+export const ENERGY_CURVES: [string, string][] = [
+  ["internal_energy", "İç enerji"],
+  ["kinetic_energy", "Kinetik enerji"],
+  ["hourglass_energy", "Hourglass enerjisi"],
+  ["contact_energy", "Temas enerjisi"],
+  ["external_work", "Dış iş"],
+  ["total_energy", "Toplam enerji"],
+];
+
+export function energySeriesFromCurves(curves: Record<string, number[]> | undefined): ForceSeries[] {
+  if (!curves) return [];
+  return ENERGY_CURVES.filter(([k]) => (curves[k]?.length ?? 0) > 1).map(([k, label]) => ({
+    key: k,
+    label,
+    values: curves[k],
+  }));
+}
+
 export default function CrashForceChart({
   time,
   series,

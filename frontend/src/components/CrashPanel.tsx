@@ -18,7 +18,7 @@ import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMateri
 import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
-import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
+import CrashForceChart, { energySeriesFromCurves, forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
@@ -53,6 +53,11 @@ function fmt(v: number | undefined): string {
   if (Math.abs(v) >= 100) return v.toFixed(1);
   if (Math.abs(v) >= 1) return v.toFixed(3);
   return v.toExponential(3);
+}
+
+/** Oran → yüzde (1.23 C6 enerji özeti). */
+function pct(v: number | undefined): string {
+  return v == null || Number.isNaN(v) ? "—" : (v * 100).toFixed(1);
 }
 
 type DirPreset = "+X" | "-X" | "+Y" | "-Y" | "+Z" | "-Z" | "custom";
@@ -741,6 +746,7 @@ export default function CrashPanel({
   const canRun = geometryId != null && (meshDimension === 2 || meshDimension === 3) && !busy;
   const curves = snapshot?.curves;
   const forceSeries = forceSeriesFromCurves(curves);
+  const energySeries = energySeriesFromCurves(curves);
   const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
   // 2026-10-14 öncesi ıraksayan koşularda error yok, yalnız diverged metni var.
   const runError: CrashRunError | null =
@@ -1335,13 +1341,6 @@ export default function CrashPanel({
               <li>HIC15 {fmt(scalars.hic15)}</li>
               <li>HIC36 {fmt(scalars.hic36)}</li>
               <li>acc_peak_g {fmt(scalars.acc_peak_g)}</li>
-              <li>IE_final {fmt(scalars.internal_energy_final)}</li>
-              <li>KE_final {fmt(scalars.kinetic_energy_final)}</li>
-              {scalars.hourglass_energy_final != null && (
-                <li>
-                  HG_final {fmt(scalars.hourglass_energy_final)} · HG/IE {fmt(scalars.hourglass_ratio)}
-                </li>
-              )}
               <li>RWALL Fmax {fmt(scalars.rwall_force_max)}</li>
               {scalars.rwall_impulse_final != null && (
                 <li>RWALL impuls {fmt(scalars.rwall_impulse_final)} N·s</li>
@@ -1397,6 +1396,42 @@ export default function CrashPanel({
           )}
           {curves?.time && forceSeries.length > 0 && (
             <CrashForceChart time={curves.time} series={forceSeries} />
+          )}
+          {curves?.time && energySeries.length > 0 && (
+            <CrashForceChart
+              time={curves.time}
+              series={energySeries}
+              title="Enerji · J"
+              unit="J"
+              ariaLabel="Enerji–zaman grafiği"
+            />
+          )}
+          {scalars.internal_energy_final != null && (
+            <div className="crash-energy-summary" data-testid="crash-energy-summary">
+              <p className="crash-expert-title">Enerji özeti · J</p>
+              <ul className="crash-scalar-list">
+                <li>
+                  İç enerji son {fmt(scalars.internal_energy_final)} · maks {fmt(scalars.internal_energy_max)}
+                </li>
+                <li>
+                  Kinetik enerji son {fmt(scalars.kinetic_energy_final)} · maks {fmt(scalars.kinetic_energy_max)}
+                </li>
+                {scalars.hourglass_energy_final != null && (
+                  <li>
+                    Hourglass son {fmt(scalars.hourglass_energy_final)} · HG / IE %{pct(scalars.hourglass_ratio)}
+                  </li>
+                )}
+                {scalars.contact_energy_final != null && (
+                  <li>
+                    Temas son {fmt(scalars.contact_energy_final)} · temas / IE %{pct(scalars.contact_energy_ratio)}
+                  </li>
+                )}
+                {scalars.external_work_final != null && <li>Dış iş son {fmt(scalars.external_work_final)}</li>}
+                {scalars.energy_balance_rel != null && (
+                  <li>Enerji dengesi |ΔE| / E %{pct(scalars.energy_balance_rel)}</li>
+                )}
+              </ul>
+            </div>
           )}
           {jobId && status === "solved" && (
             <div className="crash-cfc-post" data-testid="crash-cfc-post">

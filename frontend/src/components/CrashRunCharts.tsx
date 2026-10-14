@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchCrashRun, type CrashRunDetail } from "../api/crash";
-import CrashForceChart, { forceSeriesFromCurves, type ForceSeries } from "./CrashForceChart";
+import CrashForceChart, { energySeriesFromCurves, forceSeriesFromCurves, type ForceSeries } from "./CrashForceChart";
 
 /** Koşu detay grafikleri (1.17e2): kuvvet (ham + CFC), ivme bileşkesi (ham +
  * CFC), enerji (IE, KE) — kayıtlı koşunun job.json eğrilerinden, yeniden
@@ -55,19 +55,7 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
     time,
     tMax,
   );
-  const energy = clip(
-    (
-      [
-        ["internal_energy", "İç enerji"],
-        ["kinetic_energy", "Kinetik enerji"],
-        ["hourglass_energy", "Hourglass enerjisi"],
-      ] as const
-    )
-      .filter(([k]) => curves[k])
-      .map(([k, lab]) => ({ key: k, label: lab, values: curves[k] })),
-    time,
-    tMax,
-  );
+  const energy = clip(energySeriesFromCurves(curves), time, tMax);
   const s = run?.scalars ?? {};
 
   return (
@@ -106,6 +94,11 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
             <li>IE son {fmt(s.internal_energy_final)} J</li>
             <li>Enerji dengesi {fmt(s.energy_balance_rel)}</li>
             {s.hourglass_ratio != null && <li>Hourglass / IE {fmt(s.hourglass_ratio)}</li>}
+            {s.contact_energy_final != null && (
+              <li>
+                Temas enerjisi son {fmt(s.contact_energy_final)} J · temas / IE {fmt(s.contact_energy_ratio)}
+              </li>
+            )}
             {s.rwall_impulse_final != null && <li>Duvar impulsu {fmt(s.rwall_impulse_final)} N·s</li>}
             {s.hic15 != null && <li>HIC15 {fmt(s.hic15)}</li>}
             {Object.keys(s)

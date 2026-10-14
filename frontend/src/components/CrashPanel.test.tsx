@@ -487,6 +487,36 @@ describe("CrashPanel", () => {
     const peaks = await screen.findAllByTestId("crash-cfc-peak");
     expect(peaks.map((p) => p.textContent)).toEqual(["rwall_force_max CFC600 101.2"]);
   });
+  it("1.23 C6: enerji grafiği (IE, KE, HG, temas, toplam) + enerji özeti", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j16", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: false, scalars: {},
+    });
+    vi.mocked(fetchCrashJob).mockResolvedValue({
+      job_id: "j16", status: "solved", message: "bitti",
+      curves: {
+        time: [0, 1], internal_energy: [0, 80], kinetic_energy: [100, 10], hourglass_energy: [0, 2],
+        contact_energy: [0, 6], total_energy: [100, 92],
+      },
+      scalars: {
+        internal_energy_final: 80, internal_energy_max: 80, kinetic_energy_final: 10, kinetic_energy_max: 100,
+        hourglass_energy_final: 2, hourglass_ratio: 0.025, contact_energy_final: 6, contact_energy_ratio: 0.075,
+        energy_balance_rel: 0.08,
+      },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    const chart = await screen.findByLabelText("Enerji–zaman grafiği");
+    for (const lab of ["İç enerji", "Kinetik enerji", "Hourglass enerjisi", "Temas enerjisi", "Toplam enerji"]) {
+      expect(chart.closest("figure, div")!.parentElement!).toHaveTextContent(lab);
+    }
+    const sum = screen.getByTestId("crash-energy-summary");
+    expect(sum).toHaveTextContent("HG / IE %2.5");
+    expect(sum).toHaveTextContent("temas / IE %7.5");
+    expect(sum).toHaveTextContent("Enerji dengesi |ΔE| / E %8.0");
+  });
+
   it("1.17g: iş bitince eski cycle satırı gösterilmez", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j14", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",

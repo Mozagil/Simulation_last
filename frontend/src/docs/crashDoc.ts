@@ -236,8 +236,8 @@ export const CRASH_DOC: DocSection[] = [
     items: [
       { name: "Job", what: "İş kimliği · durum (pending / solved / failed / rad_only) · mesaj. “starter .rad” girdi dosyasının bağlantısı." },
       { name: "Hata #n (kırmızı bant)", what: "Koşu hatayla biterse durum failed (kırmızı) ve kodlu hata: #1 çözüm ıraksadı (enerji NaN; Radioss yine NORMAL TERMINATION yazabilir — eğri ve animasyon ıraksama anına kadar açılır), #2 starter hatası (ERROR ID'ler), #3 çözücü anormal sonlandı (çıkış kodu ≠ 0), #4 zaman aşımı, #5 OpenRadioss bulunamadı, #9 sınıflanmamış. Hatalı koşu DOE / ML korpusuna girmez." },
-      { name: "IE_final / KE_final", what: "Son iç enerji (deformasyonla yutulan) / kinetik enerji (J).", card: "/TH/PART" },
-      { name: "HG_final · HG/IE", what: "Hourglass enerjisi ve iç enerjiye oranı.", card: "/TH/PART" },
+      { name: "Enerji · J grafiği", what: "İç enerji (deformasyonla yutulan), kinetik, hourglass, temas enerjisi, dış iş ve toplam enerji (IE + KE + dönme + HG − dış iş) zamana göre. Global TH sütunları; geçmişteki 📈 penceresinde de aynı seriler." },
+      { name: "Enerji özeti", what: "İç / kinetik enerji son ve maks; hourglass son · HG/IE %; temas son · temas/IE %; dış iş son; enerji dengesi |ΔE|/E %. Değerler veridir; kabul eşiği mühendisin." },
       { name: "RWALL Fmax / impuls", what: "Rijit duvar tepe kuvveti (kN) ve toplam impuls (N·s). Kızakta impuls = m·Δv.", card: "/TH/RWALL" },
       { name: "Temas kuvveti", what: "Duvarsız modellerde kuvvet temastan okunur (contact_1_force…).", card: "/TH/INTER" },
       { name: "HIC15 / HIC36 / acc_peak_g", what: "Kafa yaralanma ölçütü ve tepe ivme — ivme kanalı (rijit gövde “İvmeyi kaydet”) varsa.", },

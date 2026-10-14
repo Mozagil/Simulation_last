@@ -363,6 +363,7 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     packed["hg"] = exact("HOURGLASS ENERGY") or col("HOURGLASS", "HG")
     packed["rot"] = exact("ROTATION ENERGY")
     packed["ext"] = exact("EXTERNAL WORK")
+    packed["contact_e"] = exact("CONTACT ENERGY")  # 1.23 C6
     # Duvar FN* adla aranırken temas grubunun (contact_th) FN* sütunları hariç.
     wall_headers = [h for h in headers if "contact_th" not in h.lower()]
 
@@ -523,6 +524,7 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
     hg_e: list[float] | None = None
     rot_e: list[float] | None = None
     ext_w: list[float] | None = None
+    contact_e: list[float] | None = None
     ie: list[float] = []
     ke: list[float] = []
     force: list[float] = []
@@ -560,6 +562,7 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
         ie = packed["ie"] or ie
         ke = packed["ke"] or ke
         hg_e, rot_e, ext_w = packed["hg"], packed["rot"], packed["ext"]
+        contact_e = packed.get("contact_e")
         fnx, fny, fnz = packed["fnx"], packed["fny"], packed["fnz"]
         # FN* impuls (Radioss TH): kuvvet = dI/dt. 1.10–1.12a arası impuls
         # yanlışlıkla kuvvet diye raporlanıyordu (düz plato = momentum değişimi).
@@ -594,6 +597,7 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
     time_s = _time_to_seconds(time, time_header) if time else []
     scalars: dict[str, float] = dict(diag_scalars)
     curves_extra: dict[str, list[float]] = {}
+    total_e: list[float] = []
     if ie:
         scalars["internal_energy_final"] = float(ie[-1])
         scalars["internal_energy_max"] = float(max(ie))
@@ -609,6 +613,7 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
                         e += sign * extra[i]
                 return e
 
+            total_e = [total(i) for i in range(min(len(ie), len(ke)))]
             e0, e1 = total(0), total(-1)
             # K4 — zorlanmış hızla sürülen koşuda KE₀ ≈ 0, e0 ≈ e1 ≈ 0: payda
             # sorunun enerji ölçeği (en büyük IE / KE / |dış iş|) — aksi halde
@@ -622,6 +627,14 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
         scalars["hourglass_energy_final"] = float(hg_e[-1])
         if abs(ie[-1]) > 1e-30:
             scalars["hourglass_ratio"] = float(hg_e[-1]) / float(ie[-1])
+    # 1.23 C6 — temas enerjisi (global sütun) ve dış iş; veri, eşik yok
+    if contact_e:
+        scalars["contact_energy_final"] = float(contact_e[-1])
+        scalars["contact_energy_max"] = float(max(contact_e))
+        if ie and abs(ie[-1]) > 1e-30:
+            scalars["contact_energy_ratio"] = float(contact_e[-1]) / float(ie[-1])
+    if ext_w:
+        scalars["external_work_final"] = float(ext_w[-1])
     if force:
         scalars["rwall_force_max"] = float(max(abs(f) for f in force))
     if impulse:
@@ -671,6 +684,13 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
     # 1.17h — hourglass enerjisi eğrisi (global sütun), grafikte IE / KE yanında
     if hg_e and len(hg_e) == len(time):
         curves["hourglass_energy"] = hg_e
+    # 1.23 C6 — temas enerjisi, dış iş, toplam (energy_balance_rel ile aynı tanım)
+    if contact_e and len(contact_e) == len(time):
+        curves["contact_energy"] = contact_e
+    if ext_w and len(ext_w) == len(time):
+        curves["external_work"] = ext_w
+    if total_e and len(total_e) == len(time):
+        curves["total_energy"] = total_e
     _apply_cfc(work_dir, time, time_header, curves, scalars, acc_comp, filters_override)
     if unmapped:
         diag["th_unmapped_groups"] = unmapped
