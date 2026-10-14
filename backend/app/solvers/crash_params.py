@@ -795,6 +795,46 @@ class CrashPressureLoadParams(BaseModel):
         return self.peak_mpa * self.duration_ms * (1.0 / b - (1.0 - math.exp(-b)) / (b * b))
 
 
+class CrashSpringEnd(BaseModel):
+    """Yay ucu (1.24b1): rijit gövde ana düğümü ya da uzayda nokta (mm; yeni düğüm).
+    Nokta `fixed=True` ise /BCS ile altı serbestlik kilitli (zemin)."""
+
+    rigid_body: str | None = Field(default=None, description="CrashRigidBodyParams.name")
+    point: tuple[float, float, float] | None = Field(default=None, description="mm, global")
+    fixed: bool = Field(default=True, description="Yalnız point: düğüm sabit (/BCS 111 111)")
+
+    @model_validator(mode="after")
+    def _one(self) -> "CrashSpringEnd":
+        if (self.rigid_body is None) == (self.point is None):
+            raise ValueError("yay ucu: rigid_body ya da point tam olarak biri verilmeli.")
+        if self.point is not None:
+            for v in self.point:
+                _finite(v, "point")
+        return self
+
+
+class CrashSpringParams(BaseModel):
+    """Yay elemanı (1.24b1): /SPRING + /PROP/TYPE4 (hm_cfg radioss140), iki uç arası
+    eksenel doğrusal yay. K (N/mm) → kN/mm, C (N·s/mm) → kN·ms/mm (sayısal aynı),
+    kütle kg. Öneri yok; mühendis doldurur. `th`: /TH/SPRING (FX FY FZ)."""
+
+    name: str = Field(default="spring", min_length=1, max_length=60)
+    end_a: CrashSpringEnd
+    end_b: CrashSpringEnd
+    k_n_per_mm: float = Field(gt=0, description="Yay sabiti K (N/mm)")
+    c_n_s_per_mm: float = Field(default=0.0, ge=0, description="Sönüm C (N·s/mm)")
+    mass_kg: float = Field(default=0.0, ge=0, description="/PROP/TYPE4 Mass (kg)")
+    th: bool = Field(default=True, description="/TH/SPRING kuvvet çıktısı")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashSpringParams":
+        for v, n in ((self.k_n_per_mm, "k_n_per_mm"), (self.c_n_s_per_mm, "c_n_s_per_mm"), (self.mass_kg, "mass_kg")):
+            _finite(v, n)
+        if self.end_a.rigid_body is not None and self.end_a.rigid_body == self.end_b.rigid_body:
+            raise ValueError(f"'{self.name}': iki uç aynı rijit gövde.")
+        return self
+
+
 class CrashSphProjectileParams(BaseModel):
     """K12 — SPH mermi (ör. kuş): kapsül (silindir + iki yarım küre) içinde kübik
     kafes parçacıklar; /SPHCEL + /PROP/SPH (hm_cfg r2019) + /MAT/HYDRO (LAW6,

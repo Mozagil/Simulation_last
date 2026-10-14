@@ -445,6 +445,7 @@ def named_th_curves(
                     "rwall": f"th_rwall_{v}",
                     "inter": f"th_inter_{idx}_{v}",
                     "sect": f"th_sect_{idx}_{v}",
+                    "spring": f"th_spring_{idx}_{v}",
                 }.get(kind, f"th_node_{obj}_{v}")
                 out[key] = cols[gcols[k]]
                 k += 1
