@@ -1315,6 +1315,27 @@ function App() {
       lastRunRef.current = { geo: geoId, run: runId };
       const cadParts = await loadGeometryById(geoId, `geometri #${geoId} (koşu #${runId})`);
       if (activeGeometryIdRef.current !== geoId) return;
+      // Kabuk kalınlığı koşu isteğinde (parts[].thickness_mm); panel ürün ağacından (bileşen) okur.
+      // Bileşende yoksa yeniden koşu "kalınlığı verilmemiş kabuk" der (kullanıcı 2026-10-14, D3 denemesi)
+      // → bileşene yaz; malzeme ataması korunsun diye mevcut material_id ile (B1c ile aynı).
+      const thick = (rq.parts ?? []).filter((p) => typeof p.thickness_mm === "number" && p.thickness_mm > 0);
+      if (thick.length) {
+        try {
+          const assigned = await fetchMaterialAssignments(geoId);
+          for (const p of thick) {
+            await upsertComponent(geoId, {
+              part_id: p.part_id,
+              property_kind: "shell",
+              thickness: p.thickness_mm,
+              material_id: assigned.find((a) => a.part_id === p.part_id)?.material_id ?? null,
+            });
+          }
+          if (activeGeometryIdRef.current === geoId) setMaterialAssignments(await fetchMaterialAssignments(geoId));
+        } catch (err) {
+          setErrorMessage(err instanceof Error ? err.message : "Kabuk kalınlığı kaydedilemedi.");
+        }
+      }
+      if (activeGeometryIdRef.current !== geoId) return;
       const preview = await restoreServerMesh(geoId, dim, cadParts);
       if (activeGeometryIdRef.current !== geoId) return;
       setCrashMatCard(matCardFromModel(rq.model));
