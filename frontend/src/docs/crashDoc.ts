@@ -40,7 +40,20 @@ export interface DocScenario {
   reference: string;
 }
 
+import MATERIAL_EXAMPLES from "./crashMaterialExamples.json";
+
 const IMG = (f: string) => `/docs/crash/${f}`;
+
+/** 1.23 A3 — malzeme örnekleri (tek kaynak JSON; backend testi aynı veriden deck'i denetler). */
+export const CRASH_MATERIAL_EXAMPLES: {
+  id: string;
+  title: string;
+  card: string;
+  ui: string;
+  setup: string;
+  result: string;
+  when: string;
+}[] = MATERIAL_EXAMPLES;
 
 export const CRASH_DOC: DocSection[] = [
   {
@@ -109,6 +122,18 @@ export const CRASH_DOC: DocSection[] = [
       { src: IMG("08-malzeme.png"), caption: "3 Malzeme modeli ve kopma · LAW2: aç/kapa bölümler (Akma ve pekleşme, Hız etkisi, Sıcaklık, Basit kopma, Kopma / hasar); kapalıyken değiştirilen alanlar başlıkta özetlenir." },
       { src: IMG("09-fail.png"), caption: "Kopma / hasar: Johnson–Cook ve çekme gerinimi kartları; seçili kart mavi çerçeveli, alanları altında." },
     ],
+  },
+  {
+    id: "malzeme-ornek",
+    title: "Malzeme örnekleri (LAW1, LAW2 kopma, /FAIL)",
+    intro:
+      "Aynı crash box darbesinde (10 m/s, rijit duvar, 4 ms) malzeme kartının etkisi: kurulum, 3 · Material'de ne seçilir, ölçülen sonuç. Değerler örnek / denemedir — kopma eşiklerini mühendis kendi malzeme verisinden girer.",
+    items: CRASH_MATERIAL_EXAMPLES.map((e) => ({
+      name: e.title,
+      what: `${e.setup} ${e.ui}. Sonuç: ${e.result}`,
+      when: e.when,
+      card: e.card,
+    })),
   },
   {
     id: "carpma",

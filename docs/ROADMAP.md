@@ -1518,7 +1518,14 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   parça) "Hepsi LAWx olsun mu?" Evet = tüm parçalar / Hayır = uygulanmaz. Ürün ağacı:
   ayrı model yoksa "Tüm parçalar", varsa her parça satırı. Test:
   `CrashMaterialSection.test.tsx`, `CrashPanel.test.tsx`.
-- A3 Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
+- A3 ✅ (2026-10-14) Belgeler örnekleri: LAW1, LAW2 basit kopma, /FAIL denemeleri (belge + test).
+  Belgeler → Crash → "Malzeme örnekleri": 4 örnek (kurulum, 3 · Material seçimi, ölçülen sonuç)
+  tek kaynaktan `frontend/src/docs/crashMaterialExamples.json`; `test_crash_material_examples.py`
+  aynı veriden deck kartlarını denetler. Ölçüldü (crash box, 10 m/s, 4 ms): LAW1 #333 tepe 205.1 kN,
+  KE_son 55.49 J (geri sekme); LAW2 εp,max 0.01 #334 183 kabuk silindi. Yolda bulunan hata:
+  LAW2 εp,max kopması listing'de parantezsiz ("RUPTURE OF SHELL ELEMENT") yazılıyor, sayılmıyordu
+  ("silinen eleman 0") — `parse_ruptures` düzeltildi, kriter "MAT".
+  **1.23 TAMAM (2026-10-14).** Beklemede: A5 (akıcı animasyon, kullanıcı "sonra"), C8b (ayrı onay).
 - A4 ✅ Animasyonda "ölçek ×1 (gerçek) / ×2 / ×5 / ×10" (yer değiştirme ilk kareye göre
   çarpılır) + veri satırı "son karede en büyük |u| … mm · model boyutuna oranı %…".
   Ölçüldü: Belgeler 1. örnek (crash box, LAW2, 10 m/s, 4 ms; #316) |u|max 8.2 mm = 300 mm

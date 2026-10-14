@@ -1,0 +1,46 @@
+[
+  {
+    "id": "law1",
+    "title": "Örnek 1 · LAW1 elastik — kutu seker",
+    "card": "/MAT/LAW1",
+    "ui": "3 · Material → LAW1 (kopma yok)",
+    "model": { "law": "elastic" },
+    "deck": [{ "card": "/MAT/LAW1/1" }],
+    "setup": "Crash box (crash_box_shell, t 3 mm, S235), 10 m/s −X, rijit duvar x = 0, 4 ms.",
+    "result": "Koşu #333: tepe 205.1 kN, impuls 22.93 N·s (≈ 2·m·v = 23.7: geri sekme), KE_son 55.49 J / başlangıç 58.86 J, IE_son 2.12 J, silinen 0. Aynı kurulum LAW2 (#325): 122.3 kN, 14.39 N·s, IE_son 55.41 J — plastik ezilme enerjiyi yutar.",
+    "when": "Dalga yayılımı, doğrulama, rijit gibi davranması istenen parçalar."
+  },
+  {
+    "id": "law2_epsmax",
+    "title": "Örnek 2 · LAW2 basit kopma (εp,max)",
+    "card": "/MAT/LAW2",
+    "ui": "3 · Material → LAW2, εp,max = 0.01 (/FAIL yok)",
+    "model": { "law": "plastic", "eps_p_max": 0.01 },
+    "deck": [{ "card": "/MAT/LAW2/1", "line": 3, "field": 3, "value": 0.01 }],
+    "setup": "Örnek 1 ile aynı kurulum.",
+    "result": "Koşu #334: 183 kabuk silindi (ilki t ≤ 0.054 ms; kopma listesinde kriter \"MAT\" — listing parantezsiz yazar), tepe 121.9 kN, impuls 8.28 N·s, IE_son 45.85 J, KE_son 7.74 J, enerji dengesi %4.3.",
+    "when": "Malzemenin kendi plastik gerinim sınırıyla eleman silme; ayrı kopma kartı istemez."
+  },
+  {
+    "id": "tensstrain",
+    "title": "Örnek 3 · /FAIL/TENSSTRAIN — çekme gerinimi",
+    "card": "/FAIL/TENSSTRAIN",
+    "ui": "3 · Material → LAW2 + Kopma: TENSSTRAIN ε_t1 = 0.002, ε_t2 = 0.004",
+    "model": { "law": "plastic", "fail": { "tensstrain": { "eps_t1": 0.002, "eps_t2": 0.004 } } },
+    "deck": [{ "card": "/FAIL/TENSSTRAIN/1", "line": 0, "field": 0, "value": 0.002 }, { "card": "/FAIL/TENSSTRAIN/1", "line": 0, "field": 1, "value": 0.004 }],
+    "setup": "Crash box (1.14d, aynı şablon), LAW2 σy 235 MPa, 10 m/s, 4 ms.",
+    "result": "133 kabuk \"RUPTURE (TENS_STRAIN)\", IE_son 50.31 J, impuls 9.05 N·s, denge %6.5. Gerçekçi eşik 0.05 / 0.10'da bu darbede hiç eleman silinmedi (IE_son 55.41 J, kopmasız ile aynı).",
+    "when": "Az veri; ölçüm yoksa ilk yaklaşım."
+  },
+  {
+    "id": "johnson",
+    "title": "Örnek 4 · /FAIL/JOHNSON — Johnson–Cook hasarı",
+    "card": "/FAIL/JOHNSON",
+    "ui": "3 · Material → LAW2 + Kopma: JOHNSON D1 = 0.003 (D2…D5 = 0), Ifail_sh = 1",
+    "model": { "law": "plastic", "fail": { "johnson": { "d1": 0.003, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "ifail_sh": 1, "ifail_so": 1 } } },
+    "deck": [{ "card": "/FAIL/JOHNSON/1", "line": 0, "field": 0, "value": 0.003 }],
+    "setup": "Örnek 3 ile aynı kurulum.",
+    "result": "259 kabuk \"RUPTURE (JOHNSON-COOK)\", IE_son 15.19 J, KE_son 34.94 J, tepe 27.0 kN, denge %15.5. D1–D3 = 0.05 / 3.44 / −2.12 ile bu darbede silme yok.",
+    "when": "Gerilme durumu / hız / sıcaklığa bağlı kopma; en çok veri isteyen."
+  }
+]
