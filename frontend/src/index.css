@@ -6794,8 +6794,6 @@ p {
   font-size: 13px;
   color: var(--muted);
 }
-<<<<<<< Updated upstream
-=======
 
 /* ---- Crash deforme şekil: tam ekran ----
    Sidebar'daki 260px kutu deforme şekli okumak için dar. Ana viewport'a
@@ -6837,7 +6835,6 @@ p {
   background: var(--accent-soft);
   color: var(--accent);
 }
->>>>>>> Stashed changes
 
 /* TODO 11.6 — STEP indir Geometri adımında */
 .geometry-step-download {
