@@ -7592,6 +7592,18 @@ p {
   white-space: nowrap;
 }
 
+/* 1.23 C4 — parça satırında "Rijit gövde": açıklama ayrı satırda */
+.crash-part-rigid {
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.crash-part-rigid span:first-of-type {
+  white-space: nowrap;
+}
+.crash-part-rigid .crash-behavior-hint {
+  flex-basis: 100%;
+}
+
 /* 1.23 D1 — üretilen deck görüntüleyici */
 .crash-deck-open {
   margin: 6px 0;
