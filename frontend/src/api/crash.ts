@@ -171,6 +171,8 @@ export interface CrashSolveRequest {
   boundary_conditions?: Record<string, unknown>[];
   imposed_velocities?: Record<string, unknown>[];
   rigid_bodies?: Record<string, unknown>[];
+  /** 1.24b2 — yay elemanları (/SPRING + /PROP/TYPE4) */
+  springs?: Record<string, unknown>[];
   /** 11.2 — Yükleme: Yerçekimi */
   gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
   /** 1.22 — OpenRadioss ham kartları; starter deck'ine /END'den önce aynen. */

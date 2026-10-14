@@ -659,7 +659,7 @@ export default function CrashPanel({
     },
     {
       title: "Ek tanımlar",
-      rows: loadCards.map((c) => ({ label: CARD_LABEL[c.kind], value: cardSummary(c, impactAxis) })),
+      rows: loadCards.map((c) => ({ label: CARD_LABEL[c.kind], value: cardSummary(c, impactAxis, loadCards) })),
     },
   ];
   const treeKey = JSON.stringify(treeGroups);

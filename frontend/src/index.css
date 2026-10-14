@@ -4208,6 +4208,16 @@ p {
   margin-top: 8px;
 }
 
+.crash-spring-end {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
 .crash-contact-scope {
   display: flex;
   align-items: center;

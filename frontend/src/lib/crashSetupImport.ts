@@ -104,8 +104,10 @@ export function cardsFromRequest(req: Rec, impactAxis: Axis): LoadCard[] {
     c.tStop = str(r.t_stop_ms, c.tStop);
     cards.push(c);
   }
+  const rbCardByName = new Map<string, number>();
   for (const r of list("rigid_bodies")) {
     const c = next("rbody", r);
+    if (typeof r.name === "string") rbCardByName.set(r.name, c.id);
     c.mass = str(r.mass_kg, "");
     c.hic = r.th_accel === true;
     c.keepWall = r.ikrem === 1;
@@ -124,6 +126,24 @@ export function cardsFromRequest(req: Rec, impactAxis: Axis): LoadCard[] {
     const c = next("admas", r);
     c.mass = str(r.mass_kg, "");
     c.massDist = r.distribution === "per_node" ? "per_node" : "total";
+    cards.push(c);
+  }
+  // 1.24b2 — yaylar: uç = kızak kartı (ada göre) ya da nokta
+  const springEnd = (e: Rec | undefined): LoadCard["springA"] => {
+    const out: LoadCard["springA"] = { mode: "point", rbody: null, point: ["0", "0", "0"], fixed: true };
+    if (!e) return out;
+    if (typeof e.rigid_body === "string") return { ...out, mode: "rbody", rbody: rbCardByName.get(e.rigid_body) ?? null };
+    if (Array.isArray(e.point)) out.point = (e.point as number[]).map(String) as [string, string, string];
+    out.fixed = e.fixed !== false;
+    return out;
+  };
+  for (const r of list("springs")) {
+    const c = next("spring", {});
+    c.springA = springEnd(r.end_a as Rec | undefined);
+    c.springB = springEnd(r.end_b as Rec | undefined);
+    c.springK = str(r.k_n_per_mm, "");
+    c.springC = str(r.c_n_s_per_mm, "0");
+    c.mass = str(r.mass_kg, "0");
     cards.push(c);
   }
   return cards;
