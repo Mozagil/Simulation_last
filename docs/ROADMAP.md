@@ -1629,8 +1629,10 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
 - c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı
   **tüm** eğriler (enerji IE/KE/HG, temas, kesit, düğüm, CFC); 1.17e2'deki yalnız `_force` / `acc_g`
   süzgeci kaldırıldı, `curves=` ile daraltma aynı. Test: `test_crash_runs.py`.
-- c2 Karşılaştırma eğri seçici (UI): gruplanmış liste (Kuvvet / Enerji / Temas / Kesit / Düğüm / CFC),
-  okunur etiketler + birim.
+- c2 ✅ (2026-10-14) Karşılaştırma eğri seçici (UI): `<optgroup>` Kuvvet / Enerji / Temas / Kesit / İvme /
+  İmpuls / TH kanalları; okunur ad + birim ("Duvar kuvveti · CFC 600 (kN)", "Temas 2 kuvveti (kN)"); impuls
+  eğrisi artık kuvvet sayılmıyor (birim N·s, ortalama çizgisi yok). `crashRunFormat.ts`
+  `curveGroup` / `curveLabel`. Test: `crashRunFormat.test.ts`.
 - d Skaler tablo yeniden tasarım: okunur satır, büyük font, birim ayrı sütun, koşu başlıkları.
 - b Karşılaştırmada N koşu yan yana (Sol/Sağ yerine ızgara), büyük pencere.
 - a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
