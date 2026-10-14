@@ -4638,6 +4638,9 @@ p {
 .crash-series-1 { color: var(--doe-warn); }
 .crash-series-2 { color: var(--doe-ok); }
 .crash-series-3 { color: var(--muted); }
+/* 1.23 C6 — enerji grafiğinde 6 seri (IE, KE, HG, temas, dış iş, toplam) */
+.crash-series-4 { color: var(--crash-series-4); }
+.crash-series-5 { color: var(--danger); }
 
 /* ---- Model + Tahmin aşamaları (ML Studio 1a) ---- */
 .sg-all {
@@ -5429,6 +5432,7 @@ p {
   --doe-ok-bg: #e6eee9;
   --doe-warn: #8a5a1f;
   --doe-warn-bg: #f6ecdc;
+  --crash-series-4: #6b4c9a;
 }
 
 [data-theme="dark"] {
@@ -5436,6 +5440,7 @@ p {
   --doe-ok-bg: rgba(127, 181, 143, 0.16);
   --doe-warn: #d9a45b;
   --doe-warn-bg: rgba(217, 164, 91, 0.16);
+  --crash-series-4: #b79be0;
 }
 
 .doe-study-chips {

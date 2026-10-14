@@ -98,7 +98,7 @@ export default function CrashForceChart({
   // ince ve soluk. Renk sırası taban anahtara (…_cfcN eki atılmış) göre.
   const baseKey = (k: string) => k.replace(/_cfc\d+$/, "");
   const bases = [...new Set(series.map((s) => baseKey(s.key)))];
-  const colorOf = (k: string) => bases.indexOf(baseKey(k)) % 4;
+  const colorOf = (k: string) => bases.indexOf(baseKey(k)) % 6;
   const isCfc = (k: string) => /_cfc\d+$/.test(k);
   const hasTwin = (k: string) => !isCfc(k) && series.some((o) => isCfc(o.key) && baseKey(o.key) === k);
   const lineClass = (k: string) =>
