@@ -74,17 +74,20 @@ def test_compare_returns_force_curves_side_by_side():
         db.close()
     res = client.get("/crash/runs/compare", params={"ids": f"{a['run_id']},{b['run_id']}"}).json()["runs"]
     assert [r["name"] for r in res] == ["a", "b"]
-    assert res[0]["curves"] == {"rwall_force": [0, 5], "time": [0, 1]}  # yalnız *_force + time
+    # 1.25c — varsayılan: kayıtlı tüm eğriler + time
+    assert res[0]["curves"] == {"rwall_force": [0, 5], "internal_energy": [0, 1], "time": [0, 1]}
     assert set(res[1]["curves"]) == {"rwall_force", "section_1_force", "time"}
     assert res[1]["scalars"]["rwall_force_max"] == 7
     only = client.get("/crash/runs/compare", params={"ids": str(a["run_id"]), "curves": "internal_energy"}).json()
     assert only["runs"][0]["curves"] == {"internal_energy": [0, 1], "time": [0, 1]}
     assert client.get("/crash/runs/compare", params={"ids": "x"}).status_code == 422
-    # 1.17e2: varsayılan CFC kuvvet + ivme bileşkesini de getirir, enerjiyi getirmez
+    # 1.25c: CFC kuvvet, ivme ve enerji hepsi varsayılanda; `curves` ile daraltılabilir
     _put_curves(a["job_id"], {"time": [0, 1], "rwall_force": [0, 5], "rwall_force_cfc600": [0, 4],
                               "acc_g": [0, 9], "acc_g_cfc1000": [0, 2], "internal_energy": [0, 1]}, {})
     got = client.get("/crash/runs/compare", params={"ids": str(a["run_id"])}).json()["runs"][0]["curves"]
-    assert set(got) == {"time", "rwall_force", "rwall_force_cfc600", "acc_g", "acc_g_cfc1000"}
+    assert set(got) == {"time", "rwall_force", "rwall_force_cfc600", "acc_g", "acc_g_cfc1000", "internal_energy"}
+    sub = client.get("/crash/runs/compare", params={"ids": str(a["run_id"]), "curves": "acc_g,rwall_force"}).json()
+    assert set(sub["runs"][0]["curves"]) == {"time", "acc_g", "rwall_force"}
 
 
 @requires_db

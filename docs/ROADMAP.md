@@ -1624,6 +1624,19 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   30 mm, n 100, min 1): eğri yüzler 38 → ~380 eleman, düzlemler aynı. Test:
   `test_mesh_curved_quad.py`, `meshCurvature.test.ts`.
 
+*1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
+Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
+- c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı
+  **tüm** eğriler (enerji IE/KE/HG, temas, kesit, düğüm, CFC); 1.17e2'deki yalnız `_force` / `acc_g`
+  süzgeci kaldırıldı, `curves=` ile daraltma aynı. Test: `test_crash_runs.py`.
+- c2 Karşılaştırma eğri seçici (UI): gruplanmış liste (Kuvvet / Enerji / Temas / Kesit / Düğüm / CFC),
+  okunur etiketler + birim.
+- d Skaler tablo yeniden tasarım: okunur satır, büyük font, birim ayrı sütun, koşu başlıkları.
+- b Karşılaştırmada N koşu yan yana (Sol/Sağ yerine ızgara), büyük pencere.
+- a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
+- e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
+  duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
