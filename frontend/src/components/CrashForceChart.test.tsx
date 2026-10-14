@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import CrashForceChart, { contactMean, forceSeriesFromCurves, niceTicks } from "./CrashForceChart";
+import CrashForceChart, { chartCsv, chartFileBase, contactMean, forceSeriesFromCurves, niceTicks } from "./CrashForceChart";
 
 describe("forceSeriesFromCurves", () => {
   it("temasları numara sırasıyla, duvarı en sona alır; diğer eğrileri atlar", () => {
@@ -130,5 +130,50 @@ describe("1.23 C8 ortalama kuvvet (temas aralığı)", () => {
     render(<CrashForceChart time={[0, 1, 2, 3]} series={series} showMean />);
     expect(screen.getAllByTestId("crash-chart-mean")).toHaveLength(1);
     expect(screen.getByText("Rijit duvar CFC600 ortalama")).toBeInTheDocument();
+  });
+});
+
+describe("1.23 C1b grafik dışa aktarma", () => {
+  it("chartFileBase: başlıktan ASCII dosya adı", () => {
+    expect(chartFileBase("Kuvvet · kN")).toBe("kuvvet_kN");
+    expect(chartFileBase("İvme · g")).toBe("ivme_g");
+    expect(chartFileBase("Enerji · J")).toBe("enerji_J");
+    expect(chartFileBase("···")).toBe("grafik");
+  });
+
+  it("chartCsv: ortak zaman ekseninde geniş tablo, işaretli değer korunur", () => {
+    const csv = chartCsv(
+      [0, 0.5, 1],
+      [
+        { key: "rwall_force", label: "Rijit duvar", values: [0, -4, 2] },
+        { key: "contact_1_force", label: "Temas 1", values: [0, 1, 0] },
+      ],
+      "kN",
+    );
+    expect(csv).toBe("t (ms),Rijit duvar (kN),Temas 1 (kN)\n0,0,0\n0.5,-4,1\n1,2,0\n");
+  });
+
+  it("chartCsv: ayrı zaman eksenli seriler (karşılaştırma) seri başına t + değer; eksik hücre boş", () => {
+    const csv = chartCsv(
+      [],
+      [
+        { key: "a", label: "#1, ilk", values: [1, 2], time: [0, 1] },
+        { key: "b", label: "#2", values: [3, 4, 5], time: [0, 2, 4] },
+      ],
+      "g",
+    );
+    expect(csv.split("\n")).toEqual([
+      '"#1, ilk t (ms)","#1, ilk (g)",#2 t (ms),#2 (g)',
+      "0,1,0,3",
+      "1,2,2,4",
+      ",,4,5",
+      "",
+    ]);
+  });
+
+  it("grafik başlığında PNG ve CSV butonları", () => {
+    render(<CrashForceChart time={[0, 1]} series={[{ key: "rwall_force", label: "Rijit duvar", values: [0, 1] }]} />);
+    expect(screen.getByRole("button", { name: "PNG" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CSV" })).toBeInTheDocument();
   });
 });

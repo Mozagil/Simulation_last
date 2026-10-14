@@ -5,6 +5,8 @@
  * 1.23 C8 ortalama kuvvet aralığı (gölge) yalnız veriden, sabit eşikle.
  */
 
+import { useRef } from "react";
+
 import { niceValue } from "./ConvergenceChart";
 
 export interface ForceSeries {
@@ -106,6 +108,42 @@ export function energySeriesFromCurves(curves: Record<string, number[]> | undefi
   }));
 }
 
+/** 1.23 C1b — dosya adı: başlıktan (Türkçe harf → ASCII), ör. "Kuvvet · kN" → "kuvvet_kN". */
+export function chartFileBase(title: string): string {
+  const tr: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", Ç: "C", Ğ: "G", İ: "I", Ö: "O", Ş: "S", Ü: "U" };
+  const ascii = title.replace(/[çğıöşüÇĞİÖŞÜ]/g, (c) => tr[c] ?? c);
+  const [head, ...rest] = ascii.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  return [head?.toLowerCase(), ...rest].filter(Boolean).join("_") || "grafik";
+}
+
+const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** 1.23 C1b — CSV (virgül ayraç, nokta ondalık): ortak zaman ekseninde geniş tablo
+ *  (t, seri1, seri2 …); seriler ayrı zaman eksenliyse (karşılaştırma) seri başına t + değer.
+ *  Değerler kayıtlı veri (işaretli); grafik |F| çizer. */
+export function chartCsv(time: number[], series: ForceSeries[], unit: string): string {
+  const shared = series.every((s) => !s.time);
+  const cols: { head: string; vals: number[] }[] = shared
+    ? [{ head: "t (ms)", vals: time }, ...series.map((s) => ({ head: `${s.label} (${unit})`, vals: s.values }))]
+    : series.flatMap((s) => [
+        { head: `${s.label} t (ms)`, vals: s.time ?? time },
+        { head: `${s.label} (${unit})`, vals: s.values },
+      ]);
+  const n = shared ? time.length : Math.max(...cols.map((c) => c.vals.length));
+  const lines = [cols.map((c) => csvCell(c.head)).join(",")];
+  for (let i = 0; i < n; i++) lines.push(cols.map((c) => (c.vals[i] == null ? "" : String(c.vals[i]))).join(","));
+  return lines.join("\n") + "\n";
+}
+
+export function downloadBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function CrashForceChart({
   time,
   series,
@@ -129,6 +167,7 @@ export default function CrashForceChart({
   /** 1.23 C8 — temas aralığı ortalaması (yalnız kuvvet grafiği) */
   showMean?: boolean;
 }) {
+  const figRef = useRef<HTMLElement | null>(null);
   const tOf = (s: ForceSeries) => s.time ?? time;
   if (series.length === 0 || series.some((s) => tOf(s).length < 2)) return null;
   const tMin = Math.min(...series.map((s) => tOf(s)[0]));
@@ -170,8 +209,142 @@ export default function CrashForceChart({
         .filter((s): s is ForceSeries & { m: NonNullable<ReturnType<typeof contactMean>> } => s.m != null)
     : [];
 
+  const exportCsv = () =>
+    downloadBlob(new Blob([chartCsv(time, series, unit)], { type: "text/csv;charset=utf-8" }), `${chartFileBase(title)}.csv`);
+
+  // 1.23 C1b — PNG: grafik veriden 2B tuvale yeniden çizilir (SVG + HTML katmanı tek
+  // resme dönmüyor); renkler ekrandaki lejanttan, tema ile aynı.
+  const exportPng = () => {
+    const fig = figRef.current;
+    if (!fig) return;
+    const css = getComputedStyle(fig);
+    const swatches = [...fig.querySelectorAll<HTMLElement>(".crash-force-swatch")];
+    const colors = series.map((_, i) => (swatches[i] ? getComputedStyle(swatches[i]).color : "#333"));
+    const bg = css.backgroundColor && css.backgroundColor !== "rgba(0, 0, 0, 0)" ? css.backgroundColor : "#ffffff";
+    const fg = css.color || "#111";
+    const colorFor = (k: string) => colors[series.findIndex((s) => s.key === k)] ?? fg;
+    const marked = peaks.filter((p) => !hasTwin(p.key));
+    const stats = [
+      ...peaks.map((p) => `${p.label} tepe ${niceValue(p.peak)} ${unit} · t = ${niceValue(p.at)} ms`),
+      ...means.map((s) => `${s.label} ortalama ${niceValue(s.m.mean)} ${unit} · ${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ms`),
+    ];
+    const CW = 1400;
+    const L = 100;
+    const R = 40;
+    const T = 90;
+    const ph = 520;
+    const pw = CW - L - R;
+    const CH = T + ph + 60 + 26 * Math.ceil(stats.length / 2) + 20;
+    const c = document.createElement("canvas");
+    c.width = CW;
+    c.height = CH;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const X = (t: number) => L + ((t - tMin) / tSpan) * pw;
+    const Y = (f: number) => T + (1 - f / fMax) * ph;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = fg;
+    ctx.font = "600 24px system-ui, sans-serif";
+    ctx.fillText(title, L, 38);
+    // lejant
+    ctx.font = "16px system-ui, sans-serif";
+    let lx = L;
+    series.forEach((s, i) => {
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(lx, 58, 20, isCfc(s.key) ? 5 : 3);
+      ctx.fillStyle = fg;
+      ctx.fillText(s.label, lx + 26, 66);
+      lx += 26 + ctx.measureText(s.label).width + 26;
+    });
+    // kılavuz, çerçeve, eksen yazıları
+    ctx.strokeStyle = fg;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.15;
+    for (const v of ticks.slice(1, -1)) {
+      ctx.beginPath();
+      ctx.moveTo(L, Y(v));
+      ctx.lineTo(L + pw, Y(v));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.6;
+    ctx.strokeRect(L, T, pw, ph);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = fg;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const v of ticks) ctx.fillText(String(v), L - 10, Y(v));
+    ctx.save();
+    ctx.translate(30, T + ph / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillText(`${yLabel} (${unit})`, 0, 0);
+    ctx.restore();
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(`${niceValue(tMin)} ms`, L, T + ph + 10);
+    ctx.textAlign = "center";
+    ctx.fillText("zaman (ms)", L + pw / 2, T + ph + 10);
+    ctx.textAlign = "right";
+    ctx.fillText(`${niceValue(tMax)} ms`, L + pw, T + ph + 10);
+    // ortalama aralığı (gölge)
+    for (const s of means) {
+      ctx.fillStyle = colorFor(s.key);
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(X(s.m.t0), T, X(s.m.t1) - X(s.m.t0), ph);
+    }
+    ctx.globalAlpha = 1;
+    // eğriler: CFC kalın, eşi olan ham ince + soluk
+    series.forEach((s, i) => {
+      const t = tOf(s);
+      ctx.strokeStyle = colors[i];
+      ctx.lineWidth = isCfc(s.key) ? 3 : hasTwin(s.key) ? 1 : 2;
+      ctx.globalAlpha = hasTwin(s.key) ? 0.45 : 1;
+      ctx.beginPath();
+      s.values.slice(0, t.length).forEach((v, j) => {
+        if (j === 0) ctx.moveTo(X(t[j]), Y(Math.abs(v)));
+        else ctx.lineTo(X(t[j]), Y(Math.abs(v)));
+      });
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    // ortalama (kesikli)
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 6]);
+    for (const s of means) {
+      ctx.strokeStyle = colorFor(s.key);
+      ctx.beginPath();
+      ctx.moveTo(X(s.m.t0), Y(s.m.mean));
+      ctx.lineTo(X(s.m.t1), Y(s.m.mean));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // tepe noktaları
+    ctx.font = "600 15px system-ui, sans-serif";
+    ctx.textBaseline = "bottom";
+    for (const p of marked) {
+      const x = X(p.at);
+      const y = Y(p.peak);
+      ctx.fillStyle = colorFor(p.key);
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      const left = (x - L) / pw > 0.8;
+      ctx.textAlign = left ? "right" : "left";
+      ctx.fillStyle = fg;
+      ctx.fillText(niceValue(p.peak), x + (left ? -10 : 10), y - 6);
+    }
+    // ekrandaki istatistik satırları
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillStyle = fg;
+    stats.forEach((txt, i) => ctx.fillText(txt, L + (i % 2) * (pw / 2), T + ph + 44 + 26 * Math.floor(i / 2)));
+    c.toBlob((b) => b && downloadBlob(b, `${chartFileBase(title)}.png`), "image/png");
+  };
+
   return (
-    <figure className="cv-card crash-force-card">
+    <figure className="cv-card crash-force-card" ref={figRef}>
       <span className="cv-card-head">
         <strong>{title}</strong>
         <span className="crash-force-legend">
@@ -183,6 +356,14 @@ export default function CrashForceChart({
               {s.label}
             </span>
           ))}
+        </span>
+        <span className="crash-chart-export">
+          <button type="button" className="crash-var-chip" onClick={exportPng} title="Grafiği PNG olarak indir (1400×800)">
+            PNG
+          </button>
+          <button type="button" className="crash-var-chip" onClick={exportCsv} title="Eğri verisini CSV olarak indir">
+            CSV
+          </button>
         </span>
       </span>
       <div className="crash-chart-plot">

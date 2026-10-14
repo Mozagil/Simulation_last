@@ -4610,6 +4610,17 @@ p {
   gap: 10px;
 }
 
+/* 1.23 C1b — grafik PNG / CSV indirme */
+.crash-chart-export {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.crash-chart-export .crash-var-chip {
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
 .crash-force-legend-item {
   display: inline-flex;
   align-items: center;

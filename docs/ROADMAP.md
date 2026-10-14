@@ -1558,7 +1558,7 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video. Sıra kullanıcı kararı (2026-10-14): C1 → C7.
   - C1a ✅ (2026-10-14) Animasyon video: "Video indir (MP4 / WebM)" — MediaRecorder, ek bağımlılık yok; 1280×720, 30 kare/s, üstte koşu + t + skaler, altta renk ölçeği.
-  - C1b Grafik PNG / CSV.
+  - C1b ✅ (2026-10-14) Grafik PNG / CSV: her crash grafiğinin başlığında PNG (veriden 1400 px yeniden çizim) + CSV (virgül / nokta ondalık). C1 ✅.
 - C2 ✅ Animasyonda "Mesh" düğmesi (yüz kenarları, her karede deforme konumla) + elemana
   tıklayınca değer satırı: yüz no, parça, seçili skaler (eleman skalerinde o elemanın,
   düğüm skalerinde en yakın düğümün değeri), t. Döndürme sürüklemesi seçim sayılmaz.
