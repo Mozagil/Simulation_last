@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import CrashForceChart, { forceSeriesFromCurves, niceTicks } from "./CrashForceChart";
+import CrashForceChart, { contactMean, forceSeriesFromCurves, niceTicks } from "./CrashForceChart";
 
 describe("forceSeriesFromCurves", () => {
   it("temasları numara sırasıyla, duvarı en sona alır; diğer eğrileri atlar", () => {
@@ -94,5 +94,41 @@ describe("1.23 C8 eksen + tepe işareti", () => {
       />,
     );
     expect(screen.getAllByTestId("crash-chart-peak")).toHaveLength(1);
+  });
+});
+
+describe("1.23 C8 ortalama kuvvet (temas aralığı)", () => {
+  it("contactMean: |F| > %1 tepe aralığında ∫|F|dt / Δt", () => {
+    // 0 → 10 → 10 → 0 yamuk, uzun sıfır kuyruk; aralık 1–3 ms
+    const t = [0, 1, 2, 3, 4, 5, 6, 7];
+    const f = [0, 10, 10, 10, 0, 0, 0, 0];
+    expect(contactMean(t, f)).toEqual({ mean: 10, t0: 1, t1: 3 });
+    // işaret önemsiz, eşik altı gürültü aralığa girmez
+    expect(contactMean(t, [0.05, -10, -10, -10, 0.05, 0, 0, 0])).toEqual({ mean: 10, t0: 1, t1: 3 });
+  });
+
+  it("contactMean: sıfır seri ya da tek örnekli aralık null", () => {
+    expect(contactMean([0, 1, 2], [0, 0, 0])).toBeNull();
+    expect(contactMean([0, 1, 2], [0, 5, 0])).toBeNull();
+  });
+
+  it("showMean: seri başına kesikli çizgi + ortalama satırı; varsayılan kapalı", () => {
+    const series = [{ key: "rwall_force", label: "Rijit duvar", values: [0, 4, 4, 0] }];
+    const { container, rerender } = render(<CrashForceChart time={[0, 1, 2, 3]} series={series} showMean />);
+    expect(screen.getAllByTestId("crash-chart-mean")).toHaveLength(1);
+    expect(container.querySelectorAll(".crash-chart-mean-band")).toHaveLength(1);
+    expect(screen.getByText("Rijit duvar ortalama")).toBeInTheDocument();
+    rerender(<CrashForceChart time={[0, 1, 2, 3]} series={series} />);
+    expect(screen.queryByTestId("crash-chart-mean")).toBeNull();
+  });
+
+  it("CFC eşi olan ham seriye ortalama çizilmez", () => {
+    const series = [
+      { key: "rwall_force", label: "Rijit duvar", values: [0, 4, 4, 0] },
+      { key: "rwall_force_cfc600", label: "Rijit duvar CFC600", values: [0, 3, 3, 0] },
+    ];
+    render(<CrashForceChart time={[0, 1, 2, 3]} series={series} showMean />);
+    expect(screen.getAllByTestId("crash-chart-mean")).toHaveLength(1);
+    expect(screen.getByText("Rijit duvar CFC600 ortalama")).toBeInTheDocument();
   });
 });

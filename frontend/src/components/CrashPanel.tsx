@@ -1395,7 +1395,7 @@ export default function CrashPanel({
             </p>
           )}
           {curves?.time && forceSeries.length > 0 && (
-            <CrashForceChart time={curves.time} series={forceSeries} note={FORCE_CHART_NOTE} />
+            <CrashForceChart time={curves.time} series={forceSeries} note={FORCE_CHART_NOTE} showMean />
           )}
           {curves?.time && energySeries.length > 0 && (
             <CrashForceChart

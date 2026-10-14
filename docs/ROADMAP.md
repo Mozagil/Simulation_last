@@ -1571,7 +1571,8 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   seriler. Test: `test_crash_energy_c6.py`, `CrashPanel.test.tsx`.
 - C7 Post-process alanları: yönlü deformasyon, eşdeğer plastik şekil değiştirme
   (min/maks/ort), gerçek ölçek eleman.
-- C8 Kuvvet grafiği açıklaması: eksen/birim, tepe + ortalama işaretli, kısa açıklama.
+- C8 ✅ (2026-10-14) Kuvvet grafiği açıklaması: y ekseni adı + birim + 1·2·2.5·5 ölçek, kılavuz çizgi, tepe noktası, ortalama kuvvet (kullanıcı kararı B: temas aralığında impuls / süre; aralık |F| > tepenin %1'i, gölgeli), kısa veri kaynağı açıklaması.
+- C8b Ortalama ezilme kuvveti (yer değiştirme tabanlı): emilen enerji / ezilme mesafesi; hareketli parçanın arka düğümü için düğüm TH çıktısı gerekir (çıktı kartı + backend + UI). Ayrı onay.
 - D1 Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
 - D2 Çözüm kontrolü kartı: bitiş süresi, Δt ölçeği (güvenlik katsayısı), kütle
   ölçekleme tek yerde + açıklama.

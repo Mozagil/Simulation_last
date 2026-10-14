@@ -1,8 +1,8 @@
 /** Crash kuvvet–zaman grafiği (1.12b): temas (|FN|, arayüz başına) ve duvar.
  *
  * Eksenler: zaman ms (deck birimi kg–mm–ms), kuvvet kN. Her seri kendi
- * çizgisi; altta seri başına tepe değer ve zamanı. Grafik yorum yapmaz,
- * eşik/bant çizmez.
+ * çizgisi; altta seri başına tepe değer ve zamanı. Grafik yorum yapmaz;
+ * 1.23 C8 ortalama kuvvet aralığı (gölge) yalnız veriden, sabit eşikle.
  */
 
 import { niceValue } from "./ConvergenceChart";
@@ -26,6 +26,30 @@ export function niceTicks(maxAbs: number): number[] {
   const step = ([1, 2, 2.5, 5, 10].find((m) => m * mag >= raw) ?? 10) * mag;
   const n = Math.ceil(maxAbs / step - 1e-9);
   return Array.from({ length: n + 1 }, (_, i) => Number((i * step).toPrecision(12)));
+}
+
+/** 1.23 C8 — temas aralığı eşiği: |F| > tepe × MEAN_THRESHOLD. */
+export const MEAN_THRESHOLD = 0.01;
+
+/** 1.23 C8 — ortalama kuvvet (B): temas aralığında ∫|F|dt / Δt (yamuk).
+ *  Aralık = |F| > eşik×tepe olan ilk ve son örnek arası; Δt = 0 ise null. */
+export function contactMean(
+  time: number[],
+  values: number[],
+  frac = MEAN_THRESHOLD,
+): { mean: number; t0: number; t1: number } | null {
+  const n = Math.min(time.length, values.length);
+  const abs = values.slice(0, n).map((v) => Math.abs(v));
+  const peak = Math.max(0, ...abs);
+  if (!(peak > 0)) return null;
+  const on = abs.map((v) => v > frac * peak);
+  const i0 = on.indexOf(true);
+  const i1 = on.lastIndexOf(true);
+  const dt = time[i1] - time[i0];
+  if (i0 < 0 || !(dt > 0)) return null;
+  let area = 0;
+  for (let i = i0; i < i1; i++) area += ((abs[i] + abs[i + 1]) / 2) * (time[i + 1] - time[i]);
+  return { mean: area / dt, t0: time[i0], t1: time[i1] };
 }
 
 /** `curves` sözlüğünden çizilecek kuvvet serileri: contact_k_force (k sırasıyla), rwall_force. */
@@ -60,7 +84,8 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
 export const FORCE_CHART_NOTE =
   "Kuvvet = TH'deki birikimli impulsun zamana türevi (|F|, global bileşke): rijit duvar /TH/RWALL, " +
   "temas /TH/INTER, kesit /TH/SECTIO (FN + FT). Ham = süzülmemiş; CFC = SAE J211 süzülmüş (kalın çizgi). " +
-  "Nokta = serinin tepe değeri.";
+  "Nokta = serinin tepe değeri. Kesikli çizgi = ortalama kuvvet: temas aralığında (gölgeli; " +
+  `|F| > tepenin %${MEAN_THRESHOLD * 100}'i) impuls / süre.`;
 
 /** 1.23 C6 — enerji serileri (J): global TH sütunları; toplam = IE + KE (+ dönme + HG − dış iş). */
 export const ENERGY_CURVES: [string, string][] = [
@@ -89,6 +114,7 @@ export default function CrashForceChart({
   ariaLabel = "Kuvvet–zaman grafiği",
   yLabel = "kuvvet",
   note,
+  showMean = false,
 }: {
   time: number[];
   series: ForceSeries[];
@@ -100,6 +126,8 @@ export default function CrashForceChart({
   yLabel?: string;
   /** 1.23 C8 — grafiğin altında kısa açıklama (veri kaynağı; yorum yok) */
   note?: string;
+  /** 1.23 C8 — temas aralığı ortalaması (yalnız kuvvet grafiği) */
+  showMean?: boolean;
 }) {
   const tOf = (s: ForceSeries) => s.time ?? time;
   if (series.length === 0 || series.some((s) => tOf(s).length < 2)) return null;
@@ -134,6 +162,13 @@ export default function CrashForceChart({
     });
     return { ...s, peak: Math.abs(s.values[i]), at: tOf(s)[i] };
   });
+  // CFC eşi olan ham seriye ortalama çizilmez (tepe noktası gibi)
+  const means = showMean
+    ? series
+        .filter((s) => !hasTwin(s.key))
+        .map((s) => ({ ...s, m: contactMean(tOf(s), s.values) }))
+        .filter((s): s is ForceSeries & { m: NonNullable<ReturnType<typeof contactMean>> } => s.m != null)
+    : [];
 
   return (
     <figure className="cv-card crash-force-card">
@@ -171,8 +206,29 @@ export default function CrashForceChart({
             {ticks.slice(1, -1).map((v) => (
               <line key={v} x1={1} x2={W - 1} y1={py(v)} y2={py(v)} className="crash-chart-grid" />
             ))}
+            {means.map((s) => (
+              <rect
+                key={`band-${s.key}`}
+                x={px(s.m.t0)}
+                y={1}
+                width={px(s.m.t1) - px(s.m.t0)}
+                height={H - 2}
+                className={`crash-chart-mean-band crash-series-${colorOf(s.key)}`}
+              />
+            ))}
             {series.map((s) => (
               <polyline key={s.key} points={path(s)} className={lineClass(s.key)} />
+            ))}
+            {means.map((s) => (
+              <line
+                key={`mean-${s.key}`}
+                x1={px(s.m.t0)}
+                x2={px(s.m.t1)}
+                y1={py(s.m.mean)}
+                y2={py(s.m.mean)}
+                className={`crash-chart-mean crash-series-${colorOf(s.key)}`}
+                data-testid="crash-chart-mean"
+              />
             ))}
           </svg>
           {/* SVG oransız ölçeklenir (preserveAspectRatio=none): nokta / etiket HTML, % konum */}
@@ -205,6 +261,13 @@ export default function CrashForceChart({
             <span className="ml-k">{p.label} tepe</span>
             <strong>{`${niceValue(p.peak)} ${unit}`}</strong>
             <span className="ds-sb">{`t = ${niceValue(p.at)} ms`}</span>
+          </span>
+        ))}
+        {means.map((s) => (
+          <span key={`mean-${s.key}`}>
+            <span className="ml-k">{s.label} ortalama</span>
+            <strong>{`${niceValue(s.m.mean)} ${unit}`}</strong>
+            <span className="ds-sb">{`${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ms`}</span>
           </span>
         ))}
       </span>

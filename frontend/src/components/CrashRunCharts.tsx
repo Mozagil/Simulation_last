@@ -80,7 +80,7 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
             />
           </label>
           {force.series.length > 0 && (
-            <CrashForceChart time={force.time} series={force.series} note={FORCE_CHART_NOTE} />
+            <CrashForceChart time={force.time} series={force.series} note={FORCE_CHART_NOTE} showMean />
           )}
           {acc.series.length > 0 && (
             <CrashForceChart time={acc.time} series={acc.series} title="İvme · g" unit="g" yLabel="ivme" ariaLabel="İvme–zaman grafiği" />

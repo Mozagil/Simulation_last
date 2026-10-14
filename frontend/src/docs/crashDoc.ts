@@ -242,7 +242,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Temas kuvveti", what: "Duvarsız modellerde kuvvet temastan okunur (contact_1_force…).", card: "/TH/INTER" },
       { name: "HIC15 / HIC36 / acc_peak_g", what: "Kafa yaralanma ölçütü ve tepe ivme — ivme kanalı (rijit gövde “İvmeyi kaydet”) varsa.", },
       { name: "Δt_min / Silinen eleman", what: "En küçük zaman adımı; /FAIL ile silinen eleman sayısı." },
-      { name: "Kuvvet–zaman grafiği", what: "Rijit duvar / temas / kesit kuvveti; tepe değer ve zamanı." },
+      { name: "Kuvvet–zaman grafiği", what: "Rijit duvar / temas / kesit kuvveti (|F|, kN). Y ekseni adı + birim + ölçek; nokta = tepe değer ve zamanı. Kesikli çizgi = ortalama kuvvet: temas aralığında (gölgeli; |F| > tepenin %1'i, ilk–son örnek arası) impuls / süre. CFC eşi olan ham seriye tepe/ortalama işaretlenmez." },
       { name: "Filtre · CFC (post-process)", what: "Koşu bittikten sonra kayıtlı ham eğriden SAE J211 süzme (60, 180, 600, 1000): sınıfı seç, Uygula. Çözücü yeniden koşmaz; ham eğri korunur, süzülmüş eğri grafiğe ve tepe değerlerine eklenir (ör. ham 122 kN → CFC 60 65.4 kN).", when: "Kuvvet tepesi okumadan önce (60–600); kafa ivmesi / HIC için 1000." },
       { name: "3B animasyon", what: "Deforme şekil kareleri; renk alanı (ör. plastik şekil değiştirme), ▶ oynat, eksen görünümleri, ⤢ büyüt. Çözümden sonra kendiliğinden açılır; geçmişten ▶ ile tekrar açılır.", card: "/ANIM/DT" },
     ],
