@@ -603,6 +603,38 @@ describe("CrashPanel", () => {
     expect(body.use_rigid_wall).toBe(true);
   });
 
+  it("1.23 B2: duvarı kaydet → yeni panelde listeden seçince nokta + yön dolar; sil", () => {
+    window.localStorage.removeItem("crashWallPresets");
+    const { unmount } = render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    expect(screen.getByLabelText("Kayıtlı duvar")).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: "-X" }));
+    fireEvent.change(screen.getByLabelText("Duvar konumu"), { target: { value: "120, 0, 0" } });
+    fireEvent.change(screen.getByLabelText("Duvar kaydı adı"), { target: { value: "kutu ön" } });
+    fireEvent.click(screen.getByRole("button", { name: "Duvarı kaydet" }));
+    fireEvent.click(screen.getByRole("radio", { name: "+Y" }));
+    fireEvent.change(screen.getByLabelText("Duvar konumu"), { target: { value: "0, 5, 0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Duvarı kaydet" })); // adsız → otomatik ad
+    unmount();
+
+    render(<CrashPanel geometryId={2} meshDimension={3} partIds={[0]} />);
+    const sel = screen.getByLabelText("Kayıtlı duvar");
+    expect([...sel.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+      "Kayıtlı duvar…",
+      "kutu ön",
+      "nokta (0, 5, 0) · normal +Y",
+    ]);
+    fireEvent.change(sel, { target: { value: "kutu ön" } });
+    expect(screen.getByLabelText("Duvar konumu")).toHaveValue("120, 0, 0");
+    expect(screen.getByRole("radio", { name: "-X" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Kayıtlı duvarı sil" }));
+    expect([...sel.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+      "Kayıtlı duvar…",
+      "nokta (0, 5, 0) · normal +Y",
+    ]);
+    expect(screen.getByLabelText("Duvar konumu")).toHaveValue("120, 0, 0"); // panel değeri kalır
+    window.localStorage.removeItem("crashWallPresets");
+  });
+
   it("tasarım: eksik bilgi düğmeyi kapatır ve nedenini yazar; duvarsızda temas eksik sayılır", () => {
     render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
     fireEvent.change(screen.getByLabelText("Duvar konumu"), { target: { value: "1, 2" } });

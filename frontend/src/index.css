@@ -4386,6 +4386,13 @@ p {
   margin: 0 8px 0 auto;
 }
 
+/* 1.23 B2 — kayıtlı duvarlar */
+.crash-wall-presets select,
+.crash-wall-presets input {
+  flex: 1;
+  min-width: 0;
+}
+
 .crash-run-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto; /* + ⤓ yükle (1.23 B3a) */

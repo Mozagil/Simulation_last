@@ -23,6 +23,7 @@ import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import { cardsFromRequest } from "../lib/crashSetupImport";
+import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 
@@ -254,6 +255,10 @@ export default function CrashPanel({
   const [dirPreset, setDirPreset] = useState<DirPreset>("+Z");
   const [customDir, setCustomDir] = useState<[string, string, string]>(["0", "0", "1"]);
   const [wallPoint, setWallPoint] = useState("0, 0, 0");
+  // 1.23 B2: kayıtlı duvarlar (tarayıcıda)
+  const [wallPresets, setWallPresets] = useState<WallPreset[]>(readWallPresets);
+  const [wallPresetSel, setWallPresetSel] = useState("");
+  const [wallPresetName, setWallPresetName] = useState("");
   // TODO 11.9 — kart tabanlı yükleme / tutma
   const [loadCards, setLoadCards] = useState<LoadCard[]>([]);
   // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
@@ -510,6 +515,16 @@ export default function CrashPanel({
       inacti: num(r.inacti),
       iedge: r.type === 24 ? num(r.iedge) : 0,
     };
+  }
+
+  /** Yön düğmesini vektörden kur (eksense hazır düğme, değilse Özel). */
+  function applyDirVector(v: number[]) {
+    const preset = DIR_PRESETS.find((d) => d.id !== "custom" && d.v.every((c, i) => c === v[i]));
+    if (preset) setDirPreset(preset.id);
+    else {
+      setDirPreset("custom");
+      setCustomDir([String(v[0]), String(v[1]), String(v[2])]);
+    }
   }
 
   const toggleGroup = (g: 1 | 2 | 3 | 4) => setOpenGroup((cur) => (cur === g ? null : g));
@@ -878,6 +893,68 @@ export default function CrashPanel({
                       {pickingPoint ? "Modelde bir noktaya tıkla…" : "⌖ Modelden seç"}
                     </button>
                   )}
+                </div>
+                <div className="crash-unit-row crash-wall-presets">
+                  <select
+                    aria-label="Kayıtlı duvar"
+                    value={wallPresetSel}
+                    disabled={busy || wallPresets.length === 0}
+                    onChange={(e) => {
+                      const p = wallPresets.find((q) => q.name === e.target.value);
+                      setWallPresetSel(e.target.value);
+                      if (!p) return;
+                      setWallPoint(p.point.join(", "));
+                      applyDirVector(p.normal);
+                    }}
+                  >
+                    <option value="">{wallPresets.length ? "Kayıtlı duvar…" : "Kayıtlı duvar yok"}</option>
+                    {wallPresets.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {wallPresetSel && (
+                    <button
+                      type="button"
+                      className="crash-pick-btn"
+                      aria-label="Kayıtlı duvarı sil"
+                      title="Seçili kaydı listeden sil (paneldeki değerler kalır)"
+                      disabled={busy}
+                      onClick={() => {
+                        setWallPresets(removeWallPreset(wallPresetSel));
+                        setWallPresetSel("");
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <div className="crash-unit-row crash-wall-presets">
+                  <input
+                    aria-label="Duvar kaydı adı"
+                    placeholder="ad (isteğe bağlı)"
+                    value={wallPresetName}
+                    disabled={busy}
+                    onChange={(e) => setWallPresetName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="crash-pick-btn"
+                    disabled={busy || !wallXYZ || !dirOk}
+                    title="Duvar noktası + yön (normal) kaydedilir; sonraki vakada listeden seçilir"
+                    onClick={() => {
+                      if (!wallXYZ) return;
+                      const point = wallXYZ as [number, number, number];
+                      const normal = dirVec.slice(0, 3) as [number, number, number];
+                      const name = wallPresetName.trim() || defaultWallName(point, normal);
+                      setWallPresets(saveWallPreset({ name, point, normal }));
+                      setWallPresetSel(name);
+                      setWallPresetName("");
+                    }}
+                  >
+                    Duvarı kaydet
+                  </button>
                 </div>
               </>
             )}

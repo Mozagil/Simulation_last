@@ -124,6 +124,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Süre (ms)", what: "Simülasyon bitiş zamanı. Kızaklı ezilmede kızak durana kadar uzun olmalı (ezilme mesafesi ancak durunca hesaplanır).", card: "/RUN" },
       { name: "Duvarın baktığı yön (+X … −Z, Özel)", what: "Duvar normali. Parça normalin tersine ilerler (ör. +X normal → −X hız).", card: "/RWALL" },
       { name: "Duvar konumu + ⌖ Modelden seç", what: "Düzlemin geçtiği nokta (mm). “Modelden seç” ile viewport'ta tıklanan nokta yazılır.", card: "/RWALL" },
+      { name: "Duvarı kaydet / Kayıtlı duvar", what: "Duvar noktası + yön (normal) bir adla kaydedilir (ad boşsa \"nokta (x, y, z) · normal ±A\"); sonraki vakada listeden seçince ikisi panele dolar. × seçili kaydı siler. Kayıtlar bu tarayıcıda tutulur." },
       { name: "Yerçekimi", what: "Sabit ivme (ör. −9.81 m/s², Z).", when: "Düşme testi, FOPS. Kısa yatay çarpışmalarda etkisi ihmal edilebilir.", card: "/GRAV" },
     ],
   },

@@ -1554,7 +1554,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     `test_templates_api.py`, `TemplatePanel.test.tsx`.
     Kullanıcı düzeltmesi: senaryosuz şablonda da (crash_box_plate) panel sade; ölçüler
     Model üret pop-up'ında düzenlenir (onayda yeniden okunur).
-- B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
+- B2 ✅ (2026-10-14) Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
+  "Duvarı kaydet" (ad isteğe bağlı; yoksa "nokta (x, y, z) · normal ±A") + "Kayıtlı duvar" listesi
+  (seçince nokta + yön dolar) + sil. Tarayıcıda (`crashWallPresets`; DB değişmedi — sunucuda
+  ortak liste istenirse yeni tablo, ayrı onay).
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
   - B3a ✅ (2026-10-14) Geçmişte satır başına ⤓ "yükle": koşunun geometrisi + sunucudaki mesh
     (`/files/meshes/{id}_d{2|3}.preview.json`; boyut kaydı yok → "—", şema/sayılar önizlemeden) +
