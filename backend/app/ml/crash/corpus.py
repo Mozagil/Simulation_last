@@ -196,6 +196,8 @@ def load_records(db: Session, study_id: int | None = None) -> list[CrashRecord]:
             scalars=dict(run.scalars or {}),
         )
         for run, tid, tparams in db.execute(q).all()
+        # 2026-10-14 öncesi ıraksayan koşular "solved" kaydedildi (artık failed, Hata #1)
+        if "diverged_at_ms" not in (run.scalars or {})
     ]
 
 

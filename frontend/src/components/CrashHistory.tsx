@@ -44,6 +44,8 @@ function when(iso: string | null): string {
 }
 
 const label = (r: CrashRunSummary) => r.name?.trim() || `#${r.id}`;
+// Iraksayan koşu (Hata #1) failed ama eğri/animasyon ıraksama anına kadar incelenir.
+const hasResults = (r: CrashRunSummary) => r.status === "solved" || r.scalars.diverged_at_ms != null;
 
 export default function CrashHistory({
   geometryId,
@@ -193,7 +195,7 @@ export default function CrashHistory({
                   className="crash-run-exclude"
                   aria-label={`${label(r)} grafikler`}
                   title="Grafikler (kuvvet, ivme, enerji)"
-                  disabled={r.status !== "solved"}
+                  disabled={!hasResults(r)}
                   onClick={() => setChartRun((a) => (a?.id === r.id ? null : r))}
                 >
                   {chartRun?.id === r.id ? "■" : "📈"}
@@ -203,7 +205,7 @@ export default function CrashHistory({
                   className="crash-run-exclude"
                   aria-label={`${label(r)} deforme şekil`}
                   title="Deforme şekil (animasyon)"
-                  disabled={!r.solver_ran || r.status !== "solved"}
+                  disabled={!r.solver_ran || !hasResults(r)}
                   onClick={() => {
                     if (onAnimate) {
                       onAnimate(activeAnimId === r.id ? null : { id: r.id, title: `#${r.id} ${label(r)}` });

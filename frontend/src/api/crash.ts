@@ -199,6 +199,15 @@ export interface CrashDiagnostics {
   deleted_elements?: { criterion: string; kind: string; element: number; time: number | null }[];
   /** Iraksama: listing'de enerji NaN (Radioss yine NORMAL TERMINATION yazabilir). */
   diverged?: string;
+  /** Koşu hatası (kod kataloğu: backend `postprocess/crash_errors.py`). */
+  error?: CrashRunError;
+}
+
+export interface CrashRunError {
+  code: number;
+  title: string;
+  description: string;
+  detail: string;
 }
 
 export interface CrashJobSnapshot {

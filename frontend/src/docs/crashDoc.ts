@@ -235,6 +235,7 @@ export const CRASH_DOC: DocSection[] = [
     gallery: [{ src: IMG("10b-cfc.png"), caption: "Kuvvet grafiği altında post-process CFC: ham ve süzülmüş tepe yan yana." }],
     items: [
       { name: "Job", what: "İş kimliği · durum (pending / solved / failed / rad_only) · mesaj. “starter .rad” girdi dosyasının bağlantısı." },
+      { name: "Hata #n (kırmızı bant)", what: "Koşu hatayla biterse durum failed (kırmızı) ve kodlu hata: #1 çözüm ıraksadı (enerji NaN; Radioss yine NORMAL TERMINATION yazabilir — eğri ve animasyon ıraksama anına kadar açılır), #2 starter hatası (ERROR ID'ler), #3 çözücü anormal sonlandı (çıkış kodu ≠ 0), #4 zaman aşımı, #5 OpenRadioss bulunamadı, #9 sınıflanmamış. Hatalı koşu DOE / ML korpusuna girmez." },
       { name: "IE_final / KE_final", what: "Son iç enerji (deformasyonla yutulan) / kinetik enerji (J).", card: "/TH/PART" },
       { name: "HG_final · HG/IE", what: "Hourglass enerjisi ve iç enerjiye oranı.", card: "/TH/PART" },
       { name: "RWALL Fmax / impuls", what: "Rijit duvar tepe kuvveti (kN) ve toplam impuls (N·s). Kızakta impuls = m·Δv.", card: "/TH/RWALL" },

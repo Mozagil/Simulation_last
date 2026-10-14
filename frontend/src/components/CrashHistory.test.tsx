@@ -36,6 +36,19 @@ describe("CrashHistory", () => {
     expect(screen.getByText("101.0")).toBeInTheDocument(); // duvar Fmax
   });
 
+  it("ıraksayan koşu (Hata #1) failed kırmızı; grafik/animasyon yine açılır, diğer hata kapalı", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([
+      run(7, { status: "failed", scalars: { diverged_at_ms: 0.014 } }),
+      run(8, { status: "failed", solver_ran: false, scalars: {} }),
+    ]);
+    render(<CrashHistory geometryId={3931} />);
+    expect(await screen.findByText("koşu 7")).toBeInTheDocument();
+    expect(screen.getAllByText("failed")[0]).toHaveClass("crash-run-failed");
+    expect(screen.getByRole("button", { name: "koşu 7 grafikler" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "koşu 7 deforme şekil" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "koşu 8 grafikler" })).toBeDisabled();
+  });
+
   it("1.22f: ham kartlı koşu etiketli", async () => {
     vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(3, { has_raw_cards: true })]);
     render(<CrashHistory geometryId={3931} />);

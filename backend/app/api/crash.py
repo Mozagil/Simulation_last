@@ -24,6 +24,7 @@ from app.jobs.progress import get_hub
 from app.models.component import Component
 from app.models.geometry import PhysicalGroup
 from app.models.material import MaterialAssignment
+from app.postprocess.crash_errors import classify_failure, crash_error, diverged_error, error_message
 from app.solvers.base import InputArtifact, SolverError
 from app.solvers.crash_params import (
     CrashBarrierParams,
@@ -257,23 +258,39 @@ def _complete_crash_job(job_id: str) -> None:
         )
         parsed = adapter.parse_results(handle)
         meta["removed_outputs"] = _cleanup_outputs(_job_dir(job_id))
-        meta["status"] = "solved"
-        meta["message"] = "OpenRadioss bitti"
         meta["solver_ran"] = True
         meta["scalars"] = parsed.scalars
         meta["curves"] = parsed.curves
-        meta["diagnostics"] = parsed.diagnostics
+        meta["diagnostics"] = dict(parsed.diagnostics)
+        diverged = parsed.scalars.get("diverged_at_ms")
+        if diverged is not None:
+            # Iraksama hatadır (Radioss yine NORMAL TERMINATION yazabilir): failed,
+            # eğri/animasyon ıraksama anına kadar incelensin diye saklanır.
+            err = diverged_error(float(diverged))
+            meta["diagnostics"]["error"] = err
+            meta["status"] = "failed"
+            meta["message"] = error_message(err)
+        else:
+            meta["status"] = "solved"
+            meta["message"] = "OpenRadioss bitti"
         _write_job(meta)
         _sync_run(meta)
-        hub.update(job_id, state="done", percent=100.0, message=meta["message"])
+        hub.update(
+            job_id,
+            state="failed" if meta["status"] == "failed" else "done",
+            percent=100.0,
+            message=meta["message"],
+        )
     except Exception as exc:  # noqa: BLE001 — arka plan işi isteği düşürmesin
         logger.warning("crash job başarısız job_id=%s: %s", job_id, exc)
+        err = classify_failure(str(exc), _job_dir(job_id))
         meta["status"] = "failed"
-        meta["message"] = str(exc)
+        meta["message"] = error_message(err)
         meta["solver_ran"] = False
+        meta["diagnostics"] = {**(meta.get("diagnostics") or {}), "error": err}
         _write_job(meta)
         _sync_run(meta)
-        hub.update(job_id, state="failed", message=str(exc))
+        hub.update(job_id, state="failed", message=meta["message"])
 
 
 def _starter_params(
@@ -567,13 +584,16 @@ def crash_solve(
 
     if body.run_solver:
         if not or_ok:
+            err = crash_error(5)
             meta["status"] = "failed"
-            meta["message"] = "OpenRadioss bulunamadı"
+            meta["message"] = error_message(err)
+            meta["diagnostics"] = {"error": err}
             _write_job(meta)
             record_from_meta(db, meta)
             hub.update(job_id, state="failed", message=meta["message"])
             result["status"] = "failed"
             result["message"] = meta["message"]
+            result["diagnostics"] = meta["diagnostics"]
             return result
         if not body.wait:
             meta["status"] = "pending"

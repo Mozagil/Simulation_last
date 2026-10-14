@@ -500,6 +500,27 @@ describe("CrashPanel", () => {
     expect(screen.queryByText(/cycle 1/)).not.toBeInTheDocument();
   });
 
+  it("ıraksayan koşu: kırmızı 'Hata #1' bandı + failed durumu", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j15", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: false, scalars: {},
+    });
+    vi.mocked(fetchCrashJob).mockResolvedValue({
+      job_id: "j15", status: "failed", message: "Hata #1 — Çözüm ıraksadı: t = 0.0143 ms'den sonra enerji NaN",
+      scalars: { diverged_at_ms: 0.0143 },
+      diagnostics: {
+        error: { code: 1, title: "Çözüm ıraksadı", description: "Enerji NaN oldu.", detail: "t = 0.0143 ms'den sonra enerji NaN" },
+      },
+    });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    const band = await screen.findByTestId("crash-error");
+    expect(band).toHaveTextContent("Hata #1 — Çözüm ıraksadı: t = 0.0143 ms'den sonra enerji NaN");
+    expect(band).toHaveTextContent("Enerji NaN oldu.");
+    expect(screen.getByText(/j15 · failed/)).toHaveClass("crash-run-failed");
+  });
+
   it("11.7: parça satırı seçimi / hover App'e bildirilir; seçili satır işaretli", () => {
     const onPartSelect = vi.fn();
     const onPartHover = vi.fn();

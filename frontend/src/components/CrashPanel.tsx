@@ -9,6 +9,7 @@ import {
   type CrashJobSnapshot,
   type CrashModelPayload,
   type CrashPartSpec,
+  type CrashRunError,
   type CrashSolveRequest,
   type CrashSolveResponse,
   type CrashScenarioSetup,
@@ -741,6 +742,12 @@ export default function CrashPanel({
   const curves = snapshot?.curves;
   const forceSeries = forceSeriesFromCurves(curves);
   const diagnostics = snapshot?.diagnostics ?? result?.diagnostics;
+  // 2026-10-14 öncesi ıraksayan koşularda error yok, yalnız diverged metni var.
+  const runError: CrashRunError | null =
+    diagnostics?.error ??
+    (diagnostics?.diverged
+      ? { code: 1, title: "Çözüm ıraksadı", description: diagnostics.diverged, detail: "" }
+      : null);
   const msgList = (m: Record<string, number> | undefined) =>
     Object.entries(m ?? {}).map(([id, n]) => (n > 1 ? `${id} ×${n}` : id));
   const starterMsgs = {
@@ -1279,7 +1286,7 @@ export default function CrashPanel({
       {(result || snapshot) && (
         <div className="material-assignments">
           <p className="material-assignments-title">Job</p>
-          <p className="material-assign-hint">
+          <p className={`material-assign-hint${status === "failed" ? " crash-run-failed" : ""}`}>
             {snapshot?.job_id ?? result?.job_id} · {status} · {snapshot?.message ?? result?.message}
           </p>
           {polling && (
@@ -1372,10 +1379,14 @@ export default function CrashPanel({
               ))}
             </ul>
           )}
-          {diagnostics?.diverged && (
-            <p className="error-message" data-testid="crash-diverged">
-              {diagnostics.diverged}
-            </p>
+          {runError && (
+            <div className="crash-error-band" role="alert" data-testid="crash-error">
+              <p className="crash-error-title">
+                Hata #{runError.code} — {runError.title}
+                {runError.detail ? `: ${runError.detail}` : ""}
+              </p>
+              <p className="crash-error-desc">{runError.description}</p>
+            </div>
           )}
           {(starterMsgs.errors.length > 0 || starterMsgs.warnings.length > 0) && (
             <p className="material-assign-hint" data-testid="crash-starter-msgs">
