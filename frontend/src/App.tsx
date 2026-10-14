@@ -74,7 +74,9 @@ import type {
   CrashScenarioSetupResponse,
   CrashSolveRequest,
 } from "./api/crash";
+import { fetchCrashRun } from "./api/crash";
 import { matCardFromModel } from "./lib/crashSetupImport";
+import { meshPreviewUrl, meshResultFromPreview, meshSizeText } from "./lib/crashRunLoad";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import CrashCompareAnim from "./components/CrashCompareAnim";
 import type { CrashAnimTarget } from "./components/CrashHistory";
@@ -1234,6 +1236,51 @@ function App() {
     );
     setCrashImport({ key: Date.now(), req: rq });
     setExpandedSteps(new Set(["bc"]));
+  }
+
+  /** 1.23 B3a: geçmişten koşu yükle — geometri + sunucudaki mesh + kurulum panellere (koşu yok). */
+  async function loadCrashRun(runId: number) {
+    setErrorMessage(null);
+    setInfoMessage(null);
+    try {
+      const run = await fetchCrashRun(runId);
+      const geoId = run.geometry_id;
+      if (!geoId) throw new Error(`Koşu #${runId}: bağlı geometri yok.`);
+      const rq = run.request as unknown as CrashSolveRequest;
+      const dim: 2 | 3 = (rq.dimension ?? run.dimension) === 3 ? 3 : 2;
+      setShowNewCrashCase(false);
+      setCrashCaseInit(null);
+      setScenarioJob(null);
+      const cadParts = await loadGeometryById(geoId, `geometri #${geoId} (koşu #${runId})`);
+      if (activeGeometryIdRef.current !== geoId) return;
+      const preview = await fetchMeshPreview(meshPreviewUrl(geoId, dim)).catch(() => null);
+      if (activeGeometryIdRef.current !== geoId) return;
+      if (preview) {
+        const m = meshResultFromPreview(geoId, dim, preview);
+        setMeshResult(m);
+        setMeshDimension(dim);
+        setMeshScheme(m.element_scheme);
+        setPropertyKind(dim === 2 ? "shell" : "solid");
+        setMeshPreview(preview);
+        setShowMesh(true);
+        if (cadParts) setHiddenParts(new Set(cadParts.filter((pid) => pid >= 0)));
+      }
+      const tree = await fetchProductTree(geoId, 0).catch(() => null);
+      if (activeGeometryIdRef.current === geoId) setProductTree(tree);
+      setCrashMatCard(matCardFromModel(rq.model));
+      setCrashPartCards(
+        Object.fromEntries((rq.parts ?? []).filter((p) => p.model).map((p) => [p.part_id, matCardFromModel(p.model)])),
+      );
+      setCrashImport({ key: Date.now(), req: rq });
+      setExpandedSteps(new Set(["bc"]));
+      setInfoMessage(
+        preview
+          ? `Koşu #${runId} yüklendi: geometri #${geoId}, sunucudaki mesh ve kurulum panellerde.`
+          : `Koşu #${runId} yüklendi: geometri #${geoId} ve kurulum. Sunucuda bu geometrinin ${dim}B mesh'i yok — yeniden mesh'leyin.`,
+      );
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : `Koşu #${runId} yüklenemedi.`);
+    }
   }
 
   async function loadScenarioModel(res: { geometry_id: number; scenario: CrashScenarioSetup; mesh?: CrashScenarioResponse["mesh"] }) {
@@ -3618,7 +3665,7 @@ function App() {
         <div className="model-tree-row model-tree-depth-1">
           <span>Mesh</span>
           <span className="model-tree-value">
-            {meshResult ? `${meshResult.element_scheme} · ${meshResult.element_size} mm` : "—"}
+            {meshResult ? `${meshResult.element_scheme} · ${meshSizeText(meshResult.element_size)} mm` : "—"}
           </span>
         </div>
         {analysisTab === "crash" && (
@@ -4570,7 +4617,7 @@ function App() {
           <div className="mesh-result">
             <p>
               {meshResult.dimension === 2 ? "Shell" : "Solid"} ·{" "}
-              {meshResult.element_scheme} · size {meshResult.element_size}
+              {meshResult.element_scheme} · size {meshSizeText(meshResult.element_size)}
             </p>
             <p>
               {meshResult.node_count} düğüm · {meshResult.element_count} eleman
@@ -5010,7 +5057,7 @@ function App() {
           <div className="bc-mesh-summary">
             <p>
               <span>element size</span>
-              {meshResult.element_size} mm
+              {meshSizeText(meshResult.element_size)} mm
             </p>
             <p>
               <span>scheme</span>
@@ -5673,6 +5720,7 @@ function App() {
           refreshKey={crashJobKey}
           activeAnimId={crashAnim?.id ?? null}
           onAnimate={setCrashAnim}
+          onLoadRun={(id) => void loadCrashRun(id)}
         />
       )}
       {showDocs && <DocsDialog onClose={() => setShowDocs(false)} />}

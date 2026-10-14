@@ -146,4 +146,19 @@ describe("CrashHistory", () => {
     await screen.findByTestId("crash-compare");
     expect(screen.queryByTestId("crash-compare-anim-open")).not.toBeInTheDocument();
   });
+
+  it("1.23 B3a: onLoadRun verilince her satırda ⤓ yükle; tıklayınca koşu no bildirilir", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(4), run(5, { status: "failed" })]);
+    const onLoadRun = vi.fn();
+    render(<CrashHistory geometryId={3931} onLoadRun={onLoadRun} />);
+    fireEvent.click(await screen.findByLabelText("koşu 5 yükle")); // başarısız koşu da yüklenir (kurulumu düzeltmek için)
+    expect(onLoadRun).toHaveBeenCalledWith(5);
+  });
+
+  it("1.23 B3a: onLoadRun yoksa yükle düğmesi yok", async () => {
+    vi.mocked(fetchCrashRuns).mockResolvedValue([run(4)]);
+    render(<CrashHistory geometryId={3931} />);
+    await screen.findByText("koşu 4");
+    expect(screen.queryByLabelText("koşu 4 yükle")).not.toBeInTheDocument();
+  });
 });

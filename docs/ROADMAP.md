@@ -1532,7 +1532,7 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - A7 ✅ ".rad indir" belirgin düğme: starter (model) ve engine (çözüm kontrolü) ayrı.
   `downloadCrashFile` (blob; farklı kökende `<a download>` yok sayılıyor). Eski "starter .rad"
   bağlantısı göreli yoldu (frontend köküne gidiyordu), düzeldi. Test: `CrashPanel.test.tsx`.
-- B1 Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
+- B1 ✅ (alt adımlar a/b/c; kullanıcı 2026-10-14 kapattı) Şablondan üret: büyük görsel + yalnız şablon alanları + "Model üret" +
   "STEP indir"; Model üret → "Yeni crash vakası" pop-up'ı.
   - B1a ✅ Crash'te hazır senaryolu şablonda Model üret → Yeni crash vakası (o şablonun
     örneği seçili, geometri alanları paneldeki değerlerle; ilk hız, süre, eleman,
@@ -1556,6 +1556,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     Model üret pop-up'ında düzenlenir (onayda yeniden okunur).
 - B2 Duvar konumunu kaydet (opsiyonel, düğmeyle) → sonraki vakada listeden seç.
 - B3 F5 / yeni case sonrası son çalışmayı aç; geçmişten geometri/koşu yükle.
+  - B3a ✅ (2026-10-14) Geçmişte satır başına ⤓ "yükle": koşunun geometrisi + sunucudaki mesh
+    (`/files/meshes/{id}_d{2|3}.preview.json`; boyut kaydı yok → "—", şema/sayılar önizlemeden) +
+    kurulumu (`request`, B1c ile aynı içe aktarma) panellere. Koşu yok.
+  - B3b F5 sonrası son çalışmayı (son yüklenen koşu / geometri) kendiliğinden aç.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video. Sıra kullanıcı kararı (2026-10-14): C1 → C7.
   - C1a ✅ (2026-10-14) Animasyon video: "Video indir (MP4 / WebM)" — MediaRecorder, ek bağımlılık yok; 1280×720, 30 kare/s, üstte koşu + t + skaler, altta renk ölçeği.
   - C1b ✅ (2026-10-14) Grafik PNG / CSV: her crash grafiğinin başlığında PNG (veriden 1400 px yeniden çizim) + CSV (virgül / nokta ondalık). C1 ✅.

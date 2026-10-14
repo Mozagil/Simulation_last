@@ -59,6 +59,7 @@ export default function CrashHistory({
   refreshKey,
   activeAnimId,
   onAnimate,
+  onLoadRun,
 }: {
   geometryId: number | null;
   /** Değişince liste yeniden yüklenir (yeni iş / iş bitti). */
@@ -67,6 +68,8 @@ export default function CrashHistory({
   activeAnimId?: number | null;
   /** 1.23 C5 — `compareWith` verilirse iki koşu yan yana açılır. */
   onAnimate?: (run: CrashAnimTarget | null) => void;
+  /** 1.23 B3a — koşunun geometrisi + mesh'i + kurulumu panellere yüklenir. */
+  onLoadRun?: (runId: number) => void;
 }) {
   const [runs, setRuns] = useState<CrashRunSummary[]>([]);
   const [showExcluded, setShowExcluded] = useState(false);
@@ -224,6 +227,17 @@ export default function CrashHistory({
                 >
                   {(onAnimate ? activeAnimId === r.id : animRun?.id === r.id) ? "■" : "▶"}
                 </button>
+                {onLoadRun && (
+                  <button
+                    type="button"
+                    className="crash-run-exclude"
+                    aria-label={`${label(r)} yükle`}
+                    title="Geometri + mesh + kurulumu panellere yükle (düzenle / yeniden koş)"
+                    onClick={() => onLoadRun(r.id)}
+                  >
+                    ⤓
+                  </button>
+                )}
                 <button
                   type="button"
                   className="crash-run-exclude"

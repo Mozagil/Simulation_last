@@ -28,11 +28,13 @@ export default function CrashHistoryDock({
   refreshKey,
   activeAnimId,
   onAnimate,
+  onLoadRun,
 }: {
   geometryId: number | null;
   refreshKey: string;
   activeAnimId: number | null;
   onAnimate: (run: CrashAnimTarget | null) => void;
+  onLoadRun?: (runId: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [height, setHeight] = useState(readStoredH);
@@ -94,7 +96,13 @@ export default function CrashHistoryDock({
       </div>
       {expanded && (
         <div className="crash-history-dock-body">
-          <CrashHistory geometryId={geometryId} refreshKey={refreshKey} activeAnimId={activeAnimId} onAnimate={onAnimate} />
+          <CrashHistory
+            geometryId={geometryId}
+            refreshKey={refreshKey}
+            activeAnimId={activeAnimId}
+            onAnimate={onAnimate}
+            onLoadRun={onLoadRun}
+          />
         </div>
       )}
     </div>

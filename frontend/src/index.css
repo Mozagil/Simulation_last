@@ -4363,7 +4363,7 @@ p {
 
 .crash-run-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto; /* + ⤓ yükle (1.23 B3a) */
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
