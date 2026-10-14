@@ -182,7 +182,9 @@ def parse_energy_listing(path: Path) -> dict[str, list[float]]:
 
 
 _CYCLE_RE = re.compile(r"^\s+\d+\s+([-+0-9.Ee]+)\s+[-+0-9.Ee]+\s+[A-Z]")
-_RUPTURE_RE = re.compile(r"RUPTURE\s*\(([^)]*)\)\s+OF\s+(\w+)\s+ELEMENT\s+NUMBER\s+(\d+)")
+# Kriter parantezi /FAIL'de var ("RUPTURE (TENS_STRAIN) OF …"); malzeme yasasının kendi
+# sınırında (LAW2 εp,max) yok: "RUPTURE OF SHELL ELEMENT NUMBER n" (1.23 A3, ölçüldü).
+_RUPTURE_RE = re.compile(r"RUPTURE\s*(?:\(([^)]*)\))?\s+OF\s+(\w+)\s+ELEMENT\s+NUMBER\s+(\d+)")
 _MSG_RE = re.compile(r"^(ERROR|WARNING) ID :\s+(\d+)")
 
 
@@ -202,7 +204,8 @@ def parse_ruptures(path: Path) -> list[dict[str, Any]]:
             continue
         m = _RUPTURE_RE.search(raw)
         if m:
-            rec = {"criterion": m.group(1).strip(), "kind": m.group(2).lower(),
+            # parantezsiz = malzeme yasasının kopma sınırı (ör. LAW2 EPS-MAX)
+            rec = {"criterion": (m.group(1) or "MAT").strip(), "kind": m.group(2).lower(),
                    "element": int(m.group(3)), "time": None}
             out.append(rec)
             waiting.append(rec)

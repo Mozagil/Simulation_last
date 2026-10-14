@@ -73,3 +73,20 @@ def test_no_rupture_no_deletion_time(tmp_path):
     assert rs.scalars["elements_deleted"] == 0.0
     assert "deletion_time_first" not in rs.scalars
     assert "starter_error_count" not in rs.scalars  # starter listing yok
+
+
+def test_rupture_without_criterion_is_material_limit(tmp_path):
+    """1.23 A3 — LAW2 εp,max kopması parantezsiz yazılır; eskiden sayılmıyordu (0 silinen)."""
+    p = tmp_path / "crash_0001.out"
+    p.write_text(
+        "   CYCLE    TIME      TIME-STEP  ELEMENT          ERROR\n"
+        "   -- RUPTURE OF SHELL ELEMENT NUMBER       1270\n"
+        "   -- RUPTURE OF SHELL ELEMENT NUMBER       1272\n"
+        "     200  0.1080      0.5400E-03 SHELL       1945   0.0%\n",
+        encoding="utf-8",
+    )
+    rup = parse_ruptures(p)
+    assert [(r["criterion"], r["kind"], r["element"], r["time"]) for r in rup] == [
+        ("MAT", "shell", 1270, 0.108),
+        ("MAT", "shell", 1272, 0.108),
+    ]
