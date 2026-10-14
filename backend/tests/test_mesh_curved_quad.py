@@ -109,3 +109,37 @@ def test_3d_preview_maps_boundary_triangles_to_cad_faces():
     preview = json.loads((Path(r.json()["mesh_path"]).with_suffix(".preview.json")).read_text(encoding="utf-8"))
     faces = set(preview["triangle_to_face"])
     assert 0 not in faces and len(faces) >= 12
+
+
+@requires_db
+def test_curvature_sizing_refines_curved_faces_only():
+    """1.23 E — eğriliğe göre boyut: eğri yüzeyler incelir, düz yüzeyler global boyutta kalır."""
+    gid = client.post("/templates/door_beam_shell/create", json={}).json()["geometry_id"]
+    # Ölçüldü (door_beam, 30 mm): eğri yüzler 5–6 38 → ~380 eleman (2π/100), düzlemler aynı.
+    body = {"dimension": 2, "element_size": 30, "element_scheme": "tet"}
+    base = client.post(f"/geometry/{gid}/mesh", json=body)
+    assert base.status_code == 200, base.text
+    before = _face_counts(Path(base.json()["mesh_path"]))
+    r = client.post(
+        f"/geometry/{gid}/mesh", json={**body, "curvature_elements": 100, "curvature_min_size": 1.0}
+    )
+    assert r.status_code == 200, r.text
+    after = _face_counts(Path(r.json()["mesh_path"]))
+    grew = [f for f in before if after[f] > 3 * before[f]]
+    same = [f for f in before if after[f] == before[f]]
+    assert grew and same, (before, after)  # eğri yüzler belirgin inceldi, düzlemler değişmedi
+
+
+@requires_db
+def test_curvature_requires_min_size():
+    gid = client.post("/templates/crash_box_shell/create", json={}).json()["geometry_id"]
+    r = client.post(
+        f"/geometry/{gid}/mesh",
+        json={"dimension": 2, "element_size": 8, "element_scheme": "quad", "curvature_elements": 24},
+    )
+    assert r.status_code == 400
+    r = client.post(
+        f"/geometry/{gid}/mesh",
+        json={"dimension": 2, "element_size": 8, "element_scheme": "quad", "curvature_elements": 24, "curvature_min_size": 20},
+    )
+    assert r.status_code == 400

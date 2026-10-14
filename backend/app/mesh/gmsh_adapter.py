@@ -1485,6 +1485,20 @@ def _apply_curve_node_seeds(
             gmsh.model.mesh.setTransfiniteSurface(int(ftag))
 
 
+def _apply_curvature_sizing(params: MeshParams) -> None:
+    """1.23 E — eğriliğe göre adaptif boyut: Gmsh `MeshSizeFromCurvature` = 2π başına
+    eleman sayısı; boyut alt sınırı `curvature_min_size` (yerel yüzey boyutlarıyla
+    birlikte en küçüğü). 0 = kapalı (eski davranış, sabit boyut)."""
+    n = int(params.curvature_elements or 0)
+    if n <= 0:
+        return
+    lo = float(params.curvature_min_size or params.element_size)
+    if lo <= 0 or lo > params.element_size:
+        raise MeshError("Eğrilik: en küçük boyut 0'dan büyük ve global boyuttan küçük/eşit olmalı.")
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", n)
+    gmsh.option.setNumber("Mesh.MeshSizeMin", min(lo, gmsh.option.getNumber("Mesh.MeshSizeMin")))
+
+
 def _apply_face_sizes(face_sizes: dict[int, float], global_size: float) -> None:
     """Yüzey başına sabit eleman boyutu (remesh). Seçili yüzeylere kendi boyutu,
     diğer tüm yüzey / hacimlere `global_size`; ortak kenarda küçük olan geçerli
@@ -2237,6 +2251,7 @@ class GmshMesherAdapter(MesherAdapter):
             gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 0)
 
             _apply_face_sizes(params.face_sizes or {}, params.element_size)
+            _apply_curvature_sizing(params)
 
             _apply_curve_node_seeds(
                 params.curve_nodes or {},

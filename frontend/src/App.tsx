@@ -459,6 +459,10 @@ function App() {
   const [meshScheme, setMeshScheme] = useState<MeshElementScheme>("quad");
   // gmsh HighOrder optimizasyonu (TODO 8.4): eğri yüzeyde ters jacobian'a karşı.
   const [highOrderOptimize, setHighOrderOptimize] = useState(false);
+  // 1.23 E — eğriliğe göre adaptif boyut (değerleri mühendis girer)
+  const [curvOn, setCurvOn] = useState(false);
+  const [curvElements, setCurvElements] = useState("");
+  const [curvMin, setCurvMin] = useState("");
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
 
   // 1.23 B3b: crash sekmesinde aktif geometri (+ geçmişten yüklenen koşu, mesh boyutu) son çalışma olarak kaydedilir
@@ -1842,6 +1846,16 @@ function App() {
       setErrorMessage("Geçerli bir pozitif mesh boyutu girin.");
       return;
     }
+    let curvature: { elements: number; minSize: number } | null = null;
+    if (curvOn) {
+      const n = Math.round(Number(curvElements));
+      const lo = Number(curvMin.replace(",", "."));
+      if (!(n > 0) || !(lo > 0) || lo > size) {
+        setErrorMessage("Eğriliğe göre incelt: 2π başına eleman > 0 ve 0 < en küçük boyut ≤ eleman boyutu olmalı.");
+        return;
+      }
+      curvature = { elements: n, minSize: lo };
+    }
 
     setBusyAction("mesh");
     setErrorMessage(null);
@@ -1861,6 +1875,7 @@ function App() {
         {},
         highOrderOptimize,
         localSizes,
+        curvature,
       );
       setMeshResult(result);
       // Kullanıcı 2026-10-07: mesh sonrası CAD varsayılan gizli (mesh okunur);
@@ -4620,6 +4635,40 @@ function App() {
           />
           2. mertebe optimizasyonu (eğri yüzeyde ters eleman)
         </label>
+        <label className="material-check">
+          <input
+            type="checkbox"
+            checked={curvOn}
+            disabled={busyAction === "mesh"}
+            onChange={(e) => setCurvOn(e.target.checked)}
+          />
+          Eğriliğe göre incelt (Gmsh MeshSizeFromCurvature)
+        </label>
+        {curvOn && (
+          <div className="mesh-curv-fields">
+            <label className="mesh-field">
+              <span>2π başına eleman</span>
+              <input
+                aria-label="Eğrilik: 2π başına eleman"
+                value={curvElements}
+                disabled={busyAction === "mesh"}
+                onChange={(e) => setCurvElements(e.target.value)}
+              />
+            </label>
+            <label className="mesh-field">
+              <span>En küçük boyut (mm)</span>
+              <input
+                aria-label="Eğrilik: en küçük boyut"
+                value={curvMin}
+                disabled={busyAction === "mesh"}
+                onChange={(e) => setCurvMin(e.target.value)}
+              />
+            </label>
+            <p className="mesh-side-hint">
+              Eğri yüzeyde boyut ≈ 2πr / n; en küçük boyut ile eleman boyutu arasında kalır. Düzlemler eleman boyutunda.
+            </p>
+          </div>
+        )}
         <p className="mesh-side-hint">
           Kenar üzerindeki sayı o kenardaki düğüm sayısıdır. +/− ile
           değiştirin (4 mm / 5 mm topoloji sıçramasını azaltır).

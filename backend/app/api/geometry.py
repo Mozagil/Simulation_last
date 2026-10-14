@@ -833,6 +833,13 @@ class GenerateMeshRequest(BaseModel):
         default_factory=dict,
         description="Yerel eleman boyutu (remesh): CAD yüzey id → boyut (mm); diğerleri element_size",
     )
+    # 1.23 E — eğriliğe göre adaptif boyut
+    curvature_elements: int = Field(
+        default=0, ge=0, le=200, description="Eğrilik: 2π başına eleman sayısı (0 = kapalı)"
+    )
+    curvature_min_size: float | None = Field(
+        default=None, gt=0, description="Eğrilik inceltmesinde en küçük eleman boyutu (mm)"
+    )
 
 
 @router.post("/{geometry_id}/mesh")
@@ -851,6 +858,13 @@ def generate_mesh(
     if scheme not in ("tet", "quad", "mix"):
         raise HTTPException(
             status_code=400, detail="element_scheme tet, quad veya mix olmalı."
+        )
+    if body.curvature_elements > 0 and (
+        body.curvature_min_size is None or body.curvature_min_size > body.element_size
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Eğrilik inceltmesi: en küçük boyut verilmeli ve global boyuttan büyük olmamalı.",
         )
 
     geo = _get_geometry_or_404(db, geometry_id)
@@ -873,6 +887,8 @@ def generate_mesh(
                 },
                 high_order_optimize=bool(body.high_order_optimize),
                 face_sizes={int(k): float(v) for k, v in (body.face_sizes or {}).items() if float(v) > 0},
+                curvature_elements=int(body.curvature_elements),
+                curvature_min_size=body.curvature_min_size,
             ),
         )
     except GmshImportError as exc:

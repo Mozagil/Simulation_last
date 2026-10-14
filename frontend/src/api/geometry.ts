@@ -428,6 +428,8 @@ export async function generateMesh(
   curveNodes: Record<number, number> = {},
   highOrderOptimize = false,
   faceSizes: Record<number, number> = {},
+  /** 1.23 E — eğriliğe göre boyut: 2π başına eleman + en küçük boyut (mm); yoksa kapalı */
+  curvature: { elements: number; minSize: number } | null = null,
 ): Promise<MeshGenerateResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
     method: "POST",
@@ -439,6 +441,7 @@ export async function generateMesh(
       curve_nodes: curveNodes,
       ...(highOrderOptimize ? { high_order_optimize: true } : {}),
       ...(Object.keys(faceSizes).length ? { face_sizes: faceSizes } : {}),
+      ...(curvature ? { curvature_elements: curvature.elements, curvature_min_size: curvature.minSize } : {}),
     }),
   });
   if (!response.ok) {

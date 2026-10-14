@@ -141,6 +141,11 @@ class MeshParams:
     #: Yerel eleman boyutu (remesh, kullanıcı 2026-10-07): CAD yüzey id → boyut.
     #: Verilmeyen yüzeyler `element_size`. Gmsh "Constant" alanları + Min.
     face_sizes: dict[int, float] = field(default_factory=dict)
+    #: 1.23 E — eğriliğe göre boyut (Gmsh Mesh.MeshSizeFromCurvature): tam daire (2π)
+    #: başına eleman sayısı; 0 = kapalı. Açıkken boyut `curvature_min_size` ile
+    #: `element_size` arasında kalır (alt sınırı mühendis verir).
+    curvature_elements: int = 0
+    curvature_min_size: float | None = None
 
 
 @dataclass

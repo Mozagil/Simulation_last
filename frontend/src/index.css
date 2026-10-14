@@ -7592,6 +7592,17 @@ p {
   white-space: nowrap;
 }
 
+/* 1.23 E — eğriliğe göre incelt alanları */
+.mesh-curv-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.mesh-curv-fields .mesh-side-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 /* 1.23 C4 — parça satırında "Rijit gövde": açıklama ayrı satırda */
 .crash-part-rigid {
   flex-wrap: wrap;

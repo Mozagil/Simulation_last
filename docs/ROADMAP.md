@@ -1610,7 +1610,12 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   ("NC= … T= … DT= … ERR= … DM/M= …", "ELAPSED / REMAINING TIME") okunur — eski ayrıştırıcı
   bu biçimi tanımıyordu, bitişteki CPU tablosunu "cycle 1" sanıyordu (düzeltildi). Panelde:
   adım, t / t_end, Δt, en küçük Δt, DM/M, %, geçen, kalan (Radioss tahmini).
-- E Mesh: eğriliğe göre adaptif boyut (Gmsh curvature sizing).
+- E ✅ (2026-10-14) Mesh: eğriliğe göre adaptif boyut (Gmsh curvature sizing). 2 · Mesh'te
+  "Eğriliğe göre incelt": 2π başına eleman n + en küçük boyut (mühendis girer; ikisi zorunlu,
+  en küçük ≤ eleman boyutu). Backend `curvature_elements` / `curvature_min_size` →
+  `Mesh.MeshSizeFromCurvature`, alt sınır yerel yüzey boyutlarıyla birlikte. Ölçüldü (door_beam,
+  30 mm, n 100, min 1): eğri yüzler 38 → ~380 eleman, düzlemler aynı. Test:
+  `test_mesh_curved_quad.py`, `meshCurvature.test.ts`.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
