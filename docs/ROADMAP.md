@@ -1565,7 +1565,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   Test (C2/C3): `CrashAnimationViewer.test.tsx` (`faceEdges`, `wallFromRequest`).
 - C4 Nokta kütle + parça "Rijit" (flexible/rigid) seçeneği.
 - C5 Karşılaştır: iki pencerede animasyon, grafik + skaler karşılaştırma.
-- C6 Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti.
+- C6 ✅ Enerji grafiği (kinetik, iç, hourglass, temas) + enerji özeti. TH global sütunları:
+  temas enerjisi, dış iş, toplam (IE + KE + dönme + HG − dış iş) eğrisi; 5 · Sonuçlar'da
+  "Enerji · J" grafiği + özet (son/maks, HG/IE %, temas/IE %, |ΔE|/E %). Geçmiş 📈 aynı
+  seriler. Test: `test_crash_energy_c6.py`, `CrashPanel.test.tsx`.
 - C7 Post-process alanları: yönlü deformasyon, eşdeğer plastik şekil değiştirme
   (min/maks/ort), gerçek ölçek eleman.
 - C8 Kuvvet grafiği açıklaması: eksen/birim, tepe + ortalama işaretli, kısa açıklama.
