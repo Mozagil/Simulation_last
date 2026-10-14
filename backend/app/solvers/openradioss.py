@@ -1424,7 +1424,7 @@ class OpenRadiossAdapter(SolverAdapter):
                 )
                 exit_code = proc.returncode
             else:
-                from app.solvers.openradioss_progress import parse_progress_line
+                from app.solvers.openradioss_progress import ProgressStream
 
                 proc = subprocess.Popen(
                     launch_command(bins, bins.engine, ["-i", engine_input.name], work_dir),
@@ -1435,11 +1435,12 @@ class OpenRadiossAdapter(SolverAdapter):
                     env=env,
                 )
                 engine_out: list[str] = []
+                stream = ProgressStream(t_end_ms)
                 try:
                     assert proc.stdout is not None
                     for line in proc.stdout:
                         engine_out.append(line)
-                        parsed = parse_progress_line(line, t_end_ms)
+                        parsed = stream.feed(line)
                         if parsed is not None:
                             progress_cb(parsed)
                     exit_code = proc.wait(timeout=600)

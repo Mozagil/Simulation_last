@@ -195,6 +195,10 @@ def _merged_snapshot(job_id: str) -> dict[str, Any] | None:
             out["percent"] = live.percent
             out["cycle"] = live.cycle
             out["time_ms"] = live.time_ms
+            out["dt_ms"] = live.dt_ms
+            out["mass_added_rel"] = live.mass_added_rel
+            out["elapsed_s"] = live.elapsed_s
+            out["remaining_s"] = live.remaining_s
             out["hub_state"] = live.state
             out["kind"] = live.kind
     return out
@@ -245,6 +249,10 @@ def _complete_crash_job(job_id: str) -> None:
             percent=parsed.percent,
             cycle=parsed.cycle,
             time_ms=parsed.time_ms,
+            dt_ms=parsed.dt_ms,
+            mass_added_rel=parsed.mass_added_rel,
+            elapsed_s=parsed.elapsed_s,
+            remaining_s=parsed.remaining_s,
             message=parsed.message,
         )
 

@@ -1598,7 +1598,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
 - D2 ✅ (2026-10-14) Çözüm kontrolü kartı: bitiş süresi, Δt ölçeği (güvenlik katsayısı), kütle
   ölçekleme tek yerde + açıklama. 4 · Crash'te "Çözüm kontrolü" akordeonu (süre çarpma grubundan,
   zaman adımı çıktı ayarlarından taşındı; payload aynı); son koşunun Δt_min / eklenen kütle oranı.
-- D3 Koşu sırasında adım sayısı / anlık adım / Δt canlı.
+- D3 ✅ (2026-10-14) Koşu sırasında adım sayısı / anlık adım / Δt canlı. Engine stdout'u
+  ("NC= … T= … DT= … ERR= … DM/M= …", "ELAPSED / REMAINING TIME") okunur — eski ayrıştırıcı
+  bu biçimi tanımıyordu, bitişteki CPU tablosunu "cycle 1" sanıyordu (düzeltildi). Panelde:
+  adım, t / t_end, Δt, en küçük Δt, DM/M, %, geçen, kalan (Radioss tahmini).
 - E Mesh: eğriliğe göre adaptif boyut (Gmsh curvature sizing).
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*

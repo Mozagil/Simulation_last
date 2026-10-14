@@ -18,6 +18,12 @@ class JobProgress:
     percent: float = 0.0
     cycle: int | None = None
     time_ms: float | None = None
+    # 1.23 D3: crash engine listing'deki anlık zaman adımı (ms)
+    dt_ms: float | None = None
+    # 1.23 D3: eklenen kütle oranı (DM/M) ve Radioss'un geçen / kalan süre tahmini (s)
+    mass_added_rel: float | None = None
+    elapsed_s: float | None = None
+    remaining_s: float | None = None
     message: str = ""
 
     def to_dict(self) -> dict:
@@ -54,6 +60,10 @@ class ProgressHub:
         percent: float | None = None,
         cycle: int | None = None,
         time_ms: float | None = None,
+        dt_ms: float | None = None,
+        mass_added_rel: float | None = None,
+        elapsed_s: float | None = None,
+        remaining_s: float | None = None,
         message: str | None = None,
     ) -> JobProgress:
         with self._lock:
@@ -69,6 +79,14 @@ class ProgressHub:
                 job.cycle = cycle
             if time_ms is not None:
                 job.time_ms = time_ms
+            if dt_ms is not None:
+                job.dt_ms = dt_ms
+            if mass_added_rel is not None:
+                job.mass_added_rel = mass_added_rel
+            if elapsed_s is not None:
+                job.elapsed_s = elapsed_s
+            if remaining_s is not None:
+                job.remaining_s = remaining_s
             if message is not None:
                 job.message = message
             snapshot = JobProgress(**asdict(job))

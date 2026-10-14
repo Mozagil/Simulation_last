@@ -36,6 +36,6 @@ describe("1.23 D2 — çözüm kontrolü kartı", () => {
   it("son koşunun Δt_min ve eklenen kütle oranı veri olarak; adım üst sınırı süre / Δt_min", () => {
     render(<Harness onState={() => undefined} scalars={{ timestep_min: 5.396e-4, mass_added_rel: 0 }} />);
     expect(screen.getByTestId("crash-solver-last")).toHaveTextContent("Δt_min 5.396e-4 ms · eklenen kütle oranı 0");
-    expect(screen.getByTestId("crash-solver-last")).toHaveTextContent(/≈ 7\.413 adım/);
+    expect(screen.getByTestId("crash-solver-last")).toHaveTextContent(/≈ 7413 adım/);
   });
 });

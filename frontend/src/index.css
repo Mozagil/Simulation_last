@@ -7592,6 +7592,25 @@ p {
   white-space: nowrap;
 }
 
+/* 1.23 D3 — koşu sırasında canlı adım / Δt */
+.crash-live {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px 12px;
+  margin: 6px 0 4px;
+}
+.crash-live-cell dt {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.crash-live-cell dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* 1.23 D2 — çözüm kontrolü kartı */
 .crash-solver-help {
   margin: 8px 0 4px;

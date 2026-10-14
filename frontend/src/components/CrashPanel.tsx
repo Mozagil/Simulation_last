@@ -23,6 +23,7 @@ import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
+import CrashLiveProgress from "./CrashLiveProgress";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
 
@@ -1423,10 +1424,16 @@ export default function CrashPanel({
           )}
           {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
           {polling && snapshot?.cycle != null && (
-            <p className="material-assign-hint">
-              cycle {snapshot.cycle}
-              {snapshot.time_ms != null ? ` · t=${fmt(snapshot.time_ms)} ms` : ""} · %{fmt(percent)}
-            </p>
+            <CrashLiveProgress
+              cycle={snapshot.cycle}
+              timeMs={snapshot.time_ms}
+              dtMs={snapshot.dt_ms}
+              tEndMs={Number(tEnd) > 0 ? Number(tEnd) : null}
+              percent={percent}
+              massAddedRel={snapshot.mass_added_rel}
+              elapsedS={snapshot.elapsed_s}
+              remainingS={snapshot.remaining_s}
+            />
           )}
           {result?.starter_url && (
             <div className="crash-rad-downloads" aria-label=".rad indir">

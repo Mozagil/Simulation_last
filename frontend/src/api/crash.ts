@@ -218,6 +218,12 @@ export interface CrashJobSnapshot {
   percent?: number;
   cycle?: number | null;
   time_ms?: number | null;
+  /** 1.23 D3 — anlık zaman adımı (ms), engine listing'den */
+  dt_ms?: number | null;
+  /** 1.23 D3 — eklenen kütle oranı DM/M; Radioss'un geçen / kalan süre tahmini (s) */
+  mass_added_rel?: number | null;
+  elapsed_s?: number | null;
+  remaining_s?: number | null;
   hub_state?: string;
   scalars?: Record<string, number>;
   /** time (ms), rwall_force / contact_k_force (kN) … */

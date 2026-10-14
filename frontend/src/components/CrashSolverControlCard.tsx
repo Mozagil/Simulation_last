@@ -121,7 +121,7 @@ export default function CrashSolverControlCard({
         <p className="crash-behavior-hint" data-testid="crash-solver-last">
           Son koşu: Δt_min {dtMinLast != null ? `${fmt(dtMinLast)} ms` : "—"} · eklenen kütle oranı{" "}
           {massLast != null ? fmt(massLast) : "—"}
-          {dtMinLast != null && Number(tEnd) > 0 ? ` · süre / Δt_min ≈ ${Math.round(Number(tEnd) / dtMinLast).toLocaleString("tr-TR")} adım (üst sınır)` : ""}
+          {dtMinLast != null && Number(tEnd) > 0 ? ` · süre / Δt_min ≈ ${Math.round(Number(tEnd) / dtMinLast)} adım (üst sınır)` : ""}
         </p>
       )}
     </div>
