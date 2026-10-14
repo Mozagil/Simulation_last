@@ -1632,8 +1632,11 @@ Her madde ayrı küçük adım ve ayrı PR; sıra: a1 → a2 → b1 → b2 → d
   TYPE24 (kabuk öz, solid öz, kabuk ↔ solid), aynı bayraklarla. Çift temaslarla birlikte
   kullanılabilir; /INTER kimlikleri sırayla, `/TH/INTER` hepsini içerir. ≈ LS-DYNA
   AUTOMATIC_SINGLE_SURFACE / Ansys Body Interaction. Test: `test_crash_contact.py`.
-- a2 Genel temas (UI): Temas kartında "Tüm model (genel temas)" seçeneği; geçmişten
-  yükleme `all_parts`'ı korur.
+- a2 ✅ (2026-10-14) Genel temas (UI): 3 · Temaslar kartında "Parça çifti / Tüm model"
+  kapsam seçimi. Tüm model: parça seçimi gizlenir, TYPE24 sabit (TYPE7 kapalı), bayraklar
+  aynı; istekte `{type: 24, all_parts: true}` (master/slave yok). Özet ve ürün ağacında
+  "tüm model (genel)". Geçmişten / içe aktarmadan yükleme `all_parts`'ı korur. Test:
+  `CrashPanel.test.tsx`.
 - b1 Yay elemanı (backend): `/SPRING` + `/PROP/TYPE4` (k, opsiyonel sönüm; iki düğüm /
   rijit gövde ana düğümü arası). Can crush resmine göre netleşir.
 - b2 Yay kartı (UI).

@@ -98,8 +98,11 @@ export interface CrashPartSpec {
  * değerleri (0 = Radioss varsayılanı); öneri yok, mühendis doldurur. */
 export interface CrashContactSpec {
   type: 7 | 24;
-  master_part: number;
-  slave_part: number;
+  /** Genel temasta (all_parts) verilmez. */
+  master_part?: number | null;
+  slave_part?: number | null;
+  /** 1.24a — genel temas: tüm parçalar tek yüzey, öz temas (yalnız TYPE24). */
+  all_parts?: boolean;
   fric: number;
   stfac: number;
   /** mm — yalnız TYPE7 */

@@ -41,6 +41,8 @@ const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
 interface ContactRow {
   id: number;
   type: 7 | 24;
+  /** 1.24a — genel temas (tüm model, öz temas; TYPE24) */
+  all: boolean;
   master: number;
   slave: number;
   fric: string;
@@ -405,9 +407,10 @@ export default function CrashPanel({
         contactRowSeq += 1;
         return {
           id: contactRowSeq,
-          type: c.type === 24 ? 24 : 7,
-          master: c.master_part,
-          slave: c.slave_part,
+          type: c.type === 24 || c.all_parts ? 24 : 7,
+          all: !!c.all_parts,
+          master: c.master_part ?? partIds[0] ?? 0,
+          slave: c.slave_part ?? partIds[0] ?? 0,
           fric: String(c.fric ?? 0),
           stfac: String(c.stfac ?? 1),
           gapmin: String(c.gapmin ?? 0),
@@ -500,6 +503,7 @@ export default function CrashPanel({
       {
         id: contactRowSeq,
         type: 7,
+        all: false,
         master: partOptions[partOptions.length - 1],
         slave: partOptions[0],
         fric: "0",
@@ -517,6 +521,15 @@ export default function CrashPanel({
   }
 
   function contactPayload(r: ContactRow): CrashContactSpec {
+    const flags = {
+      fric: num(r.fric),
+      stfac: num(r.stfac),
+      gapmin: 0,
+      istf: num(r.istf),
+      inacti: num(r.inacti),
+      iedge: num(r.iedge),
+    };
+    if (r.all) return { type: 24, all_parts: true, ...flags };
     return {
       type: r.type,
       master_part: r.master,
@@ -579,8 +592,10 @@ export default function CrashPanel({
     noMaterial.length > 0 && `Parçalar: malzemesiz ${noMaterial.map((p) => "#" + p).join(", ")}`,
   ].filter(Boolean) as string[];
   const partsState: GroupState = partsMissing.length ? `${partsMissing.length} eksik` : "hazır";
+  const contactLabel = (c: ContactRow, sep: string) =>
+    c.all ? "tüm model (genel)" : c.master === c.slave ? `#${c.master} kendi kendine` : `#${c.slave}${sep}#${c.master}`;
   const contactsSummary = contacts.length
-    ? contacts.map((c) => (c.master === c.slave ? `#${c.master} kendi kendine` : `#${c.slave}→#${c.master}`)).join(" · ")
+    ? contacts.map((c) => contactLabel(c, "→")).join(" · ")
     : "temas yok";
   const contactsMissing =
     impactMode === "free" && contacts.length === 0 && partOptions.length > 1 ? ["Temaslar: duvarsız çarpmada parçalar arası temas yok"] : [];
@@ -639,7 +654,7 @@ export default function CrashPanel({
       title: "Temaslar",
       rows: contacts.map((c) => ({
         label: `TYPE${c.type}`,
-        value: c.master === c.slave ? `#${c.master} kendi kendine` : `#${c.slave} → #${c.master}`,
+        value: contactLabel(c, " → "),
       })),
     },
     {
@@ -1115,8 +1130,22 @@ export default function CrashPanel({
                       <div className="crash-contact-head">
                         <strong>
                           Temas {k}
-                          {c.master === c.slave ? " · self" : ""}
+                          {c.all ? " · tüm model" : c.master === c.slave ? " · self" : ""}
                         </strong>
+                        <span className="doe-seg" role="group" aria-label={`Temas ${k} kapsamı`}>
+                          {([false, true] as const).map((all) => (
+                            <button
+                              key={String(all)}
+                              type="button"
+                              className={c.all === all ? "doe-seg-opt active" : "doe-seg-opt"}
+                              aria-pressed={c.all === all}
+                              disabled={busy}
+                              onClick={() => updateContact(c.id, all ? { all: true, type: 24 } : { all: false })}
+                            >
+                              {all ? "Tüm model" : "Parça çifti"}
+                            </button>
+                          ))}
+                        </span>
                         <span className="doe-seg" role="group" aria-label={`Temas ${k} tipi`}>
                           {([7, 24] as const).map((t) => (
                             <button
@@ -1124,7 +1153,7 @@ export default function CrashPanel({
                               type="button"
                               className={c.type === t ? "doe-seg-opt active" : "doe-seg-opt"}
                               aria-pressed={c.type === t}
-                              disabled={busy}
+                              disabled={busy || (c.all && t === 7)}
                               onClick={() => updateContact(c.id, { type: t })}
                             >
                               TYPE{t}
@@ -1142,13 +1171,20 @@ export default function CrashPanel({
                           ×
                         </button>
                       </div>
-                      <div className="crash-contact-parts">
-                        {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
-                        <span className="crash-contact-arrow" aria-hidden="true">
-                          {c.type === 7 ? "→" : "↔"}
-                        </span>
-                        {partSelect("master", "master (yüzey)")}
-                      </div>
+                      {c.all ? (
+                        <p className="crash-contact-parts" data-testid={`crash-contact-${k}-all`}>
+                          Tüm parçalar tek yüzey, öz temas. Kabuk ve solid birlikteyse üç TYPE24 yazılır
+                          (kabuk öz, solid öz, kabuk ↔ solid).
+                        </p>
+                      ) : (
+                        <div className="crash-contact-parts">
+                          {partSelect("slave", c.type === 7 ? "slave (düğümler)" : "slave (yüzey)")}
+                          <span className="crash-contact-arrow" aria-hidden="true">
+                            {c.type === 7 ? "→" : "↔"}
+                          </span>
+                          {partSelect("master", "master (yüzey)")}
+                        </div>
+                      )}
                       <div className="mesh-grid">
                         {field("fric", "Fric")}
                         {field("stfac", "Stfac")}
@@ -1171,7 +1207,8 @@ export default function CrashPanel({
             </button>
             <p className="crash-behavior-hint">
               TYPE7: bir parçanın düğümleri diğerinin yüzeyine çarpar. TYPE24: iki yüzey karşılıklı.
-              Aynı parça iki tarafta = kendi kendine (katlanan kutu). Boş bayrak = Radioss varsayılanı.
+              Aynı parça iki tarafta = kendi kendine (katlanan kutu). Tüm model = bütün parçalar tek
+              yüzeyde öz temas (genel temas, TYPE24). Boş bayrak = Radioss varsayılanı.
             </p>
           </div>
         )}
