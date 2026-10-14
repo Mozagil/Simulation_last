@@ -116,6 +116,28 @@ export function timeToFrame(times: (number | null)[], t: number): number {
   return span > 0 ? i + (t - ts[i]) / span : i;
 }
 
+/** 1.23 C5b — kamera eşleme: bir görüntüleyicide döndür / yakınlaştır → diğerleri aynı poza. */
+export interface CameraPose {
+  pos: [number, number, number];
+  target: [number, number, number];
+  up: [number, number, number];
+}
+
+export class CameraLink {
+  private subs = new Map<object, (p: CameraPose) => void>();
+
+  subscribe(owner: object, apply: (p: CameraPose) => void): () => void {
+    this.subs.set(owner, apply);
+    return () => {
+      this.subs.delete(owner);
+    };
+  }
+
+  publish(owner: object, pose: CameraPose) {
+    for (const [o, apply] of this.subs) if (o !== owner) apply(pose);
+  }
+}
+
 /** 1.23 A4 — deformasyon ölçeği seçenekleri (×1 = gerçek). */
 export const DEFORM_SCALES = [1, 2, 5, 10] as const;
 /** 1.23 A5 — oynatma hızı: 1× = tüm koşu ~3 sn. */
@@ -253,6 +275,10 @@ export default function CrashAnimationViewer({
   onClose,
   syncTime,
   onTimes,
+  colorRange,
+  onScalar,
+  cameraLink,
+  linkCamera = false,
 }: {
   runId: number;
   title?: string;
@@ -263,7 +289,18 @@ export default function CrashAnimationViewer({
   syncTime?: number;
   /** 1.23 C5 — veri gelince karelerin zamanları (ms) bildirilir (ortak zaman aralığı için). */
   onTimes?: (times: number[]) => void;
+  /** 1.23 C5b — renk ölçeği dışarıdan (ortak ölçek); yoksa skalerin kendi min–max'ı. */
+  colorRange?: [number, number] | null;
+  /** 1.23 C5b — seçili skaler ve kendi aralığı bildirilir. */
+  onScalar?: (scalar: string, meta: { location: "node" | "face"; min: number; max: number } | undefined) => void;
+  /** 1.23 C5b — kamera eşleme kanalı (sabit nesne); `linkCamera` açıkken poz paylaşılır. */
+  cameraLink?: CameraLink;
+  linkCamera?: boolean;
 }) {
+  const linkOnRef = useRef(linkCamera);
+  linkOnRef.current = linkCamera;
+  const onScalarRef = useRef(onScalar);
+  onScalarRef.current = onScalar;
   const synced = syncTime !== undefined;
   const [data, setData] = useState<CrashAnimation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -326,6 +363,13 @@ export default function CrashAnimationViewer({
       alive = false;
     };
   }, [runId]);
+
+  // 1.23 C5b: ortak renk ölçeği (ilkel değerler: efekt bağımlılığı)
+  const cr0 = colorRange?.[0];
+  const cr1 = colorRange?.[1];
+  useEffect(() => {
+    if (data) onScalarRef.current?.(scalar, data.scalars[scalar]);
+  }, [data, scalar]);
 
   // 1.23 C5: karşılaştırmada zaman dışarıdan
   const onTimesRef = useRef(onTimes);
@@ -407,6 +451,28 @@ export default function CrashAnimationViewer({
     controls.update();
     const render = () => renderer.render(scene, camera);
     controls.addEventListener("change", render);
+    // 1.23 C5b: kamera eşleme — uygulanan poz yeniden yayınlanmaz (döngü yok)
+    const linkOwner = {};
+    let applying = false;
+    const unlink = cameraLink?.subscribe(linkOwner, (p) => {
+      if (!linkOnRef.current) return;
+      applying = true;
+      camera.position.set(...p.pos);
+      camera.up.set(...p.up);
+      controls.target.set(...p.target);
+      controls.update();
+      render();
+      applying = false;
+    });
+    const publishPose = () => {
+      if (applying || !linkOnRef.current || !cameraLink) return;
+      cameraLink.publish(linkOwner, {
+        pos: camera.position.toArray() as [number, number, number],
+        target: controls.target.toArray() as [number, number, number],
+        up: camera.up.toArray() as [number, number, number],
+      });
+    };
+    controls.addEventListener("change", publishPose);
 
     // 1.23 C3: rijit duvar — düzlem kare (model boyutunun 1.2 katı) ya da silindir.
     let wall: THREE.Object3D | null = null;
@@ -515,6 +581,7 @@ export default function CrashAnimationViewer({
     ro.observe(holder);
 
     return () => {
+      unlink?.();
       ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
@@ -527,7 +594,7 @@ export default function CrashAnimationViewer({
       meshRef.current = null;
       viewRef.current = null;
     };
-  }, [data, tri, edges, wallSpec]);
+  }, [data, tri, edges, wallSpec, cameraLink]);
 
   // Kare / skaler / ölçek değişince konum + renk güncelle. 1.23 A5: iki kare arası
   // doğrusal ara-değer; 1.23 A4: yer değiştirme (ilk kareye göre) × ölçek.
@@ -550,8 +617,8 @@ export default function CrashAnimationViewer({
     const nodeB = meta?.location === "node" ? fb.node?.[scalar] : undefined;
     const faceA = meta?.location === "face" ? fa.face?.[scalar] : undefined;
     const faceB = meta?.location === "face" ? fb.face?.[scalar] : undefined;
-    const lo = meta?.min ?? 0;
-    const span = (meta?.max ?? 1) - lo || 1;
+    const lo = cr0 ?? meta?.min ?? 0;
+    const span = (cr1 ?? meta?.max ?? 1) - lo || 1;
     for (let v = 0; v < tri.vtx.length; v += 1) {
       const node = tri.vtx[v];
       const face = tri.tri_face[Math.floor(v / 3)];
@@ -611,7 +678,7 @@ export default function CrashAnimationViewer({
       );
       rec.track.requestFrame();
     }
-  }, [data, tri, edges, frameF, scalar, deform, wallSpec, runId, recording]);
+  }, [data, tri, edges, frameF, scalar, deform, wallSpec, runId, recording, cr0, cr1]);
 
   // 1.23 C2/C3: görünürlük düğmeleri
   useEffect(() => {
@@ -931,9 +998,12 @@ export default function CrashAnimationViewer({
           )}
           {meta && (
             <div className="crash-anim-legend" aria-label="Renk ölçeği">
-              <span>{fmt(meta.min)}</span>
+              <span>{fmt(cr0 ?? meta.min)}</span>
               <span className="crash-anim-bar" />
-              <span>{fmt(meta.max)}</span>
+              <span>
+                {fmt(cr1 ?? meta.max)}
+                {colorRange ? " (ortak)" : ""}
+              </span>
             </div>
           )}
           {stats && (

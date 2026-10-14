@@ -260,6 +260,7 @@ export const CRASH_DOC: DocSection[] = [
     items: [
       { name: "▶ (animasyon)", what: "Koşunun 3B deforme şeklini viewport'ta açar." },
       { name: "Animasyon yan yana", what: "Karşılaştır'da tam 2 çözülmüş koşu seçiliyken: iki deforme şekil viewport'ta yan yana, ortak fiziksel zamanla (tek oynat / kaydırıcı / hız). Zaman ekseni 0 … en uzun t_end; kısa koşu kendi son karesinde kalır (\"koşu sonu\"). Renk skaleri, ölçek, görünüm her pencerede ayrı." },
+      { name: "Ortak renk ölçeği / Kamera eşle", what: "Yan yana karşılaştırmada iki seçenek (varsayılan kapalı). Ortak renk ölçeği: iki pencere aynı skalerdeyse iki koşunun min–max birleşimi (lejantta \"(ortak)\"); farklı skalerde uygulanmaz, not yazar. Kamera eşle: birinde döndür / yakınlaştır / hazır görünüm → diğeri aynı kamerada." },
       { name: "📈 (eğri)", what: "Kuvvet–zaman eğrisini gösterir; karşılaştırmaya ekler." },
       { name: "⊘ (dışla)", what: "Koşuyu ML korpusundan dışlar (silmez)." },
       { name: "Karşılaştır", what: "En çok 6 koşunun eğrisini üst üste çizer." },
