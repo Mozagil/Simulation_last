@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, jet, lerpFrame, pickVideoMime, scaledPos, triangulate, VIEW_VECTORS, videoFileName, wallFromRequest } from "./CrashAnimationViewer";
+import { DEFORM_SCALES, PLAY_SPEEDS, faceEdges, frameStats, jet, lerpFrame, pickVideoMime, scaledPos, triangulate, VIEW_VECTORS, videoFileName, wallFromRequest, withDirectional } from "./CrashAnimationViewer";
 
 vi.mock("../api/crash", () => ({
   fetchCrashRuns: vi.fn(() =>
@@ -116,5 +116,37 @@ describe("1.23 C1 — animasyon video kaydı", () => {
   it("videoFileName: koşu + skaler, uzantı biçimden; güvensiz karakterler _", () => {
     expect(videoFileName(325, "1:Plastic_Strain", "video/mp4;codecs=avc1")).toBe("crash_run325_1_Plastic_Strain.mp4");
     expect(videoFileName(7, "disp_mag", "video/webm;codecs=vp9")).toBe("crash_run7_disp_mag.webm");
+  });
+});
+
+describe("1.23 C7 — yönlü yer değiştirme + kare istatistiği", () => {
+  const anim = {
+    faces: [[0, 1]],
+    face_part: [1],
+    scalars: { disp_mag: { location: "node" as const, min: 0, max: 3 } },
+    frames: [
+      { time: 0, positions: [0, 0, 0, 10, 0, 0] },
+      { time: 1, positions: [1, -2, 0, 10, 0, 3] },
+      { time: 2, positions: [null, 0, 0, 12, 0, 0] },
+    ],
+  };
+
+  it("withDirectional: u = konum − ilk kare, işaretli; ölçek tüm karelerin min–max'ı; null korunur", () => {
+    const d = withDirectional(anim);
+    expect(d.frames[1].node?.disp_x).toEqual([1, 0]);
+    expect(d.frames[1].node?.disp_y).toEqual([-2, 0]);
+    expect(d.frames[1].node?.disp_z).toEqual([0, 3]);
+    expect(d.frames[2].node?.disp_x).toEqual([null, 2]);
+    expect(d.scalars.disp_x).toEqual({ location: "node", min: 0, max: 2 });
+    expect(d.scalars.disp_y).toEqual({ location: "node", min: -2, max: 0 });
+    expect(d.scalars.disp_mag).toEqual(anim.scalars.disp_mag); // mevcut skaler korunur
+  });
+
+  it("frameStats: min / maks / aritmetik ortalama; silinen ve null katılmaz", () => {
+    expect(frameStats([1, 2, 3, null], [0, 1, 2, 3])).toEqual({ min: 1, max: 3, mean: 2, n: 3 });
+    expect(frameStats([1, 2, 9], [0, 1, 2], [1, 1, 0])).toEqual({ min: 1, max: 2, mean: 1.5, n: 2 });
+    expect(frameStats([5, 7], [1])).toEqual({ min: 7, max: 7, mean: 7, n: 1 }); // yalnız verilen kimlikler
+    expect(frameStats(undefined, [0])).toBeNull();
+    expect(frameStats([null], [0])).toBeNull();
   });
 });

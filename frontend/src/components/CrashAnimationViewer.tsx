@@ -10,6 +10,9 @@ import { fetchCrashAnimation, fetchCrashRun, type CrashAnimation } from "../api/
 
 const SCALAR_LABELS: Record<string, string> = {
   disp_mag: "Yer değiştirme |u| (mm)",
+  disp_x: "Yönlü yer değiştirme uₓ (mm)",
+  disp_y: "Yönlü yer değiştirme u_y (mm)",
+  disp_z: "Yönlü yer değiştirme u_z (mm)",
   "2DELEM_Plastic_Strain": "Plastik şekil değiştirme (kabuk)",
   "3DELEM_Plastic_Strain": "Plastik şekil değiştirme (solid)",
   "2DELEM_Specific_Energy": "Özgül enerji (kabuk)",
@@ -42,6 +45,61 @@ function fmt(v: number): string {
   if (Math.abs(v) >= 100) return v.toFixed(1);
   if (Math.abs(v) >= 1) return v.toFixed(3);
   return v.toExponential(2);
+}
+
+/** 1.23 C7 — yönlü yer değiştirme: her karede uₓ, u_y, u_z = konum − ilk kare konumu
+ *  (düğüm, mm, işaretli). Renk ölçeği tüm karelerin min–max'ı (diğer skalerler gibi).
+ *  Iraksamış karede null konum → null. */
+export function withDirectional(d: CrashAnimation): CrashAnimation {
+  const p0 = d.frames[0]?.positions;
+  if (!p0) return d;
+  const keys = ["disp_x", "disp_y", "disp_z"] as const;
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  const frames = d.frames.map((fr) => {
+    const n = Math.floor(fr.positions.length / 3);
+    const comp = keys.map(() => new Array<number | null>(n).fill(null));
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < 3; k++) {
+        const p = fr.positions[i * 3 + k];
+        const a = p0[i * 3 + k];
+        if (p == null || a == null) continue;
+        const u = p - a;
+        comp[k][i] = u;
+        if (u < lo[k]) lo[k] = u;
+        if (u > hi[k]) hi[k] = u;
+      }
+    }
+    return { ...fr, node: { ...fr.node, disp_x: comp[0], disp_y: comp[1], disp_z: comp[2] } };
+  });
+  const scalars = { ...d.scalars };
+  keys.forEach((k, i) => {
+    if (Number.isFinite(lo[i])) scalars[k] = { location: "node", min: lo[i], max: hi[i] };
+  });
+  return { ...d, frames, scalars };
+}
+
+/** 1.23 C7 — bir karede skalerin min / maks / ortalaması (aritmetik, eleman ya da düğüm
+ *  başına; alan ağırlıksız). Silinen yüz ve null değer katılmaz. */
+export function frameStats(
+  values: (number | null)[] | undefined,
+  ids: Iterable<number>,
+  alive?: number[],
+): { min: number; max: number; mean: number; n: number } | null {
+  if (!values) return null;
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let n = 0;
+  for (const i of ids) {
+    const v = values[i];
+    if (v == null || !Number.isFinite(v) || (alive && alive[i] === 0)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    n += 1;
+  }
+  return n ? { min, max, mean: sum / n, n } : null;
 }
 
 /** 1.23 A4 — deformasyon ölçeği seçenekleri (×1 = gerçek). */
@@ -238,7 +296,7 @@ export default function CrashAnimationViewer({
     fetchCrashAnimation(runId)
       .then((d) => {
         if (!alive) return;
-        setData(d);
+        setData(withDirectional(d));
         const names = Object.keys(d.scalars);
         setScalar(names.find((k) => k.endsWith("Plastic_Strain")) ?? names[0] ?? "disp_mag");
       })
@@ -636,6 +694,14 @@ export default function CrashAnimationViewer({
 
   const meta = data?.scalars[scalar];
   const fr = data?.frames[frame];
+  // 1.23 C7: karedeki min / maks / ort — yüz skalerinde tüm yüzler, düğümde yüzeylerdeki düğümler
+  const surfNodes = useMemo(() => (tri ? [...new Set(tri.vtx)] : []), [tri]);
+  const stats = useMemo(() => {
+    if (!meta || !fr || !data) return null;
+    return meta.location === "face"
+      ? frameStats(fr.face?.[scalar], data.faces.keys(), fr.face_alive)
+      : frameStats(fr.node?.[scalar], surfNodes);
+  }, [meta, fr, data, scalar, surfNodes]);
   // ESC ile çık — tam ekranda başka çıkış yolu görünmüyor.
   useEffect(() => {
     if (!expanded) return;
@@ -829,6 +895,15 @@ export default function CrashAnimationViewer({
               <span className="crash-anim-bar" />
               <span>{fmt(meta.max)}</span>
             </div>
+          )}
+          {stats && (
+            <p className="crash-behavior-hint" data-testid="crash-anim-stats">
+              {`Bu karede (t = ${fmt(fr?.time ?? 0)} ms) · min ${fmt(stats.min)} · maks ${fmt(stats.max)} · ort ${fmt(
+                stats.mean,
+              )} · ${stats.n} ${meta?.location === "face" ? "eleman" : "düğüm"} (aritmetik ortalama${
+                meta?.location === "face" ? ", silinenler hariç" : ""
+              })`}
+            </p>
           )}
         </>
       )}
