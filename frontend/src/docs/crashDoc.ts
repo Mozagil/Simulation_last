@@ -259,6 +259,7 @@ export const CRASH_DOC: DocSection[] = [
     imageCaption: "+ Yeni crash vakası: seçili senaryonun şeması ve parametreleri.",
     items: [
       { name: "▶ (animasyon)", what: "Koşunun 3B deforme şeklini viewport'ta açar." },
+      { name: "Son çalışma (F5)", what: "Crash sekmesinde son açılan geometri / geçmişten yüklenen koşu tarayıcıda hatırlanır; sayfa yenilenince kendiliğinden açılır (koşuysa kurulumuyla, geometriyse sunucudaki mesh'iyle). \"Yeni Case Başlat\" sonrası kendiliğinden açılmaz; boş ekranda \"Son çalışmayı aç\" düğmesi. Panelde kaydedilmemiş düzenlemeler hatırlanmaz." },
       { name: "⤓ (yükle)", what: "Koşunun geometrisi + sunucudaki mesh'i + kurulumu (malzeme, çarpma / duvar, roller, temaslar, ek tanımlar) panellere yüklenir; düzenleyip yeniden koşulur. Mesh eleman boyutu kayıtlı değil (\"—\"); mesh yoksa yeniden mesh'lenir. Başarısız koşu da yüklenir." },
       { name: "Animasyon yan yana", what: "Karşılaştır'da tam 2 çözülmüş koşu seçiliyken: iki deforme şekil viewport'ta yan yana, ortak fiziksel zamanla (tek oynat / kaydırıcı / hız). Zaman ekseni 0 … en uzun t_end; kısa koşu kendi son karesinde kalır (\"koşu sonu\"). Renk skaleri, ölçek, görünüm her pencerede ayrı." },
       { name: "Ortak renk ölçeği / Kamera eşle", what: "Yan yana karşılaştırmada iki seçenek (varsayılan kapalı). Ortak renk ölçeği: iki pencere aynı skalerdeyse iki koşunun min–max birleşimi (lejantta \"(ortak)\"); farklı skalerde uygulanmaz, not yazar. Kamera eşle: birinde döndür / yakınlaştır / hazır görünüm → diğeri aynı kamerada." },

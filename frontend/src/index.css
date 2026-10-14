@@ -1138,6 +1138,8 @@ p {
 
 .geo-dropzone-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   margin-top: 10px;
 }
@@ -1172,6 +1174,13 @@ p {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--ink);
+}
+
+/* 1.23 B3b — "Son çalışmayı aç" */
+.geo-dropzone-btn-last {
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .geo-dropzone-btn-secondary:hover {

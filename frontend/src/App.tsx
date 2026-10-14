@@ -77,6 +77,7 @@ import type {
 import { fetchCrashRun } from "./api/crash";
 import { matCardFromModel } from "./lib/crashSetupImport";
 import { meshPreviewUrl, meshResultFromPreview, meshSizeText } from "./lib/crashRunLoad";
+import { lastWorkLabel, pauseLastWork, readLastWork, saveLastWork, type LastWork } from "./lib/lastWork";
 import CrashHistoryDock from "./components/CrashHistoryDock";
 import CrashCompareAnim from "./components/CrashCompareAnim";
 import type { CrashAnimTarget } from "./components/CrashHistory";
@@ -434,6 +435,9 @@ function App() {
   const crashRequestBuilderRef = useRef<(() => CrashSolveRequest | null) | null>(null);
   // 1.23 B1c: senaryo kurulumu → CrashPanel (key değişince uygulanır).
   const [crashImport, setCrashImport] = useState<{ key: number; req: CrashSolveRequest } | null>(null);
+  // 1.23 B3b: son crash çalışması (localStorage) + geçmişten yüklenen koşu
+  const [lastWork, setLastWork] = useState<LastWork | null>(readLastWork);
+  const lastRunRef = useRef<{ geo: number; run: number } | null>(null);
   const [hiddenParts, setHiddenParts] = useState<Set<number>>(new Set());
   const [showEdges, setShowEdges] = useState(true);
   const [showOffsetPanel, setShowOffsetPanel] = useState(false);
@@ -457,6 +461,30 @@ function App() {
   // gmsh HighOrder optimizasyonu (TODO 8.4): eğri yüzeyde ters jacobian'a karşı.
   const [highOrderOptimize, setHighOrderOptimize] = useState(false);
   const [meshResult, setMeshResult] = useState<MeshGenerateResponse | null>(null);
+
+  // 1.23 B3b: crash sekmesinde aktif geometri (+ geçmişten yüklenen koşu, mesh boyutu) son çalışma olarak kaydedilir
+  useEffect(() => {
+    if (analysisTab !== "crash" || geometryId == null) return;
+    const w: LastWork = {
+      geometryId,
+      name: fileName ?? `geometri #${geometryId}`,
+      runId: lastRunRef.current?.geo === geometryId ? lastRunRef.current.run : null,
+      dim: meshResult ? (meshResult.dimension === 3 ? 3 : 2) : null,
+      auto: true,
+    };
+    saveLastWork(w);
+    setLastWork(w);
+  }, [analysisTab, geometryId, fileName, meshResult]);
+
+  // 1.23 B3b: F5 → son crash çalışması kendiliğinden açılır ("Yeni Case Başlat" sonrası açılmaz)
+  const lastWorkOpenedRef = useRef(false);
+  useEffect(() => {
+    if (lastWorkOpenedRef.current) return;
+    lastWorkOpenedRef.current = true;
+    const w = readLastWork();
+    if (w?.auto) void openLastWork(w);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [meshPreview, setMeshPreview] = useState<MeshPreviewData | null>(null);
   // Modelin en büyük bounding box boyutu (mm) — deformasyon slider'ının
   // aralığını PROBLEME GÖRE otomatik ölçeklendirmek için gerekli. Sabit bir
@@ -1238,6 +1266,40 @@ function App() {
     setExpandedSteps(new Set(["bc"]));
   }
 
+  /** 1.23 B3a: sunucuda duran mesh'i (önizleme) aktif geometriye bağla; yoksa null. */
+  async function restoreServerMesh(geoId: number, dim: 2 | 3, cadParts: number[] | null) {
+    const preview = await fetchMeshPreview(meshPreviewUrl(geoId, dim)).catch(() => null);
+    if (activeGeometryIdRef.current !== geoId) return null;
+    if (preview) {
+      const m = meshResultFromPreview(geoId, dim, preview);
+      setMeshResult(m);
+      setMeshDimension(dim);
+      setMeshScheme(m.element_scheme);
+      setPropertyKind(dim === 2 ? "shell" : "solid");
+      setMeshPreview(preview);
+      setShowMesh(true);
+      if (cadParts) setHiddenParts(new Set(cadParts.filter((pid) => pid >= 0)));
+    }
+    const tree = await fetchProductTree(geoId, 0).catch(() => null);
+    if (activeGeometryIdRef.current === geoId) setProductTree(tree);
+    return preview;
+  }
+
+  /** 1.23 B3b: son crash çalışmasını aç — koşu varsa koşu (kurulumla), yoksa geometri + sunucu mesh'i. */
+  async function openLastWork(w: LastWork) {
+    setAnalysisTab("crash");
+    ensureStepExpanded("bc");
+    if (w.runId) {
+      await loadCrashRun(w.runId);
+      return;
+    }
+    setErrorMessage(null);
+    const cadParts = await loadGeometryById(w.geometryId, w.name);
+    if (activeGeometryIdRef.current !== w.geometryId) return;
+    if (w.dim) await restoreServerMesh(w.geometryId, w.dim, cadParts);
+    setInfoMessage(`Son çalışma açıldı: ${lastWorkLabel(w)}.`);
+  }
+
   /** 1.23 B3a: geçmişten koşu yükle — geometri + sunucudaki mesh + kurulum panellere (koşu yok). */
   async function loadCrashRun(runId: number) {
     setErrorMessage(null);
@@ -1251,22 +1313,11 @@ function App() {
       setShowNewCrashCase(false);
       setCrashCaseInit(null);
       setScenarioJob(null);
+      lastRunRef.current = { geo: geoId, run: runId };
       const cadParts = await loadGeometryById(geoId, `geometri #${geoId} (koşu #${runId})`);
       if (activeGeometryIdRef.current !== geoId) return;
-      const preview = await fetchMeshPreview(meshPreviewUrl(geoId, dim)).catch(() => null);
+      const preview = await restoreServerMesh(geoId, dim, cadParts);
       if (activeGeometryIdRef.current !== geoId) return;
-      if (preview) {
-        const m = meshResultFromPreview(geoId, dim, preview);
-        setMeshResult(m);
-        setMeshDimension(dim);
-        setMeshScheme(m.element_scheme);
-        setPropertyKind(dim === 2 ? "shell" : "solid");
-        setMeshPreview(preview);
-        setShowMesh(true);
-        if (cadParts) setHiddenParts(new Set(cadParts.filter((pid) => pid >= 0)));
-      }
-      const tree = await fetchProductTree(geoId, 0).catch(() => null);
-      if (activeGeometryIdRef.current === geoId) setProductTree(tree);
       setCrashMatCard(matCardFromModel(rq.model));
       setCrashPartCards(
         Object.fromEntries((rq.parts ?? []).filter((p) => p.model).map((p) => [p.part_id, matCardFromModel(p.model)])),
@@ -1366,6 +1417,10 @@ function App() {
   }
 
   function handleReset() {
+    // 1.23 B3b: yeni case → F5'te eski çalışma kendiliğinden açılmasın (kayıt durur)
+    pauseLastWork();
+    setLastWork(readLastWork());
+    lastRunRef.current = null;
     activeGeometryIdRef.current = null;
     setStatus("idle");
     setErrorMessage(null);
@@ -4318,6 +4373,18 @@ function App() {
               />
               <span>Dosya seç</span>
             </label>
+            {analysisTab === "crash" && lastWork && (
+              <button
+                type="button"
+                className="geo-dropzone-btn geo-dropzone-btn-secondary geo-dropzone-btn-last"
+                data-testid="open-last-work"
+                disabled={status === "uploading"}
+                onClick={() => void openLastWork(lastWork)}
+                title="Son crash çalışmasını aç (koşuysa kurulumuyla; geometriyse sunucudaki mesh'iyle)"
+              >
+                Son çalışmayı aç · {lastWorkLabel(lastWork)}
+              </button>
+            )}
           </div>
         </div>
 

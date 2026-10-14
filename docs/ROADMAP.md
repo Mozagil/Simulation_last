@@ -1559,7 +1559,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   - B3a ✅ (2026-10-14) Geçmişte satır başına ⤓ "yükle": koşunun geometrisi + sunucudaki mesh
     (`/files/meshes/{id}_d{2|3}.preview.json`; boyut kaydı yok → "—", şema/sayılar önizlemeden) +
     kurulumu (`request`, B1c ile aynı içe aktarma) panellere. Koşu yok.
-  - B3b F5 sonrası son çalışmayı (son yüklenen koşu / geometri) kendiliğinden aç.
+  - B3b ✅ (2026-10-14) Son crash çalışması (geometri + geçmişten yüklenen koşu + mesh boyutu)
+    tarayıcıda (`crashLastWork`); F5'te kendiliğinden açılır (koşuysa kurulumuyla). "Yeni Case
+    Başlat" kendiliğinden açmayı kapatır; boş ekranda "Son çalışmayı aç". Kaydedilmemiş panel
+    düzenlemeleri dahil değil. B3 ✅.
 - C1 Dışa aktar: grafik (PNG/CSV) + animasyon video. Sıra kullanıcı kararı (2026-10-14): C1 → C7.
   - C1a ✅ (2026-10-14) Animasyon video: "Video indir (MP4 / WebM)" — MediaRecorder, ek bağımlılık yok; 1280×720, 30 kare/s, üstte koşu + t + skaler, altta renk ölçeği.
   - C1b ✅ (2026-10-14) Grafik PNG / CSV: her crash grafiğinin başlığında PNG (veriden 1400 px yeniden çizim) + CSV (virgül / nokta ondalık). C1 ✅.
