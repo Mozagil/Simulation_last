@@ -26,7 +26,7 @@ export const TH_VARS = {
 
 type GroupKey = "rwall" | "inter" | "part" | "sect";
 
-const DT_KINDS = [
+export const DT_KINDS = [
   { key: "", label: "Yok", help: "Radioss kendi kararlı zaman adımını kullanır (en küçük elemana göre)." },
   { key: "DT", label: "/DT", help: "Zaman adımını Δt_sca katsayısıyla ölçekler." },
   { key: "NODA/0", label: "NODA/0", help: "Düğüm zaman adımı; Δt_min altına düşen düğüm bildirilir." },
@@ -148,14 +148,14 @@ export function outputPayload(s: OutputState): {
 }
 
 /** Varsayılandan farklı alanların kısa özeti (bölüm başlığında); boş = hepsi varsayılan. */
-export function outputSummary(s: OutputState): string {
+export function outputSummary(s: OutputState, includeDt = true): string {
   const d = defaultOutput();
   const parts: string[] = [];
   if (s.thDt.trim()) parts.push(`TH ${s.thDt} ms`);
   if (s.animDt.trim()) parts.push(`animasyon ${s.animDt} ms`);
   if (s.forceCfc) parts.push(`kuvvet CFC ${s.forceCfc}`);
   if (s.accCfc) parts.push(`ivme CFC ${s.accCfc}`);
-  if (s.dtKind) parts.push(s.dtKind === "DT" ? "/DT" : `/DT/${s.dtKind}`);
+  if (includeDt && s.dtKind) parts.push(s.dtKind === "DT" ? "/DT" : `/DT/${s.dtKind}`);
   const groupsChanged = (Object.keys(d.groups) as GroupKey[]).some(
     (k) => s.groups[k].enabled !== d.groups[k].enabled || s.groups[k].vars.join() !== d.groups[k].vars.join(),
   );
@@ -241,6 +241,7 @@ export default function CrashOutputCard({
   partOptions,
   disabled = false,
   showCfc = true,
+  showTimestep = true,
 }: {
   value: OutputState;
   onChange: (next: OutputState) => void;
@@ -248,6 +249,8 @@ export default function CrashOutputCard({
   disabled?: boolean;
   /** CFC koşu öncesi değil, 5 · Sonuçlar'da post-process (kullanıcı 2026-10-08). */
   showCfc?: boolean;
+  /** 1.23 D2 — zaman adımı crash panelinde "Çözüm kontrolü" kartında; burada gizlenir. */
+  showTimestep?: boolean;
 }) {
   const set = (patch: Partial<OutputState>) => onChange({ ...value, ...patch });
   const setGroup = (k: GroupKey, patch: Partial<{ enabled: boolean; vars: string[] }>) =>
@@ -304,6 +307,8 @@ export default function CrashOutputCard({
       </>
       )}
 
+      {showTimestep && (
+      <>
       <p className="crash-expert-title">Zaman adımı</p>
       <div className="crash-var-chips" role="group" aria-label="Zaman adımı kartı">
         {DT_KINDS.map((d) => (
@@ -325,6 +330,8 @@ export default function CrashOutputCard({
         {text("Δt_sca", value.dtScale, (v) => set({ dtScale: v }), "0.9", !value.dtKind)}
         {text("Δt_min (ms)", value.dtMin, (v) => set({ dtMin: v }), undefined, !value.dtKind)}
       </div>
+      </>
+      )}
 
       <p className="crash-expert-title">Kaydedilen kanallar · /TH</p>
       <p className="crash-behavior-hint">

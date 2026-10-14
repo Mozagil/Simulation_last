@@ -7592,6 +7592,24 @@ p {
   white-space: nowrap;
 }
 
+/* 1.23 D2 — çözüm kontrolü kartı */
+.crash-solver-help {
+  margin: 8px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.crash-solver-help summary {
+  cursor: pointer;
+  color: var(--ink);
+}
+.crash-solver-help ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.crash-solver-help li + li {
+  margin-top: 4px;
+}
+
 .crash-acc-state.ok {
   color: var(--success);
   background: var(--success-soft);

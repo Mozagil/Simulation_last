@@ -22,6 +22,7 @@ import CrashForceChart, { energySeriesFromCurves, FORCE_CHART_NOTE, forceSeriesF
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
+import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
 
@@ -295,6 +296,7 @@ export default function CrashPanel({
   const [hgSolid, setHgSolid] = useState("");
   const [expertOpen, setExpertOpen] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
+  const [solverOpen, setSolverOpen] = useState(false);
   // 5 · Sonuçlar — koşu sonrası CFC (post-process)
   const [postForceCfc, setPostForceCfc] = useState("");
   const [postAccCfc, setPostAccCfc] = useState("");
@@ -547,9 +549,10 @@ export default function CrashPanel({
   const impactMissing = [
     !speedOk && "Çarpma: hız sayı olmalı",
     !dirOk && "Çarpma: yön vektörü sıfır ya da geçersiz",
-    !tEndOk && "Çarpma: süre pozitif olmalı",
     impactMode === "wall" && !wallXYZ && "Çarpma: duvar konumu 'x, y, z' olmalı",
   ].filter(Boolean) as string[];
+  // 1.23 D2: süre "Çözüm kontrolü" kartında
+  const solverMissing = !tEndOk ? ["Çözüm kontrolü: süre pozitif olmalı"] : [];
   const impactState: GroupState = impactMissing.length ? `${impactMissing.length} eksik` : "hazır";
   const impactSummary =
     `${speed} m/s · ${vecLabel(impactMode === "wall" ? approachDir : dirVec)} yönü · ` +
@@ -643,6 +646,7 @@ export default function CrashPanel({
   const blockers = [
     ...(meshDimension !== 2 && meshDimension !== 3 ? ["Önce mesh üretin (2 · Mesh)"] : []),
     ...impactMissing,
+    ...solverMissing,
     ...partsMissing,
     ...contactsMissing,
   ];
@@ -835,7 +839,6 @@ export default function CrashPanel({
             <div className="crash-unit-row">
               <UnitField label="Hız" unit="m/s" value={speed} onChange={setSpeed} disabled={busy} />
               {impactMode === "wall" && <UnitField label="Açı" unit="°" value={angle} onChange={setAngle} disabled={busy} />}
-              <UnitField label="Süre" unit="ms" value={tEnd} onChange={setTEnd} disabled={busy} />
             </div>
             <div className="crash-field-label">
               <span>{impactMode === "wall" ? "Duvarın baktığı yön" : "Hız yönü"}</span>
@@ -1282,6 +1285,40 @@ export default function CrashPanel({
         </div>
       </section>
 
+      <section className="crash-acc crash-expert" aria-label="Çözüm kontrolü">
+        <button
+          type="button"
+          className="crash-acc-toggle"
+          aria-expanded={solverOpen}
+          onClick={() => setSolverOpen((v) => !v)}
+        >
+          <span className="crash-acc-n crash-acc-gear" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="8" cy="8" r="5.5" />
+              <path d="M8 4.5V8l2.5 1.5" />
+            </svg>
+          </span>
+          <span className="crash-acc-text">
+            <strong>Çözüm kontrolü</strong>
+            <span className="crash-acc-summary">{solverSummary(tEnd, output)}</span>
+          </span>
+          <span className={solverMissing.length ? "crash-acc-state warn" : output.dtKind ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {solverMissing.length ? "1 eksik" : output.dtKind ? "değiştirildi" : "varsayılan Δt"}
+          </span>
+          <span className="crash-acc-chev" aria-hidden="true">{solverOpen ? "▴" : "▾"}</span>
+        </button>
+        <div className="crash-acc-body" hidden={!solverOpen}>
+          <CrashSolverControlCard
+            tEnd={tEnd}
+            onTEnd={setTEnd}
+            value={output}
+            onChange={setOutput}
+            lastScalars={snapshot?.scalars ?? result?.scalars}
+            disabled={busy}
+          />
+        </div>
+      </section>
+
       <section className="crash-acc crash-expert" aria-label="Çıktı ayarları">
         <button
           type="button"
@@ -1297,11 +1334,11 @@ export default function CrashPanel({
           <span className="crash-acc-text">
             <strong>Çıktı ayarları</strong>
             <span className="crash-acc-summary">
-              {outputSummary(output) || "Kayıt aralığı, zaman adımı, kanallar, kesitler · hepsi varsayılan"}
+              {outputSummary(output, false) || "Kayıt aralığı, kanallar, kesitler · hepsi varsayılan"}
             </span>
           </span>
-          <span className={outputSummary(output) ? "crash-acc-state ok" : "crash-acc-state muted"}>
-            {outputSummary(output) ? "değiştirildi" : "varsayılan"}
+          <span className={outputSummary(output, false) ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {outputSummary(output, false) ? "değiştirildi" : "varsayılan"}
           </span>
           <span className="crash-acc-chev" aria-hidden="true">{outputOpen ? "▴" : "▾"}</span>
         </button>
@@ -1310,7 +1347,14 @@ export default function CrashPanel({
             Preprocess: koşudan önce deck'e yazılır — hangi eğriler ne sıklıkla kaydedilir, zaman adımı, kesitler.
             Boş alan = varsayılan. Filtre (CFC) koşudan sonra 5 · Sonuçlar'da uygulanır.
           </p>
-          <CrashOutputCard value={output} onChange={setOutput} partOptions={partOptions} disabled={busy} showCfc={false} />
+          <CrashOutputCard
+            value={output}
+            onChange={setOutput}
+            partOptions={partOptions}
+            disabled={busy}
+            showCfc={false}
+            showTimestep={false}
+          />
         </div>
       </section>
 

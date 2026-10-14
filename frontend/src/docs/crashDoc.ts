@@ -219,7 +219,8 @@ export const CRASH_DOC: DocSection[] = [
     imageCaption: "Çıktı ayarları 4 · Crash'te: kayıt aralığı, zaman adımı (kanallar ve kesitler aşağıda).",
     items: [
       { name: "TH aralığı / Animasyon", what: "Eğriler ve animasyon kareleri kaç ms'de bir (boş = süre/200, süre/20). Kısa tepe kaçıyorsa TH aralığı küçültülür.", card: "/ANIM/DT" },
-      { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme)." },
+      { name: "Çözüm kontrolü (kart)", what: "4 · Crash'te tek yerde: bitiş süresi (/RUN), zaman adımı kartı, Δt_sca, Δt_min + açıklama; özet satırında süre ve Δt kartı. Son koşunun Δt_min / eklenen kütle oranı ve süre / Δt_min (adım sayısı üst sınırı) veri olarak yazılır." },
+      { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme). Çözüm kontrolü kartında." },
       { name: "Rijit duvar kanalları", what: "FNX/FNY/FNZ normal, FTX… teğet kuvvet.", card: "/TH/RWALL" },
       { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
       { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
