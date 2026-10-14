@@ -14,6 +14,18 @@ const STORE_KEY = "crashHistoryDockH";
 const maxH = () => Math.max(MIN_H, Math.round(window.innerHeight * 0.6));
 const clampH = (h: number) => Math.min(maxH(), Math.max(MIN_H, h));
 
+// Kapsam (kullanıcı 2026-10-14: "geçmiş diye bişe göremiyorum" — yeni üretilen
+// geometride "bu geometri" boş kalıyordu): varsayılan tüm geometriler, seçim hatırlanır.
+const SCOPE_KEY = "crashHistoryScope";
+
+function readStoredScope(): "all" | "geometry" {
+  try {
+    return window.localStorage.getItem(SCOPE_KEY) === "geometry" ? "geometry" : "all";
+  } catch {
+    return "all";
+  }
+}
+
 function readStoredH(): number {
   try {
     const v = Number(window.localStorage.getItem(STORE_KEY));
@@ -38,6 +50,16 @@ export default function CrashHistoryDock({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [height, setHeight] = useState(readStoredH);
+  const [scope, setScopeState] = useState(readStoredScope);
+  const setScope = (v: "all" | "geometry") => {
+    setScopeState(v);
+    try {
+      window.localStorage.setItem(SCOPE_KEY, v);
+    } catch {
+      /* depolama yoksa yalnız bu oturum */
+    }
+  };
+  const listGeometryId = scope === "geometry" ? geometryId : null;
 
   function startResize(e: ReactMouseEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -88,8 +110,28 @@ export default function CrashHistoryDock({
           onClick={() => setExpanded((v) => !v)}
         >
           Crash geçmişi
-          <span className="history-footer-hint">{geometryId != null ? "bu geometri" : "tüm geometriler"}</span>
+          <span className="history-footer-hint">{listGeometryId != null ? "bu geometri" : "tüm geometriler"}</span>
         </button>
+        <span className="crash-var-chips crash-history-scope" role="group" aria-label="Geçmiş kapsamı">
+          <button
+            type="button"
+            className={scope === "all" ? "crash-var-chip active" : "crash-var-chip"}
+            aria-pressed={scope === "all"}
+            onClick={() => setScope("all")}
+          >
+            Tüm geometriler
+          </button>
+          <button
+            type="button"
+            className={scope === "geometry" ? "crash-var-chip active" : "crash-var-chip"}
+            aria-pressed={scope === "geometry"}
+            disabled={geometryId == null}
+            title={geometryId == null ? "Önce geometri yükleyin" : `Yalnız geometri #${geometryId} koşuları`}
+            onClick={() => setScope("geometry")}
+          >
+            Bu geometri
+          </button>
+        </span>
         <button type="button" className="history-footer-toggle" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Kapat" : "Aç"}
         </button>
@@ -97,7 +139,7 @@ export default function CrashHistoryDock({
       {expanded && (
         <div className="crash-history-dock-body">
           <CrashHistory
-            geometryId={geometryId}
+            geometryId={listGeometryId}
             refreshKey={refreshKey}
             activeAnimId={activeAnimId}
             onAnimate={onAnimate}

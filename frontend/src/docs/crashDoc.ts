@@ -73,7 +73,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "LS-DYNA karşılıkları (⇄ düğmesi)", what: "Crash panelinin ve 3 · Material'ın sağ üstünde. Açıkken OpenRadioss kart adının altında yaklaşık LS-DYNA keyword'ü görünür. Kişisel tercih, tarayıcıda hatırlanır. Yalnız ad — LS-DYNA kullanılmaz." },
       { name: "Ürün ağacı (sol)", what: "Geometri, bölgeler, parçalar ve mesh yanında crash kurulumunun tamamı: Malzeme modeli (ortak + parça başına LAW ve kopma) ve Sınır koşulları — Çarpma (rijit duvar / duvarsız, ilk hız, süre, yerçekimi), Parça rolleri, Temaslar, Ek tanımlar (kilit, kütle/kızak, sabit hız, ayrı ilk hız). 4 · Crash'te değişen her tanım ağaçta anında görünür; uzun satırın tamamı üzerine gelince." },
       { name: "+ Yeni crash vakası", what: "Hazır katalogdan geometri + kurulum + koşu tek seferde (bkz. Hazır senaryolar). Seçili senaryonun kendi şeması görünür." },
-      { name: "Crash geçmişi (alt dock)", what: "Bu geometrinin (ya da tüm) koşuları: durum, tepe kuvvet, ▶ animasyon, 📈 eğri, ⊘ dışla, karşılaştır (≤ 6). Üst kenardan sürüklenerek boyutlanır (≤ pencerenin %60'ı)." },
+      { name: "Crash geçmişi (alt dock)", what: "Koşular; kapsam düğmesi \"Tüm geometriler\" (varsayılan) / \"Bu geometri\" (seçim hatırlanır): durum, tepe kuvvet, ▶ animasyon, 📈 eğri, ⊘ dışla, karşılaştır (≤ 6). Üst kenardan sürüklenerek boyutlanır (≤ pencerenin %60'ı)." },
     ],
   },
   {

@@ -4361,6 +4361,11 @@ p {
   border-radius: var(--radius-md);
 }
 
+/* Crash geçmişi kapsamı: tüm geometriler / bu geometri */
+.crash-history-scope {
+  margin: 0 8px 0 auto;
+}
+
 .crash-run-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto; /* + ⤓ yükle (1.23 B3a) */

@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./CrashHistory", () => ({ default: () => <div data-testid="crash-history-inner" /> }));
+vi.mock("./CrashHistory", () => ({
+  default: ({ geometryId }: { geometryId: number | null }) => (
+    <div data-testid="crash-history-inner">{`geo=${geometryId}`}</div>
+  ),
+}));
 vi.mock("./CrashCatalog", () => ({ default: () => <div data-testid="catalog" /> }));
 vi.mock("./CrashScenarioCard", () => ({
   default: ({ onGeometry }: { onGeometry: (id: number, n: string) => void }) => (
@@ -34,6 +38,28 @@ describe("Crash geçmişi dock / yeni vaka (tasarım adım 3)", () => {
     fireEvent.mouseUp(window);
     expect(dock.style.height).toBe("260px");
     expect(window.localStorage.getItem("crashHistoryDockH")).toBe("260");
+  });
+
+  it("kapsam: varsayılan tüm geometriler (geometri yüklü olsa da); 'Bu geometri' seçimi hatırlanır", () => {
+    window.localStorage.removeItem("crashHistoryScope");
+    const { unmount } = render(
+      <CrashHistoryDock geometryId={7} refreshKey="" activeAnimId={null} onAnimate={() => undefined} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Crash geçmişi/ }));
+    expect(screen.getByTestId("crash-history-inner")).toHaveTextContent("geo=null");
+    fireEvent.click(screen.getByRole("button", { name: "Bu geometri" }));
+    expect(screen.getByTestId("crash-history-inner")).toHaveTextContent("geo=7");
+    expect(window.localStorage.getItem("crashHistoryScope")).toBe("geometry");
+    unmount();
+    render(<CrashHistoryDock geometryId={7} refreshKey="" activeAnimId={null} onAnimate={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: /Crash geçmişi/ }));
+    expect(screen.getByTestId("crash-history-inner")).toHaveTextContent("geo=7");
+    window.localStorage.removeItem("crashHistoryScope");
+  });
+
+  it("kapsam: geometri yokken 'Bu geometri' kapalı", () => {
+    render(<CrashHistoryDock geometryId={null} refreshKey="" activeAnimId={null} onAnimate={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Bu geometri" })).toBeDisabled();
   });
 
   it("yeni vaka penceresi: katalog + senaryo; geometri bildirilir, dışa tık kapatır", () => {
