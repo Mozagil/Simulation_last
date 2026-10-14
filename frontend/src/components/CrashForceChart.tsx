@@ -18,6 +18,16 @@ export interface ForceSeries {
 const W = 400;
 const H = 170;
 
+/** 1.23 C8 — y ekseni ölçeği: 0'dan başlayan 1·2·5×10ⁿ adımlı ~4 aralık; üst = son tik. */
+export function niceTicks(maxAbs: number): number[] {
+  if (!(maxAbs > 0) || !Number.isFinite(maxAbs)) return [0, 1];
+  const raw = maxAbs / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = ([1, 2, 2.5, 5, 10].find((m) => m * mag >= raw) ?? 10) * mag;
+  const n = Math.ceil(maxAbs / step - 1e-9);
+  return Array.from({ length: n + 1 }, (_, i) => Number((i * step).toPrecision(12)));
+}
+
 /** `curves` sözlüğünden çizilecek kuvvet serileri: contact_k_force (k sırasıyla), rwall_force. */
 export function forceSeriesFromCurves(curves: Record<string, number[]> | undefined): ForceSeries[] {
   if (!curves) return [];
@@ -46,6 +56,12 @@ export function forceSeriesFromCurves(curves: Record<string, number[]> | undefin
   return [...contacts, ...wall, ...sections, ...filtered].filter((s) => s.values.length > 1);
 }
 
+/** 1.23 C8 — kuvvet grafiği açıklaması (veri kaynağı; yorum yok). */
+export const FORCE_CHART_NOTE =
+  "Kuvvet = TH'deki birikimli impulsun zamana türevi (|F|, global bileşke): rijit duvar /TH/RWALL, " +
+  "temas /TH/INTER, kesit /TH/SECTIO (FN + FT). Ham = süzülmemiş; CFC = SAE J211 süzülmüş (kalın çizgi). " +
+  "Nokta = serinin tepe değeri.";
+
 /** 1.23 C6 — enerji serileri (J): global TH sütunları; toplam = IE + KE (+ dönme + HG − dış iş). */
 export const ENERGY_CURVES: [string, string][] = [
   ["internal_energy", "İç enerji"],
@@ -71,6 +87,8 @@ export default function CrashForceChart({
   title = "Kuvvet · kN",
   unit = "kN",
   ariaLabel = "Kuvvet–zaman grafiği",
+  yLabel = "kuvvet",
+  note,
 }: {
   time: number[];
   series: ForceSeries[];
@@ -78,13 +96,18 @@ export default function CrashForceChart({
   /** 1.17e2 — tepe değer birimi (kN, g, J …) */
   unit?: string;
   ariaLabel?: string;
+  /** 1.23 C8 — y ekseni adı (birim `unit`'ten) */
+  yLabel?: string;
+  /** 1.23 C8 — grafiğin altında kısa açıklama (veri kaynağı; yorum yok) */
+  note?: string;
 }) {
   const tOf = (s: ForceSeries) => s.time ?? time;
   if (series.length === 0 || series.some((s) => tOf(s).length < 2)) return null;
   const tMin = Math.min(...series.map((s) => tOf(s)[0]));
   const tMax = Math.max(...series.map((s) => tOf(s)[tOf(s).length - 1]));
   const tSpan = tMax - tMin || 1;
-  const fMax = Math.max(...series.flatMap((s) => s.values.map((v) => Math.abs(v))), 1e-9) * 1.1;
+  const ticks = niceTicks(Math.max(...series.flatMap((s) => s.values.map((v) => Math.abs(v))), 0));
+  const fMax = ticks[ticks.length - 1];
 
   const px = (t: number) => 8 + ((t - tMin) / tSpan) * (W - 16);
   const py = (f: number) => 8 + (1 - f / fMax) * (H - 16);
@@ -119,25 +142,59 @@ export default function CrashForceChart({
         <span className="crash-force-legend">
           {series.map((s) => (
             <span key={s.key} className="ds-sb crash-force-legend-item">
-              <span className={`crash-force-swatch crash-series-${colorOf(s.key)}${isCfc(s.key) ? " crash-force-swatch-cfc" : ""}`} />
+              <span
+                className={`crash-force-swatch crash-series-${colorOf(s.key)}${isCfc(s.key) ? " crash-force-swatch-cfc" : ""}`}
+              />
               {s.label}
             </span>
           ))}
         </span>
       </span>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label={ariaLabel}
-        preserveAspectRatio="none"
-        className="cv-svg"
-      >
-        <rect x="0.5" y="0.5" width={W - 1} height={H - 1} className="cv-frame" />
-        {series.map((s) => (
-          <polyline key={s.key} points={path(s)} className={lineClass(s.key)} />
-        ))}
-      </svg>
-      <span className="cv-axis ds-sb">
+      <div className="crash-chart-plot">
+        <div className="crash-chart-yaxis ds-sb" aria-hidden="true">
+          <span className="crash-chart-ylabel">{`${yLabel} (${unit})`}</span>
+          {ticks.map((v) => (
+            <span key={v} className="crash-chart-ytick" style={{ top: `${(py(v) / H) * 100}%` }}>
+              {String(v)}
+            </span>
+          ))}
+        </div>
+        <div className="crash-chart-area">
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            role="img"
+            aria-label={ariaLabel}
+            preserveAspectRatio="none"
+            className="cv-svg"
+          >
+            <rect x="0.5" y="0.5" width={W - 1} height={H - 1} className="cv-frame" />
+            {ticks.slice(1, -1).map((v) => (
+              <line key={v} x1={1} x2={W - 1} y1={py(v)} y2={py(v)} className="crash-chart-grid" />
+            ))}
+            {series.map((s) => (
+              <polyline key={s.key} points={path(s)} className={lineClass(s.key)} />
+            ))}
+          </svg>
+          {/* SVG oransız ölçeklenir (preserveAspectRatio=none): nokta / etiket HTML, % konum */}
+          {peaks
+            .filter((p) => !hasTwin(p.key))
+            .map((p) => (
+              <span
+                key={p.key}
+                className={`crash-chart-peak crash-series-${colorOf(p.key)}${px(p.at) / W > 0.8 ? " crash-chart-peak-left" : ""}`}
+                style={{
+                  left: `${(px(p.at) / W) * 100}%`,
+                  top: `${(py(p.peak) / H) * 100}%`,
+                }}
+                title={`${p.label} tepe ${niceValue(p.peak)} ${unit} · t = ${niceValue(p.at)} ms`}
+                data-testid="crash-chart-peak"
+              >
+                <span className="crash-chart-peak-label">{niceValue(p.peak)}</span>
+              </span>
+            ))}
+        </div>
+      </div>
+      <span className="cv-axis ds-sb crash-chart-xaxis">
         <span>{niceValue(tMin)} ms</span>
         <span>zaman (ms)</span>
         <span>{niceValue(tMax)} ms</span>
@@ -151,6 +208,7 @@ export default function CrashForceChart({
           </span>
         ))}
       </span>
+      {note && <p className="crash-chart-note ds-sb">{note}</p>}
     </figure>
   );
 }

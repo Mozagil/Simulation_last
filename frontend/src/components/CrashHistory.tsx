@@ -272,6 +272,7 @@ export default function CrashHistory({
               series={series}
               title={curveKey.startsWith("acc_g") ? "İvme · g" : "Kuvvet · kN"}
               unit={curveKey.startsWith("acc_g") ? "g" : "kN"}
+              yLabel={curveKey.startsWith("acc_g") ? "ivme" : "kuvvet"}
             />
           ) : (
             <p className="doe-empty">Seçili koşularda bu eğri yok.</p>

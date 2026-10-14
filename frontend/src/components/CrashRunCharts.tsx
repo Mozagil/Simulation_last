@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { fetchCrashRun, type CrashRunDetail } from "../api/crash";
-import CrashForceChart, { energySeriesFromCurves, forceSeriesFromCurves, type ForceSeries } from "./CrashForceChart";
+import CrashForceChart, {
+  energySeriesFromCurves,
+  FORCE_CHART_NOTE,
+  forceSeriesFromCurves,
+  type ForceSeries,
+} from "./CrashForceChart";
 
 /** Koşu detay grafikleri (1.17e2): kuvvet (ham + CFC), ivme bileşkesi (ham +
  * CFC), enerji (IE, KE) — kayıtlı koşunun job.json eğrilerinden, yeniden
@@ -74,9 +79,11 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
               onChange={(e) => setTMaxRaw(e.target.value)}
             />
           </label>
-          {force.series.length > 0 && <CrashForceChart time={force.time} series={force.series} />}
+          {force.series.length > 0 && (
+            <CrashForceChart time={force.time} series={force.series} note={FORCE_CHART_NOTE} />
+          )}
           {acc.series.length > 0 && (
-            <CrashForceChart time={acc.time} series={acc.series} title="İvme · g" unit="g" ariaLabel="İvme–zaman grafiği" />
+            <CrashForceChart time={acc.time} series={acc.series} title="İvme · g" unit="g" yLabel="ivme" ariaLabel="İvme–zaman grafiği" />
           )}
           {energy.series.length > 0 && (
             <CrashForceChart
@@ -84,6 +91,7 @@ export default function CrashRunCharts({ runId, title }: { runId: number; title?
               series={energy.series}
               title="Enerji · J"
               unit="J"
+              yLabel="enerji"
               ariaLabel="Enerji–zaman grafiği"
             />
           )}

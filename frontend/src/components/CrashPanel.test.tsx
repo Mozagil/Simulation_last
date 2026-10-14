@@ -509,7 +509,7 @@ describe("CrashPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
     const chart = await screen.findByLabelText("Enerji–zaman grafiği");
     for (const lab of ["İç enerji", "Kinetik enerji", "Hourglass enerjisi", "Temas enerjisi", "Toplam enerji"]) {
-      expect(chart.closest("figure, div")!.parentElement!).toHaveTextContent(lab);
+      expect(chart.closest("figure")!).toHaveTextContent(lab);
     }
     const sum = screen.getByTestId("crash-energy-summary");
     expect(sum).toHaveTextContent("HG / IE %2.5");

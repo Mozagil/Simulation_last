@@ -9286,3 +9286,67 @@ p {
 }
 .crash-error-title { margin: 0; font-size: 13px; font-weight: 600; }
 .crash-error-desc { margin: 4px 0 0; font-size: 12px; }
+
+/* 1.23 C8 — crash grafiği: y ekseni ölçeği, kılavuz çizgi, tepe işareti, açıklama */
+.crash-chart-plot {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+.crash-chart-yaxis {
+  position: relative;
+  height: 190px; /* .cv-svg ile aynı */
+  font-size: 11px;
+}
+.crash-chart-ylabel {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translate(-30%, -50%) rotate(-90deg);
+  white-space: nowrap;
+}
+.crash-chart-ytick {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  font-variant-numeric: tabular-nums;
+}
+.crash-chart-area {
+  position: relative;
+}
+.crash-chart-grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.crash-chart-peak {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: auto;
+}
+.crash-chart-peak-label {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+.crash-chart-peak-left .crash-chart-peak-label {
+  left: auto;
+  right: 8px;
+}
+.crash-chart-xaxis {
+  margin-left: 52px;
+}
+.crash-chart-note {
+  margin: 0;
+  font-size: 12px;
+}

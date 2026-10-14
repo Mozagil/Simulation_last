@@ -18,7 +18,7 @@ import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMateri
 import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
 import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
-import CrashForceChart, { energySeriesFromCurves, forceSeriesFromCurves } from "./CrashForceChart";
+import CrashForceChart, { energySeriesFromCurves, FORCE_CHART_NOTE, forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, { CARD_LABEL, cardSummary, cardsPayload, type LoadCard, type PartRole } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
@@ -1395,7 +1395,7 @@ export default function CrashPanel({
             </p>
           )}
           {curves?.time && forceSeries.length > 0 && (
-            <CrashForceChart time={curves.time} series={forceSeries} />
+            <CrashForceChart time={curves.time} series={forceSeries} note={FORCE_CHART_NOTE} />
           )}
           {curves?.time && energySeries.length > 0 && (
             <CrashForceChart
@@ -1403,6 +1403,7 @@ export default function CrashPanel({
               series={energySeries}
               title="Enerji · J"
               unit="J"
+              yLabel="enerji"
               ariaLabel="Enerji–zaman grafiği"
             />
           )}

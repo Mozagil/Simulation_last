@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import CrashForceChart, { forceSeriesFromCurves } from "./CrashForceChart";
+import CrashForceChart, { forceSeriesFromCurves, niceTicks } from "./CrashForceChart";
 
 describe("forceSeriesFromCurves", () => {
   it("temasları numara sırasıyla, duvarı en sona alır; diğer eğrileri atlar", () => {
@@ -56,5 +56,43 @@ describe("CrashForceChart", () => {
       "crash-force-line crash-series-1",
       "crash-force-line crash-series-0 crash-force-line-cfc",
     ]);
+  });
+});
+
+describe("1.23 C8 eksen + tepe işareti", () => {
+  it("niceTicks: 0'dan 1·2·2.5·5 adımla üst sınırı kapsar", () => {
+    expect(niceTicks(122.3)).toEqual([0, 50, 100, 150]);
+    expect(niceTicks(57.1)).toEqual([0, 20, 40, 60]);
+    expect(niceTicks(0.9)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+    expect(niceTicks(0)).toEqual([0, 1]);
+  });
+
+  it("y ekseni adı + birim, tikler, tepe noktası ve açıklama", () => {
+    render(
+      <CrashForceChart
+        time={[0, 1, 2]}
+        series={[{ key: "rwall_force", label: "Rijit duvar", values: [0, 122.3, 40] }]}
+        note="Kuvvet = impuls türevi"
+      />,
+    );
+    expect(screen.getByText("kuvvet (kN)")).toBeInTheDocument();
+    expect(screen.getByText("150")).toBeInTheDocument();
+    const peak = screen.getByTestId("crash-chart-peak");
+    expect(peak).toHaveTextContent("122");
+    expect(peak).toHaveAttribute("title", "Rijit duvar tepe 122 kN · t = 1.00 ms");
+    expect(screen.getByText("Kuvvet = impuls türevi")).toBeInTheDocument();
+  });
+
+  it("CFC eşi olan ham serinin tepesi işaretlenmez", () => {
+    render(
+      <CrashForceChart
+        time={[0, 1]}
+        series={[
+          { key: "rwall_force", label: "ham", values: [0, 10] },
+          { key: "rwall_force_cfc60", label: "CFC60", values: [0, 8] },
+        ]}
+      />,
+    );
+    expect(screen.getAllByTestId("crash-chart-peak")).toHaveLength(1);
   });
 });
