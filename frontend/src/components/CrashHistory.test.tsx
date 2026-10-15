@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CrashHistory from "./CrashHistory";
 
-// jsdom'da WebGL yok: yan yana animasyon sahte — hangi iki koşu açıldı yazar
-vi.mock("./CrashCompareAnim", () => ({
-  default: ({ a, b }: { a: { id: number }; b: { id: number } }) => <div data-testid="compare-anim">{`${a.id}|${b.id}`}</div>,
+// jsdom'da WebGL yok: ızgara animasyonu sahte — hangi koşular açıldı yazar
+vi.mock("./CrashCompareAnim", async (orig) => ({
+  ...(await orig<typeof import("./CrashCompareAnim")>()),
+  default: ({ runs }: { runs: { id: number }[] }) => <div data-testid="compare-anim">{runs.map((r) => r.id).join("|")}</div>,
 }));
 
 vi.mock("../api/crash", () => ({
@@ -139,7 +140,7 @@ describe("CrashHistory", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("3+ koşuda animasyon çifti seçilir; çözülmemiş koşu çifte girmez", async () => {
+  it("1.25b: 3+ koşu ızgarada hepsi; çiple çıkarılır / eklenir; çözülmemiş koşu ızgaraya girmez", async () => {
     const cmp = (id: number, extra: Partial<CrashRunSummary> = {}) => ({ ...run(id, extra), curves: { time: [0, 1], rwall_force: [0, 1] } });
     vi.mocked(fetchCrashRuns).mockResolvedValue([run(1), run(2), run(3), run(4, { status: "rad_only", solver_ran: false })]);
     vi.mocked(compareCrashRuns).mockResolvedValue([cmp(1), cmp(2), cmp(3), cmp(4, { status: "rad_only", solver_ran: false })]);
@@ -147,10 +148,17 @@ describe("CrashHistory", () => {
     for (const n of [1, 2, 3, 4]) fireEvent.click(await screen.findByLabelText(`koşu ${n} seç`));
     fireEvent.click(screen.getByRole("button", { name: "Karşılaştır (4/6)" }));
     const page = await screen.findByRole("dialog", { name: "Koşu karşılaştırması" });
-    const right = within(page).getByLabelText("Sağ animasyon");
-    expect([...right.querySelectorAll("option")].map((o) => o.value)).toEqual(["1", "2", "3"]);
-    fireEvent.change(right, { target: { value: "3" } });
-    expect(within(page).getByTestId("compare-anim")).toHaveTextContent("1|3");
+    const chips = within(within(page).getByRole("group", { name: "Izgaradaki koşular" })).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual(["#1 koşu 1", "#2 koşu 2", "#3 koşu 3"]);
+    expect(within(page).getByTestId("compare-anim")).toHaveTextContent("1|2|3");
+    fireEvent.click(chips[1]);
+    expect(chips[1]).toHaveAttribute("aria-pressed", "false");
+    expect(within(page).getByTestId("compare-anim")).toHaveTextContent(/^1\|3$/);
+    fireEvent.click(chips[0]);
+    expect(within(page).queryByTestId("compare-anim")).not.toBeInTheDocument();
+    expect(page).toHaveTextContent("en az iki koşu seçin");
+    fireEvent.click(chips[1]);
+    expect(within(page).getByTestId("compare-anim")).toHaveTextContent(/^2\|3$/);
   });
 
   it("tek çözülmüş koşuda animasyon yerine not", async () => {

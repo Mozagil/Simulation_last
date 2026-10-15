@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 
 import type { CrashRunCompared } from "../api/crash";
 import { CURVE_GROUPS, curveGroup, curveLabel, curveUnit, fmtScalar, runHasResults, runLabel, runTitle } from "../lib/crashRunFormat";
-import CrashCompareAnim from "./CrashCompareAnim";
+import CrashCompareAnim, { gridColumns } from "./CrashCompareAnim";
 import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
 
 /** Skaler tablosu satırı: okunur ad + birim ayrı sütunda; `scale` gösterim çarpanı (oran → %). */
@@ -71,12 +71,17 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
   const tMaxNum = Number(tMaxRaw.replace(",", "."));
   const tMax = tMaxRaw.trim() !== "" && Number.isFinite(tMaxNum) && tMaxNum > 0 ? tMaxNum : null;
 
-  // animasyon çifti: sonuçlu koşulardan ilk ikisi; 2'den fazlaysa seçilir
+  // 1.25b — ızgaradaki koşular: sonuçlu koşuların hepsi varsayılan; çiplerle çıkarılır / eklenir
   const animRuns = runs.filter((r) => r.solver_ran && runHasResults(r));
-  const [pairA, setPairA] = useState(animRuns[0]?.id ?? null);
-  const [pairB, setPairB] = useState(animRuns[1]?.id ?? null);
-  const a = animRuns.find((r) => r.id === pairA);
-  const b = animRuns.find((r) => r.id === pairB);
+  const [shown, setShown] = useState<Set<number>>(() => new Set(animRuns.map((r) => r.id)));
+  const gridRuns = animRuns.filter((r) => shown.has(r.id));
+  const toggleShown = (id: number) =>
+    setShown((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -93,10 +98,6 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
   const main = compareSeries(runs, curveKey, tMax);
   const mainU = curveUnit(curveKey);
   const energy = curveKey === "internal_energy" ? [] : compareSeries(runs, "internal_energy", tMax);
-
-  const runOption = (id: number) => {
-    return runTitle(animRuns.find((x) => x.id === id)!);
-  };
 
   return createPortal(
     <div className="crash-compare-page" role="dialog" aria-label="Koşu karşılaştırması" data-testid="crash-compare">
@@ -133,37 +134,28 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
         ) : (
           <>
             {animRuns.length > 2 && (
-              <div className="crash-compare-pair">
-                <label className="mesh-field">
-                  <span>Sol</span>
-                  <select aria-label="Sol animasyon" value={pairA ?? ""} onChange={(e) => setPairA(Number(e.target.value))}>
-                    {animRuns.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {runOption(r.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="mesh-field">
-                  <span>Sağ</span>
-                  <select aria-label="Sağ animasyon" value={pairB ?? ""} onChange={(e) => setPairB(Number(e.target.value))}>
-                    {animRuns.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {runOption(r.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="crash-var-chips crash-compare-pick" role="group" aria-label="Izgaradaki koşular">
+                {animRuns.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={shown.has(r.id) ? "crash-var-chip active" : "crash-var-chip"}
+                    aria-pressed={shown.has(r.id)}
+                    onClick={() => toggleShown(r.id)}
+                  >
+                    {runTitle(r)}
+                  </button>
+                ))}
               </div>
             )}
-            {a && b && (
-              <div className="crash-compare-page-anim">
+            {gridRuns.length >= 2 ? (
+              <div className="crash-compare-page-anim" data-rows={Math.ceil(gridRuns.length / gridColumns(gridRuns.length))}>
                 <CrashCompareAnim
-                  key={`${a.id}-${b.id}`}
-                  a={{ id: a.id, title: runTitle(a) }}
-                  b={{ id: b.id, title: runTitle(b) }}
+                  runs={gridRuns.map((r) => ({ id: r.id, title: runTitle(r) }))}
                 />
               </div>
+            ) : (
+              <p className="doe-empty">Izgara için en az iki koşu seçin.</p>
             )}
           </>
         )}
