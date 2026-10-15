@@ -1712,7 +1712,13 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
   + sabit taban bloğu. Genel temas (a1/a2), parça rolleri. Çıktı: deformasyon, von Mises,
   eşdeğer plastik şekil değiştirme, geri sekme (c1–c3).
-- e Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
+- e ✅ (2026-10-15) `docs/CRASH_MATERIALS.md`: yalnız birincil kaynakta okunan JC setleri —
+  Johnson & Cook 1983 Table 1 (2024-T351, 7039, 1006, 4340, Armco; sayfa görüntüsünden),
+  Lesuer 1999 UCRL-ID-134691 Table 7–8 (2024-T3 A/B/n/C/m + D₁–D₅), Brar–Joshi–Harris 2009 özeti
+  (7075-T651 / T6; tam bildiri okunmadı). 6061-T6, 5xxx, DP/HSLA, PP/ABS/PC birincil kaynakta
+  okunamadı → sayı yazılmadı, kaynak izi listelendi (1.24f bunlar dolmadan veri girmez). LAW2 alan
+  eşlemesi (σy Pa, b MPa, ε̇₀, T_m, ρCp). Yalnız doküman.
+  Eski not: Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
   eğrileri (Al 5xxx/6xxx/7xxx, DP/HSLA çelikler, PP/ABS/PC), kaynak listeli. Yalnız doküman.
   Ticari/lisanslı kart (vendor, GRANTA) kopyalanmaz.
 - f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
