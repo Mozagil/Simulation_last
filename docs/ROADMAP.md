@@ -1712,7 +1712,14 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
       tarayıcıda bu arada "Bitti" göründüğü görülüp eklendi. Ölçüldü: çalışma #5 (20 örnek) örnek #2
       adım 1200 %16.2 canlı; #6 (3 örnek, 10 ms) son örnek adım 18500 %100. 1.25a ✅.
       Test: `CrashDoeLive.test.tsx`, `CrashDoePanel.test.tsx`.
-- e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
+- e ✅ (2026-10-15) Model 1 kurulumu: Süre 20 ms + Ek tanımlar → Kütle / kızak (kutu_arka, 100 kg,
+  serbest; kullanıcının #321 kurulumu). Gerekçe ayrı not (`TrainingGroup.note`); T1–T5'e "Ölçülen"
+  satırı (`TrainingTest.measured`, koşu no ile): #361 LAW1 impuls 2017 N·s ≈ 2·m·v, KE_son 5038 J;
+  #362 LAW2 Fmax 119.6 kN, IE 4320 J; #364 b500/n0.5 155.5 kN; #365 a400 201.7 kN; #366/#367 15 m/s
+  c 0 → 0.05: 121.3 → 152.6 kN; #368 sıcaklık: T3b'den fark < %1.5; #369 LAW36 126.5 kN. Gözlem (veri):
+  T2'nin ilk adımı (b = 0, n = 1) varsayılan → T1b ile aynı koşu. `crashTraining.ts` + `CRASH_EGITIM.md`
+  birlikte. T6–T7 aynı modelde, değerleri yenilenmedi. Test: `DocsDialog.test.tsx`.
+  Eski not: T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*

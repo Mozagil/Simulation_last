@@ -47,6 +47,16 @@ describe("Belgeler · eğitim sayfası", () => {
     expect(screen.getByTestId("train-T9")).toBeInTheDocument();
     expect(screen.queryByTestId("train-T1")).toBeNull();
   });
+
+  it("1.25e: Model 1 kızaklı kurulum + gerekçe notu; T1–T5 ölçülen değerler koşu no ile", () => {
+    render(<DocsDialog onClose={() => undefined} />);
+    expect(screen.getByRole("heading", { name: /Model 1 — Crash box \(3 mm\) \+ 100 kg kızak/ })).toBeInTheDocument();
+    expect(screen.getByText(/bölge kutu_arka · kütle 100 kg · hareket Serbest/)).toBeInTheDocument();
+    expect(screen.getByText(/Neden kızak \+ 20 ms/)).toHaveClass("docs-train-note");
+    for (const id of ["T1", "T2", "T3", "T4", "T5"]) expect(screen.getByTestId(`train-measured-${id}`)).toHaveTextContent(/#3\d\d/);
+    expect(screen.getByTestId("train-measured-T1")).toHaveTextContent("impuls 2017 N·s");
+    expect(screen.queryByTestId("train-measured-T6")).toBeNull();
+  });
 });
 
 describe("Belgeler · PDF indir", () => {
