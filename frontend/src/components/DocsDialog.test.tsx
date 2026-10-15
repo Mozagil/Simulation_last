@@ -39,9 +39,9 @@ describe("Belgeler sırası", () => {
 });
 
 describe("Belgeler · eğitim sayfası", () => {
-  it("son sayfa: T1–T18, modele göre gruplu; aramada süzülür", () => {
+  it("son sayfa: T1–T30, modele göre gruplu; aramada süzülür", () => {
     render(<DocsDialog onClose={() => undefined} />);
-    expect(screen.getByRole("heading", { name: "Eğitim testleri (T1–T18)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Eğitim testleri (T1–T30)" })).toBeInTheDocument();
     for (const id of ["T1", "T9", "T18"]) expect(screen.getByTestId(`train-${id}`)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Belgelerde ara"), { target: { value: "kızak" } });
     expect(screen.getByTestId("train-T9")).toBeInTheDocument();
@@ -66,7 +66,7 @@ describe("Belgeler · PDF indir", () => {
     expect(html).toContain('<html lang="tr">');
     expect(html).toContain('<meta charset="utf-8">');
     expect(html).toContain('<base href="http://localhost:5173/">');
-    expect(html).toContain("Eğitim testleri (T1–T18)");
+    expect(html).toContain("Eğitim testleri (T1–T30)");
     expect(html).toContain("OpenRadioss ↔ LS-DYNA tablosu");
     expect(html).toContain("page-break-inside: avoid");
     expect(html).toContain("/docs/crash/01-genel.jpg");

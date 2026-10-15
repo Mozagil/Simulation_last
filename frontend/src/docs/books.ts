@@ -61,7 +61,7 @@ export const CRASH_BOOK: DocBook = {
   },
   dynaMap: DYNA_EQUIV,
   training: {
-    title: "Eğitim testleri (T1–T18)",
+    title: "Eğitim testleri (T1–T30)",
     intro: `Modele göre sıralı: her model grubun başında bir kez kurulur; ardından gelen her test bir öncekinden yalnız tek şeyi değiştirir. ${TRAINING_RECORD}`,
     groups: CRASH_TRAINING,
   },
