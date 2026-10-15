@@ -1,7 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./CrashCompareAnim", () => ({ default: () => <div data-testid="compare-anim" /> }));
+vi.mock("./CrashCompareAnim", async (orig) => ({
+  ...(await orig<typeof import("./CrashCompareAnim")>()),
+  default: () => <div data-testid="compare-anim" />,
+}));
 
 import type { CrashRunCompared } from "../api/crash";
 import CrashComparePage, { extraScalarRow } from "./CrashComparePage";

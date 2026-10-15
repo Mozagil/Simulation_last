@@ -4550,15 +4550,14 @@ p {
   text-transform: uppercase;
   color: var(--muted);
 }
-.crash-compare-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 260px));
-  gap: 10px;
+/* 1.25b — ızgaradaki koşu çipleri */
+.crash-compare-pick {
+  flex-wrap: wrap;
   margin-bottom: 8px;
 }
 .crash-compare-page-anim {
   display: flex;
-  height: 640px;
+  height: 700px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
 }
@@ -7477,9 +7476,42 @@ p {
 .crash-compare-anim-grid {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--cmp-cols, 2), minmax(0, 1fr));
+  /* hücre: tuval (≥ 240 px) + pencere denetimleri (~300 px); büyük pencerede tuval büyür */
+  grid-template-rows: repeat(var(--cmp-rows, 1), minmax(540px, 1fr));
   gap: 10px;
   min-height: 0;
+  overflow: auto;
+}
+/* 1.25b — iki satırlı ızgara sayfada kendi yüksekliğinde (2 × 540 px) */
+.crash-compare-page-anim[data-rows="2"] {
+  height: auto;
+}
+/* 1.25b — "Büyük pencere": ızgara tam ekran, karşılaştırma sayfasının üstünde */
+.crash-compare-anim-max {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  border-radius: 0;
+  background: var(--surface);
+}
+.crash-compare-anim > .cv-card-head {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.crash-compare-anim-max-btn {
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .crash-compare-anim-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: 420px;
+  }
+  .crash-compare-page-anim,
+  .crash-compare-page-anim[data-rows="2"] {
+    height: auto;
+  }
 }
 .crash-compare-anim-grid .crash-anim-docked {
   min-height: 0;
@@ -7489,7 +7521,7 @@ p {
   border-radius: var(--radius-sm);
 }
 .crash-compare-anim-grid .crash-anim-canvas {
-  min-height: 200px;
+  min-height: 240px;
 }
 .crash-anim-controls-synced {
   grid-template-columns: auto;
