@@ -30,7 +30,7 @@ import CrashLoadCards, {
 } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
-import CrashLiveProgress from "./CrashLiveProgress";
+import CrashLiveProgress, { livePhase, type LiveValues } from "./CrashLiveProgress";
 import CrashDeckViewer from "./CrashDeckViewer";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
@@ -334,6 +334,15 @@ export default function CrashPanel({
   })();
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
+  // 1.25a — son canlı değerler (yalnız koşu sürerken alınır; bitince hub'ın son satırı
+  // "cycle 1" yazdığı için iş bitmiş anlık görüntüsü kullanılmaz). Yeni işte sıfırlanır.
+  const [live, setLive] = useState<{ jobId: string; values: LiveValues } | null>(null);
+  useEffect(() => {
+    if (!jobId || !polling || snapshot?.cycle == null) return;
+    const { cycle, time_ms, dt_ms, percent, mass_added_rel, elapsed_s, remaining_s } = snapshot;
+    setLive({ jobId, values: { cycle, time_ms, dt_ms, percent, mass_added_rel, elapsed_s, remaining_s } });
+  }, [jobId, polling, snapshot]);
+  const liveValues = live?.jobId === jobId ? live.values : null;
 
   // Geometri değişince önceki geometrinin koşu sonucu gösterilmez.
   const prevGeometryRef = useRef(geometryId);
@@ -1513,17 +1522,14 @@ export default function CrashPanel({
               <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
             </div>
           )}
-          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
-          {polling && snapshot?.cycle != null && (
+          {/* 1.25a — koşu başlar başlamaz görünür; bitince son canlı değerlerle kalır
+              (1.17g: iş bitince hub'ın son cycle değeri "cycle 1" gösterilmez → liveValues) */}
+          {jobId && (polling || liveValues) && (
             <CrashLiveProgress
-              cycle={snapshot.cycle}
-              timeMs={snapshot.time_ms}
-              dtMs={snapshot.dt_ms}
+              key={jobId}
+              phase={livePhase(status, polling, polling ? snapshot?.cycle : liveValues?.cycle)}
+              values={polling && snapshot?.cycle != null ? { ...snapshot, percent } : liveValues}
               tEndMs={Number(tEnd) > 0 ? Number(tEnd) : null}
-              percent={percent}
-              massAddedRel={snapshot.mass_added_rel}
-              elapsedS={snapshot.elapsed_s}
-              remainingS={snapshot.remaining_s}
             />
           )}
           {result?.starter_url && (

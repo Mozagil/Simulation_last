@@ -1688,6 +1688,16 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   sayfa açık kalır. Hücre ≥ 540 px (tuval ≥ 240 px + denetimler). Test: `CrashCompareAnim.test.tsx`,
   `CrashHistory.test.tsx`.
 - a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
+  İki adıma bölündü (2026-10-15): DOE örnekleri sunucuda `wait=True` ile sırayla koşuyor, çalışan örneğin
+  `job_id`'si dışarı verilmiyor → DOE canlı paneli backend değişikliği ister (ayrı katman).
+  - a1 ✅ (2026-10-15) Koşu paneli (UI): `CrashLiveProgress` evreli — "Başlıyor" (ilk adım gelene kadar
+    değerler —) → "Koşuyor" → "Bitti / Başarısız · son canlı değerler" (geçen süre durur, kalan —).
+    Son canlı değerler yalnız koşu sürerken alınır (bitmiş işte hub'ın "cycle 1" satırı kullanılmaz);
+    yeni işte sıfırlanır. 30 s (`STALE_S`) yeni değer yoksa "son güncelleme … önce" (veri). Senaryo /
+    şablon / panelden başlatılan her koşu aynı panelden geçer. Ölçüldü: #335 crash box 4 ms → Adım
+    7400, t 4 / 4 ms, %100 bitince kaldı. Test: `CrashLiveProgress.test.tsx`, `CrashPanel.test.tsx`.
+  - a2 DOE: çalışan örneğin işi (job_id) dışarı verilir + DOE panelinde aynı canlı panel. Backend
+    önce (örnek satırına geçici `job_id`, ya da bellekte çalışan iş kaydı — karar bekliyor), sonra UI.
 - e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 

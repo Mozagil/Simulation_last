@@ -7842,6 +7842,55 @@ p {
   }
 }
 
+/* 1.25a — canlı panel başlığı: evre (başlıyor / koşuyor / bitti / başarısız) */
+.crash-live-wrap {
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.crash-live-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.crash-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.crash-live-running .crash-live-dot,
+.crash-live-starting .crash-live-dot {
+  background: var(--doe-ok, #3a6248);
+  animation: crash-live-pulse 1.4s ease-in-out infinite;
+}
+.crash-live-failed .crash-live-dot {
+  background: #c0392b;
+}
+.crash-live-finished,
+.crash-live-failed {
+  background: var(--surface-2, var(--surface));
+}
+.crash-live-stale {
+  font-weight: 400;
+  color: var(--doe-warn, #8a5a1f);
+}
+@keyframes crash-live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crash-live-dot {
+    animation: none !important;
+  }
+}
+
 /* 1.23 D3 — koşu sırasında canlı adım / Δt */
 .crash-live {
   display: grid;
