@@ -1696,8 +1696,15 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
     yeni işte sıfırlanır. 30 s (`STALE_S`) yeni değer yoksa "son güncelleme … önce" (veri). Senaryo /
     şablon / panelden başlatılan her koşu aynı panelden geçer. Ölçüldü: #335 crash box 4 ms → Adım
     7400, t 4 / 4 ms, %100 bitince kaldı. Test: `CrashLiveProgress.test.tsx`, `CrashPanel.test.tsx`.
-  - a2 DOE: çalışan örneğin işi (job_id) dışarı verilir + DOE panelinde aynı canlı panel. Backend
-    önce (örnek satırına geçici `job_id`, ya da bellekte çalışan iş kaydı — karar bekliyor), sonra UI.
+  - a2 DOE: çalışan örneğin işi (job_id) dışarı verilir + DOE panelinde aynı canlı panel.
+    Kullanıcı kararı (2026-10-15): A — bellekte çalışan iş kaydı, şema değişmez.
+    - a2-1 ✅ (2026-10-15) Backend: `doe/crash_runner.py` örneği `wait=False` ile kurar (iş + job_id),
+      toplanan çözüm işini aynı süreçte koşturur; bu sırada `_CURRENT[study_id] = {case_index, job_id}`,
+      örnek durumu `running`. `GET /crash/doe/studies/{id}` → `current_job_id`, `current_case_index`
+      (yoksa null). Son durum işin `job.json`'undan. `crash.py` / `/solve` değişmedi. Ölçüldü: çalışma #4
+      (crash box 4 ms, 2 örnek) — örnek 0 iş `fead4038…` %4 → %50 → %99.9, örnek 1 `0ef38431…`, sonra
+      null; koşular #336, #337 solved. Test: `test_crash_doe_api.py::test_current_job_while_case_runs`.
+    - a2-2 UI: DOE çalışma panelinde çalışan örnek için `CrashLiveProgress` (`/crash/jobs/{job_id}`).
 - e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
