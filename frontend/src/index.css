@@ -4577,6 +4577,88 @@ p {
   }
 }
 
+/* 1.25d — karşılaştırma skaler tablosu: okunur satır, birim ayrı sütun, koşu başlıkları */
+.crash-scalar-table {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.crash-scalar-table th,
+.crash-scalar-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+.crash-scalar-table tbody tr:last-child > * {
+  border-bottom: none;
+}
+.crash-scalar-table thead th {
+  vertical-align: bottom;
+  background: var(--surface-2, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+.crash-scalar-table tbody tr:hover > * {
+  background: var(--surface-2, var(--surface));
+}
+/* ad sütunu yatay kaydırmada sabit */
+.crash-scalar-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 210px;
+  text-align: left;
+  font-weight: 500;
+  white-space: normal;
+}
+.crash-scalar-th-name,
+.crash-scalar-th-unit {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.crash-scalar-th-unit,
+.crash-scalar-unit {
+  text-align: left;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.crash-scalar-th-run {
+  min-width: 120px;
+  text-align: right;
+}
+.crash-scalar-th-id,
+.crash-scalar-th-sub {
+  display: block;
+}
+.crash-scalar-th-id {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.crash-scalar-th-sub {
+  max-width: 200px;
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crash-scalar-table .crash-run-num {
+  font-size: 15px;
+}
+@media (max-width: 700px) {
+  .crash-scalar-table th:first-child {
+    min-width: 150px;
+  }
+}
+
 .crash-compare-controls {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
