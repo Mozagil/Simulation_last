@@ -306,7 +306,7 @@ export const CRASH_DOC: DocSection[] = [
     title: "ML Stüdyo → Crash",
     intro: "Crash DOE ve vekil model (1.19). Ör. crash box 150 koşu: enerji R² 0.98, tepe kuvvet 0.95, ezilme 0.91, ortalama kuvvet 0.83 (5-katlı CV).",
     items: [
-      { name: "DOE", what: "Taban senaryo + taranan alanlar (noktalı yol, ör. speed_m_s, geometry.wall, rigid_bodies.0.mass_kg) + LHS örnek sayısı. Sunucuda sırayla koşar, kaldığı yerden devam eder." },
+      { name: "DOE", what: "Taban senaryo + taranan alanlar (noktalı yol, ör. speed_m_s, geometry.wall, rigid_bodies.0.mass_kg) + LHS örnek sayısı. Sunucuda sırayla koşar, kaldığı yerden devam eder. Çalışma panelinde koşan örneğin canlı ilerlemesi (örnek no, iş, adım / t / Δt / % / süre); örnekler arasında \"sıradaki örnek hazırlanıyor\", çalışma bitince son örneğin son değerleri kalır." },
       { name: "Model", what: "Hedef başına Random Forest; K-fold CV metrikleri (R², MAE, MAPE). Hedefler: tepe / ortalama kuvvet, yutulan enerji, ezilme." },
       { name: "Tahmin", what: "Girdi → hedef tahmini ± CV MAE; eğitim aralığı dışındaki girdiler işaretlenir." },
       { name: "Doğrulama", what: "Validasyon seti V1–V18 raporu (oranlar veri; eşik mühendisin)." },

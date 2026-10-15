@@ -6812,6 +6812,21 @@ p {
   background: var(--danger);
 }
 
+/* 1.25a2 — DOE'de çalışan örneğin canlı ilerlemesi */
+.crash-doe-live {
+  margin: 8px 0 4px;
+}
+.crash-doe-live-title {
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.crash-doe-live-next {
+  margin: 0 0 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .crash-doe-kv {
   display: flex;
   flex-wrap: wrap;

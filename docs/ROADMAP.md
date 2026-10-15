@@ -1704,7 +1704,14 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
       (yoksa null). Son durum işin `job.json`'undan. `crash.py` / `/solve` değişmedi. Ölçüldü: çalışma #4
       (crash box 4 ms, 2 örnek) — örnek 0 iş `fead4038…` %4 → %50 → %99.9, örnek 1 `0ef38431…`, sonra
       null; koşular #336, #337 solved. Test: `test_crash_doe_api.py::test_current_job_while_case_runs`.
-    - a2-2 UI: DOE çalışma panelinde çalışan örnek için `CrashLiveProgress` (`/crash/jobs/{job_id}`).
+    - a2-2 ✅ (2026-10-15) UI: `CrashDoeLive` — DOE çalışma panelinde ilerleme çubuğunun altında
+      "Örnek #i · N örnekten · iş …" + `CrashLiveProgress`; `current_job_id` (liste 5 s'de bir) →
+      `/crash/jobs/{id}` 1,5 s yoklama. Örnek değişince yeni iş ("Başlıyor"); çalışma bitince son
+      örneğin son canlı değerleri ("Bitti"); başka çalışmaya geçince temizlenir. Örnekler arasında
+      (sıradakinin geometri / mesh'i, iş yok) "Çalışma sürüyor · sıradaki örnek hazırlanıyor" notu —
+      tarayıcıda bu arada "Bitti" göründüğü görülüp eklendi. Ölçüldü: çalışma #5 (20 örnek) örnek #2
+      adım 1200 %16.2 canlı; #6 (3 örnek, 10 ms) son örnek adım 18500 %100. 1.25a ✅.
+      Test: `CrashDoeLive.test.tsx`, `CrashDoePanel.test.tsx`.
 - e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
