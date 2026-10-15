@@ -28,6 +28,10 @@ export const SCALAR_ROWS: ScalarRow[] = [
   { key: "timestep_min", label: "En küçük zaman adımı Δt", unit: "ms" },
   { key: "mass_added_rel", label: "Eklenen kütle oranı", unit: "%", scale: 100 },
   { key: "elements_deleted", label: "Silinen eleman", unit: "adet" },
+  // 1.23 C8b — ezilme referansı seçilmiş koşularda
+  { key: "crush_max_mm", label: "Ezilme mesafesi, maks", unit: "mm" },
+  { key: "mean_crush_force_kn", label: "Ortalama ezilme kuvveti ∫F dδ / δ", unit: "kN" },
+  { key: "mean_crush_force_ie_kn", label: "IE / δ", unit: "kN" },
 ];
 
 /** `section_3_force_max` → "Kesit 3 kuvveti, tepe" (kN); eşleşmezse null. */
@@ -118,7 +122,7 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
               #{r.id} {r.name?.trim() ? r.name : ""}
             </strong>
             <span className="ds-sb">
-              geo {r.geometry_id} · {r.t_end_ms} ms · <span className={`crash-run-status crash-run-${r.status}`}>{r.status}</span>
+              {r.geometry_id != null ? `geo ${r.geometry_id}` : "içe aktarma (.k)"} · {r.t_end_ms} ms · <span className={`crash-run-status crash-run-${r.status}`}>{r.status}</span>
             </span>
             <span className="crash-compare-run-fmax">
               Duvar Fmax <b>{fmtScalar(r.scalars.rwall_force_max)}</b> kN
@@ -178,7 +182,7 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
                     <span className="crash-scalar-th-id">#{r.id}</span>
                     {r.name?.trim() && <span className="crash-scalar-th-sub">{r.name.trim()}</span>}
                     <span className="crash-scalar-th-sub">
-                      geo {r.geometry_id} · {r.t_end_ms} ms
+                      {r.geometry_id != null ? `geo ${r.geometry_id}` : "içe aktarma (.k)"} · {r.t_end_ms} ms
                     </span>
                   </th>
                 ))}

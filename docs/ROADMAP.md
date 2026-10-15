@@ -1433,10 +1433,27 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   "İçe aktar" düğmesi; içe aktarılan model koşulabilir (şema değişikliği).
   - 2a ✅ `GET /crash/import/dyna/{id}/preview`: dış yüzey (kabuk + katı dış
     yüzleri, mm) + yüz başına PID — three.js önizlemesi için.
-  - 2b `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic migration).
-  - 2c Koşu: import.json parametreleriyle adaptör → OpenRadioss.
-  - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
-    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
+  - 2b ✅ (2026-10-15) `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic `d0e1f2a3b4c5`,
+    dizin + CHECK "geometri ya da içe aktarma"). `record_from_meta` meta'daki `import_id` ile
+    geometrisiz koşuyu kaydeder (ikisi de yoksa kayıt yok); `/crash/runs` özetinde `import_id`. ML
+    korpusu geometriye iç birleşimle → içe aktarma koşuları korpusa girmez. Downgrade geometrisiz
+    satırları siler (not). Dev DB'ye uygulandı. Test: `test_crash_runs.py::test_import_run_without_geometry_is_recorded`.
+  - 2c ✅ (2026-10-15) Koşu: `POST /crash/import/dyna/{id}/solve` {name, t_end_ms?, run_solver, wait} —
+    import.json parametreleri → mevcut adaptör (deck) → OpenRadioss; iş akışı `/crash/solve` ile aynı
+    (job.json, hub canlı ilerleme, arka plan / bekleme, crash_error 5). Koşu geometrisiz, `import_id`
+    ile kaydedilir. Süre dosyadan (*CONTROL_TERMINATION) ya da istekten; ikisi de yoksa 422. Gerçek
+    koşu: test modeli (2 kabuk + kurulum) #378 solved. Yolda: `REQUEST_KEYS`'te `damping` eksikti
+    (1.24c2; geçmişten yüklemede sönüm kayboluyordu) → ayrı `fix` commit. Test:
+    `test_crash_import_api.py` (+2).
+  - 2d ✅ (2026-10-15) Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
+    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`. Sol panelde "+ Yeni crash vakası"
+    altında "⇪ LS-DYNA içe aktar (.k / .dyn)" → `CrashImportDialog`: dosyalar + birim çarpanları (boşsa
+    Çevir kapalı) + ε̇ listesi → rapor ("Dikkat" `attentionItems`; parça ve kurulum tabloları, kaynak
+    keyword "≈"); önizleme `CrashImportPreview` (three.js, PID renkli; pencere içinde — ana viewport
+    geometri yolunu bozmamak için); "Raporu okudum" → ad + süre (dosyadan ms) → `/solve` + canlı ilerleme
+    (1.25a paneli). Geçmiş / karşılaştırmada "içe aktarma (.k)" etiketi; ⤓ yükleme içe aktarma koşusunda
+    açıklayıcı mesaj. Tarayıcıda gerçek: test modeli → rapor (Dikkat 4) + önizleme → koşu #379 solved,
+    animasyon 200. 1.21 ✅. Test: `CrashImportDialog.test.tsx` (4).
 
 *1.22 — Crash ham kart editörü (kullanıcı kararı 2026-10-12; plan onayı 2026-10-13)*
 Kullanıcı BC / malzeme kartını popup metin editöründe, düğüm/eleman ID'leriyle
@@ -1525,13 +1542,13 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   KE_son 55.49 J (geri sekme); LAW2 εp,max 0.01 #334 183 kabuk silindi. Yolda bulunan hata:
   LAW2 εp,max kopması listing'de parantezsiz ("RUPTURE OF SHELL ELEMENT") yazılıyor, sayılmıyordu
   ("silinen eleman 0") — `parse_ruptures` düzeltildi, kriter "MAT".
-  **1.23 TAMAM (2026-10-14).** Beklemede: A5 (akıcı animasyon, kullanıcı "sonra"), C8b (ayrı onay).
+  **1.23 TAMAM (2026-10-14).** A5 kabul, C8b ✅ (2026-10-15).
 - A4 ✅ Animasyonda "ölçek ×1 (gerçek) / ×2 / ×5 / ×10" (yer değiştirme ilk kareye göre
   çarpılır) + veri satırı "son karede en büyük |u| … mm · model boyutuna oranı %…".
   Ölçüldü: Belgeler 1. örnek (crash box, LAW2, 10 m/s, 4 ms; #316) |u|max 8.2 mm = 300 mm
   boyun %2.7'si — gerçek ölçekte katlanma görünmüyordu (koşu kısa; çizim doğru); ×10'da
   ön uçtaki ilk katlanma görünür.
-- A5 ❓ (kullanıcı 2026-10-13: istediği gibi değil, sonra bakılacak) Animasyon akıcı: requestAnimationFrame + kareler arası doğrusal ara-değer (konum ve
+- A5 ✅ (kullanıcı 2026-10-15: mevcut haliyle kabul, soru işareti kaldırıldı; 2026-10-13 notu: "istediği gibi değil, sonra") Animasyon akıcı: requestAnimationFrame + kareler arası doğrusal ara-değer (konum ve
   renk), hız 0.25× / 0.5× / 1× / 2× (1× = koşu ~3 sn). Test: `CrashAnimationViewer.test.tsx`.
 - A6 ✅ Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez:
   crash / akış sekmesinde "Modeli üret" pop-up'ı yük/kısıt yerine not gösterir,
@@ -1605,6 +1622,25 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     zaten A4'te (kullanıcı: "aynı şey", 2026-10-14). C7 ✅.
 - C8 ✅ (2026-10-14) Kuvvet grafiği açıklaması: y ekseni adı + birim + 1·2·2.5·5 ölçek, kılavuz çizgi, tepe noktası, ortalama kuvvet (kullanıcı kararı B: temas aralığında impuls / süre; aralık |F| > tepenin %1'i, gölgeli), kısa veri kaynağı açıklaması.
 - C8b Ortalama ezilme kuvveti (yer değiştirme tabanlı): emilen enerji / ezilme mesafesi; hareketli parçanın arka düğümü için düğüm TH çıktısı gerekir (çıktı kartı + backend + UI). Ayrı onay.
+  Kullanıcı onayı (2026-10-15) — tanım: δ(t) arka referansın çarpma yönündeki yer değiştirmesi (kızak
+  ana düğümü ya da bölge ortalaması); F–δ eğrisi; F_ort = ∫F dδ / δ_son (duvar işi) + karşılaştırma için
+  IE_son / δ_son; δ_son, δ_maks. Üç adım:
+  - C8b-a ✅ (2026-10-15) Deck + δ(t): istekte `crush_ref` {rigid_body | region, direction?}
+    (`CrashCrushRefParams`; yön boşsa ilk hız vektörü) → ayrı `/TH/NODE/8` "crush_ref" (DX DY DZ;
+    th_nodes grubuna dokunulmaz), th_spec'e yön. Post-process `crush_distance`: düğümlerin yer
+    değiştirmesinin yöne izdüşümü, ortalama (mm, ezilme +; eksik sütunda None) → eğri `crush_mm`,
+    skaler `crush_final_mm`, `crush_max_mm`. `REQUEST_KEYS`'e `crush_ref`. Gerçek: #362 kurulumu +
+    kızak ana düğümü (#380) ve kutu_arka bölgesi (#381) — ikisi de δ_son 100.946 mm (rijit arka uç,
+    beklenen); IE / Fmax #362 ile aynı (ek çıktı çözümü değiştirmedi). Test: `test_crash_crush_distance.py` (7).
+  - C8b-b ✅ (2026-10-15) `mean_crush_force`: `crush_work_j` = ∫|F_duvar| dδ (yamuk, δ_maks örneğine kadar;
+    geri sekme dışarıda), `mean_crush_force_kn` = iş / δ_maks, `mean_crush_force_ie_kn` = IE_son / δ_son
+    (karşılaştırma; duvarsızda yalnız bu). F–δ eğrisi ayrı saklanmaz — `rwall_force` ve `crush_mm` aynı
+    zaman örneklerinde. #380 dosyalarından: iş 4783 J (IE + HG 4672 J, KE kaybı 4674 J; ~%2 fark TH
+    örnekleme 0.1 ms), F_ort 47.4 kN, IE / δ 42.8 kN. Test +1.
+  - C8b-c ✅ (2026-10-15) UI: Çıktı ayarları altında "Ezilme mesafesi referansı" (Yok / Kütle-kızak kartı /
+    bölge) → istekte `crush_ref` (`lib/crashCrush.ts`; geçmişten yüklemede aynı kart listesine eşlenir);
+    Sonuçlar'da "Ezilme" kartı (F–δ δ_maks'a kadar + δ_son / δ_maks / ∫F dδ / δ / IE / δ);
+    karşılaştırma tablosu 3 satır, eğri seçicide `crush_mm` mm. C8b ✅. Test: `crashCrush.test.ts` (3).
 - D1 ✅ (2026-10-14) Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
   4 · Crash "Deck'i görüntüle": `POST /crash/deck/preview` (gövde = /crash/solve isteği, ham
   kartlar dahil; geçici klasör, solver koşmaz) → starter + engine metni + kart listesi

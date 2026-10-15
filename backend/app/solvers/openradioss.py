@@ -32,6 +32,7 @@ from app.solvers.base import (
 from app.solvers.crash_params import (
     _th_vars_ok,
     CrashContactParams,
+    CrashCrushRefParams,
     CrashDampingParams,
     CrashBcParams,
     CrashBlastLoadParams,
@@ -629,6 +630,8 @@ _SPRING_TH_ID = 6
 # 1.24c2 — Rayleigh sönümü: düğüm grubu ve /DAMP kimliği.
 _DAMP_GR_BASE = 9930
 _DAMP_ID = 1
+# 1.23 C8b — ezilme referansı /TH/NODE kimliği (th_nodes 4, sect 5, spring 6)
+_CRUSH_TH_ID = 8
 
 
 def _damp_lines(raw: Any, part_ids: list[int], rid: Callable[[int], int]) -> list[str]:
@@ -1294,6 +1297,29 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         lines += ["/TH/NODE/4", "th_nodes", *th_vars(th.node_vars)]
         lines += [f"{_i(n)}{_i(0)}n{n}" for n in th_node_ids]
         th_spec.append({"kind": "node", "title": "th_nodes", "objects": th_node_ids, "vars": th.node_vars})
+
+    # 1.23 C8b — ezilme referansı: ayrı /TH/NODE grubu (DX DY DZ); yön post-process için spec'te.
+    if params.get("crush_ref"):
+        try:
+            cr = CrashCrushRefParams.model_validate(params["crush_ref"])
+        except ValueError as exc:
+            raise SolverError(f"Geçersiz crush_ref: {exc}") from exc
+        if cr.rigid_body is not None:
+            if cr.rigid_body not in rb_master:
+                raise SolverError(f"crush_ref: rijit gövde '{cr.rigid_body}' tanımlı değil.")
+            crush_ids = [rb_master[cr.rigid_body]]
+        else:
+            if cr.region not in region_nodes:
+                raise SolverError(f"crush_ref: bölge '{cr.region}' bu geometride yok.")
+            crush_ids = sorted(set(region_nodes[cr.region]))
+        d = cr.direction or (vx, vy, vz)
+        dn = math.hypot(*d)
+        if dn == 0:
+            raise SolverError("crush_ref: yön yok (ilk hız sıfır) — direction verin.")
+        lines += [f"/TH/NODE/{_CRUSH_TH_ID}", "crush_ref", *th_vars(["DX", "DY", "DZ"])]
+        lines += [f"{_i(n)}{_i(0)}c{n}" for n in crush_ids]
+        th_spec.append({"kind": "crush", "title": "crush_ref", "objects": crush_ids, "vars": ["DX", "DY", "DZ"],
+                        "direction": [c / dn for c in d]})
 
     # 1.15c — /SECT/PARAL kesitleri + eleman grupları (/GRSHEL, /GRSH3N, /GRBRIC
     # PART); grup kimlikleri _SECT_GR_BASE + 10·k + tür, diğer gruplarla çakışmaz.

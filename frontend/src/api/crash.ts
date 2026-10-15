@@ -183,6 +183,8 @@ export interface CrashSolveRequest {
   rigid_bodies?: Record<string, unknown>[];
   /** 1.24b2 — yay elemanları (/SPRING + /PROP/TYPE4) */
   springs?: Record<string, unknown>[];
+  /** 1.23 C8b — ezilme mesafesi referansı (rijit gövde ana düğümü ya da bölge); null = yok */
+  crush_ref?: { rigid_body?: string; region?: string; direction?: [number, number, number] } | null;
   /** 1.24c2 — Rayleigh sönümü; null / yok = sönüm yok */
   damping?: CrashDampingPayload | null;
   /** 11.2 — Yükleme: Yerçekimi */
@@ -254,7 +256,9 @@ export interface CrashJobSnapshot {
 export interface CrashRunSummary {
   id: number;
   job_id: string;
-  geometry_id: number;
+  /** 1.21e-2b — içe aktarılan (.k) koşuda null; o zaman import_id dolu */
+  geometry_id: number | null;
+  import_id?: string | null;
   name: string | null;
   created_at: string | null;
   dimension: number | null;
@@ -760,4 +764,98 @@ export async function downloadCrashFile(path: string, filename?: string): Promis
   a.click();
   a.remove();
   URL.revokeObjectURL(href);
+}
+
+/* ---------- 1.21e-2d — LS-DYNA keyword (.k / .dyn) içe aktarma ---------- */
+
+export interface DynaImportSetupRow {
+  source: string;
+  where: string;
+  target: string | null;
+  status: string;
+  detail: string;
+}
+
+export interface DynaImportReport {
+  import_id: string;
+  file: string;
+  units: { length_to_mm: number; mass_to_kg: number; time_to_s: number };
+  rates_per_s: number[];
+  parse: {
+    nodes: number;
+    shells: number;
+    solids: number;
+    parts: number;
+    end_time: number | null;
+    skipped: Record<string, number>;
+    files: string[];
+    warnings: string[];
+    [k: string]: unknown;
+  };
+  mesh: {
+    nodes: number;
+    shells: number;
+    sh3n: number;
+    tets: number;
+    bricks: number;
+    parts: { pid: number; part_id: number; title: string; kind: string; thickness_mm: number | null; elements: number; mid: number | null }[];
+    warnings: string[];
+  };
+  materials: {
+    parts: { pid: number; mid: number | null; keyword: string; law: string; note: string }[];
+    unassigned: number[];
+    warnings: string[];
+    [k: string]: unknown;
+  };
+  setup: { rows: DynaImportSetupRow[]; warnings: string[] };
+}
+
+export interface DynaImportPreview {
+  nodes: [number, number, number][];
+  faces: number[][];
+  face_part: number[];
+  part_faces: Record<string, number>;
+  bbox_mm: { min: [number, number, number]; max: [number, number, number] };
+}
+
+export async function postDynaImport(form: {
+  main: File;
+  includes: File[];
+  lengthToMm: string;
+  massToKg: string;
+  timeToS: string;
+  rates: string;
+}): Promise<DynaImportReport> {
+  const fd = new FormData();
+  fd.append("main", form.main);
+  for (const f of form.includes) fd.append("includes", f);
+  fd.append("length_to_mm", form.lengthToMm);
+  fd.append("mass_to_kg", form.massToKg);
+  fd.append("time_to_s", form.timeToS);
+  fd.append("rates_per_s", form.rates);
+  return getJson<DynaImportReport>(`${API_BASE_URL}/crash/import/dyna`, { method: "POST", body: fd });
+}
+
+export async function fetchDynaImportPreview(importId: string): Promise<DynaImportPreview> {
+  return getJson<DynaImportPreview>(`${API_BASE_URL}/crash/import/dyna/${importId}/preview`);
+}
+
+export interface DynaImportSolveResponse {
+  job_id: string;
+  import_id: string;
+  run_id: number | null;
+  status: string;
+  message: string;
+  openradioss_available: boolean;
+}
+
+export async function postDynaImportSolve(
+  importId: string,
+  body: { name?: string; t_end_ms?: number; run_solver?: boolean },
+): Promise<DynaImportSolveResponse> {
+  return getJson<DynaImportSolveResponse>(`${API_BASE_URL}/crash/import/dyna/${importId}/solve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }

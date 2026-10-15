@@ -149,7 +149,7 @@ export default function CrashHistory({
                   </span>
                   <span className="crash-run-meta">
                     #{r.id} · {when(r.created_at)}
-                    {geometryId == null ? ` · geo ${r.geometry_id}` : ""} ·{" "}
+                    {geometryId == null ? (r.geometry_id != null ? ` · geo ${r.geometry_id}` : " · içe aktarma (.k)") : ""} ·{" "}
                     <span className={`crash-run-status crash-run-${r.status}`}>{r.status}</span>
                   </span>
                 </span>
