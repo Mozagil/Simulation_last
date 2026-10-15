@@ -1829,6 +1829,13 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   Eski not: T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
+*1.26 — Crash eğitim testleri T19–T30 (2026-10-15, kullanıcı: "eklensin")*
+- ✅ `docs/CRASH_EGITIM.md` + `crashTraining.ts` (+ `books.ts` başlık): 1.24–1.25 özellikleri için 12 yeni test —
+  T19 genel temas, T20 ezilme δ / F–δ / C8b, T21 geri sekme + /DAMP, T22 yay K/C, T23 can crush (yeni
+  Model 6), T24 kütüphane JC seti, T25 karşılaştırma + enerji dengesi, T26 mini DOE + vekil (20 nokta
+  yetmez), T27 SPH kuş, T28 direk, T29 LS-DYNA .k içe aktarma, T30 Ishell. Beklenenler nitel; "Ölçülen"
+  satırları koşuldukça dolacak (1.25e deseni).
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
