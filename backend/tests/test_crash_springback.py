@@ -114,3 +114,25 @@ def test_from_vtk_texts():
     assert s["springback_mm"] == pytest.approx(0.75)
     assert s["part_7_springback_ratio"] == pytest.approx(0.25)
     assert s["model_disp_peak_t_ms"] == pytest.approx(0.5)
+
+
+def test_part_map_renames_to_mesh_ids_and_drops_unmapped():
+    """Kart kimliği 1 → mesh #0; haritada olmayan kart (2: ör. yay) parça satırına girmez."""
+    frames = [_frame(0.0, 0.0, 0.0), _frame(1.0, 10.0, 3.0), _frame(2.0, 8.0, 4.0)]
+    s = springback_scalars(frames, part_map={1: 0})
+    assert s["part_0_springback_mm"] == pytest.approx(2.0)
+    assert not any(k.startswith(("part_1_", "part_2_")) for k in s)
+    assert s["model_disp_peak_mm"] == pytest.approx(10.0)  # model değeri tüm parçalardan
+
+
+def test_deck_writes_part_map(tmp_path):
+    import json
+
+    from app.postprocess.crash_springback import read_part_map
+    from app.solvers.openradioss import OpenRadiossAdapter
+    from tests.test_crash_multipart import _two_part_params
+
+    art = OpenRadiossAdapter().build_input(_two_part_params(tmp_path))
+    assert json.loads((art.path.parent / "part_map.json").read_text()) == {"1": 0, "2": 1}
+    assert read_part_map(art.path.parent) == {1: 0, 2: 1}
+    assert read_part_map(tmp_path / "yok") is None

@@ -1352,6 +1352,11 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
     # değişkeni adsız "var N" yazar).
     (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
+    # 1.24c3 — /PART kart kimliği → mesh parça no (animasyon PART_ID'si kart kimliğiyle gelir;
+    # skalerler mesh no'suyla adlanır). Yalnız mesh parçaları; yay / SPH gibi deck parçaları yok.
+    (path.parent / "part_map.json").write_text(
+        json.dumps({str(_rid(p)): p for p in part_ids}), encoding="utf-8"
+    )
     # 1.17e — post-process seçimleri (CFC sınıfları) deck yanında, th_spec gibi.
     try:
         filters = CrashFilterParams.model_validate(params.get("filters") or {})
@@ -1650,7 +1655,7 @@ def _springback_scalars(work_dir: Path) -> dict[str, float]:
     Animasyon yoksa / çevrilemezse boş — koşunun sonucu bundan etkilenmez."""
     import logging
 
-    from app.postprocess.crash_springback import springback_from_vtk_texts
+    from app.postprocess.crash_springback import read_part_map, springback_from_vtk_texts
     from app.postprocess.openradioss_anim import build_animation, write_animation_cache
 
     try:
@@ -1663,7 +1668,7 @@ def _springback_scalars(work_dir: Path) -> dict[str, float]:
         data = build_animation(texts)
         if data["frames"]:
             write_animation_cache(Path(work_dir), data)
-        return springback_from_vtk_texts(texts)
+        return springback_from_vtk_texts(texts, read_part_map(work_dir))
     except Exception as exc:  # noqa: BLE001 — metrik koşuyu düşürmez
         logging.getLogger(__name__).warning("geri sekme metrikleri okunamadı (%s): %s", work_dir, exc)
         return {}

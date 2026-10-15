@@ -65,7 +65,7 @@ export default function CrashSpringbackCard({ scalars, runId }: { scalars: Recor
       <p className="crash-behavior-hint">
         Kare başına en büyük yer değiştirme. Mutlak: ilk konuma göre (rijit öteleme dahil — tabanı sabit parçada
         deformasyon). Öteleme çıkarılmış: parçanın ortalama ötelemesi çıkarılmış (rijit dönme kalır). Geri sekme =
-        tepe − son (tepe son karedeyse 0). Parça satırları deck kartı kimliğiyle (/PART/n; mesh parçası #p → /PART/p+1).
+        tepe − son (tepe son karedeyse 0).
       </p>
       <div className="crash-history-scroll">
         <table className="doe-table crash-springback-table" aria-label="Geri sekme">
@@ -83,7 +83,7 @@ export default function CrashSpringbackCard({ scalars, runId }: { scalars: Recor
           <tbody>
             {rows.map((r) => (
               <tr key={`${r.scope}-${r.def}`}>
-                <td>{r.scope === "model" ? "Model" : `/PART/${r.scope}`}</td>
+                <td>{r.scope === "model" ? "Model" : `Parça #${r.scope}`}</td>
                 <td>{DEF_LABEL[r.def]}</td>
                 <td>{mm(r.peak)}</td>
                 <td>{mm(r.tPeak)}</td>
@@ -105,7 +105,7 @@ export default function CrashSpringbackCard({ scalars, runId }: { scalars: Recor
               aria-pressed={scope === s}
               onClick={() => setScope(s)}
             >
-              {s === "model" ? "Model" : `/PART/${s}`}
+              {s === "model" ? "Model" : `#${s}`}
             </button>
           ))}
         </div>

@@ -1689,6 +1689,11 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   `PART_ID`'si böyle geliyor (deforme şekildeki "parça #" de aynı). Ölçüldü: #374 crash box 4 ms — mutlak
   8.203 mm (t 4.0 = son, geri sekme 0), öteleme çıkarılmış tepe 0.491 @ 3.4 ms → son 0.483 (%1.7);
   eğrinin son değeri tabloyla aynı. crashDoc "Geri sekme · mm". c1–c3 ✅.
+  Düzeltme (kullanıcı onayı 2026-10-15): parça adları mesh no'suyla — deck yazıcı `part_map.json`
+  (kart → mesh) yazar, c1 skalerleri `part_<mesh>_…` (haritada olmayan yay / SPH kartı parça satırına
+  girmez); eğri `cardToMeshPart` (= kart − 1, `_rid` kuralı). Gerçek koşuda "Parça #0" ve "#0" eğrisi.
+  Bu düzeltmeden önceki koşularda (#370–#374) parça anahtarları kart kimliğiyle kaldı.
+  Test: `test_crash_springback.py` (+2), UI testleri.
   Test: `crashSpringback.test.ts`, `CrashSpringbackCard.test.tsx`.
 - d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)

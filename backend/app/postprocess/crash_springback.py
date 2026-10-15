@@ -80,9 +80,12 @@ def _frame_maxima(disp: list[list[float]], members: dict[int, list[int]]) -> tup
     return absm, defm
 
 
-def springback_scalars(frames: list[dict[str, Any]]) -> dict[str, float]:
+def springback_scalars(frames: list[dict[str, Any]], part_map: dict[int, int] | None = None) -> dict[str, float]:
     """Ayrıştırılmış VTK kareleri (`parse_vtk_ascii`) → skalerler (modül açıklamasındaki adlar).
 
+    `part_map`: /PART kart kimliği → mesh parça no (deck yazıcının `part_map.json`'u). Verilirse
+    parça anahtarları mesh no'suyla (`part_0_…`) yazılır ve haritada olmayan kart (yay, SPH…)
+    parça satırına girmez (model değerine girer). Verilmezse kart kimliği kullanılır.
     Kare yoksa ya da `Displacement` yazılmamışsa boş sözlük.
     """
     frames = [f for f in frames if f.get("points") and f["point_data"].get("Displacement")]
@@ -108,11 +111,25 @@ def springback_scalars(frames: list[dict[str, Any]]) -> dict[str, float]:
         for k, v in _metrics(series[kind][None], kind).items():
             out[k if k.startswith("springback") else f"model_{k}"] = v
         for p in parts:
+            name = p if part_map is None else part_map.get(p)
+            if name is None:
+                continue
             for k, v in _metrics(series[kind][p], kind).items():
-                out[f"part_{p}_{k}"] = v
+                out[f"part_{name}_{k}"] = v
     return out
 
 
-def springback_from_vtk_texts(texts: list[str]) -> dict[str, float]:
+def springback_from_vtk_texts(texts: list[str], part_map: dict[int, int] | None = None) -> dict[str, float]:
     """anim_to_vtk ASCII metinleri (kare sırasıyla) → skalerler."""
-    return springback_scalars([parse_vtk_ascii(t) for t in texts])
+    return springback_scalars([parse_vtk_ascii(t) for t in texts], part_map)
+
+
+def read_part_map(work_dir: Any) -> dict[int, int] | None:
+    """Deck yazıcının `part_map.json`'u (kart → mesh no); yoksa (eski iş) None."""
+    import json
+    from pathlib import Path
+
+    p = Path(work_dir) / "part_map.json"
+    if not p.is_file():
+        return None
+    return {int(k): int(v) for k, v in json.loads(p.read_text(encoding="utf-8")).items()}

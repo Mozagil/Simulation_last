@@ -14,7 +14,7 @@ const SC = {
 
 const ANIM = {
   faces: [[0, 1, 2]],
-  face_part: [0],
+  face_part: [1], // kart 1 → mesh #0
   scalars: {},
   frames: [0, 1, 2].map((t) => ({ time: t, positions: [t * 10, 0, 0, 1 + t * 10, 0, 0, t * 10, 1, 0] })),
 };
@@ -30,12 +30,12 @@ describe("1.24c3 CrashSpringbackCard", () => {
     expect(rows).toEqual([
       "ModelMutlak |u|100.02.000100.000.0",
       "ModelÖteleme çıkarılmış |u − ū|1.5001.0000.7500.75050.0",
-      "/PART/0Öteleme çıkarılmış |u − ū|1.500——0.75050.0",
+      "Parça #0Öteleme çıkarılmış |u − ū|1.500——0.75050.0",
     ]);
     expect(fetchCrashAnimation).toHaveBeenCalledWith(370);
     expect(await screen.findByRole("img", { name: "Yer değiştirme–zaman grafiği" })).toBeInTheDocument();
     const chips = within(screen.getByRole("group", { name: "Geri sekme eğrisi kapsamı" })).getAllByRole("button");
-    expect(chips.map((c) => c.textContent)).toEqual(["Model", "/PART/0"]);
+    expect(chips.map((c) => c.textContent)).toEqual(["Model", "#0"]);
     fireEvent.click(chips[1]);
     expect(chips[1]).toHaveAttribute("aria-pressed", "true");
   });

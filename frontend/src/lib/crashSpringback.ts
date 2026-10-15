@@ -60,12 +60,15 @@ export interface SpringbackCurves {
 }
 
 /** Animasyon kareleri → kare başına |u|max (mutlak + öteleme çıkarılmış), model ve parça. */
+/** Deck yazıcının kuralı (openradioss `_rid`): mesh parçası #p → /PART/p+1; animasyon kart kimliği verir. */
+export const cardToMeshPart = (card: number) => card - 1;
+
 export function springbackCurves(anim: CrashAnimation): SpringbackCurves | null {
   const frames = anim.frames.filter((f) => f.positions.length > 0);
   if (frames.length < 2) return null;
   const members = new Map<number, number[]>();
   anim.faces.forEach((face, fi) => {
-    const p = anim.face_part[fi] ?? 0;
+    const p = cardToMeshPart(anim.face_part[fi] ?? 1);
     const set = members.get(p) ?? [];
     for (const v of face) set.push(v);
     members.set(p, set);

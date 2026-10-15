@@ -11,7 +11,7 @@ function anim(frames: { t: number; shift: number; dent: number; p1: number; free
       [0, 1, 2, 3],
       [4, 5, 6, 7],
     ],
-    face_part: [0, 1],
+    face_part: [1, 2], // deck kart kimlikleri → mesh #0, #1
     scalars: {},
     frames: frames.map((f) => {
       const p = [...base];
