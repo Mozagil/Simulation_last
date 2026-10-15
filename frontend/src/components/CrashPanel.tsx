@@ -17,7 +17,7 @@ import {
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
-import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
+import CrashOutputCard, { dampingFromRequest, defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { energySeriesFromCurves, FORCE_CHART_NOTE, forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, {
@@ -30,7 +30,9 @@ import CrashLoadCards, {
 } from "./CrashLoadCards";
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
-import CrashLiveProgress from "./CrashLiveProgress";
+import CrashLiveProgress, { livePhase, type LiveValues } from "./CrashLiveProgress";
+import CrashSpringbackCard from "./CrashSpringbackCard";
+import { springbackRows } from "../lib/crashSpringback";
 import CrashDeckViewer from "./CrashDeckViewer";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
@@ -334,6 +336,15 @@ export default function CrashPanel({
   })();
   const status = snapshot?.status ?? result?.status ?? null;
   const polling = Boolean(jobId && status && !TERMINAL.has(status));
+  // 1.25a — son canlı değerler (yalnız koşu sürerken alınır; bitince hub'ın son satırı
+  // "cycle 1" yazdığı için iş bitmiş anlık görüntüsü kullanılmaz). Yeni işte sıfırlanır.
+  const [live, setLive] = useState<{ jobId: string; values: LiveValues } | null>(null);
+  useEffect(() => {
+    if (!jobId || !polling || snapshot?.cycle == null) return;
+    const { cycle, time_ms, dt_ms, percent, mass_added_rel, elapsed_s, remaining_s } = snapshot;
+    setLive({ jobId, values: { cycle, time_ms, dt_ms, percent, mass_added_rel, elapsed_s, remaining_s } });
+  }, [jobId, polling, snapshot]);
+  const liveValues = live?.jobId === jobId ? live.values : null;
 
   // Geometri değişince önceki geometrinin koşu sonucu gösterilmez.
   const prevGeometryRef = useRef(geometryId);
@@ -401,6 +412,8 @@ export default function CrashPanel({
       setGravDir(rq.gravity.direction);
     }
     if (rq.t_end_ms != null) setTEnd(String(rq.t_end_ms));
+    // 1.24c2: sönüm kartı (Çözüm kontrolü)
+    setOutput((o) => ({ ...o, ...dampingFromRequest(rq.damping) }));
     if (rq.parts) setPartRoles(Object.fromEntries(rq.parts.map((p) => [p.part_id, (p.role ?? "moving") as PartRole])));
     setContacts(
       (rq.contacts ?? []).map((c) => {
@@ -1381,8 +1394,8 @@ export default function CrashPanel({
             <strong>Çözüm kontrolü</strong>
             <span className="crash-acc-summary">{solverSummary(tEnd, output)}</span>
           </span>
-          <span className={solverMissing.length ? "crash-acc-state warn" : output.dtKind ? "crash-acc-state ok" : "crash-acc-state muted"}>
-            {solverMissing.length ? "1 eksik" : output.dtKind ? "değiştirildi" : "varsayılan Δt"}
+          <span className={solverMissing.length ? "crash-acc-state warn" : output.dtKind || output.dampOn ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {solverMissing.length ? "1 eksik" : output.dtKind || output.dampOn ? "değiştirildi" : "varsayılan Δt"}
           </span>
           <span className="crash-acc-chev" aria-hidden="true">{solverOpen ? "▴" : "▾"}</span>
         </button>
@@ -1393,6 +1406,7 @@ export default function CrashPanel({
             value={output}
             onChange={setOutput}
             lastScalars={snapshot?.scalars ?? result?.scalars}
+            partOptions={partOptions}
             disabled={busy}
           />
         </div>
@@ -1513,17 +1527,14 @@ export default function CrashPanel({
               <div className="crash-progress-fill" style={{ width: `${Math.min(100, percent)}%` }} />
             </div>
           )}
-          {/* 1.17g — iş bitince hub'ın son cycle değeri ("cycle 1") gösterilmez */}
-          {polling && snapshot?.cycle != null && (
+          {/* 1.25a — koşu başlar başlamaz görünür; bitince son canlı değerlerle kalır
+              (1.17g: iş bitince hub'ın son cycle değeri "cycle 1" gösterilmez → liveValues) */}
+          {jobId && (polling || liveValues) && (
             <CrashLiveProgress
-              cycle={snapshot.cycle}
-              timeMs={snapshot.time_ms}
-              dtMs={snapshot.dt_ms}
+              key={jobId}
+              phase={livePhase(status, polling, polling ? snapshot?.cycle : liveValues?.cycle)}
+              values={polling && snapshot?.cycle != null ? { ...snapshot, percent } : liveValues}
               tEndMs={Number(tEnd) > 0 ? Number(tEnd) : null}
-              percent={percent}
-              massAddedRel={snapshot.mass_added_rel}
-              elapsedS={snapshot.elapsed_s}
-              remainingS={snapshot.remaining_s}
             />
           )}
           {result?.starter_url && (
@@ -1652,6 +1663,13 @@ export default function CrashPanel({
                 )}
               </ul>
             </div>
+          )}
+          {/* 1.24c3 — geri sekme (c1 skalerleri varsa) */}
+          {springbackRows(scalars).length > 0 && (
+            <CrashSpringbackCard
+              scalars={scalars}
+              runId={result?.run_id ?? (externalJob?.jobId === jobId ? (externalJob?.runId ?? null) : null)}
+            />
           )}
           {jobId && status === "solved" && (
             <div className="crash-cfc-post" data-testid="crash-cfc-post">

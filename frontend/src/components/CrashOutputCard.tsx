@@ -1,4 +1,4 @@
-import type { CrashEnginePayload, CrashFilterPayload, CrashSectionPayload, CrashThPayload } from "../api/crash";
+import type { CrashDampingPayload, CrashEnginePayload, CrashFilterPayload, CrashSectionPayload, CrashThPayload } from "../api/crash";
 import { KwRef } from "./Kw";
 
 /** Çıktı ve kontrol kartı (1.15d): engine aralıkları + zaman adımı (1.15a),
@@ -62,6 +62,16 @@ export interface OutputState {
   nodeIds: string;
   nodeVars: string[];
   sections: SectionRow[];
+  /** 1.24c2 — Rayleigh sönümü /DAMP (Çözüm kontrolü kartında); kapalı = kart yazılmaz */
+  dampOn: boolean;
+  /** α (1/s), β (s) */
+  dampAlpha: string;
+  dampBeta: string;
+  /** boş = tüm parçalar */
+  dampParts: number[];
+  dampT0: string;
+  /** 0 = koşu sonu */
+  dampT1: string;
 }
 
 let sectionSeq = 0;
@@ -84,7 +94,36 @@ export function defaultOutput(): OutputState {
     nodeIds: "",
     nodeVars: ["AX", "AY", "AZ"],
     sections: [],
+    dampOn: false,
+    dampAlpha: "0",
+    dampBeta: "0",
+    dampParts: [],
+    dampT0: "0",
+    dampT1: "0",
   };
+}
+
+/** 1.24c2 — kayıtlı isteğin `damping`'i → kart alanları (geçmişten / senaryodan yükleme). */
+export function dampingFromRequest(d: CrashDampingPayload | null | undefined): Partial<OutputState> {
+  if (!d) return { dampOn: false };
+  return {
+    dampOn: true,
+    dampAlpha: String(d.alpha_per_s ?? 0),
+    dampBeta: String(d.beta_s ?? 0),
+    dampParts: [...(d.part_ids ?? [])],
+    dampT0: String(d.t_start_ms ?? 0),
+    dampT1: String(d.t_stop_ms ?? 0),
+  };
+}
+
+/** Sönüm kartının kısa özeti; kapalıysa boş. */
+export function dampingSummary(s: Pick<OutputState, "dampOn" | "dampAlpha" | "dampBeta" | "dampParts">): string {
+  if (!s.dampOn) return "";
+  const ab = [Number(s.dampAlpha) ? `α ${s.dampAlpha} 1/s` : "", Number(s.dampBeta) ? `β ${s.dampBeta} s` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const scope = s.dampParts.length ? ` · ${s.dampParts.map((p) => `#${p}`).join(" ")}` : "";
+  return `/DAMP ${ab || "α = β = 0"}${scope}`;
 }
 
 function num(raw: string, what: string): number {
@@ -113,6 +152,7 @@ export function outputPayload(s: OutputState): {
   th: CrashThPayload;
   sections: CrashSectionPayload[];
   filters: CrashFilterPayload;
+  damping: CrashDampingPayload | null;
 } {
   const vec = (v: [string, string, string], what: string) =>
     v.map((c, i) => num(c, `${what} ${"xyz"[i]}`)) as [number, number, number];
@@ -144,7 +184,24 @@ export function outputPayload(s: OutputState): {
       parts: r.parts,
       iframe: num(r.iframe, `Kesit ${i + 1} Iframe`),
     })),
+    damping: s.dampOn
+      ? dampOk({
+          alpha_per_s: num(s.dampAlpha, "Sönüm α"),
+          beta_s: num(s.dampBeta, "Sönüm β"),
+          part_ids: s.dampParts,
+          t_start_ms: num(s.dampT0, "Sönüm başlangıç"),
+          t_stop_ms: num(s.dampT1, "Sönüm bitiş"),
+        })
+      : null,
   };
+}
+
+/** Backend kuralıyla aynı: α, β ≥ 0, ikisi birden 0 değil; bitiş 0 ya da başlangıçtan büyük. */
+function dampOk(d: CrashDampingPayload): CrashDampingPayload {
+  if (d.alpha_per_s < 0 || d.beta_s < 0) throw new Error("Sönüm: α ve β negatif olamaz.");
+  if (d.alpha_per_s === 0 && d.beta_s === 0) throw new Error("Sönüm: α ya da β sıfırdan büyük olmalı.");
+  if (d.t_stop_ms && d.t_stop_ms <= d.t_start_ms) throw new Error("Sönüm: bitiş başlangıçtan büyük olmalı (0 = koşu sonu).");
+  return d;
 }
 
 /** Varsayılandan farklı alanların kısa özeti (bölüm başlığında); boş = hepsi varsayılan. */

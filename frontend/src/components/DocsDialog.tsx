@@ -226,6 +226,7 @@ export function DocsContent({
                 <li key={b}>{b}</li>
               ))}
             </ol>
+            {g.note && <p className="docs-train-note">{g.note}</p>}
           </div>
           {g.tests.map((t) => (
               <article key={t.id} className="docs-train-card" data-testid={`train-${t.id}`}>
@@ -251,6 +252,11 @@ export function DocsContent({
                 <p>
                   <b>Beklenen:</b> {t.expect}
                 </p>
+                {t.measured && (
+                  <p className="docs-train-measured" data-testid={`train-measured-${t.id}`}>
+                    <b>Ölçülen:</b> {t.measured}
+                  </p>
+                )}
                 {t.answer && <p className="docs-train-answer">Biri sorarsa: “{t.answer}”</p>}
               </article>
             ))}

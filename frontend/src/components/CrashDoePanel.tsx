@@ -17,6 +17,7 @@ import {
   type CrashDoeStudyInfo,
 } from "../api/crashMl";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
+import CrashDoeLive from "./CrashDoeLive";
 
 /** Senaryo isteğinin sık taranan sayısal alanları (yazım kolaylığı). */
 export const COMMON_PATHS = [
@@ -357,6 +358,14 @@ export default function CrashDoePanel() {
               <span style={{ width: `${(100 * done) / Math.max(detail.n_cases, 1)}%` }} />
               <span className="fail" style={{ width: `${(100 * failed) / Math.max(detail.n_cases, 1)}%` }} />
             </div>
+            {/* 1.25a2 — çalışan örneğin canlı ilerlemesi (liste 5 s'de bir yenilenir; daha taze) */}
+            <CrashDoeLive
+              studyId={detail.id}
+              jobId={(selected?.id === detail.id ? selected.current_job_id : detail.current_job_id) ?? null}
+              caseIndex={(selected?.id === detail.id ? selected.current_case_index : detail.current_case_index) ?? null}
+              nCases={detail.n_cases}
+              studyRunning={RUNNING.has(detail.status)}
+            />
             <div className="crash-doe-kv">
               <span>
                 <span className="ml-k">Şablon</span> {detail.template_id}

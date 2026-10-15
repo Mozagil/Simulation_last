@@ -1651,22 +1651,93 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   yay kütlesi kg. Hedef çipi yok. Özet "Kütle / kızak #1 ↔ nokta (…) sabit · K … N/mm".
   İçe aktarma `springs[]`'i karta çevirir (kızak adı → kart). Test: `CrashLoadCards.test.tsx`,
   `crashSetupImport.test.ts`.
-- c1 Geri sekme (springback) metrikleri (backend): animasyon karelerinden tepe |u| (t), son |u|,
+- c1 ✅ (2026-10-15) Geri sekme (springback) metrikleri (backend): animasyon karelerinden tepe |u| (t), son |u|,
   geri sekme = tepe − son ve oranı; model + parça bazında `scalars`. Explicit devam yaklaşımı
   (çarpıcı geri sekip temas kesilene kadar koşu). `/IMPL/SPRBACK` (implicit) ayrı faz.
+  Gerçek koşuda görüldü: Radioss `Displacement` rijit ötelemeyi içerir → serbest parçada |u| ezilmeyi
+  değil yolu ölçer (#370 LAW1 seken kutu: |u| 181.7 mm son karede, geri sekme 0). Kullanıcı kararı D
+  (2026-10-15): iki tanım yan yana — mutlak (`model_disp_*`, `springback_mm/_ratio`, `part_<id>_disp_*`,
+  `part_<id>_springback_*`; sabit parçada deformasyon) + öteleme çıkarılmış |u − ū(parça)|
+  (`model_def_*`, `springback_def_mm/_ratio`, `part_<id>_def_*`, `part_<id>_springback_def_*`; rijit
+  dönme kalır). `postprocess/crash_springback.py`; `OpenRadiossAdapter.parse_results` kareleri bir kez
+  çevirir, `anim.json` önbelleğini de yazar; hata koşuyu düşürmez. Ölçüldü (aynı kareler): #370 LAW1
+  def tepe 4.73 mm @ 1.0 ms → son 1.34 mm, geri sekme 3.39 mm (%72); #371 LAW2 def 122.6 mm 20 ms'de
+  hâlâ artıyor (ezilme sürüyor) → geri sekme 0 — sekme için koşu uzatılmalı (mühendis). Eski koşular
+  için değer yok (yeniden işleme ayrı). Test: `test_crash_springback.py`.
 - c2 `/DAMP` (Rayleigh) kartı: salınımı söndürmek için; backend + Çözüm kontrolü UI (iki PR).
   Kullanmak mühendisin kararı; varsayılan yok.
-- c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
-- d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
+  - c2-1 ✅ (2026-10-15) Backend: `CrashDampingParams` (α 1/s, β s, `part_ids` boş = tüm parçalar,
+    Tstart / Tstop ms; α = β = 0 reddedilir) → istekte `damping`. Deck: `/GRNOD/PART/9930` +
+    `/DAMP/1` satır düzeni resmi hm_cfg radioss110 `Damp.cfg`'den (Alpha Beta grnod skew Tstart Tstop;
+    α/1000 → 1/ms, β·1000 → ms). Starter echo'su doğrulandı (BETA 1e-3 / 1e-2 ms, STOP 1e30,
+    "MAX TIME STEP FACTOR 1.0"). Ölçüldü (#370 LAW1 seken kutu kurulumu): sönümsüz Δt_min 5.4e-4 ms,
+    IE_son 102 J, def geri sekme 3.39 mm → β 1e-6 s (#372): Δt_min 3.1e-4 ms, IE_son 3.9 J, def son
+    0.58 mm, geri sekme 4.15 mm (%88). β 1e-5 s (#373) sonuçları #372 ile birebir aynı; listing'de
+    uyarı yok — Radioss β'yı kendi içinde sınırlıyor olabilir (gözlem, doğrulanmadı). Test:
+    `test_crash_damp.py`.
+  - c2-2 ✅ (2026-10-15) UI: 4 · Crash → Çözüm kontrolü kartında "Sönüm (Rayleigh)" — "Sönüm ekle"
+    kutusu, α (1/s), β (s), başlangıç / bitiş (ms), çok parçalı modelde parça çipleri (seçim yok = tümü),
+    açıklama (öneri yok). Özet satırı "/DAMP β … s · #p", başlık "değiştirildi". `OutputState.damp*`,
+    `outputPayload().damping` (kapalı = null), istemcide backend kuralı (α = β = 0, ters pencere
+    gönderilmez). Geçmişten / senaryodan yükleme `dampingFromRequest`. Belgeler: crashDoc "Sönüm
+    (Rayleigh)". c2 ✅. Test: `CrashSolverControlCard.test.tsx` (+4), `CrashOutputCard.test.tsx`.
+- c3 ✅ (2026-10-15) Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI). `CrashSpringbackCard`:
+  tablo (kapsam × tanım: tepe, t tepe, son, geri sekme, oran %) c1 skalerlerinden; eğri istemcide
+  `lib/crashSpringback.ts` (animasyon `positions` − ilk kare; iki tanım; yüzey düğümleri — katıda iç düğüm
+  yok, öteleme çıkarılmış eğri skalerden biraz farklı olabilir). Kapsam çipleri. Skaler yoksa kart ve
+  animasyon isteği yok. Parça adı deck kartı kimliği (`/PART/n`; mesh #p → /PART/p+1) — animasyon
+  `PART_ID`'si böyle geliyor (deforme şekildeki "parça #" de aynı). Ölçüldü: #374 crash box 4 ms — mutlak
+  8.203 mm (t 4.0 = son, geri sekme 0), öteleme çıkarılmış tepe 0.491 @ 3.4 ms → son 0.483 (%1.7);
+  eğrinin son değeri tabloyla aynı. crashDoc "Geri sekme · mm". c1–c3 ✅.
+  Düzeltme (kullanıcı onayı 2026-10-15): parça adları mesh no'suyla — deck yazıcı `part_map.json`
+  (kart → mesh) yazar, c1 skalerleri `part_<mesh>_…` (haritada olmayan yay / SPH kartı parça satırına
+  girmez); eğri `cardToMeshPart` (= kart − 1, `_rid` kuralı). Gerçek koşuda "Parça #0" ve "#0" eğrisi.
+  Bu düzeltmeden önceki koşularda (#370–#374) parça anahtarları kart kimliğiyle kaldı.
+  Test: `test_crash_springback.py` (+2), UI testleri.
+  Test: `crashSpringback.test.ts`, `CrashSpringbackCard.test.tsx`.
+- d ✅ (2026-10-15, kullanıcı onayı "ikisini de yap") `can_crush_shell` şablonu + `can_crush` katalog
+  maddesi (sektör "dogrulama", 16/16 hazır). Geometri (kabuk, mm): parça 0 kutu Ø66 × 115 (yan yüzey 4
+  çeyrek yama — periyodik yüzey yok; taban diski; kapak Ø20 delikli), parça 1 C-kesit çarpıcı 120 × 40 ×
+  20, y etrafında θ 15°, kapaktan g 1 mm; parça 2 taban 150 × 150, kutudan g_b 1 mm aşağıda. Kurulum
+  `_can_setup`: kutu serbest (t 0.5), çarpıcı hareketli + rijit gövde "carpici" + ek kütle, taban /BCS
+  111111 (parça 2), TYPE24 genel temas + Iedge 1; ilk hız −z; duvar yok. Katalog başlangıcı 6061-T6
+  (`defaults.material`, kart), çarpıcı +5 kg, 10 m/s, 10 ms, 3 mm eleman. Ölçülen: #376 (g_b 0.5,
+  Iedge 0) — TYPE24 847 başlangıç penetrasyonu yok sayıldı (kabuk boşluğu (0.5+1)/2 = 0.75 > 0.5), kutu
+  tabana 2.5 mm girdi, çarpıcı ~7.5 ms'den sonra katlanan kapaktan geçti → varsayılan g_b 1.0 + Iedge 1;
+  #377: başlangıç penetrasyonu yok, kutu deformasyonu (öteleme çıkarılmış) tepe 46.5 mm @ 6.5 ms → son
+  37.0, geri sekme 9.6 mm (%21), enerji dengesi %1.2. Gözlem (veri): sürtünmesiz temasta kutu 6.5 ms'den
+  sonra y yönünde kayıp çıkıyor (10 ms'de merkez y −101 mm); sürtünme mühendisin. Belgeler "Hazır
+  senaryolar" 16. Test: `test_template_can_crush_shell.py` (5), `test_crash_catalog.py`.
+  Eski not: Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
   + sabit taban bloğu. Genel temas (a1/a2), parça rolleri. Çıktı: deformasyon, von Mises,
   eşdeğer plastik şekil değiştirme, geri sekme (c1–c3).
-- e Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
+- e ✅ (2026-10-15) `docs/CRASH_MATERIALS.md`: yalnız birincil kaynakta okunan JC setleri —
+  Johnson & Cook 1983 Table 1 (2024-T351, 7039, 1006, 4340, Armco; sayfa görüntüsünden),
+  Lesuer 1999 UCRL-ID-134691 Table 7–8 (2024-T3 A/B/n/C/m + D₁–D₅), Brar–Joshi–Harris 2009 özeti
+  (7075-T651 / T6; tam bildiri okunmadı). 6061-T6, 5xxx, DP/HSLA, PP/ABS/PC birincil kaynakta
+  okunamadı → sayı yazılmadı, kaynak izi listelendi (1.24f bunlar dolmadan veri girmez). LAW2 alan
+  eşlemesi (σy Pa, b MPa, ε̇₀, T_m, ρCp). Yalnız doküman.
+  Eski not: Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
   eğrileri (Al 5xxx/6xxx/7xxx, DP/HSLA çelikler, PP/ABS/PC), kaynak listeli. Yalnız doküman.
   Ticari/lisanslı kart (vendor, GRANTA) kopyalanmaz.
-- f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
-  kolon önerildi).
-- g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
+- f ✅ (2026-10-15, kullanıcı kararı A) `materials.crash_jc` JSON (Alembic `c9d0e1f2a3b4`): tek
+  Johnson–Cook seti {a_mpa, b_mpa, n, c, m, eps_dot0_per_s, t_melt_k, t_ref_k, d[5], source};
+  kaynak zorunlu, bilinmeyen alan boş (tahmin yazılmaz). Seed yalnız kütüphanede olup doğrulanan seti
+  olan malzeme: 7075-T6 (Brar 2009 özeti; ε̇₀ / T_m null). Diğerleri NULL (CRASH_MATERIALS.md
+  "Doğrulanmadı"). `GET /materials` `crash_jc` döner; `PUT /materials/{id}/crash-jc` {jc | null}
+  yalnız kullanıcı malzemesi (kütüphane 403). Veri seti arşivi kolonu. Dev DB'ye uygulandı.
+  Test: `test_material_crash_jc.py` (3); backend 1503 geçti.
+- g ✅ (2026-10-15) Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği. LAW2 kartında parçaya
+  atanan malzemenin `crash_jc`'si varsa "⤓ <malzeme> → alanlara" (`lib/crashJc.ts` `jcToCard`: A MPa →
+  σy Pa, B, n, C; ε̇₀ / m / T_m / T_r / D₁–D₅ yalnız kaynakta varsa; boş alan değişmez). Ortak kart
+  tüm parçaların setleri (ada göre tekil), parça kartı kendi seti; malzeme adımında
+  `CrashMaterialStep` → `jcOf`. σ–εₚ önizleme (`stressStrainSeries`): LAW2 a + b·εₚⁿ (referans hız /
+  sıcaklık; a boşsa not), LAW36 girilen eğriler; `CrashForceChart` x ekseni artık parametreli
+  (`xName / xSym / xUnit`, varsayılan zaman ms). LAW36 kütüphane eğrileri zaten 1.14c2'de
+  ("Eğriler malzemeden"). Tarayıcıda: crash box #0 → 7075-T6 atandı, düğme a 546e6 Pa, b 674 doldurdu,
+  eğri εₚ 0.5'te 955 MPa (= 546 + 674·0.5^0.72). crashDoc girdisi. 1.24 ✅ (a–g).
+  Test: `CrashMaterialCard.jc.test.tsx` (5).
 *1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
 Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
 - c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı
@@ -1688,7 +1759,38 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   sayfa açık kalır. Hücre ≥ 540 px (tuval ≥ 240 px + denetimler). Test: `CrashCompareAnim.test.tsx`,
   `CrashHistory.test.tsx`.
 - a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
-- e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
+  İki adıma bölündü (2026-10-15): DOE örnekleri sunucuda `wait=True` ile sırayla koşuyor, çalışan örneğin
+  `job_id`'si dışarı verilmiyor → DOE canlı paneli backend değişikliği ister (ayrı katman).
+  - a1 ✅ (2026-10-15) Koşu paneli (UI): `CrashLiveProgress` evreli — "Başlıyor" (ilk adım gelene kadar
+    değerler —) → "Koşuyor" → "Bitti / Başarısız · son canlı değerler" (geçen süre durur, kalan —).
+    Son canlı değerler yalnız koşu sürerken alınır (bitmiş işte hub'ın "cycle 1" satırı kullanılmaz);
+    yeni işte sıfırlanır. 30 s (`STALE_S`) yeni değer yoksa "son güncelleme … önce" (veri). Senaryo /
+    şablon / panelden başlatılan her koşu aynı panelden geçer. Ölçüldü: #335 crash box 4 ms → Adım
+    7400, t 4 / 4 ms, %100 bitince kaldı. Test: `CrashLiveProgress.test.tsx`, `CrashPanel.test.tsx`.
+  - a2 DOE: çalışan örneğin işi (job_id) dışarı verilir + DOE panelinde aynı canlı panel.
+    Kullanıcı kararı (2026-10-15): A — bellekte çalışan iş kaydı, şema değişmez.
+    - a2-1 ✅ (2026-10-15) Backend: `doe/crash_runner.py` örneği `wait=False` ile kurar (iş + job_id),
+      toplanan çözüm işini aynı süreçte koşturur; bu sırada `_CURRENT[study_id] = {case_index, job_id}`,
+      örnek durumu `running`. `GET /crash/doe/studies/{id}` → `current_job_id`, `current_case_index`
+      (yoksa null). Son durum işin `job.json`'undan. `crash.py` / `/solve` değişmedi. Ölçüldü: çalışma #4
+      (crash box 4 ms, 2 örnek) — örnek 0 iş `fead4038…` %4 → %50 → %99.9, örnek 1 `0ef38431…`, sonra
+      null; koşular #336, #337 solved. Test: `test_crash_doe_api.py::test_current_job_while_case_runs`.
+    - a2-2 ✅ (2026-10-15) UI: `CrashDoeLive` — DOE çalışma panelinde ilerleme çubuğunun altında
+      "Örnek #i · N örnekten · iş …" + `CrashLiveProgress`; `current_job_id` (liste 5 s'de bir) →
+      `/crash/jobs/{id}` 1,5 s yoklama. Örnek değişince yeni iş ("Başlıyor"); çalışma bitince son
+      örneğin son canlı değerleri ("Bitti"); başka çalışmaya geçince temizlenir. Örnekler arasında
+      (sıradakinin geometri / mesh'i, iş yok) "Çalışma sürüyor · sıradaki örnek hazırlanıyor" notu —
+      tarayıcıda bu arada "Bitti" göründüğü görülüp eklendi. Ölçüldü: çalışma #5 (20 örnek) örnek #2
+      adım 1200 %16.2 canlı; #6 (3 örnek, 10 ms) son örnek adım 18500 %100. 1.25a ✅.
+      Test: `CrashDoeLive.test.tsx`, `CrashDoePanel.test.tsx`.
+- e ✅ (2026-10-15) Model 1 kurulumu: Süre 20 ms + Ek tanımlar → Kütle / kızak (kutu_arka, 100 kg,
+  serbest; kullanıcının #321 kurulumu). Gerekçe ayrı not (`TrainingGroup.note`); T1–T5'e "Ölçülen"
+  satırı (`TrainingTest.measured`, koşu no ile): #361 LAW1 impuls 2017 N·s ≈ 2·m·v, KE_son 5038 J;
+  #362 LAW2 Fmax 119.6 kN, IE 4320 J; #364 b500/n0.5 155.5 kN; #365 a400 201.7 kN; #366/#367 15 m/s
+  c 0 → 0.05: 121.3 → 152.6 kN; #368 sıcaklık: T3b'den fark < %1.5; #369 LAW36 126.5 kN. Gözlem (veri):
+  T2'nin ilk adımı (b = 0, n = 1) varsayılan → T1b ile aynı koşu. `crashTraining.ts` + `CRASH_EGITIM.md`
+  birlikte. T6–T7 aynı modelde, değerleri yenilenmedi. Test: `DocsDialog.test.tsx`.
+  Eski not: T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*

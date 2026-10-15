@@ -147,6 +147,15 @@ CATALOG: tuple[CatalogEntry, ...] = (
         defaults={"extras": {"ballT": "2", "ballMass": "", "ballTotal": "300"},
                   "common": {"speed": "5", "tEnd": "20", "elem": "20"}},
     ),
+    CatalogEntry(
+        "can_crush", "dogrulama", "Alüminyum kutu (can) ezme — açılı C-kesit çarpıcı", "ready", "can_crush_shell", 2,
+        "Ansys Explicit örneği (problem tanımı, kullanıcı 2026-10-14; dosya kopyalanmadı)",
+        "enerji dengesi; deformasyon, eşdeğer plastik şekil değiştirme, geri sekme (1.24c) — veri",
+        infrastructure="genel temas (1.24a) + rijit çarpıcı + geri sekme metrikleri", step="1.24d",
+        defaults={"extras": {"ballT": "1", "ballMass": "5"},
+                  "common": {"speed": "10", "tEnd": "10", "elem": "3"},
+                  "material": "6061-T6"},
+    ),
 )
 
 _BY_ID = {e.id: e for e in CATALOG}

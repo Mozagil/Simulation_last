@@ -173,7 +173,8 @@ def _default_wall(template_id: str, g: dict[str, Any], req: "CrashScenarioReques
     if template_id == "taylor_bar":
         # K1 — çarpma yüzü x = 0, eksen merkezde; çubuk −x ile gelir.
         return {"point": (0.0, 0.0, 0.0), "normal": (1.0, 0.0, 0.0)}
-    if template_id in ("plate_ball_shell", "rops_frame_shell", "door_beam_shell", "blast_plate_shell", "bucket_rock_shell"):
+    if template_id in ("plate_ball_shell", "rops_frame_shell", "door_beam_shell", "blast_plate_shell", "bucket_rock_shell",
+                       "can_crush_shell"):
         # Duvar yazılmaz; normal yalnız ilk hız yönü için (açı 0 → −z, plakaya doğru;
         # ROPS'ta hareketli parça yok, ilk hız kullanılmaz).
         return {"point": (0.0, 0.0, 0.0), "normal": (0.0, 0.0, 1.0)}
@@ -290,6 +291,33 @@ def _plate_ball_setup(
     return out
 
 
+def _can_setup(req: CrashScenarioRequest, can_t: float) -> dict[str, Any]:
+    """1.24d kutu ezme: kutu (0) serbest, C çarpıcı (1) rijit gövde + ek kütle + ilk hız (−z,
+    duvar normali +z), taban (2) /BCS 111111; genel temas TYPE24 (tüm model — katlanan kutu
+    kendine, çarpıcıya ve tabana). Rijit duvar yok. Değerler isteğin açık alanları."""
+    out: dict[str, Any] = {
+        "use_rigid_wall": False,
+        "parts": [
+            {"part_id": 0, "role": "free", "thickness_mm": can_t},
+            {"part_id": 1, "role": "moving", "thickness_mm": req.ball_thickness_mm},
+            {"part_id": 2, "role": "free", "thickness_mm": req.ball_thickness_mm},
+        ],
+        "rigid_bodies": req.rigid_bodies,
+        "boundary_conditions": req.boundary_conditions,
+        "contacts": req.contacts,
+    }
+    if req.template_defaults:
+        if not req.rigid_bodies:
+            out["rigid_bodies"] = [CrashRigidBodyParams(name="carpici", region="carpici", mass_kg=req.ball_mass_kg)]
+        if not req.boundary_conditions:
+            out["boundary_conditions"] = [CrashBcParams(name="taban", part_id=2, dofs="111111")]
+        if not req.contacts:
+            # Iedge 1 (kenar–kenar): kenarsız (#376) çarpıcı ~7.5 ms sonra katlanan ince kapağın
+            # içinden geçti. Iedge 1 (#377): 6.5 ms dek geçiş yok; sonrası kutu y yönünde kaydığı için ölçülmedi.
+            out["contacts"] = [CrashContactParams(type=24, all_parts=True, iedge=1)]
+    return out
+
+
 def _material(db: Session, req: CrashScenarioRequest) -> Material:
     if req.material_id is not None:
         mat = db.get(Material, req.material_id)
@@ -321,11 +349,15 @@ def crash_scenario(
     db.add(MaterialAssignment(geometry_id=geo.id, part_id=0, material_id=mat.id))
     ball_mat = None
     floor = req.template_id == "drop_box_shell" and float(g.get("floor_size") or 0.0) > 0
-    if req.template_id in ("plate_ball_shell", "door_beam_shell", "hopkinson_bar", "bucket_rock_shell") or floor:
+    if req.template_id in ("plate_ball_shell", "door_beam_shell", "hopkinson_bar", "bucket_rock_shell",
+                           "can_crush_shell") or floor:
         ball_mat = db.get(Material, req.ball_material_id) if req.ball_material_id is not None else mat
         if ball_mat is None:
             raise HTTPException(status_code=404, detail="Küre malzemesi bulunamadı.")
         db.add(MaterialAssignment(geometry_id=geo.id, part_id=1, material_id=ball_mat.id))
+        if req.template_id == "can_crush_shell":
+            # 1.24d — taban plakası (parça 2) çarpıcıyla aynı malzeme
+            db.add(MaterialAssignment(geometry_id=geo.id, part_id=2, material_id=ball_mat.id))
     db.commit()
 
     # 3D (K1): kart "quad" varsayılanı solidde hex değil tet üretiyor (Recombine3D
@@ -362,6 +394,8 @@ def crash_scenario(
         setup = _plate_ball_setup(req, g, thickness, ball_added_kg, ball_region="tas", edge_region="kepce_kenar")
     if req.template_id == "rops_frame_shell":
         setup = _rops_setup(req, g, thickness)
+    if req.template_id == "can_crush_shell":
+        setup = _can_setup(req, thickness)
     if req.template_id == "door_beam_shell":
         setup = _door_setup(req, thickness)
     if req.template_id == "blast_plate_shell":

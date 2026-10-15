@@ -578,6 +578,26 @@ describe("CrashPanel", () => {
     expect(screen.queryByText(/cycle 1/)).not.toBeInTheDocument();
   });
 
+  it("1.25a: canlı panel başlar başlamaz görünür; bitince son canlı değerlerle kalır (hub'ın cycle 1'i değil)", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j25", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",
+      progress_url: "", ws_url: "", cards: {}, openradioss_available: true, solver_ran: false, scalars: {},
+    });
+    vi.mocked(fetchCrashJob)
+      .mockResolvedValueOnce({ job_id: "j25", status: "pending", message: "başlıyor" })
+      .mockResolvedValueOnce({ job_id: "j25", status: "running", message: "koşuyor", cycle: 500, time_ms: 0.27, dt_ms: 5.4e-4, percent: 6.8 })
+      .mockResolvedValue({ job_id: "j25", status: "solved", message: "bitti", cycle: 1, time_ms: 0 });
+    render(<CrashPanel geometryId={1} meshDimension={2} />);
+    fireEvent.click(screen.getByLabelText(/OpenRadioss çalıştır/));
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    expect(await screen.findByTestId("crash-live-phase")).toHaveTextContent("Başlıyor");
+    await waitFor(() => expect(screen.getByTestId("crash-live-phase")).toHaveTextContent("Koşuyor"), { timeout: 4000 });
+    expect(screen.getByTestId("crash-live")).toHaveTextContent("Adım500");
+    await waitFor(() => expect(screen.getByTestId("crash-live-phase")).toHaveTextContent("Bitti"), { timeout: 4000 });
+    expect(screen.getByTestId("crash-live")).toHaveTextContent("Adım500");
+    expect(screen.getByTestId("crash-live")).toHaveTextContent("İlerleme%6.8");
+  }, 15000);
+
   it("ıraksayan koşu: kırmızı 'Hata #1' bandı + failed durumu", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j15", geometry_id: 1, status: "pending", message: "çalışıyor", starter_url: "", engine_url: "",

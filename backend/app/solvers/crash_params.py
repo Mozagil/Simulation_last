@@ -813,6 +813,32 @@ class CrashSpringEnd(BaseModel):
         return self
 
 
+class CrashDampingParams(BaseModel):
+    """1.24c2 — Rayleigh sönümü /DAMP (hm_cfg radioss110 Damp.cfg): C = α·M + β·K.
+
+    Kartta α (1/s) ve β (s); deck model zaman birimi ms → α/1000 (1/ms), β·1000 (ms).
+    Kapsam: `part_ids` boş = tüm parçalar (/GRNOD/PART). Tstart / Tstop ms; Tstop 0 =
+    Radioss varsayılanı (koşu sonu). Sönüm kullanmak ve değerleri mühendisin; öneri yok.
+    """
+
+    alpha_per_s: float = Field(default=0.0, ge=0, description="Kütle orantılı α (1/s)")
+    beta_s: float = Field(default=0.0, ge=0, description="Rijitlik orantılı β (s)")
+    part_ids: list[int] = Field(default_factory=list, description="Boş = tüm parçalar")
+    t_start_ms: float = Field(default=0.0, ge=0, description="Başlangıç (ms)")
+    t_stop_ms: float = Field(default=0.0, ge=0, description="Bitiş (ms); 0 = koşu sonu")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashDampingParams":
+        for v, n in ((self.alpha_per_s, "alpha_per_s"), (self.beta_s, "beta_s"),
+                     (self.t_start_ms, "t_start_ms"), (self.t_stop_ms, "t_stop_ms")):
+            _finite(v, n)
+        if self.alpha_per_s == 0 and self.beta_s == 0:
+            raise ValueError("/DAMP: α ya da β sıfırdan büyük olmalı.")
+        if self.t_stop_ms and self.t_stop_ms <= self.t_start_ms:
+            raise ValueError("/DAMP: bitiş başlangıçtan büyük olmalı (0 = koşu sonu).")
+        return self
+
+
 class CrashSpringParams(BaseModel):
     """Yay elemanı (1.24b1): /SPRING + /PROP/TYPE4 (hm_cfg radioss140), iki uç arası
     eksenel doğrusal yay. K (N/mm) → kN/mm, C (N·s/mm) → kN·ms/mm (sayısal aynı),

@@ -16,6 +16,8 @@ export interface TrainingTest {
   steps: string[];
   observe?: string;
   expect: string;
+  /** Gerçek koşu değerleri (koşu no ile); veri, kabul eşiği değil. */
+  measured?: string;
   answer?: string;
 }
 
@@ -23,6 +25,8 @@ export interface TrainingGroup {
   title: string;
   /** Modeli kurma adımları (grup başında bir kez). */
   setup: string[];
+  /** Kurulumun gerekçesi / ölçülen taban değerler (adım değil). */
+  note?: string;
   tests: TrainingTest[];
 }
 
@@ -31,13 +35,15 @@ export const TRAINING_RECORD =
 
 export const CRASH_TRAINING: TrainingGroup[] = [
   {
-    title: "Model 1 — Crash box (3 mm), rijit duvara 10 m/s",
+    title: "Model 1 — Crash box (3 mm) + 100 kg kızak, rijit duvara 10 m/s",
     setup: [
       "Crash sekmesi → 1 · Geometry → şablon “Crash box — kabuk (orta yüzey)” → parametreler (varsayılan): Box Length L 300 · Box Height h 50 · Box Width b 40 · Wall t 3 (mm) → Model üret → (pencerede) Modeli üret",
       "2 · Mesh → 5 mm · 2D shell · quad → Mesh üret",
       "3 · Material → 1 Kütüphane: S235 → 2 Parçalara ata: “S235 ata”",
-      "4 · Crash → Çarpma: Rijit duvara · Hız 10 · Süre 3 · yön +X · konum -1, 25, 20 → Parçalar: #0 Hareketli → “OpenRadioss çalıştır” ✓",
+      "4 · Crash → Çarpma: Rijit duvara · Hız 10 · Süre 20 · yön +X · konum -1, 25, 20 → Parçalar: #0 Hareketli",
+      "4 · Crash → Ek tanımlar → + Kütle / kızak → bölge kutu_arka · kütle 100 kg · hareket Serbest → “OpenRadioss çalıştır” ✓",
     ],
+    note: "Neden kızak + 20 ms: kutu tek başına ~1.2 kg (10 m/s'de ~59 J) — ~1 mm ezilip durur, katlanma görünmez. 100 kg arka kütle ~5 kJ getirir; 20 ms'de kutu katlanarak ezilir (1.25e).",
     tests: [
       {
         id: "T1",
@@ -48,6 +54,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
         steps: ["LAW1 → çöz", "LAW2 → çöz", "İki koşuyu karşılaştır"],
         observe: "IE_final, KE_final, impuls, animasyon",
         expect: "LAW1 → IE çok küçük, KE ≈ başlangıç, impuls ≈ 2·m·v (seker). LAW2 → IE büyür, ön uç katlanır.",
+        measured: "#361 LAW1: IE 102 J, KE_son 5038 J (başlangıç ≈ 5060 J), impuls 2017 N·s ≈ 2·m·v, Fmax 1756 kN (HG/IE %33). #362 LAW2: IE 4320 J, KE_son 386 J, impuls 755 N·s, Fmax 119.6 kN, HG/IE %8.2.",
         answer: "Elastik malzeme çarpıp geri seker, enerji yutmaz; ezilen metal için LAW2 gerekir.",
       },
       {
@@ -59,6 +66,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
         steps: ["b = 0, n = 1 → çöz", "b = 500 MPa, n = 0.5 → çöz", "a = 400e6 Pa → çöz"],
         observe: "RWALL Fmax, ortalama kuvvet (grafik), IE",
         expect: "b ve a büyüdükçe kuvvet artar, aynı sürede daha az ezilir.",
+        measured: "b = 0, n = 1 varsayılan → T1b ile aynı koşu (#363 = #362: Fmax 119.6 kN, IE 4320 J, KE_son 386 J). #364 b = 500, n = 0.5: Fmax 155.5 kN, IE 4722 J, KE_son 32 J (kızak durdu). #365 a = 400 MPa: Fmax 201.7 kN, IE 4634 J, KE_son 28 J.",
       },
       {
         id: "T3",
@@ -68,6 +76,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
         change: "a, b, n'yi varsayılana döndür; Hız 15 m/s; Hız etkisi alanları",
         steps: ["c = 0 → çöz", "c = 0.05, ε̇₀ = 1 → çöz"],
         expect: "c > 0 → tepe ve ortalama kuvvet yükselir.",
+        measured: "15 m/s ≈ 11.4 kJ; 20 ms içinde kızak durmuyor. #366 c = 0: Fmax 121.3 kN, IE 6685 J, KE_son 4073 J. #367 c = 0.05: Fmax 152.6 kN, IE 7845 J, KE_son 2928 J.",
       },
       {
         id: "T4",
@@ -77,6 +86,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
         change: "T3'ün c = 0.05 koşusuna Sıcaklık alanlarını ekle",
         steps: ["m = 1, T_melt = 1800 K, T_r = 293 K, ρCp = 3.8e6 → çöz"],
         expect: "Kuvvet T3'e göre biraz düşer (etkisi küçük olabilir — veri).",
+        measured: "#368: Fmax 152.5 kN, IE 7942 J, KE_son 2824 J — T3b (#367) ile fark < %1.5; bu koşuda sıcaklık etkisi görünmüyor.",
       },
       {
         id: "T5",
@@ -86,6 +96,7 @@ export const CRASH_TRAINING: TrainingGroup[] = [
         change: "Hız 10'a dön; LAW2 yerine LAW36",
         steps: ["Eğri 1: 0 235 / 0.1 320 / 0.3 380 → çöz", "T2'nin b = 0 koşusuyla karşılaştır"],
         expect: "Eğri sertleştikçe kuvvet artar; benzer eğride LAW2 ile benzer sonuç.",
+        measured: "#369 LAW36: Fmax 126.5 kN, IE 4573 J, KE_son 154 J, impuls 851 N·s — T2a (#363, b = 0): Fmax 119.6 kN, IE 4320 J, KE_son 386 J.",
       },
       {
         id: "T6",

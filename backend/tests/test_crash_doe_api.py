@@ -64,6 +64,41 @@ def test_create_run_and_resume():
 
 
 @requires_db
+def test_current_job_while_case_runs(monkeypatch):
+    """1.25a2 — çözücülü örnek koşarken GET çalışan işi (job_id, örnek no) verir; bitince None."""
+    import app.api.crash as crash_api
+    from app.doe import crash_runner
+
+    seen: list[dict] = []
+
+    def fake_complete(job_id: str) -> None:
+        # koşu sırasında: bellekteki çalışan iş + HTTP cevabı
+        study_id = next(iter(crash_runner._CURRENT))
+        snap = client.get(f"/crash/doe/studies/{study_id}").json()
+        seen.append({"job_id": job_id, "cur": crash_runner.current_job(study_id), "http": snap})
+        meta = crash_api._read_job(job_id)
+        meta.update(status="solved", message="sahte çözüm", solver_ran=True)
+        crash_api._write_job(meta)
+
+    monkeypatch.setattr(crash_api, "resolve_openradioss", lambda: "openradioss")
+    monkeypatch.setattr(crash_api, "_complete_crash_job", fake_complete)
+    body = _spec(base={"template_id": "crash_box_shell", "run_solver": True, "t_end_ms": 2.0})
+    s = client.post("/crash/doe/studies", params={"wait": True}, json=body).json()
+
+    assert len(seen) == 2
+    for i, rec in enumerate(seen):
+        assert rec["cur"] == {"case_index": s["cases"][i]["index"], "job_id": rec["job_id"]}
+        assert rec["http"]["current_job_id"] == rec["job_id"]
+        assert rec["http"]["current_case_index"] == s["cases"][i]["index"]
+        running = [c for c in rec["http"]["cases"] if c["status"] == "running"]
+        assert [c["index"] for c in running] == [s["cases"][i]["index"]]
+    # bittikten sonra: çalışan iş yok, örnekler işin son durumunu aldı
+    assert s["status"] == "completed" and s["counts"] == {"solved": 2}
+    assert s["current_job_id"] is None and s["current_case_index"] is None
+    assert all(c["message"] == "sahte çözüm" for c in s["cases"])
+
+
+@requires_db
 def test_invalid_spec_and_missing_study():
     assert client.post("/crash/doe/studies", json=_spec(vary={"geometry.nope": [1, 2]})).status_code == 422
     assert client.post("/crash/doe/studies", json=_spec(vary={"speed_m_s": [5, 5]})).status_code == 422
