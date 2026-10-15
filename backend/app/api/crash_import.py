@@ -18,7 +18,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
 
 from app.importers.dyna_k import SUPPORTED_SUFFIXES, DynaParseError, read_keyword_file
 from app.importers.dyna_material import DynaMaterialError, DynaUnits, to_crash_materials
@@ -128,3 +132,108 @@ def get_import(import_id: str) -> dict[str, Any]:
 def get_preview(import_id: str) -> dict[str, Any]:
     """1.21e-2a — viewport önizlemesi: dış yüzey (mm) + yüz başına PID."""
     return surface_preview(_load(import_id)["params"])
+
+
+class ImportSolveRequest(BaseModel):
+    """1.21e-2c — içe aktarılan modeli koş. Kurulum dosyadan (import.json); burada yalnız ad,
+    çözücü / bekleme ve (dosyada *CONTROL_TERMINATION yoksa) süre."""
+
+    name: str | None = Field(default=None, max_length=200)
+    t_end_ms: float | None = Field(default=None, gt=0, description="Dosyadaki süreyi ezer; dosyada yoksa zorunlu")
+    run_solver: bool = True
+    wait: bool = False
+
+
+@router.post("/dyna/{import_id}/solve")
+def solve_import(
+    import_id: str,
+    body: ImportSolveRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """1.21e-2c — import.json parametreleri → adaptör (deck) → OpenRadioss. Koşu `crash_runs`'a
+    geometrisiz, `import_id` ile kaydedilir (1.21e-2b). İş akışı `/crash/solve` ile aynı (job.json,
+    canlı ilerleme, arka plan / bekleme); kartları mevcut yazıcı üretir."""
+    from app.api import crash as crash_api
+    from app.api.crash_runs import record_from_meta
+    from app.solvers.base import SolverError
+    from app.solvers.openradioss import OpenRadiossAdapter, resolve_openradioss
+
+    stored = _load(import_id)
+    params: dict[str, Any] = dict(stored["params"])
+    t_end = body.t_end_ms if body.t_end_ms is not None else params.get("t_end_ms")
+    if t_end is None:
+        raise HTTPException(status_code=422, detail="Dosyada *CONTROL_TERMINATION yok — süre (t_end_ms) girin.")
+    params["t_end_ms"] = float(t_end)
+
+    job_id = str(uuid.uuid4())
+    work_dir = crash_api._job_dir(job_id)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        artifact = OpenRadiossAdapter().build_input({**params, "output_dir": work_dir, "job_name": "crash"})
+    except SolverError as exc:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    engine_path = artifact.path.with_name("crash_0001.rad")
+    or_ok = resolve_openradioss() is not None
+    report = stored["report"]
+    meta: dict[str, Any] = {
+        "job_id": job_id,
+        "geometry_id": None,
+        "import_id": import_id,
+        "name": body.name or f"İçe aktarma · {report.get('file', import_id)}",
+        "status": "rad_only",
+        "message": "rad üretildi",
+        "t_end_ms": float(t_end),
+        "starter_path": str(artifact.path).replace("\\", "/"),
+        "engine_path": str(engine_path).replace("\\", "/"),
+        # İstek anlık görüntüsü: içe aktarmanın kurulumu (ağ hariç — import.json'da)
+        **{k: params[k] for k in ("parts", "contacts", "use_rigid_wall", "boundary_conditions",
+                                  "initial_velocities", "rigid_bodies", "gravity") if k in params},
+        "dimension": params.get("dimension"),
+        "solver_ran": False,
+        "openradioss_available": or_ok,
+        "materials": list(params.get("materials") or []),
+        "scalars": {},
+        "curves": {},
+    }
+    crash_api._write_job(meta)
+    run = record_from_meta(db, meta)
+    hub = crash_api.get_hub()
+    hub.create(job_id)
+    result: dict[str, Any] = {
+        "job_id": job_id,
+        "import_id": import_id,
+        "run_id": run.id if run is not None else None,
+        "status": meta["status"],
+        "message": meta["message"],
+        "starter_url": f"/files/crash/{job_id}/{artifact.path.name}",
+        "engine_url": f"/files/crash/{job_id}/{engine_path.name}",
+        "progress_url": f"/crash/jobs/{job_id}",
+        "ws_url": f"/crash/jobs/{job_id}/ws",
+        "openradioss_available": or_ok,
+        "solver_ran": False,
+        "scalars": {},
+    }
+    if not body.run_solver:
+        hub.update(job_id, state="done", percent=0.0, message="rad_only")
+        return result
+    if not or_ok:
+        err = crash_api.crash_error(5)
+        meta.update(status="failed", message=crash_api.error_message(err), diagnostics={"error": err})
+        crash_api._write_job(meta)
+        record_from_meta(db, meta)
+        hub.update(job_id, state="failed", message=meta["message"])
+        return {**result, "status": "failed", "message": meta["message"], "diagnostics": meta["diagnostics"]}
+    if body.wait:
+        crash_api._complete_crash_job(job_id)
+        done = crash_api._read_job(job_id) or meta
+        return {**result, "status": done.get("status"), "message": done.get("message"),
+                "solver_ran": bool(done.get("solver_ran")), "scalars": done.get("scalars") or {},
+                "diagnostics": done.get("diagnostics") or {}}
+    meta.update(status="pending", message="OpenRadioss çalışıyor…")
+    crash_api._write_job(meta)
+    record_from_meta(db, meta)
+    hub.update(job_id, state="running", percent=0.0, message=meta["message"])
+    background_tasks.add_task(crash_api._complete_crash_job, job_id)
+    return {**result, "status": "pending", "message": meta["message"]}
