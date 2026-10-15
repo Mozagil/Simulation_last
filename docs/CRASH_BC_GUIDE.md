@@ -86,10 +86,25 @@ TYPE24 kenar–kenar teması da yakalar; ince kabuklar katlanırken (crash
 box akordeon ezilmesi) kenarlar birbirine girebiliyor, orada TYPE24
 daha güvenli.
 
+| `all_parts` | Genel temas (yalnız TYPE24): tüm parçalar, öz temas dahil; `master_part` / `slave_part` verilmez | — |
+| `iedge` | TYPE24 kenar–kenar teması | 0 |
+
+**Genel temas (`all_parts: true`, 1.24a):** tüm kabuk parçalar tek yüzey
+(`/SURF/PART`), tüm katı parçaların dış yüzü ayrı yüzey; kabuk + katı varsa
+üç TYPE24 arayüzü (kabuk öz, katı öz, kabuk ↔ katı). Çift temaslarla birlikte
+kullanılabilir. LS-DYNA karşılığı `*CONTACT_AUTOMATIC_SINGLE_SURFACE`.
+
 **`inacti` neden önemli:** Mesh'te parçalar başlangıçta hafifçe iç içe
-olabilir. 0 bırakırsan çözücü ilk adımda büyük bir itme kuvveti üretir
-ve model patlar. Penetrasyon şüphesi varsa bu bayrağı değiştirmek
-gerekir.
+olabilir. TYPE24'te `inacti = 0` iken Radioss bu başlangıç penetrasyonlarını
+**yok sayar** — starter listing'i "INACTI = 0 ⇒ THESE PENETRATIONS (NOT THE
+TINY ONES) WILL BE IGNORED" yazar ve o çiftler temas dışında kalır (ölçüldü,
+kutu ezme #376: 847 penetrasyon yok sayıldı, kutu tabana 2.5 mm girdi).
+Kabuklar arası temas boşluğu ≈ (t₁ + t₂)/2; başlangıç aralığını bundan büyük
+tutmak (kutu ezmede taban boşluğu 1.0 mm) penetrasyonu baştan önler.
+
+**`iedge` (kenar–kenar):** katlanan ince kabukta kenarlar birbirini kesebilir;
+kenar teması kapalıyken (#376) çarpıcı kenarı ince kapağın içinden geçti, `iedge = 1`
+ile (#377) başlangıç penetrasyonu ve bu geçiş görülmedi (kutu kaydıktan sonrası ölçülmedi).
 
 ---
 
@@ -204,6 +219,33 @@ LS-DYNA: `*SECTION_SPH` + `*ELEMENT_SPH`
 
 ---
 
+## 11a. Yay — `springs[]` (`/SPRING` + `/PROP/TYPE4`, 1.24b)
+
+İki uç arası eksenel doğrusal yay. Uç: Kütle / kızak kartının ana düğümü
+(`rigid_body`) ya da uzayda nokta (`point`, mm; `fixed` ise altı serbestlik
+kilitli). `k_n_per_mm` (deck'te kN/mm), `c_n_s_per_mm` sönüm, `mass_kg`; `th`
+açıksa `/TH/SPRING` (FX FY FZ). LS-DYNA: `*ELEMENT_DISCRETE` + `*SECTION_DISCRETE`.
+
+## 11b. Sönüm — `damping` (`/DAMP`, 1.24c2)
+
+Rayleigh sönümü C = α·M + β·K. `alpha_per_s` (1/s), `beta_s` (s); deck'e model
+birimiyle (α/1000 1/ms, β·1000 ms). `part_ids` boş = tüm parçalar;
+`t_start_ms` / `t_stop_ms` (0 = koşu sonu). α kütle orantılı (rijit hareketi de
+yavaşlatır), β rijitlik orantılı (yüksek frekans; kararlı Δt küçülür). Ölçülen
+(seken LAW1 kutu): β 1e-6 s → Δt_min 5.4e-4 → 3.1e-4 ms; β 1e-5 s aynı sonuç
+(listing'de uyarı yok — Radioss β'yı sınırlıyor olabilir, doğrulanmadı).
+LS-DYNA: `*DAMPING_PART_MASS` (α) + `*DAMPING_PART_STIFFNESS` (β).
+
+## 11c. Ezilme referansı — `crush_ref` (C8b)
+
+`rigid_body` (ad → ana düğüm) ya da `region` (bölge düğümleri, ortalama);
+`direction` boşsa ilk hız yönü. Deck'e ayrı `/TH/NODE/8` (DX DY DZ). Sonuç:
+`crush_mm` eğrisi, `crush_final_mm`, `crush_max_mm`, `crush_work_j` = ∫|F_duvar| dδ
+(δ_maks'a kadar), `mean_crush_force_kn` = iş / δ_maks, `mean_crush_force_ie_kn`
+= IE_son / δ_son. Duvarsız senaryoda yalnız IE oranı.
+
+---
+
 ## 12. Malzeme ve eleman kartı — `model`
 
 | alan | anlamı | OpenRadioss |
@@ -303,14 +345,36 @@ Crash paneli üç akordeon grubunda (Claude Design "Crash BC Sidebar"):
    Viewport'ta parçalar role göre renklenir (hareketli altın, sabit
    kırmızı, serbest mor); "SINIR KOŞ." düğmesi işaretleri ve renkleri
    gizler.
-3. **Temaslar** — isteğe bağlı TYPE7 / TYPE24 satırları.
+3. **Temaslar** — isteğe bağlı TYPE7 / TYPE24 satırları; kapsam "Parça çifti"
+   ya da "Tüm model" (genel temas, TYPE24).
 4. **Ek tanımlar** — bölgeyi kilitle, kütle / kızak (rayda seçeneği),
-   sabit hızla it, parçaya ayrı ilk hız; hazır kurulumlar (Kızak testi,
-   Ankastre kenar).
+   sabit hızla it, parçaya ayrı ilk hız, ek kütle, yay; hazır kurulumlar
+   (Kızak testi, Ankastre kenar).
+
+Gruplardan sonra (2026-10-15 güncel): **Uzman ayarları**, **Çözüm kontrolü**
+(süre, zaman adımı kartı, Rayleigh sönümü) ve **Çıktı ayarları** (kayıt aralığı,
+/TH kanalları, kesitler, ezilme mesafesi referansı).
 
 "LS-DYNA karşılıklarını göster" anahtarı açıkken kart adlarının yanında
 yaklaşık LS-DYNA keyword'ü görünür (`frontend/src/lib/dynaKeywords.ts`).
 
 Eleman formülasyonu ve hourglass "Uzman ayarları"nda (son koşunun HG/IE
-değeri orada); yerçekimi 1 · Çarpma'da; çıktı kartları 5 · Sonuçlar'da. Malzeme kanunu ve /FAIL 3 · Malzeme adımında. Koşu sonucu
-5 · Sonuçlar'da, koşu geçmişi alttaki dock'ta.
+değeri orada); yerçekimi 1 · Çarpma'da; çıktı kartları 4 · Crash → Çıktı
+ayarları'nda (CFC filtresi koşudan sonra 5 · Sonuçlar'da). Malzeme kanunu,
+/FAIL ve kütüphane Johnson–Cook seti 3 · Malzeme adımında. Koşu sonucu
+(enerji, geri sekme, ezilme) 5 · Sonuçlar'da, koşu geçmişi ve karşılaştırma
+alttaki dock'ta.
+
+---
+
+## 16. LS-DYNA keyword içe aktarma (.k / .dyn, 1.21)
+
+Sol paneldeki "⇪ LS-DYNA içe aktar" düğmesi. Kendi çeviricimiz okur →
+OpenRadioss kartları; LS-DYNA kurulmaz / çalıştırılmaz, keyword yazılmaz
+(`docs/LICENSING.md`). Birim çarpanları (uzunluk → mm, kütle → kg, zaman → s)
+mühendisten. Çeviri raporu önce okunur (uyarılar, atlanan keyword ve satırlar
+üstte); onaydan sonra koşu `POST /crash/import/dyna/{id}/solve`. Koşu
+geometrisiz kaydedilir (`crash_runs.import_id`), ML korpusuna girmez.
+Çevrilen keyword'ler: *NODE, *ELEMENT_SHELL / SOLID, *PART, *SECTION_*,
+*MAT_024 / 001 / 020, temaslar (N2S → TYPE7, S2S → TYPE24), *BOUNDARY_SPC,
+*INITIAL_VELOCITY, *RIGIDWALL_PLANAR, *LOAD_BODY, *CONTROL_TERMINATION.
