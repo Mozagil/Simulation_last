@@ -13,7 +13,16 @@
 import { useState } from "react";
 import Kw from "./Kw";
 
-export type CardKind = "inivel" | "bcs" | "impvel" | "rbody" | "admas";
+export type CardKind = "inivel" | "bcs" | "impvel" | "rbody" | "admas" | "spring";
+/** 1.24b2 — yay ucu: Kütle / kızak kartı (rijit gövde ana düğümü) ya da nokta (mm). */
+export interface SpringEnd {
+  mode: "rbody" | "point";
+  /** rbody kartının id'si (mode rbody) */
+  rbody: number | null;
+  point: [string, string, string];
+  /** mode point: düğüm sabit (zemin) */
+  fixed: boolean;
+}
 /** /ADMAS: toplam kütle düğümlere eşit dağıtılır (Iflag 1) ya da her düğüme bu kütle (0). */
 export type MassDist = "total" | "per_node";
 export type RbMotion = "rail" | "free" | "custom";
@@ -42,6 +51,11 @@ export interface LoadCard {
   /** 1.23 C4 — /RBODY Ikrem: false (0) = rijit gövde düğümleri rijit duvardan çıkarılır
    * (Radioss varsayılanı; WARNING 446), true (1) = duvarda kalır. */
   keepWall: boolean;
+  /** 1.24b2 — Yay: uçlar, K (N/mm), C (N·s/mm); kütle `mass` (kg) */
+  springA: SpringEnd;
+  springB: SpringEnd;
+  springK: string;
+  springC: string;
 }
 
 export type PartRole = "moving" | "fixed" | "free";
@@ -52,6 +66,7 @@ export const CARD_LABEL: Record<CardKind, string> = {
   impvel: "Sabit hızla it",
   inivel: "Parçaya ayrı ilk hız",
   admas: "Ek kütle",
+  spring: "Yay",
 };
 
 /** Ekleme düğmesinin "ne zaman" satırı. */
@@ -61,6 +76,7 @@ const CARD_WHEN: Record<CardKind, string> = {
   impvel: "Hız çözüm boyunca sabit. ROPS, kapı intrüzyonu.",
   inivel: "Parçalar farklı hızla gelir. 1 · Çarpma hızı yerine geçer.",
   admas: "Kütle eklenir, rijitlik yok. Tek noktalık bölge = nokta kütle (motor, akü).",
+  spring: "İki uç arası doğrusal yay (K, C). Kızak ↔ zemin, kütle ↔ sabit nokta.",
 };
 
 const DOF_NAMES = ["Tx", "Ty", "Tz", "Rx", "Ry", "Rz"] as const;
@@ -81,7 +97,25 @@ export function newCard(id: number, kind: CardKind, target: string): LoadCard {
     hic: false,
     massDist: "total",
     keepWall: false,
+    springA: { mode: "rbody", rbody: null, point: ["0", "0", "0"], fixed: true },
+    springB: { mode: "point", rbody: null, point: ["0", "0", "0"], fixed: true },
+    springK: "",
+    springC: "0",
   };
+}
+
+/** Kart listesindeki Kütle / kızak kartlarının istek adı: `rbody_<sıra>` (cardsPayload ile aynı). */
+export function rbodyName(cards: LoadCard[], cardId: number): string | null {
+  const i = cards.findIndex((c) => c.id === cardId);
+  return i >= 0 && cards[i].kind === "rbody" ? `rbody_${i + 1}` : null;
+}
+
+function springEndLabel(cards: LoadCard[], e: SpringEnd): string {
+  if (e.mode === "rbody") {
+    const i = cards.findIndex((c) => c.id === e.rbody);
+    return i >= 0 ? `Kütle / kızak #${i + 1}` : "kızak seçilmedi";
+  }
+  return `nokta (${e.point.join(", ")})${e.fixed ? " sabit" : " serbest"}`;
 }
 
 function n(raw: string, label: string): number {
@@ -112,8 +146,13 @@ function dofText(dofs: string): string {
   return locked.length <= free.length ? `${locked.join(" ")} kilitli` : `yalnız ${free.join(" ")} serbest`;
 }
 
-/** Kapalı kartın tek satırlık özeti. */
-export function cardSummary(c: LoadCard, impactAxis: Axis = "X"): string {
+/** Kapalı kartın tek satırlık özeti. `cards`: yay uçları için kızak sırası. */
+export function cardSummary(c: LoadCard, impactAxis: Axis = "X", cards: LoadCard[] = []): string {
+  if (c.kind === "spring") {
+    const k = c.springK.trim() === "" ? "K girilmedi" : `K ${c.springK} N/mm`;
+    const cc = Number(c.springC) > 0 ? ` · C ${c.springC} N·s/mm` : "";
+    return `${springEndLabel(cards, c.springA)} ↔ ${springEndLabel(cards, c.springB)} · ${k}${cc}`;
+  }
   const t = targetLabel(c.target);
   if (c.kind === "bcs") return `${t} → ${dofText(c.dofs)}`;
   if (c.kind === "impvel") {
@@ -139,11 +178,31 @@ export function cardsPayload(cards: LoadCard[], impactAxis: Axis = "X") {
     imposed_velocities: [] as Record<string, unknown>[],
     rigid_bodies: [] as Record<string, unknown>[],
     added_masses: [] as Record<string, unknown>[],
+    springs: [] as Record<string, unknown>[],
+  };
+  const springEnd = (e: SpringEnd, lab: string): Record<string, unknown> => {
+    if (e.mode === "rbody") {
+      const nm = e.rbody === null ? null : rbodyName(cards, e.rbody);
+      if (!nm) throw new Error(`${lab}: Kütle / kızak kartı seçilmedi.`);
+      return { rigid_body: nm };
+    }
+    return { point: e.point.map((v, k) => n(v, `${lab} nokta ${"xyz"[k]}`)), fixed: e.fixed };
   };
   cards.forEach((c, i) => {
     const name = `${c.kind}_${i + 1}`;
-    const t = targetOf(c);
     const lab = `${CARD_LABEL[c.kind]} #${i + 1}`;
+    if (c.kind === "spring") {
+      const k = n(c.springK, `${lab} K`);
+      if (!(k > 0)) throw new Error(`${lab}: K pozitif olmalı.`);
+      const cval = c.springC.trim() === "" ? 0 : n(c.springC, `${lab} C`);
+      const mass = c.mass.trim() === "" ? 0 : n(c.mass, `${lab} kütle`);
+      out.springs.push({
+        name, end_a: springEnd(c.springA, `${lab} A ucu`), end_b: springEnd(c.springB, `${lab} B ucu`),
+        k_n_per_mm: k, c_n_s_per_mm: cval, mass_kg: mass,
+      });
+      return;
+    }
+    const t = targetOf(c);
     if (c.kind === "inivel") {
       out.initial_velocities.push({
         name, ...t, speed_m_s: n(c.speed, `${lab} hız`),
@@ -228,6 +287,12 @@ function KindIcon({ kind }: { kind: CardKind }) {
         <path d="M2 8h10M9 5l3 3-3 3M14 3v10" />
       </svg>
     );
+  if (kind === "spring")
+    return (
+      <svg {...common} stroke="#2f7a5a">
+        <path d="M1 8h2l1.5-3 2 6 2-6 2 6 2-6L13 8h2" />
+      </svg>
+    );
   return (
     <svg {...common} stroke="#a16207">
       <path d="M2 11l5-5 3 3 4-4M10 5h4v4" />
@@ -235,13 +300,14 @@ function KindIcon({ kind }: { kind: CardKind }) {
   );
 }
 
-const ADD_ORDER: CardKind[] = ["bcs", "rbody", "admas", "impvel", "inivel"];
+const ADD_ORDER: CardKind[] = ["bcs", "rbody", "admas", "impvel", "inivel", "spring"];
 const KIND_CARD: Record<CardKind, string> = {
   bcs: "/BCS",
   rbody: "/RBODY",
   admas: "/ADMAS",
   impvel: "/IMPVEL",
   inivel: "/INIVEL",
+  spring: "/SPRING",
 };
 
 export default function CrashLoadCards({
@@ -338,6 +404,88 @@ export default function CrashLoadCards({
     </div>
   );
 
+  const rbodyCards = cards.map((c, i) => ({ c, k: i + 1 })).filter(({ c }) => c.kind === "rbody");
+  const springEndEditor = (c: LoadCard, k: number, key: "springA" | "springB", label: string) => {
+    const e = c[key];
+    const set = (patch: Partial<SpringEnd>) => update(c.id, { [key]: { ...e, ...patch } });
+    return (
+      <div className="crash-spring-end" role="group" aria-label={`${CARD_LABEL[c.kind]} #${k} ${label} ucu`}>
+        <span className="crash-card-sub">{label} ucu</span>
+        <span className="doe-seg">
+          {(
+            [
+              ["rbody", "Kütle / kızak"],
+              ["point", "Nokta"],
+            ] as const
+          ).map(([m, t]) => (
+            <button
+              key={m}
+              type="button"
+              className={e.mode === m ? "doe-seg-opt active" : "doe-seg-opt"}
+              aria-pressed={e.mode === m}
+              disabled={disabled}
+              onClick={() => set({ mode: m })}
+            >
+              {t}
+            </button>
+          ))}
+        </span>
+        {e.mode === "rbody" ? (
+          <label className="crash-card-field">
+            <span>Kart</span>
+            <select
+              aria-label={`${label} ucu kızak`}
+              value={e.rbody ?? ""}
+              disabled={disabled}
+              onChange={(ev) => set({ rbody: ev.target.value === "" ? null : Number(ev.target.value) })}
+            >
+              <option value="">seç…</option>
+              {rbodyCards.map(({ c: rc, k: rk }) => (
+                <option key={rc.id} value={rc.id}>
+                  Kütle / kızak #{rk} · {targetLabel(rc.target)}
+                </option>
+              ))}
+            </select>
+            {!rbodyCards.length && <span className="crash-behavior-hint">Önce bir Kütle / kızak kartı ekleyin.</span>}
+          </label>
+        ) : (
+          <>
+            {(["x", "y", "z"] as const).map((ax, j) =>
+              field(`${label} ${ax}`, e.point[j], (v) => {
+                const point = [...e.point] as [string, string, string];
+                point[j] = v;
+                set({ point });
+              }, "mm"),
+            )}
+            <label className="material-check">
+              <input
+                type="checkbox"
+                aria-label={`${label} ucu sabit`}
+                checked={e.fixed}
+                disabled={disabled}
+                onChange={(ev) => set({ fixed: ev.target.checked })}
+              />
+              Sabit (zemin, /BCS 111 111)
+            </label>
+          </>
+        )}
+      </div>
+    );
+  };
+  const springEditor = (c: LoadCard, k: number) => (
+    <>
+      {springEndEditor(c, k, "springA", "A")}
+      {springEndEditor(c, k, "springB", "B")}
+      {field("K", c.springK, (v) => update(c.id, { springK: v }), "N/mm")}
+      {field("C (sönüm)", c.springC, (v) => update(c.id, { springC: v }), "N·s/mm")}
+      {field("Yay kütlesi", c.mass, (v) => update(c.id, { mass: v }), "kg")}
+      <span className="crash-behavior-hint">
+        Eksenel doğrusal yay (/PROP/TYPE4). Uçlar rijit gövde ana düğümü ya da yeni düğüm; esnek parçaya doğrudan
+        bağlanmaz. Kuvvet çıktısı /TH/SPRING.
+      </span>
+    </>
+  );
+
   return (
     <section className="crash-cards" data-testid="crash-load-cards">
       <div className="crash-presets" role="group" aria-label="Hazır kurulumlar">
@@ -362,7 +510,7 @@ export default function CrashLoadCards({
             type="button"
             className="crash-add-tile"
             aria-label={`+ ${CARD_LABEL[k]}`}
-            disabled={disabled || !defaultTarget}
+            disabled={disabled || (!defaultTarget && k !== "spring")}
             onClick={() => add(k)}
           >
             <span className="crash-add-tile-head">
@@ -391,7 +539,7 @@ export default function CrashLoadCards({
               <span className="crash-card-text">
                 <span className="crash-card-kind">{CARD_LABEL[c.kind]}</span>
                 <span className="crash-card-summary" data-testid="crash-card-summary">
-                  {cardSummary(c, impactAxis)}
+                  {cardSummary(c, impactAxis, cards)}
                 </span>
               </span>
               <button
@@ -416,6 +564,8 @@ export default function CrashLoadCards({
             </div>
             {open && (
               <div className="crash-card-body">
+                {c.kind === "spring" && springEditor(c, k)}
+                {c.kind !== "spring" && (
                 <div className="crash-card-targets" role="group" aria-label={`${CARD_LABEL[c.kind]} #${k} hedef`}>
                   <span className="crash-card-sub">Nereye</span>
                   {[...regions.map((r) => `region:${r}`), ...partIds.map((p) => `part:${p}`)].map((tg) => (
@@ -431,6 +581,7 @@ export default function CrashLoadCards({
                     </button>
                   ))}
                 </div>
+                )}
                 {c.kind === "bcs" && dofEditor(c, k)}
                 {c.kind === "admas" && (
                   <>

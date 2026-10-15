@@ -38,6 +38,7 @@ from app.solvers.crash_params import (
     CrashInitVelParams,
     CrashPressureLoadParams,
     CrashSphProjectileParams,
+    CrashSpringParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -149,6 +150,9 @@ class CrashSolveRequest(BaseModel):
     )
     blast_loads: list[CrashBlastLoadParams] = Field(
         default_factory=list, description="/LOAD/PBLAST ampirik patlama (K13, mayın)"
+    )
+    springs: list[CrashSpringParams] = Field(
+        default_factory=list, description="1.24b1 — yay elemanları (/SPRING + /PROP/TYPE4)"
     )
     raw_cards: str = Field(
         default="",
@@ -419,6 +423,7 @@ def _starter_params(
         "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
         "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
         "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+        "springs": [sp.model_dump() for sp in body.springs],
         "raw_cards": body.raw_cards,
         "region_nodes": region_nodes,
     }
@@ -595,6 +600,7 @@ def crash_solve(
         "pressure_loads": [pl.model_dump() for pl in body.pressure_loads],
         "sph_projectiles": [sp.model_dump() for sp in body.sph_projectiles],
         "blast_loads": [bl.model_dump() for bl in body.blast_loads],
+        "springs": [sp.model_dump() for sp in body.springs],
         "raw_cards": body.raw_cards,
         "dimension": body.dimension,
         "solver_ran": False,

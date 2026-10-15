@@ -24,7 +24,27 @@ describe("cardsPayload / özet / kapsama", () => {
       imposed_velocities: [{ name: "impvel_3", part_id: 1, direction: "Z", velocity_m_s: -2, t_start_ms: 0, t_stop_ms: 5 }],
       rigid_bodies: [{ name: "rbody_4", region: "kizak", mass_kg: 50 }],
       added_masses: [],
+      springs: [],
     });
+  });
+
+  it("1.24b2: Yay — kızak kartı ↔ sabit nokta; K pozitif; kızak seçilmeden hata; özet", () => {
+    const rb = { ...newCard(1, "rbody", "part:1"), mass: "40" };
+    const sp: LoadCard = {
+      ...newCard(2, "spring", ""),
+      springA: { mode: "rbody", rbody: 1, point: ["0", "0", "0"], fixed: true },
+      springB: { mode: "point", rbody: null, point: ["-20", "0", "5"], fixed: true },
+      springK: "2500", springC: "3", mass: "0.5",
+    };
+    expect(cardsPayload([rb, sp]).springs).toEqual([
+      { name: "spring_2", end_a: { rigid_body: "rbody_1" }, end_b: { point: [-20, 0, 5], fixed: true }, k_n_per_mm: 2500, c_n_s_per_mm: 3, mass_kg: 0.5 },
+    ]);
+    expect(cardSummary(sp, "X", [rb, sp])).toBe("Kütle / kızak #1 ↔ nokta (-20, 0, 5) sabit · K 2500 N/mm · C 3 N·s/mm");
+    expect(() => cardsPayload([rb, { ...sp, springK: "0" }])).toThrow(/K pozitif/);
+    expect(() => cardsPayload([{ ...sp, springA: { ...sp.springA, rbody: null } }])).toThrow(/kızak kartı seçilmedi/);
+    // iki serbest nokta: rijit gövde gerekmez, fixed false geçer
+    const free: LoadCard = { ...sp, springA: { mode: "point", rbody: null, point: ["1", "2", "3"], fixed: false } };
+    expect(cardsPayload([free]).springs[0]).toMatchObject({ end_a: { point: [1, 2, 3], fixed: false }, mass_kg: 0.5 });
   });
 
   it("1.23 C4: Ek kütle (/ADMAS) — toplam / düğüm başına; pozitif olmalı; özet", () => {
@@ -74,9 +94,13 @@ describe("cardsPayload / özet / kapsama", () => {
   });
 });
 
-function Harness({ regions = ["kutu_arka", "plaka_kenar"] }: { regions?: string[] }) {
-  const [cards, setCards] = useState<LoadCard[]>([]);
-  return <CrashLoadCards cards={cards} onChange={setCards} partIds={[0, 1]} regions={regions} impactAxis="X" />;
+function Harness({
+  regions = ["kutu_arka", "plaka_kenar"],
+  initial = [],
+  partIds = [0, 1],
+}: { regions?: string[]; initial?: LoadCard[]; partIds?: number[] }) {
+  const [cards, setCards] = useState<LoadCard[]>(initial);
+  return <CrashLoadCards cards={cards} onChange={setCards} partIds={partIds} regions={regions} impactAxis="X" />;
 }
 
 describe("CrashLoadCards", () => {
@@ -104,6 +128,22 @@ describe("CrashLoadCards", () => {
     );
     fireEvent.change(within(card).getByLabelText("Ek kütle"), { target: { value: "40" } });
     expect(within(card).getByTestId("crash-card-summary")).toHaveTextContent("kutu_arka → rijit + 40 kg · rayda (yalnız x)");
+  });
+
+  it("1.24b2: Yay kartı — hedef çipi yok, uç seçimi, kızak listesi, nokta alanları", () => {
+    const rb = { ...newCard(1, "rbody", "part:0"), mass: "40" };
+    render(<Harness initial={[rb]} partIds={[0, 1]} regions={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Yay" }));
+    const card = screen.getByTestId("crash-card-spring");
+    expect(within(card).queryByRole("group", { name: /hedef/ })).not.toBeInTheDocument();
+    // A ucu varsayılan kızak: liste Kütle / kızak #1
+    fireEvent.change(within(card).getByLabelText("A ucu kızak"), { target: { value: "1" } });
+    // B ucu nokta + sabit
+    fireEvent.change(within(card).getByLabelText("B x"), { target: { value: "-20" } });
+    expect(within(card).getByLabelText("B ucu sabit")).toBeChecked();
+    fireEvent.change(within(card).getByLabelText("K"), { target: { value: "2500" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Yay #2 kapat" }));
+    expect(within(card).getByTestId("crash-card-summary")).toHaveTextContent("Kütle / kızak #1 ↔ nokta (-20, 0, 0) sabit · K 2500 N/mm");
   });
 
   it("bölge yoksa yönlendirme metni", () => {

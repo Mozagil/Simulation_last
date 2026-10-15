@@ -98,8 +98,11 @@ export interface CrashPartSpec {
  * değerleri (0 = Radioss varsayılanı); öneri yok, mühendis doldurur. */
 export interface CrashContactSpec {
   type: 7 | 24;
-  master_part: number;
-  slave_part: number;
+  /** Genel temasta (all_parts) verilmez. */
+  master_part?: number | null;
+  slave_part?: number | null;
+  /** 1.24a — genel temas: tüm parçalar tek yüzey, öz temas (yalnız TYPE24). */
+  all_parts?: boolean;
   fric: number;
   stfac: number;
   /** mm — yalnız TYPE7 */
@@ -168,6 +171,8 @@ export interface CrashSolveRequest {
   boundary_conditions?: Record<string, unknown>[];
   imposed_velocities?: Record<string, unknown>[];
   rigid_bodies?: Record<string, unknown>[];
+  /** 1.24b2 — yay elemanları (/SPRING + /PROP/TYPE4) */
+  springs?: Record<string, unknown>[];
   /** 11.2 — Yükleme: Yerçekimi */
   gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
   /** 1.22 — OpenRadioss ham kartları; starter deck'ine /END'den önce aynen. */

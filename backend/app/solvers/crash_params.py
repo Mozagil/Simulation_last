@@ -411,11 +411,15 @@ class CrashContactParams(BaseModel):
     Istf/Inacti/Iedge Radioss bayrakları, mühendis doldurur.
     TYPE7: slave düğümleri (/GRNOD/PART) → master yüzey; gapmin (mm) kullanılır.
     TYPE24: slave yüzey ↔ master yüzey (simetrik); gapmin yok sayılır.
+
+    1.24a — `all_parts=True`: genel temas (tüm modelin tek yüzeyi, öz temas;
+    ≈ LS-DYNA AUTOMATIC_SINGLE_SURFACE). Yalnız TYPE24; master/slave verilmez.
     """
 
     type: int = Field(default=7, description="7 | 24")
-    master_part: int = Field(ge=0)
-    slave_part: int = Field(ge=0)
+    master_part: int | None = Field(default=None, ge=0)
+    slave_part: int | None = Field(default=None, ge=0)
+    all_parts: bool = Field(default=False, description="Genel temas: tüm parçalar, öz temas (TYPE24)")
     fric: float = Field(default=0.0, ge=0, description="Coulomb sürtünme")
     gapmin: float = Field(
         default=0.0, ge=0, description="TYPE7 GAPmin (mm)", json_schema_extra={"unit": "mm"}
@@ -433,6 +437,17 @@ class CrashContactParams(BaseModel):
         if value not in (7, 24):
             raise ValueError("temas tipi 7 veya 24 olmalı.")
         return value
+
+    @model_validator(mode="after")
+    def _parts_ok(self) -> "CrashContactParams":
+        if self.all_parts:
+            if self.type != 24:
+                raise ValueError("genel temas (all_parts) yalnız TYPE24 ile.")
+            if self.master_part is not None or self.slave_part is not None:
+                raise ValueError("genel temasta master_part / slave_part verilmez.")
+        elif self.master_part is None or self.slave_part is None:
+            raise ValueError("master_part ve slave_part gerekli (ya da all_parts).")
+        return self
 
     @model_validator(mode="after")
     def _flags_ok(self) -> "CrashContactParams":
@@ -778,6 +793,46 @@ class CrashPressureLoadParams(BaseModel):
         if b < 1e-9:
             return self.peak_mpa * self.duration_ms / 2.0
         return self.peak_mpa * self.duration_ms * (1.0 / b - (1.0 - math.exp(-b)) / (b * b))
+
+
+class CrashSpringEnd(BaseModel):
+    """Yay ucu (1.24b1): rijit gövde ana düğümü ya da uzayda nokta (mm; yeni düğüm).
+    Nokta `fixed=True` ise /BCS ile altı serbestlik kilitli (zemin)."""
+
+    rigid_body: str | None = Field(default=None, description="CrashRigidBodyParams.name")
+    point: tuple[float, float, float] | None = Field(default=None, description="mm, global")
+    fixed: bool = Field(default=True, description="Yalnız point: düğüm sabit (/BCS 111 111)")
+
+    @model_validator(mode="after")
+    def _one(self) -> "CrashSpringEnd":
+        if (self.rigid_body is None) == (self.point is None):
+            raise ValueError("yay ucu: rigid_body ya da point tam olarak biri verilmeli.")
+        if self.point is not None:
+            for v in self.point:
+                _finite(v, "point")
+        return self
+
+
+class CrashSpringParams(BaseModel):
+    """Yay elemanı (1.24b1): /SPRING + /PROP/TYPE4 (hm_cfg radioss140), iki uç arası
+    eksenel doğrusal yay. K (N/mm) → kN/mm, C (N·s/mm) → kN·ms/mm (sayısal aynı),
+    kütle kg. Öneri yok; mühendis doldurur. `th`: /TH/SPRING (FX FY FZ)."""
+
+    name: str = Field(default="spring", min_length=1, max_length=60)
+    end_a: CrashSpringEnd
+    end_b: CrashSpringEnd
+    k_n_per_mm: float = Field(gt=0, description="Yay sabiti K (N/mm)")
+    c_n_s_per_mm: float = Field(default=0.0, ge=0, description="Sönüm C (N·s/mm)")
+    mass_kg: float = Field(default=0.0, ge=0, description="/PROP/TYPE4 Mass (kg)")
+    th: bool = Field(default=True, description="/TH/SPRING kuvvet çıktısı")
+
+    @model_validator(mode="after")
+    def _ok(self) -> "CrashSpringParams":
+        for v, n in ((self.k_n_per_mm, "k_n_per_mm"), (self.c_n_s_per_mm, "c_n_s_per_mm"), (self.mass_kg, "mass_kg")):
+            _finite(v, n)
+        if self.end_a.rigid_body is not None and self.end_a.rigid_body == self.end_b.rigid_body:
+            raise ValueError(f"'{self.name}': iki uç aynı rijit gövde.")
+        return self
 
 
 class CrashSphProjectileParams(BaseModel):
