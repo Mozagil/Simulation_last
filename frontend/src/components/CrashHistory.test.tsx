@@ -90,9 +90,9 @@ describe("CrashHistory", () => {
     expect(within(box).getByRole("img", { name: "Kuvvet–zaman grafiği" })).toBeInTheDocument();
     expect(within(box).getByLabelText("Karşılaştırma eğrisi")).toHaveValue("rwall_force");
     const table = within(box).getByRole("table");
-    expect(table).toHaveTextContent("Duvar Fmax (kN)");
+    expect(table).toHaveTextContent("Duvar kuvveti, tepe");
     expect(table).toHaveTextContent("130.9");
-    expect(table).toHaveTextContent("Kesit 1 Fmax (kN)");
+    expect(table).toHaveTextContent("Kesit 1 kuvveti, tepe");
     // yalnız koşu 1'de olan eğri seçilince tek seri
     fireEvent.change(within(box).getByLabelText("Karşılaştırma eğrisi"), { target: { value: "section_1_force" } });
     expect(box.querySelectorAll("polyline")).toHaveLength(1);
