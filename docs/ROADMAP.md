@@ -1721,8 +1721,13 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   Eski not: Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
   eğrileri (Al 5xxx/6xxx/7xxx, DP/HSLA çelikler, PP/ABS/PC), kaynak listeli. Yalnız doküman.
   Ticari/lisanslı kart (vendor, GRANTA) kopyalanmaz.
-- f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
-  kolon önerildi).
+- f ✅ (2026-10-15, kullanıcı kararı A) `materials.crash_jc` JSON (Alembic `c9d0e1f2a3b4`): tek
+  Johnson–Cook seti {a_mpa, b_mpa, n, c, m, eps_dot0_per_s, t_melt_k, t_ref_k, d[5], source};
+  kaynak zorunlu, bilinmeyen alan boş (tahmin yazılmaz). Seed yalnız kütüphanede olup doğrulanan seti
+  olan malzeme: 7075-T6 (Brar 2009 özeti; ε̇₀ / T_m null). Diğerleri NULL (CRASH_MATERIALS.md
+  "Doğrulanmadı"). `GET /materials` `crash_jc` döner; `PUT /materials/{id}/crash-jc` {jc | null}
+  yalnız kullanıcı malzemesi (kütüphane 403). Veri seti arşivi kolonu. Dev DB'ye uygulandı.
+  Test: `test_material_crash_jc.py` (3); backend 1503 geçti.
 - g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
 *1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
 Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
