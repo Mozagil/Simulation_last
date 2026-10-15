@@ -252,6 +252,10 @@ export default function CrashMaterialStep({
               disabled={busy}
               hideToggle
               materialOf={(pid) => assignedOf(pid)?.material_name ?? null}
+              jcOf={(pid) => {
+                const m = materials.find((x) => x.id === assignedOf(pid)?.material_id);
+                return m?.crash_jc ? { label: m.name, jc: m.crash_jc } : null;
+              }}
             />
           </div>
         )}

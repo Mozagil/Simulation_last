@@ -121,12 +121,12 @@ const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` 
 /** 1.23 C1b — CSV (virgül ayraç, nokta ondalık): ortak zaman ekseninde geniş tablo
  *  (t, seri1, seri2 …); seriler ayrı zaman eksenliyse (karşılaştırma) seri başına t + değer.
  *  Değerler kayıtlı veri (işaretli); grafik |F| çizer. */
-export function chartCsv(time: number[], series: ForceSeries[], unit: string): string {
+export function chartCsv(time: number[], series: ForceSeries[], unit: string, xHead = "t (ms)"): string {
   const shared = series.every((s) => !s.time);
   const cols: { head: string; vals: number[] }[] = shared
-    ? [{ head: "t (ms)", vals: time }, ...series.map((s) => ({ head: `${s.label} (${unit})`, vals: s.values }))]
+    ? [{ head: xHead, vals: time }, ...series.map((s) => ({ head: `${s.label} (${unit})`, vals: s.values }))]
     : series.flatMap((s) => [
-        { head: `${s.label} t (ms)`, vals: s.time ?? time },
+        { head: `${s.label} ${xHead}`, vals: s.time ?? time },
         { head: `${s.label} (${unit})`, vals: s.values },
       ]);
   const n = shared ? time.length : Math.max(...cols.map((c) => c.vals.length));
@@ -153,6 +153,9 @@ export default function CrashForceChart({
   yLabel = "kuvvet",
   note,
   showMean = false,
+  xName = "zaman",
+  xSym = "t",
+  xUnit = "ms",
 }: {
   time: number[];
   series: ForceSeries[];
@@ -166,6 +169,10 @@ export default function CrashForceChart({
   note?: string;
   /** 1.23 C8 — temas aralığı ortalaması (yalnız kuvvet grafiği) */
   showMean?: boolean;
+  /** 1.24g — x ekseni (varsayılan zaman, ms); ör. σ–εₚ için "plastik şekil değiştirme", "εₚ", "-" */
+  xName?: string;
+  xSym?: string;
+  xUnit?: string;
 }) {
   const figRef = useRef<HTMLElement | null>(null);
   const tOf = (s: ForceSeries) => s.time ?? time;
@@ -210,7 +217,7 @@ export default function CrashForceChart({
     : [];
 
   const exportCsv = () =>
-    downloadBlob(new Blob([chartCsv(time, series, unit)], { type: "text/csv;charset=utf-8" }), `${chartFileBase(title)}.csv`);
+    downloadBlob(new Blob([chartCsv(time, series, unit, `${xSym} (${xUnit})`)], { type: "text/csv;charset=utf-8" }), `${chartFileBase(title)}.csv`);
 
   // 1.23 C1b — PNG: grafik veriden 2B tuvale yeniden çizilir (SVG + HTML katmanı tek
   // resme dönmüyor); renkler ekrandaki lejanttan, tema ile aynı.
@@ -225,8 +232,8 @@ export default function CrashForceChart({
     const colorFor = (k: string) => colors[series.findIndex((s) => s.key === k)] ?? fg;
     const marked = peaks.filter((p) => !hasTwin(p.key));
     const stats = [
-      ...peaks.map((p) => `${p.label} tepe ${niceValue(p.peak)} ${unit} · t = ${niceValue(p.at)} ms`),
-      ...means.map((s) => `${s.label} ortalama ${niceValue(s.m.mean)} ${unit} · ${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ms`),
+      ...peaks.map((p) => `${p.label} tepe ${niceValue(p.peak)} ${unit} · ${xSym} = ${niceValue(p.at)} ${xUnit}`),
+      ...means.map((s) => `${s.label} ortalama ${niceValue(s.m.mean)} ${unit} · ${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ${xUnit}`),
     ];
     const CW = 1400;
     const L = 100;
@@ -282,11 +289,11 @@ export default function CrashForceChart({
     ctx.restore();
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
-    ctx.fillText(`${niceValue(tMin)} ms`, L, T + ph + 10);
+    ctx.fillText(`${niceValue(tMin)} ${xUnit}`, L, T + ph + 10);
     ctx.textAlign = "center";
-    ctx.fillText("zaman (ms)", L + pw / 2, T + ph + 10);
+    ctx.fillText(`${xName} (${xUnit})`, L + pw / 2, T + ph + 10);
     ctx.textAlign = "right";
-    ctx.fillText(`${niceValue(tMax)} ms`, L + pw, T + ph + 10);
+    ctx.fillText(`${niceValue(tMax)} ${xUnit}`, L + pw, T + ph + 10);
     // ortalama aralığı (gölge)
     for (const s of means) {
       ctx.fillStyle = colorFor(s.key);
@@ -423,7 +430,7 @@ export default function CrashForceChart({
                   left: `${(px(p.at) / W) * 100}%`,
                   top: `${(py(p.peak) / H) * 100}%`,
                 }}
-                title={`${p.label} tepe ${niceValue(p.peak)} ${unit} · t = ${niceValue(p.at)} ms`}
+                title={`${p.label} tepe ${niceValue(p.peak)} ${unit} · ${xSym} = ${niceValue(p.at)} ${xUnit}`}
                 data-testid="crash-chart-peak"
               >
                 <span className="crash-chart-peak-label">{niceValue(p.peak)}</span>
@@ -432,23 +439,23 @@ export default function CrashForceChart({
         </div>
       </div>
       <span className="cv-axis ds-sb crash-chart-xaxis">
-        <span>{niceValue(tMin)} ms</span>
-        <span>zaman (ms)</span>
-        <span>{niceValue(tMax)} ms</span>
+        <span>{niceValue(tMin)} {xUnit}</span>
+        <span>{`${xName} (${xUnit})`}</span>
+        <span>{niceValue(tMax)} {xUnit}</span>
       </span>
       <span className="cv-stats">
         {peaks.map((p) => (
           <span key={p.key}>
             <span className="ml-k">{p.label} tepe</span>
             <strong>{`${niceValue(p.peak)} ${unit}`}</strong>
-            <span className="ds-sb">{`t = ${niceValue(p.at)} ms`}</span>
+            <span className="ds-sb">{`${xSym} = ${niceValue(p.at)} ${xUnit}`}</span>
           </span>
         ))}
         {means.map((s) => (
           <span key={`mean-${s.key}`}>
             <span className="ml-k">{s.label} ortalama</span>
             <strong>{`${niceValue(s.m.mean)} ${unit}`}</strong>
-            <span className="ds-sb">{`${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ms`}</span>
+            <span className="ds-sb">{`${niceValue(s.m.t0)}–${niceValue(s.m.t1)} ${xUnit}`}</span>
           </span>
         ))}
       </span>

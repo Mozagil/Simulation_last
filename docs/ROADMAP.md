@@ -1728,7 +1728,16 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   "Doğrulanmadı"). `GET /materials` `crash_jc` döner; `PUT /materials/{id}/crash-jc` {jc | null}
   yalnız kullanıcı malzemesi (kütüphane 403). Veri seti arşivi kolonu. Dev DB'ye uygulandı.
   Test: `test_material_crash_jc.py` (3); backend 1503 geçti.
-- g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
+- g ✅ (2026-10-15) Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği. LAW2 kartında parçaya
+  atanan malzemenin `crash_jc`'si varsa "⤓ <malzeme> → alanlara" (`lib/crashJc.ts` `jcToCard`: A MPa →
+  σy Pa, B, n, C; ε̇₀ / m / T_m / T_r / D₁–D₅ yalnız kaynakta varsa; boş alan değişmez). Ortak kart
+  tüm parçaların setleri (ada göre tekil), parça kartı kendi seti; malzeme adımında
+  `CrashMaterialStep` → `jcOf`. σ–εₚ önizleme (`stressStrainSeries`): LAW2 a + b·εₚⁿ (referans hız /
+  sıcaklık; a boşsa not), LAW36 girilen eğriler; `CrashForceChart` x ekseni artık parametreli
+  (`xName / xSym / xUnit`, varsayılan zaman ms). LAW36 kütüphane eğrileri zaten 1.14c2'de
+  ("Eğriler malzemeden"). Tarayıcıda: crash box #0 → 7075-T6 atandı, düğme a 546e6 Pa, b 674 doldurdu,
+  eğri εₚ 0.5'te 955 MPa (= 546 + 674·0.5^0.72). crashDoc girdisi. 1.24 ✅ (a–g).
+  Test: `CrashMaterialCard.jc.test.tsx` (5).
 *1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
 Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
 - c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı
