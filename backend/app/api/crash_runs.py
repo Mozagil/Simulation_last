@@ -40,15 +40,19 @@ def record_from_meta(
 ) -> CrashRun | None:
     """job.json meta'sından kayıt açar ya da günceller (job_id tekil).
 
-    Geometrisi olmayan iş kaydedilmez (FK); None döner.
+    Geometrisi ya da içe aktarması (1.21e-2b, `import_id`) olmayan iş kaydedilmez; None döner.
     """
     job_id = str(meta.get("job_id") or "")
     gid = meta.get("geometry_id")
-    if not job_id or gid is None or db.get(Geometry, int(gid)) is None:
+    import_id = meta.get("import_id")
+    if gid is not None and db.get(Geometry, int(gid)) is None:
+        gid = None
+    if not job_id or (gid is None and not import_id):
         return None
     run = db.query(CrashRun).filter(CrashRun.job_id == job_id).one_or_none()
     if run is None:
-        run = CrashRun(job_id=job_id, geometry_id=int(gid))
+        run = CrashRun(job_id=job_id, geometry_id=int(gid) if gid is not None else None,
+                       import_id=str(import_id) if import_id else None)
         if created_at is not None:
             run.created_at = created_at
         db.add(run)
@@ -72,6 +76,7 @@ def _summary(r: CrashRun) -> dict[str, Any]:
         "id": r.id,
         "job_id": r.job_id,
         "geometry_id": r.geometry_id,
+        "import_id": r.import_id,
         "name": r.name,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "dimension": r.dimension,

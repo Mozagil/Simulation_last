@@ -185,3 +185,31 @@ def test_anim_cache_complete_and_atomic_write(tmp_path):
     assert not list(tmp_path.glob("*.tmp"))
     p.write_text('{"faces": [1, 2', encoding="utf-8")  # yarım
     assert not _cache_complete(p)
+
+
+@requires_db
+def test_import_run_without_geometry_is_recorded():
+    """1.21e-2b — içe aktarılan (.k) koşu: geometri yok, import_id var → kayıt; ikisi de yoksa kayıt yok."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    from app.api.crash_runs import record_from_meta
+    from app.models.crash_run import CrashRun
+
+    db = SessionLocal()
+    try:
+        imp = uuid.uuid4().hex
+        run = record_from_meta(db, {"job_id": str(uuid.uuid4()), "import_id": imp, "status": "pending", "name": "k içe aktarma"})
+        assert run is not None and run.geometry_id is None and run.import_id == imp
+        listed = TestClient(app).get("/crash/runs").json()["runs"]
+        assert any(r["id"] == run.id and r["import_id"] == imp and r["geometry_id"] is None for r in listed)
+        # silinmiş / olmayan geometri + içe aktarma yok → kayıt yok
+        assert record_from_meta(db, {"job_id": str(uuid.uuid4()), "geometry_id": 99999999}) is None
+        assert record_from_meta(db, {"job_id": str(uuid.uuid4())}) is None
+        # DB kuralı: ikisi birden boş satır yazılamaz
+        db.add(CrashRun(job_id=str(uuid.uuid4())))
+        with pytest.raises(IntegrityError):
+            db.commit()
+        db.rollback()
+    finally:
+        db.close()

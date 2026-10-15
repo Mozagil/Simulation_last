@@ -1433,7 +1433,11 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
   "İçe aktar" düğmesi; içe aktarılan model koşulabilir (şema değişikliği).
   - 2a ✅ `GET /crash/import/dyna/{id}/preview`: dış yüzey (kabuk + katı dış
     yüzleri, mm) + yüz başına PID — three.js önizlemesi için.
-  - 2b `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic migration).
+  - 2b ✅ (2026-10-15) `crash_runs.geometry_id` nullable + `import_id` kolonu (Alembic `d0e1f2a3b4c5`,
+    dizin + CHECK "geometri ya da içe aktarma"). `record_from_meta` meta'daki `import_id` ile
+    geometrisiz koşuyu kaydeder (ikisi de yoksa kayıt yok); `/crash/runs` özetinde `import_id`. ML
+    korpusu geometriye iç birleşimle → içe aktarma koşuları korpusa girmez. Downgrade geometrisiz
+    satırları siler (not). Dev DB'ye uygulandı. Test: `test_crash_runs.py::test_import_run_without_geometry_is_recorded`.
   - 2c Koşu: import.json parametreleriyle adaptör → OpenRadioss.
   - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
     okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
