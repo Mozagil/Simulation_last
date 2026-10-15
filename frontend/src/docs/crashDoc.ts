@@ -172,7 +172,7 @@ export const CRASH_DOC: DocSection[] = [
     title: "4 · Crash → 3 Temaslar",
     intro: "Temas tanımlanmazsa parçalar birbirinin içinden geçer. Aynı parça iki tarafta = öz temas (katlanan kutu).",
     image: IMG("04-temaslar.png"),
-    imageCaption: "TYPE7 öz temas (#0 ↔ #0) ve bayraklar.",
+    imageCaption: "Temas kartı: kapsam Parça çifti / Tüm model (genel temas, TYPE24) ve bayraklar.",
     items: [
       { name: "TYPE7", what: "Düğüm → yüzey teması (slave düğümleri master yüzeye çarpar). Genel amaçlı, hızlı.", when: "Kutunun kendi katları (öz temas), küre → plaka, impaktör → kiriş.", card: "/INTER/TYPE7" },
       { name: "TYPE24", what: "Yüzey ↔ yüzey (kenar–kenar dahil). İnce kabuk katlanırken kenarların birbirine girmesini daha iyi yakalar.", card: "/INTER/TYPE24" },
@@ -180,6 +180,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Stfac", what: "Temas rijitliği ölçeği." },
       { name: "GAPmin (TYPE7) / Iedge (TYPE24)", what: "En küçük temas boşluğu (mm) / kenar teması bayrağı." },
       { name: "Istf, Inacti", what: "Rijitlik hesap yöntemi; başlangıç penetrasyonunun ele alınışı. Boş = Radioss varsayılanı." },
+      { name: "Kapsam: Parça çifti / Tüm model", what: "Tüm model = genel temas: tüm kabuk parçalar tek yüzey, tüm katı parçaların dış yüzü ayrı yüzey; yalnız TYPE24 (öz temas dahil; kabuk + katı varsa üç arayüz). Parça seçimi gizlenir, bayraklar aynı. Çift temaslarla birlikte kullanılabilir. Not (kutu ezme, 1.24d): parçalar arası başlangıç boşluğu temas boşluğundan ((t₁ + t₂)/2) küçükse Radioss bunu başlangıç penetrasyonu sayıp yok sayar — starter listing'inde yazar (veri).", card: "/INTER/TYPE24" },
     ],
   },
   {
@@ -257,6 +258,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
       { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
       { name: "Kesit kanalları + Kesitler", what: "Modelin içinden geçen sanal düzlem (M, M1, M2) — oradan geçen iç kuvvet/moment.", when: "S-kiriş, ROPS (dikmelerden kuvvet), Hopkinson giriş çubuğu.", card: "/TH/SECTIO" },
+      { name: "Ezilme mesafesi referansı", what: "Çıktı ayarlarının altında: Yok / Kütle-kızak kartı (ana düğüm) / bölge (düğüm ortalaması). Seçilince deck'e ayrı bir düğüm kanalı yazılır (DX DY DZ) ve koşu sonunda δ(t) = arka ucun çarpma yönündeki yer değiştirmesi hesaplanır (ezilme +). Rijit arka uçta iki seçim aynı sonucu verir (crash box + 100 kg kızak: 100.95 mm). Yok = ezilme sonuçları yazılmaz.", card: "/TH/NODE" },
       { name: "Düğüm kanalları", what: "Seçili düğümlerin yer değiştirme / hız / ivmesi.", card: "/TH/NODE" },
     ],
   },
@@ -272,6 +274,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Hata #n (kırmızı bant)", what: "Koşu hatayla biterse durum failed (kırmızı) ve kodlu hata: #1 çözüm ıraksadı (enerji NaN; Radioss yine NORMAL TERMINATION yazabilir — eğri ve animasyon ıraksama anına kadar açılır), #2 starter hatası (ERROR ID'ler), #3 çözücü anormal sonlandı (çıkış kodu ≠ 0), #4 zaman aşımı, #5 OpenRadioss bulunamadı, #9 sınıflanmamış. Hatalı koşu DOE / ML korpusuna girmez." },
       { name: "Enerji · J grafiği", what: "İç enerji (deformasyonla yutulan), kinetik, hourglass, temas enerjisi, dış iş ve toplam enerji (IE + KE + dönme + HG − dış iş) zamana göre. Global TH sütunları; geçmişteki 📈 penceresinde de aynı seriler." },
       { name: "Enerji özeti", what: "İç / kinetik enerji son ve maks; hourglass son · HG/IE %; temas son · temas/IE %; dış iş son; enerji dengesi |ΔE|/E %. Değerler veridir; kabul eşiği mühendisin." },
+      { name: "Ezilme · mm / kN", what: "Ezilme referansı seçilen koşuda: F–δ grafiği (duvar kuvveti, ezilme mesafesine göre; δ_maks'a kadar yükleme kolu), ezilme son / maks (mm), duvar işi ∫F dδ (J), ortalama ezilme kuvveti = duvar işi / δ_maks (kN) ve karşılaştırma için IE_son / δ_son (kN). İkisinin farkı hourglass, sürtünme ve öz temas enerjisinden — veri. Ör. crash box 3 mm + 100 kg kızak, 20 ms: δ 100.9 mm, iş 4783 J, F_ort 47.4 kN, IE / δ 42.8 kN. Karşılaştırma tablosunda da üç satır." },
       { name: "Geri sekme · mm", what: "5 · Sonuçlar'da koşu animasyon kareleri yazdıysa: kare başına en büyük yer değiştirme, iki tanım yan yana. Mutlak |u| — ilk konuma göre, rijit öteleme dahil (tabanı sabit parçada deformasyon; serbest parçada yolu ölçer). Öteleme çıkarılmış |u − ū| — parçanın o karedeki ortalama ötelemesi çıkarılır, rijit dönme kalır. Tabloda model ve parça satırları (mesh parça no): tepe ve zamanı, son, geri sekme = tepe − son, oran. Eğri |u|max–t animasyon karelerinden (yüzey düğümleri), model ya da parça seçilir. Tepe son karedeyse geri sekme 0. Koşuyu sekmeye kadar sürdürmek ve hangi tanıma bakılacağı mühendisin." },
       { name: "RWALL Fmax / impuls", what: "Rijit duvar tepe kuvveti (kN) ve toplam impuls (N·s). Kızakta impuls = m·Δv.", card: "/TH/RWALL" },
       { name: "Temas kuvveti", what: "Duvarsız modellerde kuvvet temastan okunur (contact_1_force…).", card: "/TH/INTER" },
