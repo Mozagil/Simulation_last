@@ -813,6 +813,27 @@ class CrashSpringEnd(BaseModel):
         return self
 
 
+class CrashCrushRefParams(BaseModel):
+    """1.23 C8b — ezilme mesafesi referansı: arka uç. `rigid_body` (ad → ana düğüm, ör. kızak) ya da
+    `region` (ad → bölge düğümleri, ortalama). δ(t) = düğüm yer değiştirmesinin `direction` (boşsa
+    çarpma hız vektörü) üzerine izdüşümü, ortalama; ezilme pozitif. Seçim mühendisin."""
+
+    rigid_body: str | None = Field(default=None, description="CrashRigidBodyParams.name")
+    region: str | None = Field(default=None, description="Bölge adı (ör. kutu_arka)")
+    direction: tuple[float, float, float] | None = Field(default=None, description="Ezilme yönü; boş = ilk hız yönü")
+
+    @model_validator(mode="after")
+    def _one(self) -> "CrashCrushRefParams":
+        if (self.rigid_body is None) == (self.region is None):
+            raise ValueError("crush_ref: rigid_body ya da region tam olarak biri verilmeli.")
+        if self.direction is not None:
+            for v in self.direction:
+                _finite(v, "direction")
+            if math.hypot(*self.direction) == 0:
+                raise ValueError("crush_ref: yön vektörü sıfır.")
+        return self
+
+
 class CrashDampingParams(BaseModel):
     """1.24c2 — Rayleigh sönümü /DAMP (hm_cfg radioss110 Damp.cfg): C = α·M + β·K.
 

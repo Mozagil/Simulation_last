@@ -1622,6 +1622,18 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     zaten A4'te (kullanıcı: "aynı şey", 2026-10-14). C7 ✅.
 - C8 ✅ (2026-10-14) Kuvvet grafiği açıklaması: y ekseni adı + birim + 1·2·2.5·5 ölçek, kılavuz çizgi, tepe noktası, ortalama kuvvet (kullanıcı kararı B: temas aralığında impuls / süre; aralık |F| > tepenin %1'i, gölgeli), kısa veri kaynağı açıklaması.
 - C8b Ortalama ezilme kuvveti (yer değiştirme tabanlı): emilen enerji / ezilme mesafesi; hareketli parçanın arka düğümü için düğüm TH çıktısı gerekir (çıktı kartı + backend + UI). Ayrı onay.
+  Kullanıcı onayı (2026-10-15) — tanım: δ(t) arka referansın çarpma yönündeki yer değiştirmesi (kızak
+  ana düğümü ya da bölge ortalaması); F–δ eğrisi; F_ort = ∫F dδ / δ_son (duvar işi) + karşılaştırma için
+  IE_son / δ_son; δ_son, δ_maks. Üç adım:
+  - C8b-a ✅ (2026-10-15) Deck + δ(t): istekte `crush_ref` {rigid_body | region, direction?}
+    (`CrashCrushRefParams`; yön boşsa ilk hız vektörü) → ayrı `/TH/NODE/8` "crush_ref" (DX DY DZ;
+    th_nodes grubuna dokunulmaz), th_spec'e yön. Post-process `crush_distance`: düğümlerin yer
+    değiştirmesinin yöne izdüşümü, ortalama (mm, ezilme +; eksik sütunda None) → eğri `crush_mm`,
+    skaler `crush_final_mm`, `crush_max_mm`. `REQUEST_KEYS`'e `crush_ref`. Gerçek: #362 kurulumu +
+    kızak ana düğümü (#380) ve kutu_arka bölgesi (#381) — ikisi de δ_son 100.946 mm (rijit arka uç,
+    beklenen); IE / Fmax #362 ile aynı (ek çıktı çözümü değiştirmedi). Test: `test_crash_crush_distance.py` (7).
+  - C8b-b F_ort = ∫F dδ / δ_son, IE_son / δ_son, F–δ eğrisi (backend skalerleri).
+  - C8b-c UI: Sonuçlar'da F–δ grafiği + özet, crush_ref seçimi, karşılaştırma.
 - D1 ✅ (2026-10-14) Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
   4 · Crash "Deck'i görüntüle": `POST /crash/deck/preview` (gövde = /crash/solve isteği, ham
   kartlar dahil; geçici klasör, solver koşmaz) → starter + engine metni + kart listesi

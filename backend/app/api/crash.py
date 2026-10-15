@@ -39,6 +39,7 @@ from app.solvers.crash_params import (
     CrashPressureLoadParams,
     CrashSphProjectileParams,
     CrashSpringParams,
+    CrashCrushRefParams,
     CrashDampingParams,
     CrashMassParams,
     CrashModelParams,
@@ -154,6 +155,9 @@ class CrashSolveRequest(BaseModel):
     )
     springs: list[CrashSpringParams] = Field(
         default_factory=list, description="1.24b1 — yay elemanları (/SPRING + /PROP/TYPE4)"
+    )
+    crush_ref: CrashCrushRefParams | None = Field(
+        default=None, description="1.23 C8b — ezilme mesafesi referansı (rijit gövde ana düğümü ya da bölge)"
     )
     damping: CrashDampingParams | None = Field(
         default=None, description="1.24c2 — Rayleigh sönümü /DAMP (α 1/s, β s); yok = sönüm yok"
@@ -429,6 +433,7 @@ def _starter_params(
         "blast_loads": [bl.model_dump() for bl in body.blast_loads],
         "springs": [sp.model_dump() for sp in body.springs],
         "damping": body.damping.model_dump() if body.damping else None,
+        "crush_ref": body.crush_ref.model_dump() if body.crush_ref else None,
         "raw_cards": body.raw_cards,
         "region_nodes": region_nodes,
     }
@@ -607,6 +612,7 @@ def crash_solve(
         "blast_loads": [bl.model_dump() for bl in body.blast_loads],
         "springs": [sp.model_dump() for sp in body.springs],
         "damping": body.damping.model_dump() if body.damping else None,
+        "crush_ref": body.crush_ref.model_dump() if body.crush_ref else None,
         "raw_cards": body.raw_cards,
         "dimension": body.dimension,
         "solver_ran": False,

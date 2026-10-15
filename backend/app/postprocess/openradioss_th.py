@@ -408,6 +408,23 @@ def _series_from_csv_cols(cols: dict[str, list[float]]) -> dict[str, Any]:
     return packed
 
 
+def crush_distance(named: dict[str, list[float]], spec: dict[str, Any]) -> list[float] | None:
+    """1.23 C8b — th_spec `crush` grubu → δ(t) = ortalama (DX, DY, DZ)·d (mm). Düğümlerden birinin
+    sütunu eksikse (grup adlandırılamadı) None — eksik veriyle ortalama alınmaz."""
+    g = next((g for g in spec.get("groups") or [] if g.get("kind") == "crush"), None)
+    if g is None or not g.get("objects"):
+        return None
+    dx, dy, dz = g.get("direction") or (0.0, 0.0, 0.0)
+    series = []
+    for n in g["objects"]:
+        cols = [named.get(f"th_crush_{n}_{v}") for v in ("DX", "DY", "DZ")]
+        if any(c is None for c in cols):
+            return None
+        series.append([a * dx + b * dy + c * dz for a, b, c in zip(*cols)])
+    m = min(len(s) for s in series)
+    return [sum(s[i] for s in series) / len(series) for i in range(m)]
+
+
 def named_th_curves(
     cols: dict[str, list[float]], spec: dict[str, Any]
 ) -> tuple[dict[str, list[float]], list[str]]:
@@ -446,6 +463,7 @@ def named_th_curves(
                     "inter": f"th_inter_{idx}_{v}",
                     "sect": f"th_sect_{idx}_{v}",
                     "spring": f"th_spring_{idx}_{v}",
+                    "crush": f"th_crush_{obj}_{v}",
                 }.get(kind, f"th_node_{obj}_{v}")
                 out[key] = cols[gcols[k]]
                 k += 1
@@ -662,6 +680,13 @@ def parse_openradioss_dir(work_dir: Path, filters_override: dict[str, Any] | Non
             scalars[f"section_{k}_force_max"] = float(max(sf)) if sf else 0.0
             scalars[f"section_{k}_impulse_final"] = float(si[-1]) if si else 0.0
         k += 1
+    # 1.23 C8b — ezilme mesafesi δ(t): referans düğümlerin yer değiştirmesinin ezilme yönüne
+    # izdüşümü, ortalama (mm, ezilme +). Spec'te `crush` grubu yoksa hiçbir şey yazılmaz.
+    crush = crush_distance(named, spec) if spec is not None else None
+    if crush and len(crush) == len(time):
+        curves_extra["crush_mm"] = crush
+        scalars["crush_final_mm"] = float(crush[-1])
+        scalars["crush_max_mm"] = float(max(crush))
     if acc_g and time_s:
         scalars["acc_peak_g"] = float(max(abs(v) for v in acc_g))
         scalars["hic15"] = hic15(time_s, acc_g)
