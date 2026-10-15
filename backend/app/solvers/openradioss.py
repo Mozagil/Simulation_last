@@ -32,6 +32,7 @@ from app.solvers.base import (
 from app.solvers.crash_params import (
     _th_vars_ok,
     CrashContactParams,
+    CrashDampingParams,
     CrashBcParams,
     CrashBlastLoadParams,
     CrashEngineParams,
@@ -625,6 +626,36 @@ _PBLAST_SURF_BASE = 9995
 _SPRING_GR_BASE = 9940
 _SPRING_BC_BASE = 40
 _SPRING_TH_ID = 6
+# 1.24c2 — Rayleigh sönümü: düğüm grubu ve /DAMP kimliği.
+_DAMP_GR_BASE = 9930
+_DAMP_ID = 1
+
+
+def _damp_lines(raw: Any, part_ids: list[int], rid: Callable[[int], int]) -> list[str]:
+    """1.24c2 — /DAMP (hm_cfg radioss110): Alpha Beta grnod_id skew_id Tstart Tstop.
+    α (1/s) → 1/ms, β (s) → ms (deck zaman birimi ms). Sönüm yoksa boş."""
+    if not raw:
+        return []
+    try:
+        d = CrashDampingParams.model_validate(raw)
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz sönüm (/DAMP): {exc}") from exc
+    pids = sorted(set(d.part_ids)) or list(part_ids)
+    missing = [p for p in pids if p not in part_ids]
+    if missing:
+        raise SolverError(f"/DAMP: parça {missing} mesh'te yok.")
+    gid = _DAMP_GR_BASE
+    out = [f"/GRNOD/PART/{gid}", "damp_parts"]
+    rids = [rid(p) for p in pids]
+    for i in range(0, len(rids), 10):
+        out.append("".join(_i(v) for v in rids[i : i + 10]))
+    out += [
+        f"/DAMP/{_DAMP_ID}",
+        "rayleigh",
+        "#              Alpha                Beta  grnod_id   skew_id              Tstart               Tstop",
+        f"{_f(d.alpha_per_s / 1000.0)}{_f(d.beta_s * 1000.0)}{_i(gid)}{_i(0)}{_f(d.t_start_ms)}{_f(d.t_stop_ms)}",
+    ]
+    return out
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -1314,6 +1345,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             lines.append("".join(_i(v) for v in ids[i : i + 10]))
         th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
                         "names": [s.name for s in sections], "vars": th.sect.vars})
+    lines.extend(_damp_lines(params.get("damping"), part_ids, _rid))
     lines.extend(_raw_card_lines(params))
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")

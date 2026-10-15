@@ -1666,6 +1666,16 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   için değer yok (yeniden işleme ayrı). Test: `test_crash_springback.py`.
 - c2 `/DAMP` (Rayleigh) kartı: salınımı söndürmek için; backend + Çözüm kontrolü UI (iki PR).
   Kullanmak mühendisin kararı; varsayılan yok.
+  - c2-1 ✅ (2026-10-15) Backend: `CrashDampingParams` (α 1/s, β s, `part_ids` boş = tüm parçalar,
+    Tstart / Tstop ms; α = β = 0 reddedilir) → istekte `damping`. Deck: `/GRNOD/PART/9930` +
+    `/DAMP/1` satır düzeni resmi hm_cfg radioss110 `Damp.cfg`'den (Alpha Beta grnod skew Tstart Tstop;
+    α/1000 → 1/ms, β·1000 → ms). Starter echo'su doğrulandı (BETA 1e-3 / 1e-2 ms, STOP 1e30,
+    "MAX TIME STEP FACTOR 1.0"). Ölçüldü (#370 LAW1 seken kutu kurulumu): sönümsüz Δt_min 5.4e-4 ms,
+    IE_son 102 J, def geri sekme 3.39 mm → β 1e-6 s (#372): Δt_min 3.1e-4 ms, IE_son 3.9 J, def son
+    0.58 mm, geri sekme 4.15 mm (%88). β 1e-5 s (#373) sonuçları #372 ile birebir aynı; listing'de
+    uyarı yok — Radioss β'yı kendi içinde sınırlıyor olabilir (gözlem, doğrulanmadı). Test:
+    `test_crash_damp.py`.
+  - c2-2 UI: 4 · Crash → Çözüm kontrolü kartında sönüm alanları + geçmişten yükleme.
 - c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
 - d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
