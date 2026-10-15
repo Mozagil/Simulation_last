@@ -1676,8 +1676,17 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   İmpuls / TH kanalları; okunur ad + birim ("Duvar kuvveti · CFC 600 (kN)", "Temas 2 kuvveti (kN)"); impuls
   eğrisi artık kuvvet sayılmıyor (birim N·s, ortalama çizgisi yok). `crashRunFormat.ts`
   `curveGroup` / `curveLabel`. Test: `crashRunFormat.test.ts`.
-- d Skaler tablo yeniden tasarım: okunur satır, büyük font, birim ayrı sütun, koşu başlıkları.
-- b Karşılaştırmada N koşu yan yana (Sol/Sağ yerine ızgara), büyük pencere.
+- d ✅ (2026-10-15) Skaler tablo yeniden tasarım: okunur satır adı ("Duvar kuvveti, tepe", "İç enerji, son",
+  "Kesit 1 kuvveti, tepe"), birim ayrı sütun, koşu başlığı #no + ad + geo · t_end, 14–15 px font, ad sütunu
+  yatay kaydırmada sabit. Oranlar (enerji dengesi, eklenen kütle) % olarak; |v| < 1 üslü yerine ondalık
+  (0.8660); silinen eleman tam sayı. Yalnız görünüm; veri / skaler kümesi aynı. Test:
+  `CrashComparePage.test.tsx`, `CrashHistory.test.tsx`.
+- b ✅ (2026-10-15) Karşılaştırmada N koşu yan yana: Sol/Sağ seçimi kalktı, çözülmüş koşuların hepsi
+  ızgarada (2 → 2 sütun, 3 → 3, 4 → 2×2, 5–6 → 3); 3+ koşuda çiplerle çıkar / ekle (en az 2). Ortak
+  zaman, ortak renk ölçeği (tüm pencereler aynı skalerdeyse min–max birleşimi) ve kamera eşleme N
+  pencereye. "Büyük pencere": ızgara tam ekran; ESC yalnız büyük pencereyi kapatır (yakalama evresi),
+  sayfa açık kalır. Hücre ≥ 540 px (tuval ≥ 240 px + denetimler). Test: `CrashCompareAnim.test.tsx`,
+  `CrashHistory.test.tsx`.
 - a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
 - e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
   duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.

@@ -11,21 +11,40 @@ import { createPortal } from "react-dom";
 
 import type { CrashRunCompared } from "../api/crash";
 import { CURVE_GROUPS, curveGroup, curveLabel, curveUnit, fmtScalar, runHasResults, runLabel, runTitle } from "../lib/crashRunFormat";
-import CrashCompareAnim from "./CrashCompareAnim";
+import CrashCompareAnim, { gridColumns } from "./CrashCompareAnim";
 import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
 
-/** Skaler tablosu satırları (varsa); kesit / temas tepe değerleri ayrıca. */
-export const SCALAR_ROWS: [string, string][] = [
-  ["rwall_force_max", "Duvar Fmax (kN)"],
-  ["rwall_impulse_final", "Duvar impuls (N·s)"],
-  ["internal_energy_final", "IE son (J)"],
-  ["kinetic_energy_final", "KE son (J)"],
-  ["hourglass_energy_final", "HG son (J)"],
-  ["energy_balance_rel", "Enerji dengesi"],
-  ["timestep_min", "Δt_min (ms)"],
-  ["mass_added_rel", "Eklenen kütle oranı"],
-  ["elements_deleted", "Silinen eleman"],
+/** Skaler tablosu satırı: okunur ad + birim ayrı sütunda; `scale` gösterim çarpanı (oran → %). */
+export type ScalarRow = { key: string; label: string; unit: string; scale?: number };
+
+/** 1.25d — skaler tablosu satırları (varsa); kesit / temas tepe değerleri ayrıca. */
+export const SCALAR_ROWS: ScalarRow[] = [
+  { key: "rwall_force_max", label: "Duvar kuvveti, tepe", unit: "kN" },
+  { key: "rwall_impulse_final", label: "Duvar impulsu, son", unit: "N·s" },
+  { key: "internal_energy_final", label: "İç enerji, son", unit: "J" },
+  { key: "kinetic_energy_final", label: "Kinetik enerji, son", unit: "J" },
+  { key: "hourglass_energy_final", label: "Hourglass enerjisi, son", unit: "J" },
+  { key: "energy_balance_rel", label: "Enerji dengesi |ΔE| / E", unit: "%", scale: 100 },
+  { key: "timestep_min", label: "En küçük zaman adımı Δt", unit: "ms" },
+  { key: "mass_added_rel", label: "Eklenen kütle oranı", unit: "%", scale: 100 },
+  { key: "elements_deleted", label: "Silinen eleman", unit: "adet" },
 ];
+
+/** `section_3_force_max` → "Kesit 3 kuvveti, tepe" (kN); eşleşmezse null. */
+export function extraScalarRow(key: string): ScalarRow | null {
+  const m = /^(section|contact)_(\d+)_force_max$/.exec(key);
+  if (!m) return null;
+  return { key, label: `${m[1] === "section" ? "Kesit" : "Temas"} ${m[2]} kuvveti, tepe`, unit: "kN" };
+}
+
+function scalarCell(v: number | undefined, row: ScalarRow): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  if (row.unit === "adet") return String(Math.round(v));
+  if (row.unit === "%") return (v * (row.scale ?? 1)).toFixed(2);
+  // |v| < 1: üslü yerine ondalık (0.8660, 0.0005393); çok küçükte JS yine üslü yazar
+  if (v !== 0 && Math.abs(v) < 1) return v.toPrecision(4);
+  return fmtScalar(v);
+}
 
 /** Karşılaştırmadaki koşulardan `key` eğrisi; t ≤ tMax kırpılır (yalnız görünüm). */
 export function compareSeries(runs: CrashRunCompared[], key: string, tMax: number | null): ForceSeries[] {
@@ -52,12 +71,17 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
   const tMaxNum = Number(tMaxRaw.replace(",", "."));
   const tMax = tMaxRaw.trim() !== "" && Number.isFinite(tMaxNum) && tMaxNum > 0 ? tMaxNum : null;
 
-  // animasyon çifti: sonuçlu koşulardan ilk ikisi; 2'den fazlaysa seçilir
+  // 1.25b — ızgaradaki koşular: sonuçlu koşuların hepsi varsayılan; çiplerle çıkarılır / eklenir
   const animRuns = runs.filter((r) => r.solver_ran && runHasResults(r));
-  const [pairA, setPairA] = useState(animRuns[0]?.id ?? null);
-  const [pairB, setPairB] = useState(animRuns[1]?.id ?? null);
-  const a = animRuns.find((r) => r.id === pairA);
-  const b = animRuns.find((r) => r.id === pairB);
+  const [shown, setShown] = useState<Set<number>>(() => new Set(animRuns.map((r) => r.id)));
+  const gridRuns = animRuns.filter((r) => shown.has(r.id));
+  const toggleShown = (id: number) =>
+    setShown((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -65,23 +89,15 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const extraRows: [string, string][] = [
-    ...new Set(runs.flatMap((r) => Object.keys(r.scalars).filter((k) => /^(section|contact)_\d+_force_max$/.test(k)))),
-  ]
-    .sort()
-    .map((k) => [
-      k,
-      k.replace(/^section_(\d+)_force_max$/, "Kesit $1 Fmax (kN)").replace(/^contact_(\d+)_force_max$/, "Temas $1 Fmax (kN)"),
-    ]);
-  const rows = [...SCALAR_ROWS, ...extraRows].filter(([k]) => runs.some((r) => r.scalars[k] != null));
+  const extraRows = [...new Set(runs.flatMap((r) => Object.keys(r.scalars)))]
+    .sort((x, y) => x.localeCompare(y, undefined, { numeric: true }))
+    .map(extraScalarRow)
+    .filter((r): r is ScalarRow => r != null);
+  const rows = [...SCALAR_ROWS, ...extraRows].filter((row) => runs.some((r) => r.scalars[row.key] != null));
 
   const main = compareSeries(runs, curveKey, tMax);
   const mainU = curveUnit(curveKey);
   const energy = curveKey === "internal_energy" ? [] : compareSeries(runs, "internal_energy", tMax);
-
-  const runOption = (id: number) => {
-    return runTitle(animRuns.find((x) => x.id === id)!);
-  };
 
   return createPortal(
     <div className="crash-compare-page" role="dialog" aria-label="Koşu karşılaştırması" data-testid="crash-compare">
@@ -118,37 +134,28 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
         ) : (
           <>
             {animRuns.length > 2 && (
-              <div className="crash-compare-pair">
-                <label className="mesh-field">
-                  <span>Sol</span>
-                  <select aria-label="Sol animasyon" value={pairA ?? ""} onChange={(e) => setPairA(Number(e.target.value))}>
-                    {animRuns.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {runOption(r.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="mesh-field">
-                  <span>Sağ</span>
-                  <select aria-label="Sağ animasyon" value={pairB ?? ""} onChange={(e) => setPairB(Number(e.target.value))}>
-                    {animRuns.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {runOption(r.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="crash-var-chips crash-compare-pick" role="group" aria-label="Izgaradaki koşular">
+                {animRuns.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={shown.has(r.id) ? "crash-var-chip active" : "crash-var-chip"}
+                    aria-pressed={shown.has(r.id)}
+                    onClick={() => toggleShown(r.id)}
+                  >
+                    {runTitle(r)}
+                  </button>
+                ))}
               </div>
             )}
-            {a && b && (
-              <div className="crash-compare-page-anim">
+            {gridRuns.length >= 2 ? (
+              <div className="crash-compare-page-anim" data-rows={Math.ceil(gridRuns.length / gridColumns(gridRuns.length))}>
                 <CrashCompareAnim
-                  key={`${a.id}-${b.id}`}
-                  a={{ id: a.id, title: runTitle(a) }}
-                  b={{ id: b.id, title: runTitle(b) }}
+                  runs={gridRuns.map((r) => ({ id: r.id, title: runTitle(r) }))}
                 />
               </div>
+            ) : (
+              <p className="doe-empty">Izgara için en az iki koşu seçin.</p>
             )}
           </>
         )}
@@ -157,24 +164,36 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
       <section className="crash-compare-page-section" aria-label="Skalerler">
         <h3>Skalerler</h3>
         <div className="crash-history-scroll">
-          <table className="doe-table crash-compare-table">
+          <table className="crash-scalar-table" aria-label="Skaler karşılaştırma">
             <thead>
               <tr>
-                <th />
+                <th scope="col" className="crash-scalar-th-name">
+                  Büyüklük
+                </th>
+                <th scope="col" className="crash-scalar-th-unit">
+                  Birim
+                </th>
                 {runs.map((r) => (
-                  <th key={r.id} title={runLabel(r)}>
-                    #{r.id}
+                  <th key={r.id} scope="col" className="crash-scalar-th-run" title={runLabel(r)}>
+                    <span className="crash-scalar-th-id">#{r.id}</span>
+                    {r.name?.trim() && <span className="crash-scalar-th-sub">{r.name.trim()}</span>}
+                    <span className="crash-scalar-th-sub">
+                      geo {r.geometry_id} · {r.t_end_ms} ms
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(([k, title]) => (
-                <tr key={k}>
-                  <td>{title}</td>
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <th scope="row" title={row.key}>
+                    {row.label}
+                  </th>
+                  <td className="crash-scalar-unit">{row.unit}</td>
                   {runs.map((r) => (
                     <td key={r.id} className="crash-run-num">
-                      {fmtScalar(r.scalars[k])}
+                      {scalarCell(r.scalars[row.key], row)}
                     </td>
                   ))}
                 </tr>
