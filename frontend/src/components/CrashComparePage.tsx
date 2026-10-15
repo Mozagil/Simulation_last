@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { CrashRunCompared } from "../api/crash";
-import { curveUnit, fmtScalar, runHasResults, runLabel, runTitle } from "../lib/crashRunFormat";
+import { CURVE_GROUPS, curveGroup, curveLabel, curveUnit, fmtScalar, runHasResults, runLabel, runTitle } from "../lib/crashRunFormat";
 import CrashCompareAnim from "./CrashCompareAnim";
 import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
 
@@ -41,7 +41,10 @@ export function compareSeries(runs: CrashRunCompared[], key: string, tMax: numbe
 
 export default function CrashComparePage({ runs, onClose }: { runs: CrashRunCompared[]; onClose: () => void }) {
   const curveKeys = useMemo(
-    () => [...new Set(runs.flatMap((r) => Object.keys(r.curves).filter((k) => k !== "time")))].sort(),
+    () =>
+      [...new Set(runs.flatMap((r) => Object.keys(r.curves).filter((k) => k !== "time")))].sort(
+        (x, y) => CURVE_GROUPS.indexOf(curveGroup(x)) - CURVE_GROUPS.indexOf(curveGroup(y)) || x.localeCompare(y),
+      ),
     [runs],
   );
   const [curveKey, setCurveKey] = useState(() => (curveKeys.includes("rwall_force") ? "rwall_force" : (curveKeys[0] ?? "")));
@@ -188,11 +191,18 @@ export default function CrashComparePage({ runs, onClose }: { runs: CrashRunComp
             <label className="mesh-field">
               <span>Eğri</span>
               <select aria-label="Karşılaştırma eğrisi" value={curveKey} onChange={(e) => setCurveKey(e.target.value)}>
-                {curveKeys.map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
+                {CURVE_GROUPS.map((g) => {
+                  const keys = curveKeys.filter((k) => curveGroup(k) === g);
+                  return keys.length ? (
+                    <optgroup key={g} label={g}>
+                      {keys.map((k) => (
+                        <option key={k} value={k}>
+                          {curveLabel(k)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null;
+                })}
               </select>
             </label>
           )}

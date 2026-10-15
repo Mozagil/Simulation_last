@@ -1667,6 +1667,20 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
 - f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
   kolon önerildi).
 - g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
+*1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
+Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
+- c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı
+  **tüm** eğriler (enerji IE/KE/HG, temas, kesit, düğüm, CFC); 1.17e2'deki yalnız `_force` / `acc_g`
+  süzgeci kaldırıldı, `curves=` ile daraltma aynı. Test: `test_crash_runs.py`.
+- c2 ✅ (2026-10-14) Karşılaştırma eğri seçici (UI): `<optgroup>` Kuvvet / Enerji / Temas / Kesit / İvme /
+  İmpuls / TH kanalları; okunur ad + birim ("Duvar kuvveti · CFC 600 (kN)", "Temas 2 kuvveti (kN)"); impuls
+  eğrisi artık kuvvet sayılmıyor (birim N·s, ortalama çizgisi yok). `crashRunFormat.ts`
+  `curveGroup` / `curveLabel`. Test: `crashRunFormat.test.ts`.
+- d Skaler tablo yeniden tasarım: okunur satır, büyük font, birim ayrı sütun, koşu başlıkları.
+- b Karşılaştırmada N koşu yan yana (Sol/Sağ yerine ızgara), büyük pencere.
+- a Canlı ilerleme paneli her koşuda: başlar başlamaz görünür, bitince/donunca son değerle kalır; DOE'de de.
+- e T1–T5 eğitim senaryoları: kızak kütlesi + uzun t_end (gerekçe: crash box 1.2 kg, 59 J, ~1 mm ezilip
+  duruyor; katlanma için arka kütle gerekir); örnek koşu değerleri yenilenir.
 
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
