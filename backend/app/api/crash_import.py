@@ -165,6 +165,15 @@ def solve_import(
     if t_end is None:
         raise HTTPException(status_code=422, detail="Dosyada *CONTROL_TERMINATION yok — süre (t_end_ms) girin.")
     params["t_end_ms"] = float(t_end)
+    # Malzemesi çevrilmeyen part varken çözme: adaptörün varsayılan malzemesine düşer (sessiz
+    # LAW1 "STEEL") — /crash/solve'daki "malzeme atayın" ile aynı, durdur ve listele.
+    unassigned = (stored.get("report") or {}).get("materials", {}).get("unassigned") or []
+    if unassigned:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Malzemesi çevrilmeyen part(lar): {unassigned} — çözüm için her part'ın malzemesi gerekir "
+                   "(desteklenen: *MAT_001 / *MAT_020 / *MAT_024).",
+        )
 
     job_id = str(uuid.uuid4())
     work_dir = crash_api._job_dir(job_id)
