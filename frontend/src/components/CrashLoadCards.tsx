@@ -92,7 +92,7 @@ export function newCard(id: number, kind: CardKind, target: string): LoadCard {
     speed: "10", dir: ["-1", "0", "0"],
     dofs: "111111",
     axis: "X", velocity: "-1", tStart: "0", tStop: "0",
-    mass: kind === "rbody" || kind === "admas" ? "" : "0",
+    mass: kind === "rbody" || kind === "admas" || kind === "spring" ? "" : "0",
     rbMotion: "free",
     hic: false,
     massDist: "total",
@@ -195,7 +195,9 @@ export function cardsPayload(cards: LoadCard[], impactAxis: Axis = "X") {
       const k = n(c.springK, `${lab} K`);
       if (!(k > 0)) throw new Error(`${lab}: K pozitif olmalı.`);
       const cval = c.springC.trim() === "" ? 0 : n(c.springC, `${lab} C`);
-      const mass = c.mass.trim() === "" ? 0 : n(c.mass, `${lab} kütle`);
+      // Radioss /PROP/TYPE4 sıfır kütleyi reddeder (Starter ERROR 229) — mühendis girer.
+      const mass = c.mass.trim() === "" ? NaN : n(c.mass, `${lab} kütle`);
+      if (!(mass > 0)) throw new Error(`${lab}: yay kütlesi pozitif olmalı (Radioss sıfır kütleli yayı kabul etmez).`);
       out.springs.push({
         name, end_a: springEnd(c.springA, `${lab} A ucu`), end_b: springEnd(c.springB, `${lab} B ucu`),
         k_n_per_mm: k, c_n_s_per_mm: cval, mass_kg: mass,

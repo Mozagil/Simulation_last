@@ -223,7 +223,7 @@ LS-DYNA: `*SECTION_SPH` + `*ELEMENT_SPH`
 
 İki uç arası eksenel doğrusal yay. Uç: Kütle / kızak kartının ana düğümü
 (`rigid_body`) ya da uzayda nokta (`point`, mm; `fixed` ise altı serbestlik
-kilitli). `k_n_per_mm` (deck'te kN/mm), `c_n_s_per_mm` sönüm, `mass_kg`; `th`
+kilitli). `k_n_per_mm` (deck'te kN/mm), `c_n_s_per_mm` sönüm, `mass_kg` **zorunlu, > 0** (Radioss `/PROP/TYPE4` sıfır kütleyi reddeder — Starter ERROR 229); `th`
 açıksa `/TH/SPRING` (FX FY FZ). LS-DYNA: `*ELEMENT_DISCRETE` + `*SECTION_DISCRETE`.
 
 ## 11b. Sönüm — `damping` (`/DAMP`, 1.24c2)
