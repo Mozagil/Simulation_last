@@ -67,3 +67,10 @@ def test_unknown_part_rejected(tmp_path):
 def test_validation(body):
     with pytest.raises(ValidationError):
         CrashDampingParams.model_validate(body)
+
+
+def test_damping_kept_in_run_request_snapshot():
+    """Geçmişten yükleme (dampingFromRequest) için koşu isteği anlık görüntüsünde sönüm olmalı."""
+    from app.api.crash_runs import REQUEST_KEYS
+
+    assert "damping" in REQUEST_KEYS
