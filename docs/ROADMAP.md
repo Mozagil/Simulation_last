@@ -1445,8 +1445,15 @@ arayüzde kaynak keyword "≈" ile gösterilir (`docs/LICENSING.md`).
     koşu: test modeli (2 kabuk + kurulum) #378 solved. Yolda: `REQUEST_KEYS`'te `damping` eksikti
     (1.24c2; geçmişten yüklemede sönüm kayboluyordu) → ayrı `fix` commit. Test:
     `test_crash_import_api.py` (+2).
-  - 2d Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
-    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`.
+  - 2d ✅ (2026-10-15) Arayüz: "İçe aktar" düğmesi + çeviri raporu (uyarı / atlananlar üstte,
+    okundu onayı koşuyu açar) + viewport önizlemesi; `crashDoc.ts`. Sol panelde "+ Yeni crash vakası"
+    altında "⇪ LS-DYNA içe aktar (.k / .dyn)" → `CrashImportDialog`: dosyalar + birim çarpanları (boşsa
+    Çevir kapalı) + ε̇ listesi → rapor ("Dikkat" `attentionItems`; parça ve kurulum tabloları, kaynak
+    keyword "≈"); önizleme `CrashImportPreview` (three.js, PID renkli; pencere içinde — ana viewport
+    geometri yolunu bozmamak için); "Raporu okudum" → ad + süre (dosyadan ms) → `/solve` + canlı ilerleme
+    (1.25a paneli). Geçmiş / karşılaştırmada "içe aktarma (.k)" etiketi; ⤓ yükleme içe aktarma koşusunda
+    açıklayıcı mesaj. Tarayıcıda gerçek: test modeli → rapor (Dikkat 4) + önizleme → koşu #379 solved,
+    animasyon 200. 1.21 ✅. Test: `CrashImportDialog.test.tsx` (4).
 
 *1.22 — Crash ham kart editörü (kullanıcı kararı 2026-10-12; plan onayı 2026-10-13)*
 Kullanıcı BC / malzeme kartını popup metin editöründe, düğüm/eleman ID'leriyle

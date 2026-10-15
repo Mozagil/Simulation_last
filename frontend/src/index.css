@@ -8221,6 +8221,83 @@ p {
   overflow: hidden;
 }
 
+/* 1.21e-2d — LS-DYNA içe aktarma penceresi */
+.crash-import-dialog {
+  overflow-y: auto;
+}
+.crash-import-form,
+.crash-import-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.crash-import-report {
+  border-top: 1px solid var(--border-soft);
+}
+.crash-import-attention {
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+.crash-import-attention.warn {
+  border-color: var(--doe-warn, #8a5a1f);
+  background: var(--doe-warn-bg, #f6ecdc);
+}
+.crash-import-attention ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.crash-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.crash-import-table {
+  margin-bottom: 8px;
+  white-space: normal;
+}
+.crash-import-table td,
+.crash-import-table th {
+  text-align: left;
+}
+.crash-import-preview {
+  margin: 0;
+}
+.crash-import-preview-canvas {
+  height: 320px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.crash-import-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.crash-import-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.crash-import-run {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .crash-import-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .crash-newcase-head {
   display: flex;
   align-items: center;
