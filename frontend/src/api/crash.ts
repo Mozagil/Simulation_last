@@ -114,6 +114,16 @@ export interface CrashContactSpec {
 }
 
 /** 1.15a — engine çıktı aralıkları + zaman adımı kartı; null/"" = varsayılan. */
+/** 1.24c2 — Rayleigh sönümü /DAMP: C = α·M + β·K. α (1/s), β (s); part_ids boş = tüm parçalar. */
+export interface CrashDampingPayload {
+  alpha_per_s: number;
+  beta_s: number;
+  part_ids: number[];
+  t_start_ms: number;
+  /** 0 = koşu sonu */
+  t_stop_ms: number;
+}
+
 export interface CrashEnginePayload {
   th_dt_ms: number | null;
   anim_dt_ms: number | null;
@@ -173,6 +183,8 @@ export interface CrashSolveRequest {
   rigid_bodies?: Record<string, unknown>[];
   /** 1.24b2 — yay elemanları (/SPRING + /PROP/TYPE4) */
   springs?: Record<string, unknown>[];
+  /** 1.24c2 — Rayleigh sönümü; null / yok = sönüm yok */
+  damping?: CrashDampingPayload | null;
   /** 11.2 — Yükleme: Yerçekimi */
   gravity?: { accel_m_s2: number; direction: "X" | "Y" | "Z" };
   /** 1.22 — OpenRadioss ham kartları; starter deck'ine /END'den önce aynen. */

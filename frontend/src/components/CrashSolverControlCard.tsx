@@ -4,9 +4,12 @@
  */
 
 import Kw from "./Kw";
-import { DT_KINDS, type OutputState } from "./CrashOutputCard";
+import { DT_KINDS, dampingSummary, type OutputState } from "./CrashOutputCard";
 
-export function solverSummary(tEnd: string, s: Pick<OutputState, "dtKind" | "dtScale" | "dtMin">): string {
+export function solverSummary(
+  tEnd: string,
+  s: Pick<OutputState, "dtKind" | "dtScale" | "dtMin"> & Partial<Pick<OutputState, "dampOn" | "dampAlpha" | "dampBeta" | "dampParts">>,
+): string {
   const parts = [`${tEnd || "—"} ms`];
   if (!s.dtKind) parts.push("Δt: Radioss");
   else {
@@ -14,6 +17,7 @@ export function solverSummary(tEnd: string, s: Pick<OutputState, "dtKind" | "dtS
     if (s.dtScale.trim()) parts.push(`Δt_sca ${s.dtScale}`);
     if (s.dtMin.trim()) parts.push(`Δt_min ${s.dtMin} ms`);
   }
+  if (s.dampOn) parts.push(dampingSummary({ dampOn: true, dampAlpha: s.dampAlpha ?? "0", dampBeta: s.dampBeta ?? "0", dampParts: s.dampParts ?? [] }));
   return parts.join(" · ");
 }
 
@@ -28,6 +32,7 @@ export default function CrashSolverControlCard({
   value,
   onChange,
   lastScalars,
+  partOptions = [],
   disabled = false,
 }: {
   tEnd: string;
@@ -36,6 +41,8 @@ export default function CrashSolverControlCard({
   onChange: (next: OutputState) => void;
   /** Son koşunun skalerleri (varsa): timestep_min, mass_added_rel, cycles… */
   lastScalars?: Record<string, number>;
+  /** 1.24c2 — sönüm kapsamı için parça no'ları */
+  partOptions?: number[];
   disabled?: boolean;
 }) {
   const set = (patch: Partial<OutputState>) => onChange({ ...value, ...patch });
@@ -116,6 +123,73 @@ export default function CrashSolverControlCard({
           <li>/DT/NODA/STOP: Δt, Δt_min altına düşünce koşu durur. Boş (Yok): Radioss kendi kararlı adımını kullanır.</li>
         </ul>
       </details>
+
+      <div className="crash-field-label">
+        <span>Sönüm (Rayleigh)</span>
+        <Kw card="/DAMP" text="/DAMP" />
+      </div>
+      <label className="material-check">
+        <input
+          type="checkbox"
+          aria-label="Sönüm ekle"
+          checked={value.dampOn}
+          disabled={disabled}
+          onChange={(e) => set({ dampOn: e.target.checked })}
+        />
+        Sönüm ekle · C = α·M + β·K
+      </label>
+      {value.dampOn && (
+        <div className="crash-damp" data-testid="crash-damp">
+          <div className="crash-expert-grid cols-2">
+            {(
+              [
+                ["dampAlpha", "α (kütle orantılı)", "1/s"],
+                ["dampBeta", "β (rijitlik orantılı)", "s"],
+                ["dampT0", "Başlangıç", "ms"],
+                ["dampT1", "Bitiş (0 = koşu sonu)", "ms"],
+              ] as const
+            ).map(([key, lab, unit]) => (
+              <label key={key} className="crash-expert-field">
+                <span>
+                  {lab} · {unit}
+                </span>
+                <input aria-label={`Sönüm ${lab}`} value={value[key]} disabled={disabled} onChange={(e) => set({ [key]: e.target.value })} />
+              </label>
+            ))}
+          </div>
+          {partOptions.length > 1 && (
+            <div className="crash-var-chips" role="group" aria-label="Sönüm parçaları">
+              {partOptions.map((pid) => {
+                const on = value.dampParts.includes(pid);
+                return (
+                  <button
+                    key={pid}
+                    type="button"
+                    className={on ? "crash-var-chip active" : "crash-var-chip"}
+                    aria-pressed={on}
+                    disabled={disabled}
+                    onClick={() => set({ dampParts: on ? value.dampParts.filter((p) => p !== pid) : [...value.dampParts, pid] })}
+                  >
+                    #{pid}
+                  </button>
+                );
+              })}
+              <span className="crash-var-note">{value.dampParts.length === 0 ? "seçim yok = tüm parçalar" : ""}</span>
+            </div>
+          )}
+          <details className="crash-solver-help">
+            <summary>Açıklama</summary>
+            <ul>
+              <li>
+                Düğüm grubuna Rayleigh sönümü: C = α·M + β·K. α kütleyle orantılı (mutlak hızı söndürür; rijit
+                hareket de yavaşlar), β rijitlikle orantılı (yüksek frekanslı titreşimi söndürür; kararlı Δt küçülür).
+              </li>
+              <li>Deck'e model birimiyle yazılır: α / 1000 (1/ms), β · 1000 (ms). α ve β ikisi birden 0 olamaz.</li>
+              <li>Sönüm kullanmak ve değerleri mühendisin kararı; varsayılan yok.</li>
+            </ul>
+          </details>
+        </div>
+      )}
 
       {(dtMinLast != null || massLast != null) && (
         <p className="crash-behavior-hint" data-testid="crash-solver-last">

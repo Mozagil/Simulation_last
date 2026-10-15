@@ -17,7 +17,7 @@ import {
 import { defaultMatCard, matCardPayload, type MatCardState } from "./CrashMaterialCard";
 import CrashMaterialSection from "./CrashMaterialSection";
 import type { CrashMarkers } from "./GeometryViewer";
-import CrashOutputCard, { defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
+import CrashOutputCard, { dampingFromRequest, defaultOutput, outputPayload, outputSummary, type OutputState } from "./CrashOutputCard";
 import CrashForceChart, { energySeriesFromCurves, FORCE_CHART_NOTE, forceSeriesFromCurves } from "./CrashForceChart";
 import Kw, { DynaToggle, KwRef } from "./Kw";
 import CrashLoadCards, {
@@ -410,6 +410,8 @@ export default function CrashPanel({
       setGravDir(rq.gravity.direction);
     }
     if (rq.t_end_ms != null) setTEnd(String(rq.t_end_ms));
+    // 1.24c2: sönüm kartı (Çözüm kontrolü)
+    setOutput((o) => ({ ...o, ...dampingFromRequest(rq.damping) }));
     if (rq.parts) setPartRoles(Object.fromEntries(rq.parts.map((p) => [p.part_id, (p.role ?? "moving") as PartRole])));
     setContacts(
       (rq.contacts ?? []).map((c) => {
@@ -1390,8 +1392,8 @@ export default function CrashPanel({
             <strong>Çözüm kontrolü</strong>
             <span className="crash-acc-summary">{solverSummary(tEnd, output)}</span>
           </span>
-          <span className={solverMissing.length ? "crash-acc-state warn" : output.dtKind ? "crash-acc-state ok" : "crash-acc-state muted"}>
-            {solverMissing.length ? "1 eksik" : output.dtKind ? "değiştirildi" : "varsayılan Δt"}
+          <span className={solverMissing.length ? "crash-acc-state warn" : output.dtKind || output.dampOn ? "crash-acc-state ok" : "crash-acc-state muted"}>
+            {solverMissing.length ? "1 eksik" : output.dtKind || output.dampOn ? "değiştirildi" : "varsayılan Δt"}
           </span>
           <span className="crash-acc-chev" aria-hidden="true">{solverOpen ? "▴" : "▾"}</span>
         </button>
@@ -1402,6 +1404,7 @@ export default function CrashPanel({
             value={output}
             onChange={setOutput}
             lastScalars={snapshot?.scalars ?? result?.scalars}
+            partOptions={partOptions}
             disabled={busy}
           />
         </div>

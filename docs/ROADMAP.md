@@ -1675,7 +1675,12 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
     0.58 mm, geri sekme 4.15 mm (%88). β 1e-5 s (#373) sonuçları #372 ile birebir aynı; listing'de
     uyarı yok — Radioss β'yı kendi içinde sınırlıyor olabilir (gözlem, doğrulanmadı). Test:
     `test_crash_damp.py`.
-  - c2-2 UI: 4 · Crash → Çözüm kontrolü kartında sönüm alanları + geçmişten yükleme.
+  - c2-2 ✅ (2026-10-15) UI: 4 · Crash → Çözüm kontrolü kartında "Sönüm (Rayleigh)" — "Sönüm ekle"
+    kutusu, α (1/s), β (s), başlangıç / bitiş (ms), çok parçalı modelde parça çipleri (seçim yok = tümü),
+    açıklama (öneri yok). Özet satırı "/DAMP β … s · #p", başlık "değiştirildi". `OutputState.damp*`,
+    `outputPayload().damping` (kapalı = null), istemcide backend kuralı (α = β = 0, ters pencere
+    gönderilmez). Geçmişten / senaryodan yükleme `dampingFromRequest`. Belgeler: crashDoc "Sönüm
+    (Rayleigh)". c2 ✅. Test: `CrashSolverControlCard.test.tsx` (+4), `CrashOutputCard.test.tsx`.
 - c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
 - d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
