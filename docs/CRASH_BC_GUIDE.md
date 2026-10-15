@@ -374,7 +374,9 @@ OpenRadioss kartları; LS-DYNA kurulmaz / çalıştırılmaz, keyword yazılmaz
 (`docs/LICENSING.md`). Birim çarpanları (uzunluk → mm, kütle → kg, zaman → s)
 mühendisten. Çeviri raporu önce okunur (uyarılar, atlanan keyword ve satırlar
 üstte); onaydan sonra koşu `POST /crash/import/dyna/{id}/solve`. Koşu
-geometrisiz kaydedilir (`crash_runs.import_id`), ML korpusuna girmez.
+geometrisiz kaydedilir (`crash_runs.import_id`), ML korpusuna girmez. Malzemesi
+çevrilmeyen part varsa (ör. desteklenmeyen *MAT_003) çözüm 422 ile durur ve part
+listesini verir — varsayılan malzemeye düşülmez.
 Çevrilen keyword'ler: *NODE, *ELEMENT_SHELL / SOLID, *PART, *SECTION_*,
 *MAT_024 / 001 / 020, temaslar (N2S → TYPE7, S2S → TYPE24), *BOUNDARY_SPC,
 *INITIAL_VELOCITY, *RIGIDWALL_PLANAR, *LOAD_BODY, *CONTROL_TERMINATION.
