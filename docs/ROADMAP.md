@@ -1542,13 +1542,13 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   KE_son 55.49 J (geri sekme); LAW2 εp,max 0.01 #334 183 kabuk silindi. Yolda bulunan hata:
   LAW2 εp,max kopması listing'de parantezsiz ("RUPTURE OF SHELL ELEMENT") yazılıyor, sayılmıyordu
   ("silinen eleman 0") — `parse_ruptures` düzeltildi, kriter "MAT".
-  **1.23 TAMAM (2026-10-14).** Beklemede: A5 (akıcı animasyon, kullanıcı "sonra"), C8b (ayrı onay).
+  **1.23 TAMAM (2026-10-14).** A5 kabul (2026-10-15). Beklemede: C8b (ayrı onay).
 - A4 ✅ Animasyonda "ölçek ×1 (gerçek) / ×2 / ×5 / ×10" (yer değiştirme ilk kareye göre
   çarpılır) + veri satırı "son karede en büyük |u| … mm · model boyutuna oranı %…".
   Ölçüldü: Belgeler 1. örnek (crash box, LAW2, 10 m/s, 4 ms; #316) |u|max 8.2 mm = 300 mm
   boyun %2.7'si — gerçek ölçekte katlanma görünmüyordu (koşu kısa; çizim doğru); ×10'da
   ön uçtaki ilk katlanma görünür.
-- A5 ❓ (kullanıcı 2026-10-13: istediği gibi değil, sonra bakılacak) Animasyon akıcı: requestAnimationFrame + kareler arası doğrusal ara-değer (konum ve
+- A5 ✅ (kullanıcı 2026-10-15: mevcut haliyle kabul, soru işareti kaldırıldı; 2026-10-13 notu: "istediği gibi değil, sonra") Animasyon akıcı: requestAnimationFrame + kareler arası doğrusal ara-değer (konum ve
   renk), hız 0.25× / 0.5× / 1× / 2× (1× = koşu ~3 sn). Test: `CrashAnimationViewer.test.tsx`.
 - A6 ✅ Crash sekmesinde durability şablon BC'si (ör. Taylor basıncı) görünmez:
   crash / akış sekmesinde "Modeli üret" pop-up'ı yük/kısıt yerine not gösterir,
