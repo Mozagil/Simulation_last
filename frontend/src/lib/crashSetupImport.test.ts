@@ -62,4 +62,20 @@ describe("crashSetupImport (1.23 B1c)", () => {
       { name: "admas_1", part_id: 1, mass_kg: 3, distribution: "per_node" },
     ]);
   });
+
+  it("1.24b2: springs → Yay kartı; kızak ucu ada göre karta bağlanır; gidiş-dönüş yeni adla", () => {
+    const req = {
+      rigid_bodies: [{ name: "rbody_7", part_id: 1, mass_kg: 40 }],
+      springs: [{ name: "s", end_a: { rigid_body: "rbody_7" }, end_b: { point: [-20, 0, 5], fixed: false }, k_n_per_mm: 2500, c_n_s_per_mm: 3, mass_kg: 0.5 }],
+    };
+    const cards = cardsFromRequest(req, "X");
+    expect(cards.map((c) => c.kind)).toEqual(["rbody", "spring"]);
+    const sp = cards[1];
+    expect(sp.springA).toEqual({ mode: "rbody", rbody: cards[0].id, point: ["0", "0", "0"], fixed: true });
+    expect(sp.springB).toEqual({ mode: "point", rbody: null, point: ["-20", "0", "5"], fixed: false });
+    expect([sp.springK, sp.springC, sp.mass]).toEqual(["2500", "3", "0.5"]);
+    expect(cardsPayload(cards, "X").springs).toEqual([
+      { name: "spring_2", end_a: { rigid_body: "rbody_1" }, end_b: { point: [-20, 0, 5], fixed: false }, k_n_per_mm: 2500, c_n_s_per_mm: 3, mass_kg: 0.5 },
+    ]);
+  });
 });

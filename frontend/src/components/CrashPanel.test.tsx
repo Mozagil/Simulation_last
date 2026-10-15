@@ -342,6 +342,54 @@ describe("CrashPanel", () => {
     );
   });
 
+  it("1.24a: genel temas (tüm model) — parça seçimi gizlenir, TYPE24 + all_parts gider", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j24", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} />);
+    openGroup("Temaslar");
+    fireEvent.click(screen.getByRole("button", { name: "+ Temas ekle" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Temas 1 kapsamı" })).getByRole("button", { name: "Tüm model" }));
+    expect(screen.queryByLabelText("Temas 1 master")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Temas 1 slave")).not.toBeInTheDocument();
+    expect(screen.getByTestId("crash-contact-1-all")).toBeInTheDocument();
+    const typeGroup = within(screen.getByRole("group", { name: "Temas 1 tipi" }));
+    expect(typeGroup.getByRole("button", { name: "TYPE24" })).toHaveAttribute("aria-pressed", "true");
+    expect(typeGroup.getByRole("button", { name: "TYPE7" })).toBeDisabled();
+    expect(screen.getByTestId("crash-contacts")).toHaveTextContent("1 · tüm model");
+    expect(screen.getByRole("button", { name: /Temaslar/ })).toHaveTextContent("tüm model (genel)");
+    fireEvent.change(screen.getByLabelText("Temas 1 Fric"), { target: { value: "0.15" } });
+    fireEvent.change(screen.getByLabelText("Temas 1 Iedge"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    const sent = vi.mocked(postCrashSolve).mock.calls[0][0].contacts?.[0];
+    expect(sent).toEqual({ type: 24, all_parts: true, fric: 0.15, stfac: 1, gapmin: 0, istf: 0, inacti: 0, iedge: 1 });
+    expect(sent).not.toHaveProperty("master_part");
+  });
+
+  it("1.24a: geçmişten yüklenen genel temas korunur; Parça çifti'ne dönülebilir", async () => {
+    vi.mocked(postCrashSolve).mockResolvedValue({
+      job_id: "j25", geometry_id: 1, status: "rad_only", message: "rad üretildi",
+      starter_url: "", engine_url: "", progress_url: "", ws_url: "",
+      cards: {}, openradioss_available: false, solver_ran: false, scalars: {},
+    });
+    const req = {
+      geometry_id: 1,
+      barrier: { speed_m_s: 10, angle_deg: 0, wall: { point: [0, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number] } },
+      parts: [{ part_id: 0, role: "moving" as const }, { part_id: 1, role: "fixed" as const }],
+      contacts: [{ type: 24 as const, all_parts: true, fric: 0.1, stfac: 1, gapmin: 0, istf: 0, inacti: 0, iedge: 0 }],
+    };
+    render(<CrashPanel geometryId={1} meshDimension={3} partIds={[0, 1]} importRequest={{ key: 1, req }} />);
+    fireEvent.click(screen.getByRole("button", { name: ".rad üret / çöz" }));
+    await waitFor(() => expect(postCrashSolve).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(postCrashSolve).mock.calls[0][0].contacts?.[0]).toMatchObject({ type: 24, all_parts: true, fric: 0.1 });
+    openGroup("Temaslar");
+    fireEvent.click(within(screen.getByRole("group", { name: "Temas 1 kapsamı" })).getByRole("button", { name: "Parça çifti" }));
+    expect(screen.getByLabelText("Temas 1 master")).toBeInTheDocument();
+  });
+
   it("temas satırı silinir; tanım yoksa boş liste ve duvar açık gider", async () => {
     vi.mocked(postCrashSolve).mockResolvedValue({
       job_id: "j6", geometry_id: 1, status: "rad_only", message: "rad üretildi",

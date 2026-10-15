@@ -1624,6 +1624,49 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   30 mm, n 100, min 1): eğri yüzler 38 → ~380 eleman, düzlemler aynı. Test:
   `test_mesh_curved_quad.py`, `meshCurvature.test.ts`.
 
+*1.24 — Crash: can crush şablonu, genel temas, yay, malzeme kütüphanesi (kullanıcı listesi 2026-10-14)*
+Her madde ayrı küçük adım ve ayrı PR; sıra: a1 → a2 → b1 → b2 → c1 → c2 → c3 → d → e → f → g.
+Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazıldı (istenen
+**springback** = geri sekme idi); kullanıcı kararıyla kaldı, geri sekme c1–c3'te.
+- a1 ✅ (2026-10-14) Genel temas (backend): `CrashContactParams.all_parts` (yalnız TYPE24;
+  master/slave verilmez). Tüm kabuk parçalar `/SURF/PART/7901`, tüm solid parçalar
+  `/SURF/PART/EXT/7902`; yalnız biri varsa tek öz TYPE24 (surf_ID2 = 0), ikisi de varsa üç
+  TYPE24 (kabuk öz, solid öz, kabuk ↔ solid), aynı bayraklarla. Çift temaslarla birlikte
+  kullanılabilir; /INTER kimlikleri sırayla, `/TH/INTER` hepsini içerir. ≈ LS-DYNA
+  AUTOMATIC_SINGLE_SURFACE / Ansys Body Interaction. Test: `test_crash_contact.py`.
+- a2 ✅ (2026-10-14) Genel temas (UI): 3 · Temaslar kartında "Parça çifti / Tüm model"
+  kapsam seçimi. Tüm model: parça seçimi gizlenir, TYPE24 sabit (TYPE7 kapalı), bayraklar
+  aynı; istekte `{type: 24, all_parts: true}` (master/slave yok). Özet ve ürün ağacında
+  "tüm model (genel)". Geçmişten / içe aktarmadan yükleme `all_parts`'ı korur. Test:
+  `CrashPanel.test.tsx`.
+- b1 ✅ (2026-10-14) Yay elemanı (backend): `springs[]` → `/PROP/TYPE4` (hm_cfg radioss140:
+  Mass; K C; fonksiyon yok) + `/PART` (mat_ID 0) + `/SPRING` (hm_cfg radioss110) + `/TH/SPRING/6`
+  (FX FY FZ → `th_spring_<k>_<var>`). Uçlar: rijit gövde ana düğümü ya da nokta (mm; yeni düğüm,
+  `fixed=True` → `/GRNOD/NODE/994k` + `/BCS/4k` 111 111). Birim: K N/mm → kN/mm (÷1000), C N·s/mm →
+  kN·ms/mm (aynı sayı), kütle kg. Parça kimliği SPH parçalarından sonra, eleman kimliği mesh en
+  büyüğü + k. Varsayım (resim yok): tek eksenli doğrusal yay yeterli; eğri (fct_ID), kopma
+  (DeltaMin/Max), skew sonraya. Test: `test_crash_spring.py`.
+- b2 ✅ (2026-10-14) Yay kartı (UI): 4 · Ek tanımlar → "Yay" kartı. A/B ucu: Kütle / kızak kartı
+  (listeden; istekte `rbody_<sıra>`) ya da nokta (x y z mm, "Sabit" kutusu). K N/mm, C N·s/mm,
+  yay kütlesi kg. Hedef çipi yok. Özet "Kütle / kızak #1 ↔ nokta (…) sabit · K … N/mm".
+  İçe aktarma `springs[]`'i karta çevirir (kızak adı → kart). Test: `CrashLoadCards.test.tsx`,
+  `crashSetupImport.test.ts`.
+- c1 Geri sekme (springback) metrikleri (backend): animasyon karelerinden tepe |u| (t), son |u|,
+  geri sekme = tepe − son ve oranı; model + parça bazında `scalars`. Explicit devam yaklaşımı
+  (çarpıcı geri sekip temas kesilene kadar koşu). `/IMPL/SPRBACK` (implicit) ayrı faz.
+- c2 `/DAMP` (Rayleigh) kartı: salınımı söndürmek için; backend + Çözüm kontrolü UI (iki PR).
+  Kullanmak mühendisin kararı; varsayılan yok.
+- c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
+- d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
+  silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
+  + sabit taban bloğu. Genel temas (a1/a2), parça rolleri. Çıktı: deformasyon, von Mises,
+  eşdeğer plastik şekil değiştirme, geri sekme (c1–c3).
+- e Malzeme araştırması: `docs/CRASH_MATERIALS.md` — literatürden Johnson-Cook + σ–ε
+  eğrileri (Al 5xxx/6xxx/7xxx, DP/HSLA çelikler, PP/ABS/PC), kaynak listeli. Yalnız doküman.
+  Ticari/lisanslı kart (vendor, GRANTA) kopyalanmaz.
+- f Kütüphaneye crash verisi (seed migration). Şema kararı bekleniyor (JC için yeni JSON
+  kolon önerildi).
+- g Malzeme kartında kütüphane eğrisi seçimi + σ–ε grafiği.
 *1.25 — Crash kullanıcı geri bildirimi 2 (2026-10-14; karşılaştırma + canlı ilerleme + skaler tablo)*
 Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşik sıra kullanıcı dokümanında).
 - c1 ✅ (2026-10-14) Karşılaştırma eğrileri (backend): `GET /crash/runs/compare` varsayılanı kayıtlı

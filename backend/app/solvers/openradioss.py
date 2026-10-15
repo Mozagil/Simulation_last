@@ -41,6 +41,7 @@ from app.solvers.crash_params import (
     CrashInitVelParams,
     CrashPressureLoadParams,
     CrashSphProjectileParams,
+    CrashSpringParams,
     CrashMassParams,
     CrashModelParams,
     CrashRigidBodyParams,
@@ -485,19 +486,37 @@ def _contacts(params: dict[str, Any]) -> list[CrashContactParams]:
 # (GRNOD 1/2 hareketli/sabit gruplarıyla çakışmaz). Aynı parça birden çok
 # temasta geçerse kart bir kez yazılır.
 _CONTACT_SET_BASE = 1000
+# 1.24a — genel temas yüzeyleri: tüm kabuk parçalar (/SURF/PART) ve tüm solid
+# parçalar (/SURF/PART/EXT) ayrı kartta (ikisi tek kartta karışmaz).
+_ALL_SURF_SHELL = 7901
+_ALL_SURF_SOLID = 7902
+
+
+def _part_list_lines(rids: list[int]) -> list[str]:
+    return ["".join(_i(v) for v in rids[i : i + 10]) for i in range(0, len(rids), 10)]
 
 
 def _contact_cards(
     contacts: list[CrashContactParams],
     rid: Callable[[int], int],
     shell_parts: set[int] | None = None,
-) -> list[str]:
+    part_ids: list[int] | None = None,
+) -> tuple[list[str], list[int]]:
+    """Temas kartları + yazılan /INTER kimlikleri (TH için).
+
+    Çift temas: bir /INTER. Genel temas (all_parts): kabuk ve solid parçalar
+    ayrı yüzey; yalnız biri varsa tek öz temas, ikisi de varsa üç TYPE24
+    (kabuk öz, solid öz, kabuk ↔ solid) — aynı bayraklarla.
+    """
     if not contacts:
-        return []
+        return [], []
     set_id = lambda pid: _CONTACT_SET_BASE + rid(pid)  # noqa: E731
+    shell_parts = shell_parts or set()
     surf_parts: list[int] = []
     grnod_parts: list[int] = []
     for c in contacts:
+        if c.all_parts:
+            continue
         for pid in (c.master_part, c.slave_part) if c.type == 24 else (c.master_part,):
             if pid not in surf_parts:
                 surf_parts.append(pid)
@@ -507,17 +526,58 @@ def _contact_cards(
     lines: list[str] = []
     # Solid: /SURF/PART/EXT (dış yüzler). Kabuk: /SURF/PART (kabuk elemanları;
     # EXT solid içindir).
-    shell_parts = shell_parts or set()
     for pid in surf_parts:
         card = "/SURF/PART" if pid in shell_parts else "/SURF/PART/EXT"
         lines.extend([f"{card}/{set_id(pid)}", f"skin_part_{pid}", _i(rid(pid))])
     for pid in grnod_parts:
         lines.extend([f"/GRNOD/PART/{set_id(pid)}", f"nodes_part_{pid}", _i(rid(pid))])
+    all_shell = [p for p in (part_ids or []) if p in shell_parts]
+    all_solid = [p for p in (part_ids or []) if p not in shell_parts]
+    if any(c.all_parts for c in contacts):
+        if all_shell:
+            lines += ["/SURF/PART/" + str(_ALL_SURF_SHELL), "all_shell_parts", *_part_list_lines([rid(p) for p in all_shell])]
+        if all_solid:
+            lines += ["/SURF/PART/EXT/" + str(_ALL_SURF_SOLID), "all_solid_parts", *_part_list_lines([rid(p) for p in all_solid])]
 
     blank = lambda n: " " * n  # noqa: E731
     # IBC alanı: %7s + üç %1d bayrağı (sınır koşulu devre dışı bırakma kapalı).
     ibc = f"{blank(7)}000"
-    for k, c in enumerate(contacts, start=1):
+
+    def type24(k: int, title: str, s1: int, s2: int, c: CrashContactParams) -> list[str]:
+        # Radioss 2021+ /INTER/TYPE24 (hm_cfg radioss2021): surf_ID1 (slave)
+        # surf_ID2 (master; self-contact'ta 0) Istf · Irem_i2 · Idel;
+        # grnd_IDs · Iedge Edge_angle Gap_max_s Gap_max_m; Stmin Stmax Igap0
+        # Ipen0 Ipen_max; Stfac Fric · Tstart Tstop; IBC Inacti VISs ·
+        # Tpressfit; Ifric Ifiltr Xfreq · sens_ID · fric_ID.
+        return [
+            f"/INTER/TYPE24/{k}",
+            title,
+            f"{_i(s1)}{_i(s2)}{_i(c.istf)}{blank(20)}{_i(0)}{blank(10)}{_i(0)}",
+            f"{_i(0)}{blank(20)}{_i(c.iedge)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}",
+            f"{_f(c.stfac)}{_f(c.fric)}{blank(20)}{_f(0.0)}{_f(0.0)}",
+            f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{blank(20)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_f(0.0)}{blank(10)}{_i(0)}{blank(30)}{_i(0)}",
+        ]
+
+    inter_ids: list[int] = []
+    k = 0
+    for c in contacts:
+        if c.all_parts:
+            pairs: list[tuple[str, int, int]] = []
+            if all_shell:
+                pairs.append(("shell", _ALL_SURF_SHELL, 0))
+            if all_solid:
+                pairs.append(("solid", _ALL_SURF_SOLID, 0))
+            if all_shell and all_solid:
+                pairs.append(("shell_solid", _ALL_SURF_SHELL, _ALL_SURF_SOLID))
+            for tag, s1, s2 in pairs:
+                k += 1
+                lines += type24(k, f"contact_{k}_all_parts_{tag}", s1, s2, c)
+                inter_ids.append(k)
+            continue
+        k += 1
+        inter_ids.append(k)
         title = f"contact_{k}_p{c.slave_part}_on_p{c.master_part}"
         if c.type == 7:
             # Radioss 2020+ /INTER/TYPE7 (hm_cfg radioss2020): grnod_id surf_id
@@ -538,26 +598,9 @@ def _contact_cards(
                 ]
             )
         else:
-            # Radioss 2021+ /INTER/TYPE24 (hm_cfg radioss2021): surf_ID1 (slave)
-            # surf_ID2 (master; self-contact'ta 0) Istf · Irem_i2 · Idel;
-            # grnd_IDs · Iedge Edge_angle Gap_max_s Gap_max_m; Stmin Stmax Igap0
-            # Ipen0 Ipen_max; Stfac Fric · Tstart Tstop; IBC Inacti VISs ·
-            # Tpressfit; Ifric Ifiltr Xfreq · sens_ID · fric_ID.
             surf2 = 0 if c.master_part == c.slave_part else set_id(c.master_part)
-            lines.extend(
-                [
-                    f"/INTER/TYPE24/{k}",
-                    title,
-                    f"{_i(set_id(c.slave_part))}{_i(surf2)}{_i(c.istf)}"
-                    f"{blank(20)}{_i(0)}{blank(10)}{_i(0)}",
-                    f"{_i(0)}{blank(20)}{_i(c.iedge)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
-                    f"{_f(0.0)}{_f(0.0)}{_i(0)}{_i(0)}{_f(0.0)}",
-                    f"{_f(c.stfac)}{_f(c.fric)}{blank(20)}{_f(0.0)}{_f(0.0)}",
-                    f"{ibc}{blank(20)}{_i(c.inacti)}{_f(0.0)}{blank(20)}{_f(0.0)}",
-                    f"{_i(0)}{_i(0)}{_f(0.0)}{blank(10)}{_i(0)}{blank(30)}{_i(0)}",
-                ]
-            )
-    return lines
+            lines += type24(k, title, set_id(c.slave_part), surf2, c)
+    return lines, inter_ids
 
 
 _SECT_GR_BASE = 8000
@@ -578,6 +621,10 @@ _SPH_SURF_BASE = 9990
 _SPH_INTER_BASE = 50
 _SPH_INIVEL_BASE = 20
 _PBLAST_SURF_BASE = 9995
+# 1.24b1 — yay: sabit uç düğüm grupları / BCS kimlikleri, TH kimliği.
+_SPRING_GR_BASE = 9940
+_SPRING_BC_BASE = 40
+_SPRING_TH_ID = 6
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -692,6 +739,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         gravity = CrashGravityParams.model_validate(params["gravity"]) if params.get("gravity") else None
         ploads = [CrashPressureLoadParams.model_validate(r) for r in params.get("pressure_loads") or []]
         sphs = [CrashSphProjectileParams.model_validate(r) for r in params.get("sph_projectiles") or []]
+        springs = [CrashSpringParams.model_validate(r) for r in params.get("springs") or []]
         blasts = [CrashBlastLoadParams.model_validate(r) for r in params.get("blast_loads") or []]
     except ValueError as exc:
         raise SolverError(f"Geçersiz ek kütle / rijit gövde: {exc}") from exc
@@ -746,6 +794,26 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         if not ids:
             raise SolverError(f"SPH '{sp.name}': parçacık yok (çap / aralık).")
         sph_sets.append((sp, ids))
+    # 1.24b1 — yay uçları: nokta uçlar yeni düğüm (SPH parçacıklarından sonra);
+    # rijit gövde uçları ana düğüm (rbody_sets). (sp, (nA, nB), [sabit düğümler])
+    rb_master = {rb.name: master for rb, _ids, master in rbody_sets}
+    spring_sets: list[tuple[CrashSpringParams, tuple[int, int], list[int]]] = []
+    for sp in springs:
+        ends: list[int] = []
+        fixed_nodes: list[int] = []
+        for end in (sp.end_a, sp.end_b):
+            if end.rigid_body is not None:
+                if end.rigid_body not in rb_master:
+                    raise SolverError(f"Yay '{sp.name}': rijit gövde '{end.rigid_body}' tanımlı değil.")
+                ends.append(rb_master[end.rigid_body])
+            else:
+                x, y, z = end.point  # type: ignore[misc]
+                extra_nodes.append((next_node, x, y, z))
+                ends.append(next_node)
+                if end.fixed:
+                    fixed_nodes.append(next_node)
+                next_node += 1
+        spring_sets.append((sp, (ends[0], ends[1]), fixed_nodes))
 
     units = f"{'kg':>20}{'mm':>20}{'ms':>20}"
     lines: list[str] = ["#RADIOSS STARTER"]
@@ -768,7 +836,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             else (float(n[1]), float(n[2]), float(n[3]))
         )
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
-    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri + SPH parçacıkları
+    for nid, x, y, z in extra_nodes:  # rijit gövde ana düğümleri + SPH parçacıkları + yay uçları
         lines.append(f"{_i(nid)}{_f(x)}{_f(y)}{_f(z)}")
 
     # Radioss parça/kart kimlikleri 1 tabanlı: part_ID = mesh part_id + 1.
@@ -833,11 +901,13 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
 
     contacts = _contacts(params)
     for c in contacts:
+        if c.all_parts:
+            continue
         for pid in (c.master_part, c.slave_part):
             if pid not in part_ids:
                 raise SolverError(f"Crash: temas parçası #{pid} mesh'te yok.")
-    inter_ids = list(range(1, len(contacts) + 1))
-    lines.extend(_contact_cards(contacts, _rid, shell_parts))
+    contact_lines, inter_ids = _contact_cards(contacts, _rid, shell_parts, part_ids)
+    lines.extend(contact_lines)
     # K12 — SPH: /MAT/HYDRO (r2020) + /PROP/SPH (r2019) + /PART + /SPHCEL + düğüm
     # grubu + ilk hız + hedef yüzeye TYPE7 (SPH düğümleri slave). Kimlikler mesh
     # parçalarından sonra.
@@ -884,6 +954,36 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             f"{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}{_i(0)}{_i(0)}{_f(0.0)}{_i(0)}",
         ]
         inter_ids.append(iid)
+
+    # 1.24b1 — /PROP/TYPE4 (hm_cfg radioss140) + /PART (mat_ID 0) + /SPRING
+    # (hm_cfg radioss110 ELEM/spring). Parça kimlikleri SPH parçalarından sonra;
+    # eleman kimliği mesh elemanlarının en büyüğünden sonra. Sabit nokta uçlar
+    # /GRNOD/NODE + /BCS 111 111.
+    spring_rid0 = sph_rid0 + len(sph_sets)
+    spring_eid = max((int(el[0]) for el in [*tets, *bricks, *shells, *sh3n]), default=0)
+    spring_ids: list[int] = []
+    for k, (sp, (n_a, n_b), fixed_nodes) in enumerate(spring_sets, start=1):
+        rid = spring_rid0 + k - 1
+        spring_eid += 1
+        spring_ids.append(spring_eid)
+        lines += [
+            f"/PROP/TYPE4/{rid}",
+            f"spring_{sp.name}"[:100],
+            f"{_f(sp.mass_kg)}{' ' * 30}{_i(0)}{_i(0)}{_i(0)}",
+            f"{_f(sp.k_n_per_mm / 1e3)}{_f(sp.c_n_s_per_mm)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"{_i(0)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{' ' * 10}{_f(0.0)}{_f(0.0)}",
+            f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
+            f"/PART/{rid}",
+            f"spring_{sp.name}"[:100],
+            f"{_i(0)}{_i(rid)}",
+            f"/SPRING/{rid}",
+            f"{_i(spring_eid)}{_i(n_a)}{_i(n_b)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{' ' * 20}{_i(0)}",
+        ]
+        if fixed_nodes:
+            gid = _SPRING_GR_BASE + k
+            lines += [f"/GRNOD/NODE/{gid}", f"spring_{sp.name}_fixed"[:100]]
+            lines += ["".join(_i(v) for v in fixed_nodes[i : i + 10]) for i in range(0, len(fixed_nodes), 10)]
+            lines += [f"/BCS/{_SPRING_BC_BASE + k}", f"spring_{sp.name}_fixed"[:100], f"   111 111{_i(0)}{_i(gid)}"]
 
     vx = float(vel.get("vx") or 0.0)
     vy = float(vel.get("vy") or 0.0)
@@ -1146,6 +1246,14 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
                 "vars": th.part.vars,
             }
         )
+    th_springs = [eid for eid, (sp, _e, _f_) in zip(spring_ids, spring_sets) if sp.th]
+    if th_springs:
+        # hm_cfg th_spring r110: değişkenler + eleman kimlikleri (10/satır).
+        spring_vars = ["FX", "FY", "FZ"]
+        lines += [f"/TH/SPRING/{_SPRING_TH_ID}", "spring_th", *th_vars(spring_vars)]
+        for i in range(0, len(th_springs), 10):
+            lines.append("".join(_i(v) for v in th_springs[i : i + 10]))
+        th_spec.append({"kind": "spring", "title": "spring_th", "objects": th_springs, "vars": spring_vars})
     if th_node_ids:
         node_set = {int(n["id"]) for n in nodes} | set(accel_masters)
         missing = [n for n in th_node_ids if n not in node_set]
