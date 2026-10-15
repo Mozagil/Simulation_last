@@ -443,7 +443,7 @@ export default function CrashPanel({
     const importedCards = cardsFromRequest(rq as unknown as Record<string, unknown>, axis);
     setLoadCards(importedCards);
     // 1.23 C8b: ezilme referansı (kızak adı rbody_<sıra> → aynı kart listesi)
-    setCrushRef(crushRefFromRequest(rq.crush_ref, importedCards));
+    setCrushRef(crushRefFromRequest(rq.crush_ref, importedCards, (rq.rigid_bodies ?? []) as { name?: string }[]));
     const m = (rq.model ?? {}) as Record<string, unknown>;
     const s = (x: unknown) => (typeof x === "number" ? String(x) : "");
     if (m.isolid != null) setIsolid(s(m.isolid));

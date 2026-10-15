@@ -25,3 +25,11 @@ describe("1.23 C8b crashCrush", () => {
     expect(forceVsCrush(undefined, [1])).toBeNull();
   });
 });
+
+describe("1.23 C8b crashCrush — özgün rijit gövde adı", () => {
+  it("API / senaryo koşusu: 'kizak' → isteğin rigid_bodies sırası → kızak kartı", () => {
+    const cs = [{ id: 21, kind: "rbody" }] as unknown as LoadCard[];
+    expect(crushRefFromRequest({ rigid_body: "kizak" }, cs, [{ name: "kizak" }])).toEqual({ mode: "rbody", cardId: 21, region: "" });
+    expect(crushRefFromRequest({ rigid_body: "yok" }, cs, [{ name: "kizak" }]).cardId).toBeNull();
+  });
+});

@@ -26,11 +26,20 @@ export function crushRefPayload(s: CrushRefState, cards: LoadCard[]): CrushRefPa
   return null;
 }
 
-/** Kayıtlı istek → durum (`rbody_<sıra>` → aynı sıradaki kart). */
-export function crushRefFromRequest(ref: CrushRefPayload | null | undefined, cards: LoadCard[]): CrushRefState {
+/** Kayıtlı istek → durum. Arayüz koşusunda ad `rbody_<sıra>` (kart sırası); API / senaryo koşusunda
+ * özgün ad (ör. "kizak") → isteğin `rigid_bodies` sırasındaki yeri → aynı sıradaki kızak kartı. */
+export function crushRefFromRequest(
+  ref: CrushRefPayload | null | undefined,
+  cards: LoadCard[],
+  rigidBodies: { name?: string }[] = [],
+): CrushRefState {
   if (ref?.rigid_body) {
     const k = Number(/^rbody_(\d+)$/.exec(ref.rigid_body)?.[1]);
-    const card = Number.isFinite(k) ? cards[k - 1] : undefined;
+    let card = Number.isFinite(k) && k >= 1 ? cards[k - 1] : undefined;
+    if (!card || card.kind !== "rbody") {
+      const j = rigidBodies.findIndex((rb) => rb.name === ref.rigid_body);
+      card = j >= 0 ? cards.filter((c) => c.kind === "rbody")[j] : undefined;
+    }
     return { mode: "rbody", cardId: card && card.kind === "rbody" ? card.id : null, region: "" };
   }
   if (ref?.region) return { mode: "region", cardId: null, region: ref.region };
