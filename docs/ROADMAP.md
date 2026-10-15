@@ -1632,7 +1632,11 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     skaler `crush_final_mm`, `crush_max_mm`. `REQUEST_KEYS`'e `crush_ref`. Gerçek: #362 kurulumu +
     kızak ana düğümü (#380) ve kutu_arka bölgesi (#381) — ikisi de δ_son 100.946 mm (rijit arka uç,
     beklenen); IE / Fmax #362 ile aynı (ek çıktı çözümü değiştirmedi). Test: `test_crash_crush_distance.py` (7).
-  - C8b-b F_ort = ∫F dδ / δ_son, IE_son / δ_son, F–δ eğrisi (backend skalerleri).
+  - C8b-b ✅ (2026-10-15) `mean_crush_force`: `crush_work_j` = ∫|F_duvar| dδ (yamuk, δ_maks örneğine kadar;
+    geri sekme dışarıda), `mean_crush_force_kn` = iş / δ_maks, `mean_crush_force_ie_kn` = IE_son / δ_son
+    (karşılaştırma; duvarsızda yalnız bu). F–δ eğrisi ayrı saklanmaz — `rwall_force` ve `crush_mm` aynı
+    zaman örneklerinde. #380 dosyalarından: iş 4783 J (IE + HG 4672 J, KE kaybı 4674 J; ~%2 fark TH
+    örnekleme 0.1 ms), F_ort 47.4 kN, IE / δ 42.8 kN. Test +1.
   - C8b-c UI: Sonuçlar'da F–δ grafiği + özet, crush_ref seçimi, karşılaştırma.
 - D1 ✅ (2026-10-14) Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
   4 · Crash "Deck'i görüntüle": `POST /crash/deck/preview` (gövde = /crash/solve isteği, ham

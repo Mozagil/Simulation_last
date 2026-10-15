@@ -78,3 +78,18 @@ def test_crush_distance_projection_mean_and_missing():
     named.pop("th_crush_9_DZ")
     assert crush_distance(named, spec) is None
     assert crush_distance({}, {"groups": []}) is None
+
+
+def test_mean_crush_force_work_until_max_and_ie_ratio():
+    from app.postprocess.openradioss_th import mean_crush_force
+
+    # sabit 50 kN, δ 0 → 10 mm, sonra 2 mm geri sekme (iş δ_maks'ta kesilir)
+    crush = [0.0, 5.0, 10.0, 8.0]
+    force = [50.0, 50.0, 50.0, 0.0]
+    s = mean_crush_force(crush, force, ie_final_j=400.0)
+    assert s["crush_work_j"] == pytest.approx(500.0)  # 50 kN × 10 mm = 500 J
+    assert s["mean_crush_force_kn"] == pytest.approx(50.0)
+    assert s["mean_crush_force_ie_kn"] == pytest.approx(400.0 / 8.0)
+    # duvar kuvveti yoksa yalnız IE oranı; ezilme yoksa boş
+    assert set(mean_crush_force(crush, None, 400.0)) == {"mean_crush_force_ie_kn"}
+    assert mean_crush_force([0.0, -1.0], [1.0, 1.0], 10.0) == {}
