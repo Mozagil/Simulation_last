@@ -316,7 +316,7 @@ export const CRASH_DOC: DocSection[] = [
   },
 ];
 
-/** Hazır senaryolar (katalog, 15/15) — kullanılan özellikler. */
+/** Hazır senaryolar (katalog, 16/16) — kullanılan özellikler. */
 export const CRASH_SCENARIOS: DocScenario[] = [
   { id: "crash_box", title: "Crash box eksenel ezilme", template: "crash_box_shell", setup: "Kabuk kutu −x ile rijit duvara (x = 0); isteğe bağlı kızak (kutu_arka rijit + kütle).", features: ["Rijit duvar", "Hareketli rol", "Kütle / kızak (rayda)", "Öz temas TYPE7", "LAW2"], validation: "V1–V3: elastik dalga ρ·c·v·A, plastik plato σy·A, Wierzbicki–Abramowicz", reference: "RD-E 1700" },
   { id: "s_rail", title: "S-kiriş / ön kiriş", template: "s_rail_shell", setup: "Süpürülmüş kabuk tüp duvara; arka halka kızak, kılavuzlu (yalnız x).", features: ["Rijit duvar", "Kütle / kızak (rayda)", "Kesit kuvveti", "LAW2"], validation: "Momentum / enerji; ortalama kuvvet / düz tüp oranı (veri)", reference: "RD-E 0300" },
@@ -333,4 +333,5 @@ export const CRASH_SCENARIOS: DocScenario[] = [
   { id: "rops", title: "ROPS portal çerçeve", template: "rops_frame_shell", setup: "Tabanlar sabit; üst büküm rijit gövde + yanal sabit hızla itme; kuvvet dikme kesitlerinden.", features: ["Duvarsız", "Bölgeyi kilitle", "Sabit hızla it", "Kesit kuvveti"], validation: "V9: plato vs 4·Mp/H", reference: "ISO 3471 mantığı" },
   { id: "fops", title: "FOPS — tavana düşen cisim", template: "plate_ball_shell", setup: "Kabin tavanı (kenarlar sabit) üstüne rijit küre H'den düşer; /GRAV.", features: ["Duvarsız", "Ankastre kenar", "Kütle (küre)", "Yerçekimi", "TYPE7"], validation: "KE₀ = m·g·H", reference: "ISO 3449 mantığı" },
   { id: "bucket_rock", title: "Kepçe / taş darbesi", template: "bucket_rock_shell", setup: "Kavisli taban kenarları sabit; taş rijit gövde + −z ilk hız + ivme kanalı; taş → taban TYPE7.", features: ["Duvarsız", "Bölgeyi kilitle", "Kütle (ivme kaydı)", "TYPE7"], validation: "V16: ∫|a|dt = I/m", reference: "Açık literatür" },
+  { id: "can_crush", title: "Alüminyum kutu (can) ezme", template: "can_crush_shell", setup: "Kutu (Ø66 × 115, t 0.5, üstte Ø20 delik) serbest; θ = 15° eğimli C-kesit çarpıcı rijit gövde + ek kütle + −z ilk hız; taban plakası /BCS 111111 (kutudan 1 mm aşağıda); genel temas TYPE24 + Iedge 1; duvar yok.", features: ["Duvarsız", "Genel temas (TYPE24)", "Kütle / kızak", "Bölgeyi kilitle", "Geri sekme"], validation: "Enerji dengesi; geri sekme (1.24c) — veri. #377: deformasyon tepe 46.5 mm @ 6.5 ms, geri sekme 9.6 mm (%21)", reference: "Ansys Explicit örneği (problem tanımı)" },
 ];

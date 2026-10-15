@@ -1695,7 +1695,20 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   Bu düzeltmeden önceki koşularda (#370–#374) parça anahtarları kart kimliğiyle kaldı.
   Test: `test_crash_springback.py` (+2), UI testleri.
   Test: `crashSpringback.test.ts`, `CrashSpringbackCard.test.tsx`.
-- d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
+- d ✅ (2026-10-15, kullanıcı onayı "ikisini de yap") `can_crush_shell` şablonu + `can_crush` katalog
+  maddesi (sektör "dogrulama", 16/16 hazır). Geometri (kabuk, mm): parça 0 kutu Ø66 × 115 (yan yüzey 4
+  çeyrek yama — periyodik yüzey yok; taban diski; kapak Ø20 delikli), parça 1 C-kesit çarpıcı 120 × 40 ×
+  20, y etrafında θ 15°, kapaktan g 1 mm; parça 2 taban 150 × 150, kutudan g_b 1 mm aşağıda. Kurulum
+  `_can_setup`: kutu serbest (t 0.5), çarpıcı hareketli + rijit gövde "carpici" + ek kütle, taban /BCS
+  111111 (parça 2), TYPE24 genel temas + Iedge 1; ilk hız −z; duvar yok. Katalog başlangıcı 6061-T6
+  (`defaults.material`, kart), çarpıcı +5 kg, 10 m/s, 10 ms, 3 mm eleman. Ölçülen: #376 (g_b 0.5,
+  Iedge 0) — TYPE24 847 başlangıç penetrasyonu yok sayıldı (kabuk boşluğu (0.5+1)/2 = 0.75 > 0.5), kutu
+  tabana 2.5 mm girdi, çarpıcı ~7.5 ms'den sonra katlanan kapaktan geçti → varsayılan g_b 1.0 + Iedge 1;
+  #377: başlangıç penetrasyonu yok, kutu deformasyonu (öteleme çıkarılmış) tepe 46.5 mm @ 6.5 ms → son
+  37.0, geri sekme 9.6 mm (%21), enerji dengesi %1.2. Gözlem (veri): sürtünmesiz temasta kutu 6.5 ms'den
+  sonra y yönünde kayıp çıkıyor (10 ms'de merkez y −101 mm); sürtünme mühendisin. Belgeler "Hazır
+  senaryolar" 16. Test: `test_template_can_crush_shell.py` (5), `test_crash_catalog.py`.
+  Eski not: Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
   + sabit taban bloğu. Genel temas (a1/a2), parça rolleri. Çıktı: deformasyon, von Mises,
   eşdeğer plastik şekil değiştirme, geri sekme (c1–c3).

@@ -5,14 +5,14 @@ import { dynaFor } from "../lib/dynaKeywords";
 import DocsDialog from "./DocsDialog";
 
 describe("Belgeler penceresi", () => {
-  it("içerik tutarlı: her kartın LS-DYNA karşılığı var, 15 senaryo, görseller public/docs/crash altında", () => {
+  it("içerik tutarlı: her kartın LS-DYNA karşılığı var, 16 senaryo, görseller public/docs/crash altında", () => {
     for (const s of CRASH_DOC) {
       for (const it of s.items ?? []) {
         if (it.card) expect(dynaFor(it.card), `${s.id}: ${it.card}`).not.toBeNull();
       }
       if (s.image) expect(s.image).toMatch(/^\/docs\/crash\//);
     }
-    expect(CRASH_SCENARIOS).toHaveLength(15);
+    expect(CRASH_SCENARIOS).toHaveLength(16);
   });
 
   it("bölümler, OpenRadioss + LS-DYNA sütunları; arama süzer; Esc kapatır", () => {

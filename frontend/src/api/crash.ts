@@ -643,6 +643,8 @@ export interface CrashCatalogEntry {
     extras?: Record<string, string>;
     common?: Partial<Record<"elem" | "speed" | "tEnd" | "forceCfc", string>>;
     acc_cfc?: number | null;
+    /** 1.24d — senaryo malzemesinin başlangıç adı (ör. "6061-T6") */
+    material?: string;
   };
 }
 

@@ -8,6 +8,7 @@ const SECTOR: Record<string, string> = {
   otomotiv: "Otomotiv",
   savunma: "Savunma",
   is_makineleri: "İş makineleri",
+  dogrulama: "Doğrulama / eğitim",
 };
 
 const STATUS: Record<CrashCatalogEntry["status"], string> = {
