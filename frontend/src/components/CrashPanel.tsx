@@ -31,6 +31,8 @@ import CrashLoadCards, {
 import { RawCardsOpenRow } from "./CrashRawCardsEditor";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
 import CrashLiveProgress, { livePhase, type LiveValues } from "./CrashLiveProgress";
+import CrashSpringbackCard from "./CrashSpringbackCard";
+import { springbackRows } from "../lib/crashSpringback";
 import CrashDeckViewer from "./CrashDeckViewer";
 import { cardsFromRequest } from "../lib/crashSetupImport";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
@@ -1661,6 +1663,13 @@ export default function CrashPanel({
                 )}
               </ul>
             </div>
+          )}
+          {/* 1.24c3 — geri sekme (c1 skalerleri varsa) */}
+          {springbackRows(scalars).length > 0 && (
+            <CrashSpringbackCard
+              scalars={scalars}
+              runId={result?.run_id ?? (externalJob?.jobId === jobId ? (externalJob?.runId ?? null) : null)}
+            />
           )}
           {jobId && status === "solved" && (
             <div className="crash-cfc-post" data-testid="crash-cfc-post">

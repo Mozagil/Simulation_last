@@ -1681,7 +1681,15 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
     `outputPayload().damping` (kapalı = null), istemcide backend kuralı (α = β = 0, ters pencere
     gönderilmez). Geçmişten / senaryodan yükleme `dampingFromRequest`. Belgeler: crashDoc "Sönüm
     (Rayleigh)". c2 ✅. Test: `CrashSolverControlCard.test.tsx` (+4), `CrashOutputCard.test.tsx`.
-- c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
+- c3 ✅ (2026-10-15) Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI). `CrashSpringbackCard`:
+  tablo (kapsam × tanım: tepe, t tepe, son, geri sekme, oran %) c1 skalerlerinden; eğri istemcide
+  `lib/crashSpringback.ts` (animasyon `positions` − ilk kare; iki tanım; yüzey düğümleri — katıda iç düğüm
+  yok, öteleme çıkarılmış eğri skalerden biraz farklı olabilir). Kapsam çipleri. Skaler yoksa kart ve
+  animasyon isteği yok. Parça adı deck kartı kimliği (`/PART/n`; mesh #p → /PART/p+1) — animasyon
+  `PART_ID`'si böyle geliyor (deforme şekildeki "parça #" de aynı). Ölçüldü: #374 crash box 4 ms — mutlak
+  8.203 mm (t 4.0 = son, geri sekme 0), öteleme çıkarılmış tepe 0.491 @ 3.4 ms → son 0.483 (%1.7);
+  eğrinin son değeri tabloyla aynı. crashDoc "Geri sekme · mm". c1–c3 ✅.
+  Test: `crashSpringback.test.ts`, `CrashSpringbackCard.test.tsx`.
 - d Alüminyum can crush şablonu (Ansys Explicit örneği, 2026-10-14 resmi): ince cidarlı
   silindir kabuk (alt/üst kapak, bir uçta delik) + açıyla gelen C-kesit çarpıcı (rijit, ilk hız)
   + sabit taban bloğu. Genel temas (a1/a2), parça rolleri. Çıktı: deformasyon, von Mises,
