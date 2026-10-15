@@ -24,6 +24,7 @@ export function curveUnit(key: string): { title: string; unit: string; yLabel: s
   if (/energy|external_work/.test(key)) return { title: "Enerji · J", unit: "J", yLabel: "enerji", isForce: false };
   if (/_impulse/.test(key)) return { title: "İmpuls · N·s", unit: "N·s", yLabel: "impuls", isForce: false };
   if (key.startsWith("th_")) return { title: "TH kanalı", unit: "", yLabel: key, isForce: false };
+  if (key === "crush_mm") return { title: "Ezilme · mm", unit: "mm", yLabel: "ezilme", isForce: false };
   return { title: "Kuvvet · kN", unit: "kN", yLabel: "kuvvet", isForce: true };
 }
 
@@ -32,7 +33,7 @@ export const CURVE_GROUPS = ["Kuvvet", "Enerji", "Temas", "Kesit", "İvme", "İm
 export type CurveGroup = (typeof CURVE_GROUPS)[number];
 
 export function curveGroup(key: string): CurveGroup {
-  if (key.startsWith("th_")) return "TH kanalları";
+  if (key.startsWith("th_") || key === "crush_mm") return "TH kanalları";
   if (key.startsWith("acc_g")) return "İvme";
   if (/energy|external_work/.test(key)) return "Enerji";
   if (key.startsWith("contact_")) return "Temas";
@@ -51,6 +52,7 @@ const CURVE_NAMES: Record<string, string> = {
   external_work: "Dış iş",
   total_energy: "Toplam enerji",
   acc_g: "İvme bileşkesi",
+  crush_mm: "Ezilme mesafesi δ",
 };
 
 /** Okunur eğri adı: "Duvar kuvveti (kN)", "Temas 2 kuvveti (kN)", "Duvar kuvveti · CFC 600 (kN)", th_* ham. */

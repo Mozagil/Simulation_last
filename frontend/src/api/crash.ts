@@ -183,6 +183,8 @@ export interface CrashSolveRequest {
   rigid_bodies?: Record<string, unknown>[];
   /** 1.24b2 — yay elemanları (/SPRING + /PROP/TYPE4) */
   springs?: Record<string, unknown>[];
+  /** 1.23 C8b — ezilme mesafesi referansı (rijit gövde ana düğümü ya da bölge); null = yok */
+  crush_ref?: { rigid_body?: string; region?: string; direction?: [number, number, number] } | null;
   /** 1.24c2 — Rayleigh sönümü; null / yok = sönüm yok */
   damping?: CrashDampingPayload | null;
   /** 11.2 — Yükleme: Yerçekimi */

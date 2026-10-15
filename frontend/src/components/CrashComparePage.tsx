@@ -28,6 +28,10 @@ export const SCALAR_ROWS: ScalarRow[] = [
   { key: "timestep_min", label: "En küçük zaman adımı Δt", unit: "ms" },
   { key: "mass_added_rel", label: "Eklenen kütle oranı", unit: "%", scale: 100 },
   { key: "elements_deleted", label: "Silinen eleman", unit: "adet" },
+  // 1.23 C8b — ezilme referansı seçilmiş koşularda
+  { key: "crush_max_mm", label: "Ezilme mesafesi, maks", unit: "mm" },
+  { key: "mean_crush_force_kn", label: "Ortalama ezilme kuvveti ∫F dδ / δ", unit: "kN" },
+  { key: "mean_crush_force_ie_kn", label: "IE / δ", unit: "kN" },
 ];
 
 /** `section_3_force_max` → "Kesit 3 kuvveti, tepe" (kN); eşleşmezse null. */

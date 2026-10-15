@@ -35,6 +35,7 @@ import CrashSpringbackCard from "./CrashSpringbackCard";
 import { springbackRows } from "../lib/crashSpringback";
 import CrashDeckViewer from "./CrashDeckViewer";
 import { cardsFromRequest } from "../lib/crashSetupImport";
+import { crushRefFromRequest, crushRefPayload, forceVsCrush, type CrushRefState } from "../lib/crashCrush";
 import { defaultWallName, readWallPresets, removeWallPreset, saveWallPreset, type WallPreset } from "../lib/wallPresets";
 
 const TERMINAL = new Set(["rad_only", "solved", "failed", "done"]);
@@ -275,6 +276,8 @@ export default function CrashPanel({
   const [wallPresetName, setWallPresetName] = useState("");
   // TODO 11.9 — kart tabanlı yükleme / tutma
   const [loadCards, setLoadCards] = useState<LoadCard[]>([]);
+  // 1.23 C8b — ezilme mesafesi referansı: yok | Kütle / kızak kartı (ana düğüm) | bölge (düğüm ortalaması)
+  const [crushRef, setCrushRef] = useState<CrushRefState>({ mode: "", cardId: null, region: "" });
   // Temas tanımları (1.12): varsayılan yok — mühendis satır ekler.
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const useRigidWall = impactMode === "wall";
@@ -437,7 +440,10 @@ export default function CrashPanel({
     const dv = v ? (wallMode ? v.map((c) => (c === 0 ? 0 : -c)) : v) : [1, 0, 0];
     const ax = dv.map((c) => Math.abs(Number(c) || 0));
     const axis = (["X", "Y", "Z"] as const)[Math.max(0, ax.indexOf(Math.max(...ax)))];
-    setLoadCards(cardsFromRequest(rq as unknown as Record<string, unknown>, axis));
+    const importedCards = cardsFromRequest(rq as unknown as Record<string, unknown>, axis);
+    setLoadCards(importedCards);
+    // 1.23 C8b: ezilme referansı (kızak adı rbody_<sıra> → aynı kart listesi)
+    setCrushRef(crushRefFromRequest(rq.crush_ref, importedCards));
     const m = (rq.model ?? {}) as Record<string, unknown>;
     const s = (x: unknown) => (typeof x === "number" ? String(x) : "");
     if (m.isolid != null) setIsolid(s(m.isolid));
@@ -744,6 +750,7 @@ export default function CrashPanel({
       ...cardsPayload(loadCards, impactAxis),
       model: modelFor(matCard, "Global"),
       ...outputPayload(output),
+      crush_ref: crushRefPayload(crushRef, loadCards),
     };
   }
 
@@ -1448,6 +1455,42 @@ export default function CrashPanel({
             showCfc={false}
             showTimestep={false}
           />
+          {/* 1.23 C8b — ezilme mesafesi referansı (yok = ezilme skalerleri yazılmaz) */}
+          <div className="crash-crush-ref" data-testid="crash-crush-ref">
+            <p className="crash-expert-title">Ezilme mesafesi referansı (ortalama ezilme kuvveti için)</p>
+            <label className="crash-expert-field">
+              <span>Arka uç</span>
+              <select
+                aria-label="Ezilme referansı"
+                value={crushRef.mode === "rbody" ? `card:${crushRef.cardId ?? ""}` : crushRef.mode === "region" ? `region:${crushRef.region}` : ""}
+                disabled={busy}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.startsWith("card:")) setCrushRef({ mode: "rbody", cardId: Number(v.slice(5)), region: "" });
+                  else if (v.startsWith("region:")) setCrushRef({ mode: "region", cardId: null, region: v.slice(7) });
+                  else setCrushRef({ mode: "", cardId: null, region: "" });
+                }}
+              >
+                <option value="">Yok</option>
+                {loadCards
+                  .map((c, i) => ({ c, i }))
+                  .filter(({ c }) => c.kind === "rbody")
+                  .map(({ c, i }) => (
+                    <option key={c.id} value={`card:${c.id}`}>
+                      Kütle / kızak #{i + 1} (ana düğüm)
+                    </option>
+                  ))}
+                {regions.map((r) => (
+                  <option key={r} value={`region:${r}`}>
+                    Bölge {r} (düğüm ortalaması)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="crash-behavior-hint">
+              δ = arka ucun çarpma yönündeki yer değiştirmesi. Sonuçlar'da F–δ, duvar işi ∫F dδ / δ_maks ve IE / δ.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -1661,6 +1704,38 @@ export default function CrashPanel({
                 {scalars.energy_balance_rel != null && (
                   <li>Enerji dengesi |ΔE| / E %{pct(scalars.energy_balance_rel)}</li>
                 )}
+              </ul>
+            </div>
+          )}
+          {/* 1.23 C8b — ezilme mesafesi ve ortalama ezilme kuvveti (crush_ref seçildiyse) */}
+          {scalars.crush_max_mm != null && (
+            <div className="crash-crush-summary" data-testid="crash-crush-summary">
+              <p className="crash-expert-title">Ezilme · mm / kN</p>
+              {(() => {
+                const fd = forceVsCrush(curves?.crush_mm, curves?.rwall_force);
+                return fd ? (
+                  <CrashForceChart
+                    time={fd.x}
+                    series={[{ key: "fd", label: "Duvar kuvveti", values: fd.f }]}
+                    title="F–δ · kN"
+                    unit="kN"
+                    yLabel="kuvvet"
+                    ariaLabel="Kuvvet–ezilme grafiği"
+                    xName="ezilme"
+                    xSym="δ"
+                    xUnit="mm"
+                    note="δ_maks'a kadar (yükleme kolu)."
+                  />
+                ) : null;
+              })()}
+              <ul className="crash-scalar-list">
+                <li>Ezilme son {fmt(scalars.crush_final_mm)} mm · maks {fmt(scalars.crush_max_mm)} mm</li>
+                {scalars.mean_crush_force_kn != null && (
+                  <li>
+                    Ortalama ezilme kuvveti ∫F dδ / δ_maks {fmt(scalars.mean_crush_force_kn)} kN · duvar işi {fmt(scalars.crush_work_j)} J
+                  </li>
+                )}
+                {scalars.mean_crush_force_ie_kn != null && <li>IE_son / δ_son {fmt(scalars.mean_crush_force_ie_kn)} kN</li>}
               </ul>
             </div>
           )}

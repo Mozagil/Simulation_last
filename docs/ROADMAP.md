@@ -1542,7 +1542,7 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
   KE_son 55.49 J (geri sekme); LAW2 εp,max 0.01 #334 183 kabuk silindi. Yolda bulunan hata:
   LAW2 εp,max kopması listing'de parantezsiz ("RUPTURE OF SHELL ELEMENT") yazılıyor, sayılmıyordu
   ("silinen eleman 0") — `parse_ruptures` düzeltildi, kriter "MAT".
-  **1.23 TAMAM (2026-10-14).** A5 kabul (2026-10-15). Beklemede: C8b (ayrı onay).
+  **1.23 TAMAM (2026-10-14).** A5 kabul, C8b ✅ (2026-10-15).
 - A4 ✅ Animasyonda "ölçek ×1 (gerçek) / ×2 / ×5 / ×10" (yer değiştirme ilk kareye göre
   çarpılır) + veri satırı "son karede en büyük |u| … mm · model boyutuna oranı %…".
   Ölçüldü: Belgeler 1. örnek (crash box, LAW2, 10 m/s, 4 ms; #316) |u|max 8.2 mm = 300 mm
@@ -1637,7 +1637,10 @@ C7 → C1 → C5 → B1 → B3 → B2 → D2/D3 → D1 → C4 → E → A3.
     (karşılaştırma; duvarsızda yalnız bu). F–δ eğrisi ayrı saklanmaz — `rwall_force` ve `crush_mm` aynı
     zaman örneklerinde. #380 dosyalarından: iş 4783 J (IE + HG 4672 J, KE kaybı 4674 J; ~%2 fark TH
     örnekleme 0.1 ms), F_ort 47.4 kN, IE / δ 42.8 kN. Test +1.
-  - C8b-c UI: Sonuçlar'da F–δ grafiği + özet, crush_ref seçimi, karşılaştırma.
+  - C8b-c ✅ (2026-10-15) UI: Çıktı ayarları altında "Ezilme mesafesi referansı" (Yok / Kütle-kızak kartı /
+    bölge) → istekte `crush_ref` (`lib/crashCrush.ts`; geçmişten yüklemede aynı kart listesine eşlenir);
+    Sonuçlar'da "Ezilme" kartı (F–δ δ_maks'a kadar + δ_son / δ_maks / ∫F dδ / δ / IE / δ);
+    karşılaştırma tablosu 3 satır, eğri seçicide `crush_mm` mm. C8b ✅. Test: `crashCrush.test.ts` (3).
 - D1 ✅ (2026-10-14) Ham kart editörü: üretilen modelin kartlarını export / görüntüle (Mod B ilk yarı).
   4 · Crash "Deck'i görüntüle": `POST /crash/deck/preview` (gövde = /crash/solve isteği, ham
   kartlar dahil; geçici klasör, solver koşmaz) → starter + engine metni + kart listesi
