@@ -1607,4 +1607,31 @@ class OpenRadiossAdapter(SolverAdapter):
     def parse_results(self, job: JobHandle) -> ResultSet:
         from app.postprocess.openradioss_th import parse_openradioss_dir
 
-        return parse_openradioss_dir(job.work_dir)
+        res = parse_openradioss_dir(job.work_dir)
+        res.scalars.update(_springback_scalars(job.work_dir))
+        return res
+
+
+def _springback_scalars(work_dir: Path) -> dict[str, float]:
+    """1.24c1 — animasyon karelerinden geri sekme skalerleri. Kareler bir kez çevrilir;
+    aynı kareyle deforme şekil önbelleği (`anim.json`) de yazılır (ilk istek beklemesin).
+    Animasyon yoksa / çevrilemezse boş — koşunun sonucu bundan etkilenmez."""
+    import logging
+
+    from app.postprocess.crash_springback import springback_from_vtk_texts
+    from app.postprocess.openradioss_anim import build_animation, write_animation_cache
+
+    try:
+        bins = resolve_openradioss()
+        if bins is None:
+            return {}
+        texts = convert_animation(bins, Path(work_dir))
+        if not texts:
+            return {}
+        data = build_animation(texts)
+        if data["frames"]:
+            write_animation_cache(Path(work_dir), data)
+        return springback_from_vtk_texts(texts)
+    except Exception as exc:  # noqa: BLE001 — metrik koşuyu düşürmez
+        logging.getLogger(__name__).warning("geri sekme metrikleri okunamadı (%s): %s", work_dir, exc)
+        return {}

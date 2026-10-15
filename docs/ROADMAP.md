@@ -1651,9 +1651,19 @@ Not (2026-10-14): b1/b2 "yay" kullanıcı isteğinin yanlış okunmasıyla yazı
   yay kütlesi kg. Hedef çipi yok. Özet "Kütle / kızak #1 ↔ nokta (…) sabit · K … N/mm".
   İçe aktarma `springs[]`'i karta çevirir (kızak adı → kart). Test: `CrashLoadCards.test.tsx`,
   `crashSetupImport.test.ts`.
-- c1 Geri sekme (springback) metrikleri (backend): animasyon karelerinden tepe |u| (t), son |u|,
+- c1 ✅ (2026-10-15) Geri sekme (springback) metrikleri (backend): animasyon karelerinden tepe |u| (t), son |u|,
   geri sekme = tepe − son ve oranı; model + parça bazında `scalars`. Explicit devam yaklaşımı
   (çarpıcı geri sekip temas kesilene kadar koşu). `/IMPL/SPRBACK` (implicit) ayrı faz.
+  Gerçek koşuda görüldü: Radioss `Displacement` rijit ötelemeyi içerir → serbest parçada |u| ezilmeyi
+  değil yolu ölçer (#370 LAW1 seken kutu: |u| 181.7 mm son karede, geri sekme 0). Kullanıcı kararı D
+  (2026-10-15): iki tanım yan yana — mutlak (`model_disp_*`, `springback_mm/_ratio`, `part_<id>_disp_*`,
+  `part_<id>_springback_*`; sabit parçada deformasyon) + öteleme çıkarılmış |u − ū(parça)|
+  (`model_def_*`, `springback_def_mm/_ratio`, `part_<id>_def_*`, `part_<id>_springback_def_*`; rijit
+  dönme kalır). `postprocess/crash_springback.py`; `OpenRadiossAdapter.parse_results` kareleri bir kez
+  çevirir, `anim.json` önbelleğini de yazar; hata koşuyu düşürmez. Ölçüldü (aynı kareler): #370 LAW1
+  def tepe 4.73 mm @ 1.0 ms → son 1.34 mm, geri sekme 3.39 mm (%72); #371 LAW2 def 122.6 mm 20 ms'de
+  hâlâ artıyor (ezilme sürüyor) → geri sekme 0 — sekme için koşu uzatılmalı (mühendis). Eski koşular
+  için değer yok (yeniden işleme ayrı). Test: `test_crash_springback.py`.
 - c2 `/DAMP` (Rayleigh) kartı: salınımı söndürmek için; backend + Çözüm kontrolü UI (iki PR).
   Kullanmak mühendisin kararı; varsayılan yok.
 - c3 Sonuçlar'da "Geri sekme" kartı + |u|max–zaman eğrisi (UI).
