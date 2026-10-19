@@ -7,6 +7,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from app.solvers.openradioss_headers import strip_headers
 from app.main import app
 from app.solvers.base import SolverError
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -26,7 +27,7 @@ def _deck(tmp_path, model, mats_curves):
     p = _two_part_params(tmp_path)
     p["materials"] = [{**m, "crash_curves": c} for m, c in zip(p["materials"], mats_curves)]
     p["model"] = model
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_empty_request_curves_fall_back_to_material(tmp_path):

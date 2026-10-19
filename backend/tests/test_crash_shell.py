@@ -10,6 +10,7 @@ import gmsh
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.mesh.openradioss_export import gmsh_msh_to_radioss
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashShellParams
@@ -53,7 +54,7 @@ def _shell_params(tmp_path, **extra):
 
 
 def _deck(tmp_path, **extra) -> str:
-    return OpenRadiossAdapter().build_input(_shell_params(tmp_path, **extra)).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(_shell_params(tmp_path, **extra)).path.read_text(encoding="utf-8"))
 
 
 def test_shell_and_sh3n_cards_per_part(tmp_path):
@@ -143,7 +144,7 @@ def test_coincident_node_counter(tmp_path):
     rm = gmsh_msh_to_radioss(tmp_path / "split.msh")
     assert rm.coincident_nodes == 2
     p = _shell_params(tmp_path, coincident_nodes=rm.coincident_nodes)
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert s.splitlines()[1] == "# coincident_nodes: 2"
 
 

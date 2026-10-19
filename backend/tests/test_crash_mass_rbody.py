@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.api.crash_runs import CRASH_DIR
 from app.main import app
 from app.postprocess.openradioss_th import parse_openradioss_dir
@@ -27,7 +28,7 @@ client = TestClient(app)
 def _deck(tmp_path, **extra) -> str:
     p = _two_part_params(tmp_path)  # parça 0 hareketli (düğüm 1–4), parça 1 sabit (5–8)
     p.update(extra)
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_admas_on_region_total_and_per_node(tmp_path):
@@ -88,7 +89,7 @@ def test_scenario_rbody_on_template_region():
     r = client.post("/crash/scenario", json={"run_solver": False,
                                               "rigid_bodies": [{"name": "kizak", "region": "kutu_arka", "mass_kg": 50}]})
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     ids = "".join(_card(deck, "/GRNOD/NODE/8701")[1:]).split()
     assert len(ids) > 4  # arka uç halkası (x = L) düğümleri
     master = _card(deck, "/RBODY/1")[1][:10]

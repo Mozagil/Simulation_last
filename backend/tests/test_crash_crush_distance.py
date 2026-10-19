@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from app.solvers.openradioss_headers import strip_headers
 from app.postprocess.openradioss_th import crush_distance
 from app.solvers.base import SolverError
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -18,7 +19,7 @@ def _build(tmp_path, **extra):
     p.update(extra)
     art = OpenRadiossAdapter().build_input(p)
     spec = json.loads((art.path.parent / "th_spec.json").read_text(encoding="utf-8"))
-    return art.path.read_text(encoding="utf-8"), spec, p
+    return strip_headers(art.path.read_text(encoding="utf-8")), spec, p
 
 
 def test_rigid_body_master_node_group(tmp_path):

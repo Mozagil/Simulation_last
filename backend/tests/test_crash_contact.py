@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.postprocess.openradioss_th import parse_openradioss_dir
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashContactParams
@@ -32,7 +33,7 @@ def _deck(tmp_path, contacts, **extra) -> str:
     p = _two_part_params(tmp_path)
     p["contacts"] = contacts
     p.update(extra)
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_type7_cards_and_ids(tmp_path):
@@ -149,7 +150,7 @@ def test_all_parts_shell_and_solid_three_interfaces(tmp_path):
     from tests.test_crash_shell import _shell_params
 
     p = _shell_params(tmp_path, contacts=[{"type": 24, "all_parts": True}])
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert _card(s, "/SURF/PART/7901") == ["all_shell_parts", f"{1:10d}"]
     assert _card(s, "/SURF/PART/EXT/7902") == ["all_solid_parts", f"{2:10d}"]
     c1, c2, c3 = (_card(s, f"/INTER/TYPE24/{k}") for k in (1, 2, 3))

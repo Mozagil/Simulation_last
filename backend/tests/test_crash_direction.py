@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.api.crash import CRASH_DIR
 from app.main import app
 from app.solvers.crash_params import CrashBarrierParams
@@ -49,7 +50,7 @@ def test_wallless_solve_with_direction_needs_no_wall():
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["cards"]["has_rwall"] is False
-    deck = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     vel = _card(deck, "/INIVEL/TRA/1")[1]
     assert [float(vel[i:i + 20]) for i in (0, 20, 40)] == pytest.approx([0.0, 0.0, -4.0])
 
@@ -74,7 +75,7 @@ def test_card_initial_velocity_replaces_barrier_velocity():
     })
     assert r.status_code == 200, r.text
     body = r.json()
-    deck = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/INIVEL/TRA/1\n" not in deck and "/INIVEL/TRA/2\n" not in deck
     assert "/GRNOD/NODE/8601" in deck
     vel = _card(deck, "/INIVEL/TRA/61")[1]

@@ -12,6 +12,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.postprocess.openradioss_th import named_th_curves, parse_openradioss_dir
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashThParams
@@ -27,7 +28,7 @@ def _starter(tmp_path, th=None, **extra):
     p.update(extra)
     art = OpenRadiossAdapter().build_input(p)
     spec = json.loads((art.path.parent / "th_spec.json").read_text(encoding="utf-8"))
-    return art.path.read_text(encoding="utf-8"), spec
+    return strip_headers(art.path.read_text(encoding="utf-8")), spec
 
 
 def test_default_groups_and_unique_ids(tmp_path):

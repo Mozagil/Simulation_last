@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.solvers.openradioss_headers import strip_headers
 from app.api.crash_runs import CRASH_DIR
 from app.main import app
 from tests.test_crash_contact import _card
@@ -33,7 +34,7 @@ def test_default_scenario_builds_deck_like_manual_setup():
     assert d["mesh"]["dimension"] == 2 and d["mesh"]["preview_url"].endswith(".preview.json")
     crash = d["crash"]
     assert crash["status"] == "rad_only" and crash["cards"]["has_shell"] and crash["cards"]["has_law2"]
-    deck = (CRASH_DIR / crash["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / crash["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert float(_card(deck, "/PROP/TYPE1/1")[3][20:40]) == 3.0  # Thick
     run = client.get(f"/crash/runs/{crash['run_id']}").json()
     assert run["geometry_id"] == d["geometry_id"] and run["name"] == "varsayılan"
@@ -49,10 +50,10 @@ def test_parameters_flow_into_deck():
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["scenario"]["thickness_mm"] == 2.5  # açık kalınlık şablon wall'unu ezer
-    deck = (CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert float(_card(deck, "/PROP/TYPE1/1")[3][20:40]) == 2.5
     assert float(_card(deck, "/INIVEL/TRA/1")[1][:20]) == -15.0
-    engine = (CRASH_DIR / d["crash"]["job_id"] / "crash_0001.rad").read_text(encoding="utf-8")
+    engine = strip_headers((CRASH_DIR / d["crash"]["job_id"] / "crash_0001.rad").read_text(encoding="utf-8"))
     assert float(_card(engine, "/RUN/crash/1")[0]) == 2.0
 
 
@@ -73,7 +74,7 @@ def test_plate_ball_scenario_template_setup():
     sc = d["scenario"]
     assert sc["thickness_mm"] == 5.0 and sc["ball_thickness_mm"] == 1.5 and sc["ball_mass_kg"] == 2.0
     assert sc["ball_material_name"] == "S235"
-    deck = (CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "part_0_free" in deck and "part_1_moving" in deck
     assert float(_card(deck, "/PROP/TYPE1/1")[3][20:40]) == 5.0
     assert float(_card(deck, "/PROP/TYPE1/2")[3][20:40]) == 1.5
@@ -91,7 +92,7 @@ def test_plate_ball_scenario_template_setup():
 def test_plate_ball_without_template_defaults_keeps_lists_empty():
     r = _scenario(template_id="plate_ball_shell", element_size_mm=10, template_defaults=False)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/RBODY/" not in deck and "/INTER/" not in deck and "bcs_plaka_kenar" not in deck
 
 
@@ -102,7 +103,7 @@ def test_taylor_bar_scenario_solid_deck():
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["scenario"]["element_scheme"] == "tet" and d["scenario"]["thickness_mm"] is None
-    deck = (CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/TETRA4/1" in deck and "/SHELL/" not in deck and "/RWALL/PLANE/1" in deck
     vel = _card(deck, "/INIVEL/TRA/1")[1]
     assert [float(vel[i:i + 20]) for i in (0, 20, 40)] == [-120.0, 0.0, 0.0]
@@ -117,7 +118,7 @@ def test_drop_box_scenario_height_gravity_ground():
     assert sc["speed_m_s"] == pytest.approx(4.42945, rel=1e-5)
     assert sc["gravity"] == {"accel_m_s2": -9.81, "direction": "Z"}
     assert sc["wall"] == {"point": [0.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0]}
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/GRAV/1" in deck and "/RWALL/PLANE/1" in deck
     vel = _card(deck, "/INIVEL/TRA/1")[1]
     assert float(vel[40:60]) == pytest.approx(-4.42945, rel=1e-5)
@@ -129,7 +130,7 @@ def test_drop_box_floor_plate_contact_instead_of_wall():
     r = _scenario(template_id="drop_box_shell", element_size_mm=20, drop_height_mm=1000.0, t_end_ms=2.0,
                   geometry={"gap": 5.0, "floor_size": 400.0})
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/RWALL/" not in deck
     assert "/INTER/TYPE7/1" in deck and "/BCS/" in deck and "/PART/2" in deck
     vel = _card(deck, "/INIVEL/TRA/1")[1]
@@ -145,7 +146,7 @@ def test_pole_beam_scenario_cylindrical_wall_and_end_masses():
     w = d["scenario"]["wall"]
     assert w["kind"] == "cyl" and w["diameter_mm"] == 254.0 and w["axis"] == [0.0, 0.0, 1.0]
     assert w["point"] == [-128.0, 400.0, 20.0]
-    deck = (CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / d["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     cyl = _card(deck, "/RWALL/CYL/1")
     assert float(cyl[2][40:60]) == 254.0
     assert [float(cyl[3][i:i + 20]) for i in (0, 20, 40)] == [-128.0, 400.0, 20.0]
@@ -160,7 +161,7 @@ def test_rops_scenario_push_without_moving_part():
     # K4 — hareketli parça / duvar / ilk hız yok; tabanlar /BCS, yük köşesi RBODY + IMPVEL Y, /SECT z = H/2
     r = _scenario(template_id="rops_frame_shell", element_size_mm=40, push_speed_m_s=2.0, t_end_ms=1.0)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "part_0_free" in deck and "/INIVEL/" not in deck and "/RWALL" not in deck
     assert "bcs_taban_1" in deck and "bcs_taban_2" in deck and "/RBODY/1" in deck
     imp = _card(deck, "/IMPVEL/1")
@@ -179,7 +180,7 @@ def test_head_impactor_total_mass_and_accel_channel():
     sc = r.json()["scenario"]
     shell = 3.141592653589793 * 165 ** 2 * 1.0 * 7850 * 1e-9
     assert sc["ball_mass_kg"] == pytest.approx(4.5 - shell, rel=1e-9)
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     master = int(_card(deck, "/RBODY/1")[1][:10])
     th = deck.split("/TH/NODE/4", 1)[1].splitlines()
     assert int(th[3][:10]) == master  # başlık, vars satırı, sonra ilk düğüm
@@ -190,7 +191,7 @@ def test_door_beam_scenario_impactor_push():
     # K8 — iki parça free, impaktör RBODY + IMPVEL X, TYPE7 impaktör → kiriş, uçlar /BCS, duvar / ilk hız yok
     r = _scenario(template_id="door_beam_shell", element_size_mm=30, push_speed_m_s=2.0, t_end_ms=1.0)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "part_0_free" in deck and "part_1_free" in deck
     assert "/INIVEL/" not in deck and "/RWALL" not in deck and "/INTER/TYPE7/1" in deck
     assert "bcs_uc_1" in deck and "bcs_uc_2" in deck and "/RBODY/1" in deck
@@ -203,7 +204,7 @@ def test_hopkinson_scenario_two_solid_parts():
     # K9 — giriş çubuğu free + çarpıcı moving (+x), TYPE7, x = Li/4 kesiti, duvar yok
     r = _scenario(template_id="hopkinson_bar", element_size_mm=8, speed_m_s=10, t_end_ms=0.05)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "part_0_free" in deck and "part_1_moving" in deck and "/TETRA4/" in deck
     assert "/RWALL" not in deck and "/INTER/TYPE7/1" in deck and "/SECT/PARAL/" in deck
     vel = _card(deck, "/INIVEL/TRA/1")[1]
@@ -216,7 +217,7 @@ def test_blast_plate_pload_friedlander():
     r = _scenario(template_id="blast_plate_shell", element_size_mm=50, blast_peak_mpa=2.0, blast_duration_ms=0.2,
                   t_end_ms=0.5)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/INIVEL/" not in deck and "/RWALL" not in deck and "bcs_plaka_kenar" in deck
     assert "/SURF/PART/9961" in deck
     pl = _card(deck, "/PLOAD/1")[1]
@@ -232,7 +233,7 @@ def test_mine_pblast_oriented_segments():
     r = _scenario(template_id="blast_plate_shell", element_size_mm=100, mine_tnt_kg=6.0, mine_standoff_mm=500.0,
                   t_end_ms=0.5)
     assert r.status_code == 200, r.text
-    deck = (CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    deck = strip_headers((CRASH_DIR / r.json()["crash"]["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/LOAD/PBLAST/1" in deck and "/SURF/SEG/9996" in deck and "/PLOAD/" not in deck
     pb = _card(deck, "/LOAD/PBLAST/1")
     assert int(pb[1][10:20]) == 2  # Exp_data zemin yansımalı

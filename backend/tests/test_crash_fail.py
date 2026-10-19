@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.crash_params import CrashFailJohnson, CrashFailTensStrain
 from app.solvers.openradioss import OpenRadiossAdapter
 from tests.test_crash_contact import _card
@@ -24,7 +25,7 @@ def _deck(tmp_path, global_model=None, parts=None) -> str:
     p["model"] = global_model or {"law": "plastic"}
     if parts is not None:
         p["parts"] = parts
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_johnson_card_layout(tmp_path):
