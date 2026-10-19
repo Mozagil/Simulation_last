@@ -557,6 +557,8 @@ doğrulanmış referanslarla eşleşiyor.
 
 ## Faz 1 — Crash analizi (OpenRadioss + Gmsh)
 
+**Toplu tablo:** şablonlar, parametre haritası ve V1–V18 tek sayfada → `docs/CRASH_OVERVIEW.md`.
+
 Ön koşul: Faz 0 tamamlanmış olmalı ve kullanıcı onayı alınmalı.
 
 **İzolasyon (zorunlu):** Faz 1, Faz 0 durability / modal / surrogate kodunu
