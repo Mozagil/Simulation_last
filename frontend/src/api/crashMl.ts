@@ -28,6 +28,9 @@ export interface CrashDoeStudyInfo {
   n_cases: number;
   counts: Record<string, number>;
   cases?: CrashDoeCaseInfo[];
+  /** 1.25a2 — o an koşan örneğin işi (bellekte; koşu yoksa null) */
+  current_job_id?: string | null;
+  current_case_index?: number | null;
 }
 
 export interface CrashDoeSpecPayload {

@@ -79,6 +79,7 @@ import { matCardFromModel } from "./lib/crashSetupImport";
 import { meshPreviewUrl, meshResultFromPreview, meshSizeText } from "./lib/crashRunLoad";
 import { lastWorkLabel, pauseLastWork, readLastWork, saveLastWork, type LastWork } from "./lib/lastWork";
 import CrashHistoryDock from "./components/CrashHistoryDock";
+import CrashImportDialog from "./components/CrashImportDialog";
 import type { CrashAnimTarget } from "./components/CrashHistory";
 import { buildMeshToCadParts, meshPartFaces, meshPartsForCadSelection } from "./lib/partMapping";
 import CrashNewCaseDialog from "./components/CrashNewCaseDialog";
@@ -417,6 +418,8 @@ function App() {
   // Tasarım adım 3: crash geçmişi dock'ta, yeni vaka penceresi
   const [crashJobKey, setCrashJobKey] = useState("");
   const [showNewCrashCase, setShowNewCrashCase] = useState(false);
+  // 1.21e-2d — LS-DYNA (.k / .dyn) içe aktarma penceresi
+  const [showCrashImport, setShowCrashImport] = useState(false);
   // 1.23 B1: şablon panelinden "Model üret" (crash) → yeni vaka penceresine seçim.
   const [crashCaseInit, setCrashCaseInit] = useState<{ templateId: string; geometry: Record<string, string> } | null>(null);
   const [showDocs, setShowDocs] = useState(false);
@@ -1310,7 +1313,12 @@ function App() {
     try {
       const run = await fetchCrashRun(runId);
       const geoId = run.geometry_id;
-      if (!geoId) throw new Error(`Koşu #${runId}: bağlı geometri yok.`);
+      if (!geoId)
+        throw new Error(
+          run.import_id
+            ? `Koşu #${runId} içe aktarılan (.k) modelden — geometrisi yok; ⤓ yükleme yalnız geometrili koşularda (deforme şekil ▶ ile açılır).`
+            : `Koşu #${runId}: bağlı geometri yok.`,
+        );
       const rq = run.request as unknown as CrashSolveRequest;
       const dim: 2 | 3 = (rq.dimension ?? run.dimension) === 3 ? 3 : 2;
       setShowNewCrashCase(false);
@@ -3924,6 +3932,10 @@ function App() {
             + Yeni crash vakası
           </button>
           <p className="new-case-hint">Hazır örnekten (katalog / hızlı senaryo) geometri + kurulum.</p>
+          <button type="button" className="reset-button" onClick={() => setShowCrashImport(true)}>
+            ⇪ LS-DYNA içe aktar (.k / .dyn)
+          </button>
+          <p className="new-case-hint">Keyword dosyası okunur → OpenRadioss kartları; çeviri raporu + koşu.</p>
         </div>
       )}
       {status !== "idle" && (
@@ -5871,6 +5883,9 @@ function App() {
             return { nodePicks: deck.nodes, elementPicks: deck.elements };
           })()}
         />
+      )}
+      {showCrashImport && analysisTab === "crash" && (
+        <CrashImportDialog onClose={() => setShowCrashImport(false)} onRunStarted={() => setCrashJobKey(`import:${Date.now()}`)} />
       )}
       {showNewCrashCase && (
         <CrashNewCaseDialog

@@ -1,10 +1,11 @@
 """Malzeme kütüphanesi + parça atama API (Faz 0 — 2b)."""
 
 import logging
+import math
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
@@ -31,6 +32,7 @@ def _material_payload(m: Material) -> dict[str, Any]:
         "elongation": m.elongation,
         "sn_curve": m.sn_curve,
         "crash_curves": m.crash_curves,
+        "crash_jc": m.crash_jc,
         "source": m.source,
         "is_editable": m.is_editable,
     }
@@ -220,6 +222,55 @@ def set_crash_curves(
             detail="Kütüphane malzemesi değiştirilemez; kullanıcı malzemesi oluşturun.",
         )
     mat.crash_curves = _curves_json(body.curves)
+    db.commit()
+    db.refresh(mat)
+    return {"material": _material_payload(mat)}
+
+
+class CrashJcSet(BaseModel):
+    """1.24f — Johnson–Cook seti: σ = (A + B·εₚⁿ)(1 + C·ln ε̇*)(1 − T*ᵐ). Kaynak zorunlu
+    (birincil kaynak + tablo / sayfa); bilinmeyen alan boş bırakılır, tahmin yazılmaz."""
+
+    a_mpa: float = Field(gt=0, description="A (MPa)")
+    b_mpa: float = Field(ge=0, description="B (MPa)")
+    n: float = Field(gt=0)
+    c: float = Field(ge=0)
+    m: float | None = Field(default=None, gt=0)
+    eps_dot0_per_s: float | None = Field(default=None, gt=0, description="ε̇₀ (1/s)")
+    t_melt_k: float | None = Field(default=None, gt=0)
+    t_ref_k: float | None = Field(default=None, gt=0)
+    d: list[float] | None = Field(default=None, min_length=5, max_length=5, description="D₁–D₅ (/FAIL/JOHNSON)")
+    source: str = Field(min_length=3, max_length=500)
+
+    @model_validator(mode="after")
+    def _finite(self) -> "CrashJcSet":
+        vals = [self.a_mpa, self.b_mpa, self.n, self.c, self.m, self.eps_dot0_per_s, self.t_melt_k, self.t_ref_k,
+                *(self.d or [])]
+        if any(v is not None and not math.isfinite(v) for v in vals):
+            raise ValueError("Johnson–Cook seti: sonlu olmayan değer.")
+        if self.t_melt_k and self.t_ref_k and self.t_melt_k <= self.t_ref_k:
+            raise ValueError("Johnson–Cook seti: T_m, T_r'den büyük olmalı.")
+        return self
+
+
+class CrashJcRequest(BaseModel):
+    jc: CrashJcSet | None = Field(description="Johnson–Cook seti; null = siler")
+
+
+@router.put("/{material_id}/crash-jc")
+def set_crash_jc(
+    material_id: int, body: CrashJcRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """1.24f — kullanıcı malzemesine Johnson–Cook seti yazar (null = siler). Kütüphane değişmez."""
+    mat = db.get(Material, material_id)
+    if mat is None:
+        raise HTTPException(status_code=404, detail="Malzeme bulunamadı.")
+    if not mat.is_editable:
+        raise HTTPException(
+            status_code=403,
+            detail="Kütüphane malzemesi değiştirilemez; kullanıcı malzemesi oluşturun.",
+        )
+    mat.crash_jc = body.jc.model_dump() if body.jc is not None else None
     db.commit()
     db.refresh(mat)
     return {"material": _material_payload(mat)}

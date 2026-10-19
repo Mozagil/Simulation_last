@@ -86,6 +86,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "LS-DYNA karşılıkları (⇄ düğmesi)", what: "Crash panelinin ve 3 · Material'ın sağ üstünde. Açıkken OpenRadioss kart adının altında yaklaşık LS-DYNA keyword'ü görünür. Kişisel tercih, tarayıcıda hatırlanır. Yalnız ad — LS-DYNA kullanılmaz." },
       { name: "Ürün ağacı (sol)", what: "Geometri, bölgeler, parçalar ve mesh yanında crash kurulumunun tamamı: Malzeme modeli (ortak + parça başına LAW ve kopma) ve Sınır koşulları — Çarpma (rijit duvar / duvarsız, ilk hız, süre, yerçekimi), Parça rolleri, Temaslar, Ek tanımlar (kilit, kütle/kızak, sabit hız, ayrı ilk hız). 4 · Crash'te değişen her tanım ağaçta anında görünür; uzun satırın tamamı üzerine gelince." },
       { name: "+ Yeni crash vakası", what: "Hazır katalogdan geometri + kurulum + koşu tek seferde (bkz. Hazır senaryolar). Seçili senaryonun kendi şeması görünür." },
+      { name: "⇪ LS-DYNA içe aktar (.k / .dyn)", what: "Keyword dosyası (+ *INCLUDE dosyaları) kendi çeviricimizle okunur → OpenRadioss kartları; LS-DYNA kurulmaz / çalıştırılmaz, keyword yazılmaz. Birim çarpanları (uzunluk → mm, kütle → kg, zaman → s) ve hız etkisi için ε̇ listesi mühendisten — boşsa çevrilmez. Çeviri raporu: en üstte Dikkat (uyarılar, atlanan keyword'ler, atlanan kurulum satırları, malzemesi çevrilmeyen parçalar), parça tablosu (PID, kabuk / katı, kalınlık, ≈ *MAT → LAW), kurulum satırları (kaynak ≈, satır, hedef kart, durum) ve 3B önizleme (PID renkli). \"Raporu okudum\" işaretlenince koşu açılır: süre dosyadaki *CONTROL_TERMINATION'dan (yoksa zorunlu). Koşu geometrisiz; geçmişte \"içe aktarma (.k)\" etiketli, deforme şekil ▶ ile (⤓ yükleme yok). ML korpusuna girmez." },
       { name: "Crash geçmişi (alt dock)", what: "Koşular; kapsam düğmesi \"Tüm geometriler\" (varsayılan) / \"Bu geometri\" (seçim hatırlanır): durum, tepe kuvvet, ▶ animasyon, 📈 eğri, ⊘ dışla, karşılaştır (≤ 6). Üst kenardan sürüklenerek boyutlanır (≤ pencerenin %60'ı)." },
     ],
   },
@@ -112,6 +113,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Malzeme modeli seçici", what: "3. grupta LAW1 · LAW2 · LAW36 kutucukları; tıklanan seçilir (✓). “Seçili: LAW2 elasto-plastik” satırı ve ürün ağacı seçimi doğrular. Çok parçalı modelde Global / Ayrı ile parça başına ayrı model." },
       { name: "LAW1 elastik", what: "Doğrusal elastik; kalıcı şekil değiştirmez, enerji yutmaz (kutu ezilmez, seker).", when: "Dalga yayılımı (Hopkinson), rijit gibi davranması istenen parçalar, doğrulama (V1).", card: "/MAT/LAW1" },
       { name: "LAW2 plastik (Johnson–Cook)", what: "σ = a + b·εₚⁿ; isteğe bağlı hız terimi (C, ε̇₀) ve kopma (εp,max). Kalıcı şekil değiştirir, enerji yutar.", when: "Ezilen/deforme olan her metal parça — crash'in standart seçimi.", card: "/MAT/LAW2" },
+      { name: "Kütüphane Johnson–Cook seti + σ–εₚ", what: "Parçaya atanan kütüphane malzemesinde doğrulanmış JC seti varsa (şu an 7075-T6, Brar 2009) LAW2 kartında \"⤓ <malzeme> → alanlara\": a = A (MPa → Pa), b = B, n, c ve kaynakta olan ε̇₀ / m / T_m / T_r / D₁–D₅ (→ /FAIL/JOHNSON). Kaynakta olmayan alan değişmez — tahmin yazılmaz. Kartın altında σ–εₚ önizlemesi: LAW2 için a + b·εₚⁿ (referans hız ve oda sıcaklığı; a boşsa çizilmez), LAW36 için girilen eğriler; PNG / CSV. Setlerin kaynağı docs/CRASH_MATERIALS.md." },
       { name: "LAW36 tablo", what: "Ölçülmüş σ–ε eğrisi (hız başına ayrı eğri olabilir).", when: "Test eğrisi elindeyse.", card: "/MAT/LAW36" },
       { name: "/FAIL/JOHNSON", what: "Johnson–Cook hasarı: kopma gerinimi gerilme durumuna, hıza, sıcaklığa bağlı (D1–D5).", when: "En gerçekçi; en çok veri isteyen.", card: "/FAIL/JOHNSON" },
       { name: "/FAIL/TENSSTRAIN", what: "Çekme gerinimi: ε_t1'de hasar başlar, ε_f1'de eleman silinir. En az bir sınır girilmeli (boşsa koşu reddedilir).", when: "Basit, az veri; ölçüm yoksa ilk yaklaşım.", card: "/FAIL/TENSSTRAIN" },
@@ -170,7 +172,7 @@ export const CRASH_DOC: DocSection[] = [
     title: "4 · Crash → 3 Temaslar",
     intro: "Temas tanımlanmazsa parçalar birbirinin içinden geçer. Aynı parça iki tarafta = öz temas (katlanan kutu).",
     image: IMG("04-temaslar.png"),
-    imageCaption: "TYPE7 öz temas (#0 ↔ #0) ve bayraklar.",
+    imageCaption: "Temas kartı: kapsam Parça çifti / Tüm model (genel temas, TYPE24) ve bayraklar.",
     items: [
       { name: "TYPE7", what: "Düğüm → yüzey teması (slave düğümleri master yüzeye çarpar). Genel amaçlı, hızlı.", when: "Kutunun kendi katları (öz temas), küre → plaka, impaktör → kiriş.", card: "/INTER/TYPE7" },
       { name: "TYPE24", what: "Yüzey ↔ yüzey (kenar–kenar dahil). İnce kabuk katlanırken kenarların birbirine girmesini daha iyi yakalar.", card: "/INTER/TYPE24" },
@@ -178,6 +180,7 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Stfac", what: "Temas rijitliği ölçeği." },
       { name: "GAPmin (TYPE7) / Iedge (TYPE24)", what: "En küçük temas boşluğu (mm) / kenar teması bayrağı." },
       { name: "Istf, Inacti", what: "Rijitlik hesap yöntemi; başlangıç penetrasyonunun ele alınışı. Boş = Radioss varsayılanı." },
+      { name: "Kapsam: Parça çifti / Tüm model", what: "Tüm model = genel temas: tüm kabuk parçalar tek yüzey, tüm katı parçaların dış yüzü ayrı yüzey; yalnız TYPE24 (öz temas dahil; kabuk + katı varsa üç arayüz). Parça seçimi gizlenir, bayraklar aynı. Çift temaslarla birlikte kullanılabilir. Not (kutu ezme, 1.24d): parçalar arası başlangıç boşluğu temas boşluğundan ((t₁ + t₂)/2) küçükse Radioss bunu başlangıç penetrasyonu sayıp yok sayar — starter listing'inde yazar (veri).", card: "/INTER/TYPE24" },
     ],
   },
   {
@@ -246,14 +249,16 @@ export const CRASH_DOC: DocSection[] = [
     imageCaption: "Çıktı ayarları 4 · Crash'te: kayıt aralığı, zaman adımı (kanallar ve kesitler aşağıda).",
     items: [
       { name: "TH aralığı / Animasyon", what: "Eğriler ve animasyon kareleri kaç ms'de bir (boş = süre/200, süre/20). Kısa tepe kaçıyorsa TH aralığı küçültülür.", card: "/ANIM/DT" },
-      { name: "Koşu sırasında (canlı)", what: "Koşu devam ederken: adım (cycle), t / t_end, anlık Δt, şimdiye kadarki en küçük Δt, eklenen kütle oranı DM/M, ilerleme %, geçen ve kalan süre (kalan = Radioss'un kendi tahmini). Engine çıktısının basılan satırlarından." },
+      { name: "Koşu sırasında (canlı)", what: "Koşu başlar başlamaz 5 · Sonuçlar'da görünür (\"Başlıyor\", ilk adım gelene kadar değerler —): adım (cycle), t / t_end, anlık Δt, şimdiye kadarki en küçük Δt, eklenen kütle oranı DM/M, ilerleme %, geçen ve kalan süre (kalan = Radioss'un kendi tahmini). Engine çıktısının basılan satırlarından. Koşu bitince ya da başarısız olunca panel son canlı değerlerle kalır (başlıkta \"Bitti\" / \"Başarısız · son canlı değerler\"; geçen süre durur). 30 s'den uzun yeni değer gelmezse \"son güncelleme … önce\" yazar." },
       { name: "Deck'i görüntüle", what: "Koşmadan, bu kurulumla üretilecek starter (_0000.rad, model) ve engine (_0001.rad, çözüm kontrolü) deck'i: solda kart listesi (aranır, satır no + satır sayısı), sağda seçili kartın bloğu. Ham kartlar dahil, koşudaki gibi. Salt okunur; ⤓ ile .rad indirilir." },
       { name: "Çözüm kontrolü (kart)", what: "4 · Crash'te tek yerde: bitiş süresi (/RUN), zaman adımı kartı, Δt_sca, Δt_min + açıklama; özet satırında süre ve Δt kartı. Son koşunun Δt_min / eklenen kütle oranı ve süre / Δt_min (adım sayısı üst sınırı) veri olarak yazılır." },
+      { name: "Sönüm (Rayleigh)", what: "Çözüm kontrolü kartında \"Sönüm ekle\": C = α·M + β·K. α (1/s) kütle orantılı — mutlak hızı söndürür, rijit hareket de yavaşlar; β (s) rijitlik orantılı — yüksek frekanslı titreşimi söndürür, kararlı Δt küçülür. Kapsam: çok parçalı modelde parça çipleri (seçim yok = tüm parçalar); başlangıç / bitiş ms (bitiş 0 = koşu sonu). Deck'e model birimiyle yazılır (α/1000 1/ms, β·1000 ms). α ve β ikisi birden 0 olamaz. Varsayılan yok — kullanmak ve değerler mühendisin. Ölçüldü: seken LAW1 kutu, β 1e-6 s → Δt_min 5.4e-4 → 3.1e-4 ms, IE_son 102 → 3.9 J; β 1e-5 s aynı sonucu verdi (listing'de uyarı yok).", card: "/DAMP" },
       { name: "Zaman adımı (/DT, NODA/0, NODA/STOP, NODA/CST/0)", what: "Δt ölçekleme / Δt_min altına düşünce bildir, dur ya da kütle ekle (kütle ölçekleme). Çözüm kontrolü kartında." },
       { name: "Rijit duvar kanalları", what: "FNX/FNY/FNZ normal, FTX… teğet kuvvet.", card: "/TH/RWALL" },
       { name: "Temas kanalları", what: "Temas çiftlerindeki kuvvet.", card: "/TH/INTER" },
       { name: "Parça kanalları", what: "IE, KE, HE, momentum, ağırlık merkezi, hız …", card: "/TH/PART" },
       { name: "Kesit kanalları + Kesitler", what: "Modelin içinden geçen sanal düzlem (M, M1, M2) — oradan geçen iç kuvvet/moment.", when: "S-kiriş, ROPS (dikmelerden kuvvet), Hopkinson giriş çubuğu.", card: "/TH/SECTIO" },
+      { name: "Ezilme mesafesi referansı", what: "Çıktı ayarlarının altında: Yok / Kütle-kızak kartı (ana düğüm) / bölge (düğüm ortalaması). Seçilince deck'e ayrı bir düğüm kanalı yazılır (DX DY DZ) ve koşu sonunda δ(t) = arka ucun çarpma yönündeki yer değiştirmesi hesaplanır (ezilme +). Rijit arka uçta iki seçim aynı sonucu verir (crash box + 100 kg kızak: 100.95 mm). Yok = ezilme sonuçları yazılmaz.", card: "/TH/NODE" },
       { name: "Düğüm kanalları", what: "Seçili düğümlerin yer değiştirme / hız / ivmesi.", card: "/TH/NODE" },
     ],
   },
@@ -269,6 +274,8 @@ export const CRASH_DOC: DocSection[] = [
       { name: "Hata #n (kırmızı bant)", what: "Koşu hatayla biterse durum failed (kırmızı) ve kodlu hata: #1 çözüm ıraksadı (enerji NaN; Radioss yine NORMAL TERMINATION yazabilir — eğri ve animasyon ıraksama anına kadar açılır), #2 starter hatası (ERROR ID'ler), #3 çözücü anormal sonlandı (çıkış kodu ≠ 0), #4 zaman aşımı, #5 OpenRadioss bulunamadı, #9 sınıflanmamış. Hatalı koşu DOE / ML korpusuna girmez." },
       { name: "Enerji · J grafiği", what: "İç enerji (deformasyonla yutulan), kinetik, hourglass, temas enerjisi, dış iş ve toplam enerji (IE + KE + dönme + HG − dış iş) zamana göre. Global TH sütunları; geçmişteki 📈 penceresinde de aynı seriler." },
       { name: "Enerji özeti", what: "İç / kinetik enerji son ve maks; hourglass son · HG/IE %; temas son · temas/IE %; dış iş son; enerji dengesi |ΔE|/E %. Değerler veridir; kabul eşiği mühendisin." },
+      { name: "Ezilme · mm / kN", what: "Ezilme referansı seçilen koşuda: F–δ grafiği (duvar kuvveti, ezilme mesafesine göre; δ_maks'a kadar yükleme kolu), ezilme son / maks (mm), duvar işi ∫F dδ (J), ortalama ezilme kuvveti = duvar işi / δ_maks (kN) ve karşılaştırma için IE_son / δ_son (kN). İkisinin farkı hourglass, sürtünme ve öz temas enerjisinden — veri. Ör. crash box 3 mm + 100 kg kızak, 20 ms: δ 100.9 mm, iş 4783 J, F_ort 47.4 kN, IE / δ 42.8 kN. Karşılaştırma tablosunda da üç satır." },
+      { name: "Geri sekme · mm", what: "5 · Sonuçlar'da koşu animasyon kareleri yazdıysa: kare başına en büyük yer değiştirme, iki tanım yan yana. Mutlak |u| — ilk konuma göre, rijit öteleme dahil (tabanı sabit parçada deformasyon; serbest parçada yolu ölçer). Öteleme çıkarılmış |u − ū| — parçanın o karedeki ortalama ötelemesi çıkarılır, rijit dönme kalır. Tabloda model ve parça satırları (mesh parça no): tepe ve zamanı, son, geri sekme = tepe − son, oran. Eğri |u|max–t animasyon karelerinden (yüzey düğümleri), model ya da parça seçilir. Tepe son karedeyse geri sekme 0. Koşuyu sekmeye kadar sürdürmek ve hangi tanıma bakılacağı mühendisin." },
       { name: "RWALL Fmax / impuls", what: "Rijit duvar tepe kuvveti (kN) ve toplam impuls (N·s). Kızakta impuls = m·Δv.", card: "/TH/RWALL" },
       { name: "Temas kuvveti", what: "Duvarsız modellerde kuvvet temastan okunur (contact_1_force…).", card: "/TH/INTER" },
       { name: "HIC15 / HIC36 / acc_peak_g", what: "Kafa yaralanma ölçütü ve tepe ivme — ivme kanalı (rijit gövde “İvmeyi kaydet”) varsa.", },
@@ -306,7 +313,7 @@ export const CRASH_DOC: DocSection[] = [
     title: "ML Stüdyo → Crash",
     intro: "Crash DOE ve vekil model (1.19). Ör. crash box 150 koşu: enerji R² 0.98, tepe kuvvet 0.95, ezilme 0.91, ortalama kuvvet 0.83 (5-katlı CV).",
     items: [
-      { name: "DOE", what: "Taban senaryo + taranan alanlar (noktalı yol, ör. speed_m_s, geometry.wall, rigid_bodies.0.mass_kg) + LHS örnek sayısı. Sunucuda sırayla koşar, kaldığı yerden devam eder." },
+      { name: "DOE", what: "Taban senaryo + taranan alanlar (noktalı yol, ör. speed_m_s, geometry.wall, rigid_bodies.0.mass_kg) + LHS örnek sayısı. Sunucuda sırayla koşar, kaldığı yerden devam eder. Çalışma panelinde koşan örneğin canlı ilerlemesi (örnek no, iş, adım / t / Δt / % / süre); örnekler arasında \"sıradaki örnek hazırlanıyor\", çalışma bitince son örneğin son değerleri kalır." },
       { name: "Model", what: "Hedef başına Random Forest; K-fold CV metrikleri (R², MAE, MAPE). Hedefler: tepe / ortalama kuvvet, yutulan enerji, ezilme." },
       { name: "Tahmin", what: "Girdi → hedef tahmini ± CV MAE; eğitim aralığı dışındaki girdiler işaretlenir." },
       { name: "Doğrulama", what: "Validasyon seti V1–V18 raporu (oranlar veri; eşik mühendisin)." },
@@ -314,7 +321,7 @@ export const CRASH_DOC: DocSection[] = [
   },
 ];
 
-/** Hazır senaryolar (katalog, 15/15) — kullanılan özellikler. */
+/** Hazır senaryolar (katalog, 16/16) — kullanılan özellikler. */
 export const CRASH_SCENARIOS: DocScenario[] = [
   { id: "crash_box", title: "Crash box eksenel ezilme", template: "crash_box_shell", setup: "Kabuk kutu −x ile rijit duvara (x = 0); isteğe bağlı kızak (kutu_arka rijit + kütle).", features: ["Rijit duvar", "Hareketli rol", "Kütle / kızak (rayda)", "Öz temas TYPE7", "LAW2"], validation: "V1–V3: elastik dalga ρ·c·v·A, plastik plato σy·A, Wierzbicki–Abramowicz", reference: "RD-E 1700" },
   { id: "s_rail", title: "S-kiriş / ön kiriş", template: "s_rail_shell", setup: "Süpürülmüş kabuk tüp duvara; arka halka kızak, kılavuzlu (yalnız x).", features: ["Rijit duvar", "Kütle / kızak (rayda)", "Kesit kuvveti", "LAW2"], validation: "Momentum / enerji; ortalama kuvvet / düz tüp oranı (veri)", reference: "RD-E 0300" },
@@ -331,4 +338,5 @@ export const CRASH_SCENARIOS: DocScenario[] = [
   { id: "rops", title: "ROPS portal çerçeve", template: "rops_frame_shell", setup: "Tabanlar sabit; üst büküm rijit gövde + yanal sabit hızla itme; kuvvet dikme kesitlerinden.", features: ["Duvarsız", "Bölgeyi kilitle", "Sabit hızla it", "Kesit kuvveti"], validation: "V9: plato vs 4·Mp/H", reference: "ISO 3471 mantığı" },
   { id: "fops", title: "FOPS — tavana düşen cisim", template: "plate_ball_shell", setup: "Kabin tavanı (kenarlar sabit) üstüne rijit küre H'den düşer; /GRAV.", features: ["Duvarsız", "Ankastre kenar", "Kütle (küre)", "Yerçekimi", "TYPE7"], validation: "KE₀ = m·g·H", reference: "ISO 3449 mantığı" },
   { id: "bucket_rock", title: "Kepçe / taş darbesi", template: "bucket_rock_shell", setup: "Kavisli taban kenarları sabit; taş rijit gövde + −z ilk hız + ivme kanalı; taş → taban TYPE7.", features: ["Duvarsız", "Bölgeyi kilitle", "Kütle (ivme kaydı)", "TYPE7"], validation: "V16: ∫|a|dt = I/m", reference: "Açık literatür" },
+  { id: "can_crush", title: "Alüminyum kutu (can) ezme", template: "can_crush_shell", setup: "Kutu (Ø66 × 115, t 0.5, üstte Ø20 delik) serbest; θ = 15° eğimli C-kesit çarpıcı rijit gövde + ek kütle + −z ilk hız; taban plakası /BCS 111111 (kutudan 1 mm aşağıda); genel temas TYPE24 + Iedge 1; duvar yok.", features: ["Duvarsız", "Genel temas (TYPE24)", "Kütle / kızak", "Bölgeyi kilitle", "Geri sekme"], validation: "Enerji dengesi; geri sekme (1.24c) — veri. #377: deformasyon tepe 46.5 mm @ 6.5 ms, geri sekme 9.6 mm (%21)", reference: "Ansys Explicit örneği (problem tanımı)" },
 ];

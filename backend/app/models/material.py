@@ -42,6 +42,9 @@ class Material(Base):
     # 1.14c2 — LAW36 akma eğrileri, crash tab_curves formatında:
     # [{"eps_dot_per_s": 1/s, "points": [[ε_p, σ MPa], …]}, …]
     crash_curves: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # 1.24f — Johnson–Cook seti (tek set, kaynaklı): {a_mpa, b_mpa, n, c, m, eps_dot0_per_s,
+    # t_melt_k, t_ref_k, d: [D1..D5] | None, source}; yalnız doğrulanan veri (docs/CRASH_MATERIALS.md)
+    crash_jc: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(String, nullable=False, default="library")
     is_editable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

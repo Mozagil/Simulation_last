@@ -17,8 +17,24 @@ export interface Material {
   sn_curve: Record<string, unknown> | null;
   /** 1.14c2 — LAW36 akma eğrileri (crash tab_curves biçimi) */
   crash_curves?: { eps_dot_per_s: number; points: [number, number][] }[] | null;
+  /** 1.24f — Johnson–Cook seti (doğrulanmış, kaynaklı); bilinmeyen alan null */
+  crash_jc?: CrashJcSet | null;
   source: string;
   is_editable: boolean;
+}
+
+/** 1.24f — σ = (A + B·εₚⁿ)(1 + C·ln ε̇*)(1 − T*ᵐ); A, B MPa; D = D₁–D₅ (/FAIL/JOHNSON). */
+export interface CrashJcSet {
+  a_mpa: number;
+  b_mpa: number;
+  n: number;
+  c: number;
+  m: number | null;
+  eps_dot0_per_s: number | null;
+  t_melt_k: number | null;
+  t_ref_k: number | null;
+  d: number[] | null;
+  source: string;
 }
 
 export interface MaterialsListResponse {

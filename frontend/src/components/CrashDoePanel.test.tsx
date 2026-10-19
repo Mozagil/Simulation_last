@@ -9,7 +9,7 @@ vi.mock("../api/crashMl", () => ({
   createCrashDoeStudy: vi.fn(),
   resumeCrashDoeStudy: vi.fn(),
 }));
-vi.mock("../api/crash", () => ({ fetchCrashCatalog: vi.fn() }));
+vi.mock("../api/crash", () => ({ fetchCrashCatalog: vi.fn(), fetchCrashJob: vi.fn() }));
 vi.mock("../api/templates", () => ({ fetchTemplates: vi.fn() }));
 
 import {
@@ -18,7 +18,7 @@ import {
   fetchCrashDoeStudy,
   resumeCrashDoeStudy,
 } from "../api/crashMl";
-import { fetchCrashCatalog } from "../api/crash";
+import { fetchCrashCatalog, fetchCrashJob } from "../api/crash";
 import { fetchTemplates } from "../api/templates";
 
 const STUDY = {
@@ -113,5 +113,28 @@ describe("CrashDoePanel", () => {
     await waitFor(() =>
       expect(container.querySelector('#crash-doe-paths option[value="geometry.wall"]')).not.toBeNull(),
     );
+  });
+});
+
+describe("1.25a2 — DOE canlı ilerleme", () => {
+  it("çalışan örneğin işi yoklanır: örnek no + canlı değerler; çalışma bitmişken panel yok", async () => {
+    const RUN = { ...STUDY, status: "running", counts: { solved: 1, running: 1 }, current_job_id: "abcdef12-0000", current_case_index: 1 };
+    vi.mocked(fetchCrashDoeStudies).mockResolvedValue([RUN]);
+    vi.mocked(fetchCrashDoeStudy).mockResolvedValue({ ...RUN, cases: [] });
+    vi.mocked(fetchCrashJob).mockResolvedValue({ job_id: "abcdef12-0000", status: "pending", cycle: 3700, time_ms: 2, percent: 49.95 });
+    render(<CrashDoePanel />);
+    const live = await screen.findByTestId("crash-doe-live");
+    expect(live).toHaveTextContent("Örnek #1");
+    expect(live).toHaveTextContent("iş abcdef12");
+    await waitFor(() => expect(screen.getByTestId("crash-live")).toHaveTextContent("Adım3700"));
+    expect(screen.getByTestId("crash-live-phase")).toHaveTextContent("Koşuyor");
+    expect(fetchCrashJob).toHaveBeenCalledWith("abcdef12-0000");
+  });
+
+  it("çalışan iş yoksa (bitmiş çalışma) canlı panel gösterilmez", async () => {
+    render(<CrashDoePanel />);
+    expect(await screen.findByText("#4 · kutu-v1")).toBeInTheDocument();
+    expect(screen.queryByTestId("crash-doe-live")).not.toBeInTheDocument();
+    expect(fetchCrashJob).not.toHaveBeenCalled();
   });
 });

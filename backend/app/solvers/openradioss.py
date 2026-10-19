@@ -32,6 +32,8 @@ from app.solvers.base import (
 from app.solvers.crash_params import (
     _th_vars_ok,
     CrashContactParams,
+    CrashCrushRefParams,
+    CrashDampingParams,
     CrashBcParams,
     CrashBlastLoadParams,
     CrashEngineParams,
@@ -625,6 +627,38 @@ _PBLAST_SURF_BASE = 9995
 _SPRING_GR_BASE = 9940
 _SPRING_BC_BASE = 40
 _SPRING_TH_ID = 6
+# 1.24c2 — Rayleigh sönümü: düğüm grubu ve /DAMP kimliği.
+_DAMP_GR_BASE = 9930
+_DAMP_ID = 1
+# 1.23 C8b — ezilme referansı /TH/NODE kimliği (th_nodes 4, sect 5, spring 6)
+_CRUSH_TH_ID = 8
+
+
+def _damp_lines(raw: Any, part_ids: list[int], rid: Callable[[int], int]) -> list[str]:
+    """1.24c2 — /DAMP (hm_cfg radioss110): Alpha Beta grnod_id skew_id Tstart Tstop.
+    α (1/s) → 1/ms, β (s) → ms (deck zaman birimi ms). Sönüm yoksa boş."""
+    if not raw:
+        return []
+    try:
+        d = CrashDampingParams.model_validate(raw)
+    except ValueError as exc:
+        raise SolverError(f"Geçersiz sönüm (/DAMP): {exc}") from exc
+    pids = sorted(set(d.part_ids)) or list(part_ids)
+    missing = [p for p in pids if p not in part_ids]
+    if missing:
+        raise SolverError(f"/DAMP: parça {missing} mesh'te yok.")
+    gid = _DAMP_GR_BASE
+    out = [f"/GRNOD/PART/{gid}", "damp_parts"]
+    rids = [rid(p) for p in pids]
+    for i in range(0, len(rids), 10):
+        out.append("".join(_i(v) for v in rids[i : i + 10]))
+    out += [
+        f"/DAMP/{_DAMP_ID}",
+        "rayleigh",
+        "#              Alpha                Beta  grnod_id   skew_id              Tstart               Tstop",
+        f"{_f(d.alpha_per_s / 1000.0)}{_f(d.beta_s * 1000.0)}{_i(gid)}{_i(0)}{_f(d.t_start_ms)}{_f(d.t_stop_ms)}",
+    ]
+    return out
 
 
 def _write_starter(path: Path, params: dict[str, Any]) -> None:
@@ -1264,6 +1298,29 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         lines += [f"{_i(n)}{_i(0)}n{n}" for n in th_node_ids]
         th_spec.append({"kind": "node", "title": "th_nodes", "objects": th_node_ids, "vars": th.node_vars})
 
+    # 1.23 C8b — ezilme referansı: ayrı /TH/NODE grubu (DX DY DZ); yön post-process için spec'te.
+    if params.get("crush_ref"):
+        try:
+            cr = CrashCrushRefParams.model_validate(params["crush_ref"])
+        except ValueError as exc:
+            raise SolverError(f"Geçersiz crush_ref: {exc}") from exc
+        if cr.rigid_body is not None:
+            if cr.rigid_body not in rb_master:
+                raise SolverError(f"crush_ref: rijit gövde '{cr.rigid_body}' tanımlı değil.")
+            crush_ids = [rb_master[cr.rigid_body]]
+        else:
+            if cr.region not in region_nodes:
+                raise SolverError(f"crush_ref: bölge '{cr.region}' bu geometride yok.")
+            crush_ids = sorted(set(region_nodes[cr.region]))
+        d = cr.direction or (vx, vy, vz)
+        dn = math.hypot(*d)
+        if dn == 0:
+            raise SolverError("crush_ref: yön yok (ilk hız sıfır) — direction verin.")
+        lines += [f"/TH/NODE/{_CRUSH_TH_ID}", "crush_ref", *th_vars(["DX", "DY", "DZ"])]
+        lines += [f"{_i(n)}{_i(0)}c{n}" for n in crush_ids]
+        th_spec.append({"kind": "crush", "title": "crush_ref", "objects": crush_ids, "vars": ["DX", "DY", "DZ"],
+                        "direction": [c / dn for c in d]})
+
     # 1.15c — /SECT/PARAL kesitleri + eleman grupları (/GRSHEL, /GRSH3N, /GRBRIC
     # PART); grup kimlikleri _SECT_GR_BASE + 10·k + tür, diğer gruplarla çakışmaz.
     try:
@@ -1314,12 +1371,18 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             lines.append("".join(_i(v) for v in ids[i : i + 10]))
         th_spec.append({"kind": "sect", "title": "sect_th", "objects": ids,
                         "names": [s.name for s in sections], "vars": th.sect.vars})
+    lines.extend(_damp_lines(params.get("damping"), part_ids, _rid))
     lines.extend(_raw_card_lines(params))
     lines.extend(["/END", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
     # değişkeni adsız "var N" yazar).
     (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
+    # 1.24c3 — /PART kart kimliği → mesh parça no (animasyon PART_ID'si kart kimliğiyle gelir;
+    # skalerler mesh no'suyla adlanır). Yalnız mesh parçaları; yay / SPH gibi deck parçaları yok.
+    (path.parent / "part_map.json").write_text(
+        json.dumps({str(_rid(p)): p for p in part_ids}), encoding="utf-8"
+    )
     # 1.17e — post-process seçimleri (CFC sınıfları) deck yanında, th_spec gibi.
     try:
         filters = CrashFilterParams.model_validate(params.get("filters") or {})
@@ -1607,4 +1670,31 @@ class OpenRadiossAdapter(SolverAdapter):
     def parse_results(self, job: JobHandle) -> ResultSet:
         from app.postprocess.openradioss_th import parse_openradioss_dir
 
-        return parse_openradioss_dir(job.work_dir)
+        res = parse_openradioss_dir(job.work_dir)
+        res.scalars.update(_springback_scalars(job.work_dir))
+        return res
+
+
+def _springback_scalars(work_dir: Path) -> dict[str, float]:
+    """1.24c1 — animasyon karelerinden geri sekme skalerleri. Kareler bir kez çevrilir;
+    aynı kareyle deforme şekil önbelleği (`anim.json`) de yazılır (ilk istek beklemesin).
+    Animasyon yoksa / çevrilemezse boş — koşunun sonucu bundan etkilenmez."""
+    import logging
+
+    from app.postprocess.crash_springback import read_part_map, springback_from_vtk_texts
+    from app.postprocess.openradioss_anim import build_animation, write_animation_cache
+
+    try:
+        bins = resolve_openradioss()
+        if bins is None:
+            return {}
+        texts = convert_animation(bins, Path(work_dir))
+        if not texts:
+            return {}
+        data = build_animation(texts)
+        if data["frames"]:
+            write_animation_cache(Path(work_dir), data)
+        return springback_from_vtk_texts(texts, read_part_map(work_dir))
+    except Exception as exc:  # noqa: BLE001 — metrik koşuyu düşürmez
+        logging.getLogger(__name__).warning("geri sekme metrikleri okunamadı (%s): %s", work_dir, exc)
+        return {}

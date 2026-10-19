@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
-import { defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
+import { dampingFromRequest, defaultOutput, outputPayload, type OutputState } from "./CrashOutputCard";
 import CrashSolverControlCard, { solverSummary } from "./CrashSolverControlCard";
 
 function Harness({ onState, scalars }: { onState: (t: string, s: OutputState) => void; scalars?: Record<string, number> }) {
@@ -37,5 +37,45 @@ describe("1.23 D2 — çözüm kontrolü kartı", () => {
     render(<Harness onState={() => undefined} scalars={{ timestep_min: 5.396e-4, mass_added_rel: 0 }} />);
     expect(screen.getByTestId("crash-solver-last")).toHaveTextContent("Δt_min 5.396e-4 ms · eklenen kütle oranı 0");
     expect(screen.getByTestId("crash-solver-last")).toHaveTextContent(/≈ 7413 adım/);
+  });
+});
+
+describe("1.24c2 — Rayleigh sönümü /DAMP", () => {
+  function DampHarness({ onState, parts }: { onState: (s: OutputState) => void; parts: number[] }) {
+    const [s, setS] = useState(defaultOutput);
+    onState(s);
+    return <CrashSolverControlCard tEnd="20" onTEnd={() => undefined} value={s} onChange={setS} partOptions={parts} />;
+  }
+
+  it("kapalı varsayılan → damping null; açınca α β kapsam pencere payload'a; özet", () => {
+    let s = defaultOutput();
+    render(<DampHarness onState={(x) => (s = x)} parts={[0, 1]} />);
+    expect(outputPayload(s).damping).toBeNull();
+    expect(screen.queryByTestId("crash-damp")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Sönüm ekle"));
+    fireEvent.change(screen.getByLabelText("Sönüm β (rijitlik orantılı)"), { target: { value: "1e-6" } });
+    fireEvent.change(screen.getByLabelText("Sönüm Bitiş (0 = koşu sonu)"), { target: { value: "15" } });
+    fireEvent.click(within(screen.getByRole("group", { name: "Sönüm parçaları" })).getByRole("button", { name: "#1" }));
+    expect(outputPayload(s).damping).toEqual({ alpha_per_s: 0, beta_s: 1e-6, part_ids: [1], t_start_ms: 0, t_stop_ms: 15 });
+    expect(solverSummary("20", s)).toBe("20 ms · Δt: Radioss · /DAMP β 1e-6 s · #1");
+  });
+
+  it("α = β = 0 ya da ters pencere gönderilmez (backend kuralı)", () => {
+    const s = { ...defaultOutput(), dampOn: true };
+    expect(() => outputPayload(s)).toThrow(/α ya da β/);
+    expect(() => outputPayload({ ...s, dampAlpha: "5", dampT0: "4", dampT1: "2" })).toThrow(/bitiş/);
+  });
+
+  it("tek parçada kapsam çipleri yok (tüm model)", () => {
+    render(<DampHarness onState={() => undefined} parts={[0]} />);
+    fireEvent.click(screen.getByLabelText("Sönüm ekle"));
+    expect(screen.queryByRole("group", { name: "Sönüm parçaları" })).toBeNull();
+  });
+
+  it("kayıtlı istekten yükleme: dampingFromRequest", () => {
+    expect(dampingFromRequest(null)).toEqual({ dampOn: false });
+    expect(dampingFromRequest({ alpha_per_s: 200, beta_s: 0, part_ids: [0], t_start_ms: 1, t_stop_ms: 0 })).toEqual({
+      dampOn: true, dampAlpha: "200", dampBeta: "0", dampParts: [0], dampT0: "1", dampT1: "0",
+    });
   });
 });

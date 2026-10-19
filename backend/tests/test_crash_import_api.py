@@ -57,3 +57,38 @@ def test_bad_input_is_422_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
     assert r.status_code == 422 and "pozitif" in r.json()["detail"]
     assert client.get("/crash/import/dyna/../../etc").status_code == 404
     assert client.get(f"/crash/import/dyna/{'0' * 32}/preview").status_code == 404
+
+
+def test_solve_import_writes_deck_and_records_run(tmp_path: Path, monkeypatch) -> None:
+    """1.21e-2c — içe aktarılan model koşulur: deck adaptörden, koşu geometrisiz + import_id ile."""
+    from tests.test_materials import _db_available
+
+    monkeypatch.setattr(crash_import, "IMPORT_DIR", tmp_path)
+    client = TestClient(app)
+    files = [("main", ("model.k", ("*KEYWORD\n*INCLUDE\nkurulum.k\n" + BASE).encode(), "text/plain")),
+             ("includes", ("kurulum.k", SETUP.encode(), "text/plain"))]
+    imp = _post(client, files).json()["import_id"]
+
+    r = client.post(f"/crash/import/dyna/{imp}/solve", json={"run_solver": False, "t_end_ms": 2.5, "name": "k deneme"})
+    assert r.status_code == 200, r.text
+    res = r.json()
+    assert res["status"] == "rad_only" and res["import_id"] == imp
+    from app.api.crash import _job_dir, _read_job
+
+    meta = _read_job(res["job_id"])
+    assert meta["import_id"] == imp and meta["geometry_id"] is None and meta["t_end_ms"] == 2.5
+    starter = (_job_dir(res["job_id"]) / "crash_0000.rad").read_text(encoding="utf-8")
+    assert "/INTER/TYPE7" in starter and "/INTER/TYPE24" in starter and "/RWALL" in starter
+    if _db_available():
+        assert res["run_id"] is not None
+        run = client.get(f"/crash/runs/{res['run_id']}").json()
+        assert run["import_id"] == imp and run["geometry_id"] is None and run["name"] == "k deneme"
+
+
+def test_solve_import_needs_end_time_and_valid_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(crash_import, "IMPORT_DIR", tmp_path)
+    client = TestClient(app)
+    imp = _post(client, [("main", ("a.k", BASE.encode(), "text/plain"))]).json()["import_id"]
+    r = client.post(f"/crash/import/dyna/{imp}/solve", json={"run_solver": False})
+    assert r.status_code == 422 and "CONTROL_TERMINATION" in r.json()["detail"]
+    assert client.post(f"/crash/import/dyna/{'0' * 32}/solve", json={}).status_code == 404

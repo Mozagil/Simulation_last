@@ -31,6 +31,7 @@ describe("CrashOutputCard", () => {
         node_vars: ["AX", "AY", "AZ"],
       },
       sections: [],
+      damping: null, // 1.24c2: sönüm kapalı → kart yazılmaz (eski deck ile aynı)
     });
   });
 

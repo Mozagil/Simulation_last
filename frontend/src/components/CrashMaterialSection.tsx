@@ -5,6 +5,7 @@
  */
 import { useState, type Dispatch, type SetStateAction } from "react";
 import CrashMaterialCard, { type MatCardState } from "./CrashMaterialCard";
+import type { JcSource } from "../lib/crashJc";
 import { DynaToggle } from "./Kw";
 
 const LAW_NAME: Record<MatCardState["law"], string> = {
@@ -34,6 +35,7 @@ export default function CrashMaterialSection({
   disabled = false,
   hideToggle = false,
   materialOf,
+  jcOf,
 }: {
   partIds: number[];
   matCard: MatCardState;
@@ -45,10 +47,18 @@ export default function CrashMaterialSection({
   hideToggle?: boolean;
   /** 1.23 A2: parçaya atanmış kütüphane malzemesinin adı (tabloda gösterilir). */
   materialOf?: (pid: number) => string | null;
+  /** 1.24g: parçaya atanmış kütüphane malzemesinin Johnson–Cook seti (varsa). */
+  jcOf?: (pid: number) => JcSource | null;
 }) {
   // 1.23 A2 (kullanıcı 2026-10-13): tabloda yalnız LAW adları — her parçanın geçerli
   // modeli seçili. Alttaki kartın LAW'ından farklı seçilen parçaya kendi kartı açılır
   // (alttaki karttan kopya); aynısı seçilirse kendi kartı kalkar.
+  // 1.24g — alttaki (ortak) kart: parçalara atanmış malzemelerin JC setleri, ada göre tekil
+  const allJc = [
+    ...new Map(
+      partIds.map((pid) => jcOf?.(pid)).filter((s): s is JcSource => s != null).map((s) => [s.label, s] as const),
+    ).values(),
+  ];
   const choose = (pid: number, law: MatCardState["law"]) =>
     setPartCards((c) => {
       const next = { ...c };
@@ -133,7 +143,7 @@ export default function CrashMaterialSection({
           </button>
         </div>
       )}
-      <CrashMaterialCard value={matCard} onChange={setDefault} disabled={disabled} testId="crash-mat-global" />
+      <CrashMaterialCard value={matCard} onChange={setDefault} disabled={disabled} testId="crash-mat-global" jcSources={allJc} />
       {partIds
         .filter((pid) => partCards[pid])
         .map((pid) => (
@@ -146,6 +156,7 @@ export default function CrashMaterialSection({
               onChange={(next) => setPartCards((c) => ({ ...c, [pid]: next }))}
               disabled={disabled}
               testId={`crash-mat-part-${pid}`}
+              jcSources={jcOf?.(pid) ? [jcOf(pid)!] : []}
             />
           </div>
         ))}

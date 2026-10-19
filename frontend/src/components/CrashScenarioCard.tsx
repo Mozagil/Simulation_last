@@ -71,6 +71,22 @@ const EXTRAS: Record<string, Extras> = {
     tag: (v) =>
       v.ballTotal?.trim() ? ` · ${v.ballTotal} kg` : v.ballMass.trim() ? ` · +${v.ballMass} kg` : "",
   },
+  // 1.24d — kutu ezme: C çarpıcı rijit gövde (+ ek kütle), taban sabit, genel temas
+  can_crush_shell: {
+    hint:
+      "Kutu (parça 0) serbest; θ eğimli C-kesit çarpıcı (1) rijit gövde + −z ilk hız; taban (2) /BCS 111111; " +
+      "genel temas TYPE24 (tüm model); rijit duvar yok. Çarpıcı ve taban da senaryo malzemesini alır (çarpıcı " +
+      "rijit — malzeme yalnız kütle için; taban sabit). Geri sekme (1.24c) çarpıcı kutudan ayrıldıktan sonraki karelerde görünür.",
+    fields: [
+      { key: "ballT", label: "Çarpıcı / taban kabuk t (mm)", initial: "1" },
+      { key: "ballMass", label: "Çarpıcı ek kütle (kg)", initial: "", placeholder: "yok" },
+    ],
+    body: (v) => ({
+      ball_thickness_mm: num(v.ballT, "Çarpıcı kabuk t"),
+      ball_mass_kg: v.ballMass.trim() ? num(v.ballMass, "Çarpıcı ek kütlesi") : 0,
+    }),
+    tag: (v) => (v.ballMass.trim() ? ` · çarpıcı +${v.ballMass} kg` : ""),
+  },
   drop_box_shell: {
     hint:
       "Zemin z = 0: F = 0 rijit duvar (/RWALL), F > 0 sabit F × F plaka + TYPE7 (g > t). /GRAV (g, −z). H verilince çarpma hızı √(2·g·H) — v₀ alanı yok sayılır. " +
@@ -301,6 +317,14 @@ export default function CrashScenarioCard({
     setExtra(Object.fromEntries((extras?.fields ?? []).map((f) => [f.key, defaults?.extras?.[f.key] ?? f.initial])));
     setCommon({ ...COMMON, ...(defaults?.common ?? {}) });
   }, [props, extras, defaults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 1.24d — katalog örneğinin başlangıç malzemesi (ör. kutu ezme → 6061-T6); yoksa S235.
+  useEffect(() => {
+    if (!materials.length) return;
+    const name = defaults?.material ?? "S235";
+    const m = materials.find((x) => x.name === name);
+    if (m) setMaterialId(m.id);
+  }, [defaults, materials]);
 
   const jobId = res?.crash.job_id ?? null;
   useEffect(() => {

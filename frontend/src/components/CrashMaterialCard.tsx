@@ -1,6 +1,8 @@
 import { Fragment, useState, type ReactNode } from "react";
 import type { CrashModelPayload } from "../api/crash";
 import { KwRef } from "./Kw";
+import CrashForceChart, { type ForceSeries } from "./CrashForceChart";
+import { jcStressCurve, jcToCard, type JcSource } from "../lib/crashJc";
 
 /** Malzeme kartı (1.14e): LAW1 / LAW2 (+ Johnson-Cook hız/sıcaklık) / LAW36 tablo
  * ve /FAIL kriterleri. Alanlar ham metin; sayıya gönderimde çevrilir. Öneri yok:
@@ -257,16 +259,77 @@ function Fold({
   );
 }
 
+/** 1.24g — kartın kendi alanlarından σ–εₚ önizlemesi (MPa). LAW2: a + b·εₚⁿ (referans hız ve
+ * sıcaklık; a boşsa çizilmez — kütüphane akması kullanılır). LAW36: girilen eğriler. Veri, yorum yok. */
+export function stressStrainSeries(card: MatCardState): { series: ForceSeries[]; note: string } {
+  const num = (raw: string) => {
+    const v = Number(raw.trim().replace(",", "."));
+    return raw.trim() && Number.isFinite(v) ? v : null;
+  };
+  if (card.law === "plastic") {
+    const a = num(card.sigmaY);
+    if (a == null) return { series: [], note: "a (σy) boş — koşuda atanan kütüphane malzemesinin akması kullanılır; eğri için a girin." };
+    const b = num(card.hardenB) ?? 0;
+    const n = num(card.hardenN) ?? 1;
+    const pts = jcStressCurve(a / 1e6, b, n > 0 ? n : 1);
+    return {
+      series: [{ key: "law2", label: "LAW2 a + b·εₚⁿ", values: pts.map((p) => p[1]), time: pts.map((p) => p[0]) }],
+      note: "Referans hız (ε̇ = ε̇₀) ve oda sıcaklığında; hız / sıcaklık terimleri ve SIG_max0 dahil değil.",
+    };
+  }
+  if (card.law === "tabulated") {
+    const series: ForceSeries[] = [];
+    card.tabCurves.forEach((c, i) => {
+      try {
+        const pts = parseCurvePoints(c.points, `eğri ${i + 1}`);
+        if (pts.length >= 2) series.push({ key: `tab${i}`, label: `Eğri ${i + 1} · ε̇ ${c.rate} 1/s`, values: pts.map((p) => p[1]), time: pts.map((p) => p[0]) });
+      } catch {
+        /* geçersiz eğri çizilmez; hata gönderimde yazılır */
+      }
+    });
+    return { series, note: "Girilen LAW36 eğrileri (gerçek gerilme, MPa)." };
+  }
+  return { series: [], note: "" };
+}
+
+function StressStrainPreview({ card }: { card: MatCardState }) {
+  const { series, note } = stressStrainSeries(card);
+  if (!note) return null;
+  return (
+    <div className="crash-ss-preview" data-testid="crash-ss-preview">
+      {series.length > 0 ? (
+        <CrashForceChart
+          time={series[0].time ?? []}
+          series={series}
+          title="σ–εₚ · MPa"
+          unit="MPa"
+          yLabel="gerilme"
+          ariaLabel="Gerilme–plastik şekil değiştirme grafiği"
+          xName="plastik şekil değiştirme"
+          xSym="εₚ"
+          xUnit="-"
+          note={note}
+        />
+      ) : (
+        <p className="crash-behavior-hint">σ–εₚ: {note}</p>
+      )}
+    </div>
+  );
+}
+
 export default function CrashMaterialCard({
   value,
   onChange,
   disabled = false,
   testId,
+  jcSources = [],
 }: {
   value: MatCardState;
   onChange: (next: MatCardState) => void;
   disabled?: boolean;
   testId?: string;
+  /** 1.24g — atanan kütüphane malzemelerinin Johnson–Cook setleri (varsa) */
+  jcSources?: JcSource[];
 }) {
   const set = (patch: Partial<MatCardState>) => onChange({ ...value, ...patch });
   /** Varsayılandan farklı alanlar: "c 0.014 · ε̇₀ 1"; hiçbiri yoksa "varsayılan". */
@@ -340,6 +403,35 @@ export default function CrashMaterialCard({
       <p className="crash-behavior-hint" data-testid="crash-law-hint">{LAW_HINT[law]}</p>
       <KwRef card={law === "elastic" ? "/MAT/LAW1" : law === "plastic" ? "/MAT/LAW2" : "/MAT/LAW36"} />
 
+      {law === "plastic" && jcSources.length > 0 && (
+        <div className="crash-jc-lib" data-testid="crash-jc-lib">
+          <p className="crash-expert-title">Kütüphane Johnson–Cook seti</p>
+          {jcSources.map((src) => (
+            <div key={src.label} className="crash-jc-lib-row">
+              <button
+                type="button"
+                className="material-secondary-button"
+                disabled={disabled}
+                onClick={() => set(jcToCard(src.jc, value))}
+                aria-label={`${src.label} Johnson–Cook setini alanlara doldur`}
+              >
+                ⤓ {src.label} → alanlara
+              </button>
+              <span className="crash-behavior-hint">
+                A {src.jc.a_mpa} MPa · B {src.jc.b_mpa} MPa · n {src.jc.n} · C {src.jc.c}
+                {src.jc.m != null ? ` · m ${src.jc.m}` : ""}
+                {src.jc.eps_dot0_per_s != null ? ` · ε̇₀ ${src.jc.eps_dot0_per_s} 1/s` : " · ε̇₀ kaynakta yok"}
+                {src.jc.t_melt_k != null ? ` · T_m ${src.jc.t_melt_k} K` : ""} — {src.jc.source}
+              </span>
+            </div>
+          ))}
+          <p className="crash-behavior-hint">
+            Doldurulan: a (σy), b, n, c ve kaynakta olan ε̇₀ / m / T_m / T_r / D₁–D₅. Kaynakta olmayan alan
+            değişmez (tahmin yazılmaz). Veri kaynağı: docs/CRASH_MATERIALS.md.
+          </p>
+        </div>
+      )}
+
       {law === "plastic" && (
         <div className="crash-law-sections">
           <Fold
@@ -400,6 +492,7 @@ export default function CrashMaterialCard({
             {xf("epsPMax", "EPS_p_max", "EPS_p_max · kopma gerinimi")}
           </div>
           </Fold>
+          <StressStrainPreview card={value} />
         </div>
       )}
 
@@ -480,6 +573,7 @@ export default function CrashMaterialCard({
             {field("jcFcut", "F_cut (Hz)")}
             {field("jcChard", "Chard")}
           </div>
+          {!value.curvesFromMaterial && <StressStrainPreview card={value} />}
         </>
       )}
 
