@@ -82,18 +82,30 @@ def write_composite_section(spec: dict[str, Any]) -> str:
         lines.append(f"{rho:.6e}")
         seen.add(mname)
 
+    # ccx COMPOSITE satırının 4. alanı açı değil, *ORIENTATION ADI (sayı
+    # yazılırsa "nonexistent orientation" ile durur — V-P1'de bulundu).
+    # Her farklı ply açısı için rozet + yerel 3 ekseni etrafında ek dönme.
     bx, by, bz = _companion(dir0)
-    lines.append(f"*ORIENTATION, NAME={or_name}, SYSTEM=RECTANGULAR")
-    lines.append(
+    base = (
         f"{_fmt(dir0[0])}, {_fmt(dir0[1])}, {_fmt(dir0[2])}, "
         f"{_fmt(bx)}, {_fmt(by)}, {_fmt(bz)}"
     )
-    lines.append(f"*SHELL SECTION, ELSET={elset}, COMPOSITE, ORIENTATION={or_name}")
+    ply_or: dict[float, str] = {}
+    for ply in plies:
+        ang = float(ply.get("angle_deg", 0.0))
+        if ang in ply_or:
+            continue
+        name = f"{or_name}_{len(ply_or)}"
+        ply_or[ang] = name
+        lines.append(f"*ORIENTATION, NAME={name}, SYSTEM=RECTANGULAR")
+        lines.append(base)
+        lines.append(f"3, {_fmt(ang)}")
+    lines.append(f"*SHELL SECTION, ELSET={elset}, COMPOSITE")
     for ply in plies:
         mname = _sanitize_name(str(ply["name"]))
         t = float(ply["thickness_mm"])
         ang = float(ply.get("angle_deg", 0.0))
-        lines.append(f"{_fmt(t)}, {nint}, {mname}, {_fmt(ang)}")
+        lines.append(f"{_fmt(t)}, {nint}, {mname}, {ply_or[ang]}")
     return "\n".join(lines) + "\n"
 
 
