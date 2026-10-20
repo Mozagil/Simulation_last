@@ -4218,6 +4218,19 @@ p {
   border-radius: var(--radius-md);
 }
 
+.crash-ml-kinds {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.crash-ml-chosen {
+  font-weight: 600;
+  color: var(--accent, #1f5fbf);
+}
+
 .crash-contact-scope {
   display: flex;
   align-items: center;

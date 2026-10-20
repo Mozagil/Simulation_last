@@ -1836,6 +1836,24 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   yetmez), T27 SPH kuş, T28 direk, T29 LS-DYNA .k içe aktarma, T30 Ishell. Beklenenler nitel; "Ölçülen"
   satırları koşuldukça dolacak (1.25e deseni).
 
+*1.27 — Crash vekilini durability ML yığınıyla hizalama (kullanıcı 2026-10-20: "ML stüdyoda crash ve
+durability menüleri aşırı farklı")*
+Neden: crash 1.19'da yalnız RF ile "minimum" kuruldu; durability'de ölçülmüş üçlü (RF / log-lineer /
+hibrit, 0.6.3) ve ortak OOD vardı. Model versiyonlama iki tarafta da yok (Faz 4).
+- a ✅ (2026-10-20) Backend: `train_crash_surrogate(kind=rf|loglinear|hybrid|auto)`. Log-lineer crash'e
+  uyarlı: her satırda > 0 olan özellikler log, diğerleri (açı, c = 0) ham; hedef ≤ 0 satırlar log
+  türlerinde atılır (`dropped_nonpositive`). Hibrit = log iskelet + log artığı RF. `auto` üçünü de
+  K-fold CV ile eğitip hedef başına MAPE en düşük türü seçer (`chosen`); metrikler `kinds` altında
+  tür tür. OOD ortak `app.ml.ood.domain_violations` (`out_of_domain_detail`: değer, sınır, kat).
+  API: `TrainRequest.kind` (varsayılan auto), `targets[].kind`, `requested_kind`. Durability koduna
+  dokunulmadı (TARGET_KEYS'e bağlı). Test: `test_crash_ml_surrogate.py` (+6), `test_crash_ml_api.py`.
+- b ✅ (2026-10-20) ML tezgahı Crash → Model: tür seçici (auto / hybrid / loglinear / RF; istekte
+  `kind`), CV tablosunda "tür" sütunu, auto'da "Tür karşılaştırması" tablosu (hedef × tür MAPE, seçilen ✓,
+  atılan ≤ 0 satır "(−n)"), log'a girmeyen özellikler satırı. Tahmin: hedef kartında kullanılan tür;
+  aralık dışı satırı değer / sınır / kat ile. Test: `CrashModelPanel.test.tsx`, `CrashPredictPanel.test.tsx`.
+- c Model versiyonlama (crash + durability birlikte, Faz 4 maddesi): kayıt tarihi, korpus/study,
+  önceki sürüm listesi ve geri dönüş.
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse

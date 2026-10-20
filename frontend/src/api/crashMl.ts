@@ -111,6 +111,15 @@ export interface CrashCorpusSummary {
   dropped: Record<string, number>;
 }
 
+export type CrashModelKind = "rf" | "loglinear" | "hybrid";
+export type CrashTrainKind = CrashModelKind | "auto";
+
+export const CRASH_KIND_LABEL: Record<CrashModelKind, string> = {
+  rf: "Random Forest",
+  loglinear: "Log-log lineer",
+  hybrid: "Hibrit (log-log + RF artık)",
+};
+
 export interface CrashCvMetrics {
   n: number;
   r2?: number;
@@ -118,6 +127,11 @@ export interface CrashCvMetrics {
   mape?: number;
   folds?: number;
   skipped?: string;
+  /** 1.27a — seçilen tür ve log türlerinde atılan ≤ 0 hedefli satır sayısı */
+  kind?: CrashModelKind;
+  dropped_nonpositive?: number;
+  /** 1.27a — auto'da üç türün CV'si (tür → metrik) */
+  kinds?: Partial<Record<CrashModelKind, CrashCvMetrics>>;
 }
 
 export interface CrashModelInfo {
@@ -129,21 +143,39 @@ export interface CrashModelInfo {
   dropped_features: string[];
   constant_features: Record<string, number>;
   bounds: Record<string, [number, number]>;
-  targets: (CrashTargetDef & { trained: boolean; cv: CrashCvMetrics | null })[];
+  targets: (CrashTargetDef & { trained: boolean; cv: CrashCvMetrics | null; kind?: CrashModelKind | null })[];
   seed: number | null;
   path?: string;
+  /** 1.27a */
+  requested_kind?: CrashTrainKind;
+  design_spec?: { feature_keys: string[]; log_keys: string[]; raw_keys: string[] } | null;
+}
+
+/** 1.27a — ortak `app.ml.ood.domain_violations` satırı */
+export interface CrashDomainViolation {
+  feature: string;
+  value: number;
+  min: number;
+  max: number;
+  side: "below" | "above";
+  factor: number | null;
 }
 
 export interface CrashPrediction {
   prediction: Record<string, number | null>;
   out_of_domain: string[];
+  out_of_domain_detail?: CrashDomainViolation[];
+  /** hedef → tahminde kullanılan tür */
+  chosen?: Record<string, CrashModelKind | null>;
 }
 
 export function fetchCrashCorpus(q: CrashCorpusQuery): Promise<CrashCorpusSummary> {
   return request<CrashCorpusSummary>(`${API_BASE_URL}/crash/ml/corpus`, post(q));
 }
 
-export function trainCrashModel(q: CrashCorpusQuery & { seed?: number; n_folds?: number }): Promise<CrashModelInfo> {
+export function trainCrashModel(
+  q: CrashCorpusQuery & { seed?: number; n_folds?: number; kind?: CrashTrainKind },
+): Promise<CrashModelInfo> {
   return request<CrashModelInfo>(`${API_BASE_URL}/crash/ml/train`, post(q));
 }
 
