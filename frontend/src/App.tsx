@@ -145,6 +145,7 @@ import CompositePlanPanel from "./components/composite/CompositePlanPanel";
 import CompositeMaterialsPanel from "./components/composite/CompositeMaterialsPanel";
 import CompositeLayupPanel from "./components/composite/CompositeLayupPanel";
 import CompositeRosettePanel from "./components/composite/CompositeRosettePanel";
+import CompositeResultsPanel from "./components/composite/CompositeResultsPanel";
 import type { FiberZero } from "./components/composite/CompositeRosettePanel";
 import HistoryFooter, { type CorpusRole } from "./components/HistoryFooter";
 import type { GeometryViewerHandle } from "./components/GeometryViewer";
@@ -4873,6 +4874,7 @@ function App() {
             selectedFaceIds={selection.mode === "surface" ? selection.ids : []}
             onFiberZero={setFiberZero}
           />
+          <CompositeResultsPanel geometryId={geometryId} />
           <CompositePlanPanel />
         </>
       )}

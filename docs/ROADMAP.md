@@ -2215,7 +2215,18 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   `hashin_irf_max`, eleman / katman / kip, katman başına en büyük) + ply alanı
   `<job>_ply.json` (eleman × katman s11/s22/s12, IRF, kip; 3.13 için).
   Puck yok. Test `test_composite_failure.py`.
-- 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
+- 3.13 ✅ (2026-10-20) Sonuç UI: `GET /composite/runs/{id}/plies` (ply alanı +
+  desteden eleman köşe geometrisi, `app/composite/field_mesh.py`);
+  `CompositeResultsPanel`: koşu seçimi, en büyük Tsai-Wu / Hashin IRF ve en
+  küçük RF = 1/IRF (eleman, katman, kip), katman seçici (zarf + katman, katman
+  başına en büyük IRF çubuğu), σ11 / σ22 / τ12 / Tsai-Wu / Hashin kontur
+  (eleman başına, üzerine gelince değer). Solve rotası dayanımları desteye
+  geçirmiyordu (IRF boş kalırdı) — düzeltildi. Testler
+  `test_composite_results_ui.py`, `CompositeResultsPanel.test.tsx`.
+  **Açık bulgu:** uygulamanın 2D ağ yolu yalnız S3/S4 üretir; ccx COMPOSITE
+  yalnız S8R/S6 kabul eder → `/composite/solve` uygulama ağıyla ccx'te
+  "failed" olur (delikli plaka denemesi). 2. mertebe kabuk ağı (quad8 → S8R,
+  tri6 → S6) ayrı adım, onay bekliyor.
 - 3.14 Belgeler: Kompozit kitabı.
 
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,

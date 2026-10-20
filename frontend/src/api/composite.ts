@@ -229,3 +229,58 @@ export async function createCompositeMaterial(
   const body = (await response.json()) as { material: CompositeMaterial };
   return body.material;
 }
+
+export interface CompositeRun {
+  id: number;
+  job_id: string;
+  geometry_id: number;
+  part_id: number;
+  name: string | null;
+  dimension: number;
+  status: string;
+  message: string | null;
+  solver_ran: boolean;
+  inp_url: string | null;
+  scalars: Record<string, number | boolean>;
+  has_ply_field: boolean;
+}
+
+export async function fetchCompositeRuns(geometryId: number): Promise<CompositeRun[]> {
+  const response = await fetch(`${API_BASE_URL}/composite/runs?geometry_id=${geometryId}`);
+  if (!response.ok) {
+    throw new Error(await _detail(response, `Koşular alınamadı (HTTP ${response.status}).`));
+  }
+  const body = (await response.json()) as { runs: CompositeRun[] };
+  return body.runs;
+}
+
+/** 3.13: eleman × katman dizileri (gerilme MPa, ply ekseni; IRF dayanım yoksa null). */
+export interface CompositePlySet {
+  element_ids: number[];
+  plies: { material: string; angle_deg: number }[];
+  s11: number[][];
+  s22: number[][];
+  s12: number[][];
+  tsai_wu_irf: (number | null)[][];
+  hashin_irf: (number | null)[][];
+  hashin_mode: number[][];
+  nodes: number[][];
+  faces: number[][];
+}
+
+export interface CompositePlyField {
+  run_id: number;
+  name: string | null;
+  scalars: Record<string, number | boolean>;
+  f12_star: number;
+  hashin_modes: string[];
+  sets: Record<string, CompositePlySet>;
+}
+
+export async function fetchCompositePlyField(runId: number): Promise<CompositePlyField> {
+  const response = await fetch(`${API_BASE_URL}/composite/runs/${runId}/plies`);
+  if (!response.ok) {
+    throw new Error(await _detail(response, `Katman alanı alınamadı (HTTP ${response.status}).`));
+  }
+  return (await response.json()) as CompositePlyField;
+}
