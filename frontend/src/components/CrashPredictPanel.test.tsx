@@ -42,6 +42,8 @@ describe("CrashPredictPanel", () => {
     vi.mocked(predictCrash).mockResolvedValue({
       prediction: { peak_force_kn: 101.234, crush_mm: null },
       out_of_domain: ["req.barrier.speed_m_s"],
+      out_of_domain_detail: [{ feature: "req.barrier.speed_m_s", value: 20, min: 5, max: 15, side: "above", factor: 1.333 }],
+      chosen: { peak_force_kn: "hybrid", crush_mm: null },
     });
     render(<CrashPredictPanel />);
     const speed = await screen.findByLabelText("req.barrier.speed_m_s");
@@ -57,7 +59,8 @@ describe("CrashPredictPanel", () => {
     expect(await screen.findByText("101.2")).toBeInTheDocument();
     expect(screen.getByText("± 3.653 · R² 0.911")).toBeInTheDocument();
     expect(screen.getByText("en az 8 dolu satır gerekir")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("req.barrier.speed_m_s");
+    expect(screen.getByRole("status")).toHaveTextContent("req.barrier.speed_m_s = 20.000 (üst sınır 15.000, 1.3×)");
+    expect(screen.getByText("Tepe duvar kuvveti · hybrid")).toBeInTheDocument();
   });
 
   it("sayı olmayan girdi istek göndermez", async () => {

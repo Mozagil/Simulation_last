@@ -1847,8 +1847,13 @@ hibrit, 0.6.3) ve ortak OOD vardı. Model versiyonlama iki tarafta da yok (Faz 4
   tür tür. OOD ortak `app.ml.ood.domain_violations` (`out_of_domain_detail`: değer, sınır, kat).
   API: `TrainRequest.kind` (varsayılan auto), `targets[].kind`, `requested_kind`. Durability koduna
   dokunulmadı (TARGET_KEYS'e bağlı). Test: `test_crash_ml_surrogate.py` (+6), `test_crash_ml_api.py`.
-- b ML tezgahı Crash sekmesi: tür seçici (auto / rf / loglinear / hybrid), hedef başına tür + üç
-  türün CV karşılaştırma tablosu, OOD ayrıntısı; Durability sekmesiyle aynı düzen.
+- b ✅ (2026-10-20) ML tezgahı Crash → Model, Durability düzeninde (`doe-stage` / `sg-model`): sol
+  pane "Vekil model" — şablon / senaryo / korpus satırları, korpus özeti, üç model kartı (hybrid /
+  loglinear / RF; hedef başına CV MAPE çubukları, "seçildi · n hedef / eğitildi / eğitilmedi", "<tür> eğit"
+  düğmesi), alt barda "Üçünü de eğit" (= auto). Sağ pane: CV tablosu ("tür" sütunu), auto'da "Tür
+  karşılaştırması" (hedef × tür MAPE, seçilen ✓, atılan ≤ 0 satır "(−n)"), girdi / log'a girmeyen
+  özellikler. Tahmin: hedef kartında kullanılan tür; aralık dışı satırı değer / sınır / kat ile.
+  Test: `CrashModelPanel.test.tsx`, `CrashPredictPanel.test.tsx`.
 - c Model versiyonlama (crash + durability birlikte, Faz 4 maddesi): kayıt tarihi, korpus/study,
   önceki sürüm listesi ve geri dönüş.
 
