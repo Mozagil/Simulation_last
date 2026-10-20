@@ -37,6 +37,11 @@ def assemble_composite_layup(
                 "g13": float(mat["g13"]),
                 "g23": float(mat["g23"]),
                 "density": float(mat["density"]),
+                # Dayanımlar (Pa) — hasar ölçütleri (3.12); kütüphanede yoksa None
+                **{
+                    k: (float(mat[k]) if mat.get(k) is not None else None)
+                    for k in ("xt", "xc", "yt", "yc", "s12", "s23")
+                },
                 "thickness_mm": t,
                 "angle_deg": float(raw.get("angle_deg", 0.0)),
             }

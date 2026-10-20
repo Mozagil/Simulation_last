@@ -123,21 +123,69 @@ def el_print_block(elsets: list[str]) -> str:
     return "".join(f"*EL PRINT, ELSET={name}\nS\n" for name in elsets)
 
 
-def plies_by_set_from_inp(text: str) -> dict[str, int]:
-    """Desteden `*SHELL SECTION, ELSET=…, COMPOSITE` → {ELSET: katman sayısı}."""
-    out: dict[str, int] = {}
+@dataclass(frozen=True)
+class DeckPly:
+    material: str
+    orientation: str
+    angle_deg: float | None
+
+
+def parse_composite_deck(
+    text: str,
+) -> tuple[dict[str, list[DeckPly]], dict[str, list[float]]]:
+    """Desteden kompozit kesitler ve dayanım yorumları.
+
+    Döner: ({ELSET: [DeckPly alt → üst]}, {MALZEME: [Xt, Xc, Yt, Yc, S12(, S23)] MPa}).
+    Ply açısı `*ORIENTATION` bloğunun `3, θ` satırından (yoksa None).
+    """
+    sets: dict[str, list[DeckPly]] = {}
+    raw_plies: dict[str, list[tuple[str, str]]] = {}
+    angles: dict[str, float] = {}
+    strengths: dict[str, list[float]] = {}
     current: str | None = None
+    orient: str | None = None
+    orient_line = 0
     for raw in text.splitlines():
         line = raw.strip()
+        up = line.upper().replace(" ", "")
+        if line.startswith("**"):
+            if up.startswith("**PLY_STRENGTH_MPA,NAME="):
+                fields = [f.strip() for f in line.split(",")]
+                name = fields[1].split("=", 1)[1].strip().upper()
+                strengths[name] = [float(v) for v in fields[2:]]
+            continue
         if line.startswith("*"):
             current = None
-            up = line.upper().replace(" ", "")
+            orient = None
             if up.startswith("*SHELLSECTION") and ",COMPOSITE" in up:
                 for field in up.split(","):
                     if field.startswith("ELSET="):
                         current = field[len("ELSET="):]
-                        out[current] = 0
+                        raw_plies[current] = []
+            elif up.startswith("*ORIENTATION"):
+                for field in up.split(","):
+                    if field.startswith("NAME="):
+                        orient = field[len("NAME="):]
+                        orient_line = 0
             continue
-        if current is not None and line and not line.startswith("**"):
-            out[current] += 1
-    return {k: v for k, v in out.items() if v > 0}
+        if not line:
+            continue
+        if current is not None:
+            parts = [f.strip().upper() for f in line.split(",")]
+            raw_plies[current].append((parts[2], parts[3] if len(parts) > 3 else ""))
+        elif orient is not None:
+            orient_line += 1
+            if orient_line == 2:
+                parts = [f.strip() for f in line.split(",")]
+                if parts and parts[0] == "3" and len(parts) > 1:
+                    angles[orient] = float(parts[1])
+    for elset, plies in raw_plies.items():
+        if plies:
+            sets[elset] = [DeckPly(m, o, angles.get(o)) for m, o in plies]
+    return sets, strengths
+
+
+def plies_by_set_from_inp(text: str) -> dict[str, int]:
+    """Desteden `*SHELL SECTION, ELSET=…, COMPOSITE` → {ELSET: katman sayısı}."""
+    sets, _ = parse_composite_deck(text)
+    return {k: len(v) for k, v in sets.items()}

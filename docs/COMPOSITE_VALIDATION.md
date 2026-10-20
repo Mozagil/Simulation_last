@@ -85,3 +85,29 @@ katmanın orientation adı (`OR_0_<k>_shell_…`).
 
 (MPa.) Tüm elemanların ortalaması (kenar dahil) σ1'de en çok %0.6 farklı
 (90° katman −3.278).
+
+## V-P1 hasar: Tsai-Wu + Hashin IRF, CLT vs CalculiX (Faz 3.12, 2026-10-20)
+
+**Kurulum:** 3.11 düzeni, Nx = 100 N/mm, [30/0/90/−45]s; seed T300/epoxy
+dayanımları (Xt 1500, Xc 1200, Yt 50, Yc 200, S12 70, S23 40 MPa; tipik).
+Ölçütler `app/composite/failure.py` (Tsai-Wu F12* = −0.5, Hashin 1980 düzlem
+gerilme dört kip); IRF = 1/R, R: yük çarpanı. Dayanımlar desteye
+`** PLY_STRENGTH_MPA` yorum satırıyla taşınır, ccx yok sayar.
+Katman değeri: IP'ler içinde en büyük; tablo orta iki eleman sırasının
+ortalaması. Test: `backend/tests/test_composite_failure.py`.
+
+| Katman | θ | Tsai-Wu CLT | ccx | fark | Hashin CLT | kip | ccx | fark |
+|---|---|---|---|---|---|---|---|---|
+| 1, 8 | 30 | 0.0966 | 0.0969 | +0.29 % | 0.0859 | matris çekme | 0.0863 | +0.37 % |
+| 2, 7 | 0 | 0.0728 | 0.0729 | +0.07 % | 0.0732 | lif çekme | 0.0734 | +0.16 % |
+| 3, 6 | 90 | 0.1633 | 0.1657 | +1.46 % | 0.1466 | matris çekme | 0.1491 | +1.68 % |
+| 4, 5 | −45 | 0.1063 | 0.1069 | +0.59 % | 0.0993 | matris çekme | 0.1000 | +0.70 % |
+
+**Veri notları:**
+- `tsai_wu_irf_max` (tüm IP'ler) = 0.1746, eleman 120 (x = a, y = b köşesi;
+  yük girişi + serbest kenar), katman 3 (90°): CLT en büyüğünden +%7.
+  `hashin_irf_max` = 0.1585 aynı yerde, kip matris çekme.
+- Birim kontrol: tek eksenli dayanımda (σ1 = Xt, −Xc; σ2 = Yt, −Yc; τ12 = S12)
+  her iki ölçüt IRF = 1; IRF yükle doğrusal ölçeklenir.
+- S23 kütüphanede yoksa matris basma (σ2/Yc)² + (τ12/S12)² ile hesaplanır;
+  `hashin_mc_s23` (1 = S23 kullanıldı) scalar'ı bunu kaydeder.

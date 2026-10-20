@@ -19,12 +19,8 @@ from typing import Any
 
 import gmsh
 
-from app.composite.ply_stress import (
-    el_print_block,
-    plies_by_set_from_inp,
-    ply_stress_scalars,
-    read_ply_stress,
-)
+from app.composite.ply_stress import el_print_block
+from app.composite.results import composite_results
 from app.composite.section_writer import composite_plies_by_elset, write_composite_inp
 from app.mesh.gmsh_adapter import _gmsh_lock
 from app.solvers.base import (
@@ -1124,17 +1120,17 @@ class CalculiXAdapter(SolverAdapter):
             max_vm,
         )
 
-        # 3.11: kompozit kesit varsa katman (ply eksenli) gerilme uç değerleri.
+        # 3.11 / 3.12: kompozit kesit varsa katman gerilmesi + IRF ve ply alanı.
         try:
-            plies_by_set = plies_by_set_from_inp(
-                job.artifact.path.read_text(encoding="utf-8", errors="replace")
-            )
-            if plies_by_set:
-                extra_scalars.update(
-                    ply_stress_scalars(read_ply_stress(dat_path, plies_by_set))
+            extra_scalars.update(
+                composite_results(
+                    job.artifact.path,
+                    dat_path,
+                    job.work_dir / f"{job.artifact.path.stem}_ply.json",
                 )
+            )
         except Exception as exc:  # noqa: BLE001 — parse hatası çözümü bozmasın
-            logger.warning("Katman gerilmesi okunamadı: %s", exc)
+            logger.warning("Kompozit katman sonucu okunamadı: %s", exc)
 
         freq_scalars = {
             f"freq_{i}": f_hz for i, f_hz in enumerate(frequencies, start=1)

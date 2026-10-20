@@ -2209,7 +2209,12 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   ekler, `parse_results` katman uç değerlerini (`ply{k}_s11/s22/s12_min|max`)
   scalars'a yazar. CLT karşılaştırması `docs/COMPOSITE_VALIDATION.md`.
   Test `test_composite_ply_stress.py`.
-- 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
+- 3.12 ✅ (2026-10-20) Hasar: Tsai-Wu (F12* = −0.5) + Hashin 1980 dört kip IRF
+  (`app/composite/failure.py`). Dayanımlar layup → deste `** PLY_STRENGTH_MPA`
+  yorumu → `app/composite/results.py`: scalars (`tsai_wu_irf_max`,
+  `hashin_irf_max`, eleman / katman / kip, katman başına en büyük) + ply alanı
+  `<job>_ply.json` (eleman × katman s11/s22/s12, IRF, kip; 3.13 için).
+  Puck yok. Test `test_composite_failure.py`.
 - 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
 - 3.14 Belgeler: Kompozit kitabı.
 
