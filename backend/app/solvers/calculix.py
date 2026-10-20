@@ -19,7 +19,13 @@ from typing import Any
 
 import gmsh
 
-from app.composite.section_writer import write_composite_inp
+from app.composite.ply_stress import (
+    el_print_block,
+    plies_by_set_from_inp,
+    ply_stress_scalars,
+    read_ply_stress,
+)
+from app.composite.section_writer import composite_plies_by_elset, write_composite_inp
 from app.mesh.gmsh_adapter import _gmsh_lock
 from app.solvers.base import (
     InputArtifact,
@@ -763,6 +769,14 @@ class CalculiXAdapter(SolverAdapter):
                 plastic=bool(params.get("plastic")),
                 reaction=params.get("reaction"),
             )
+            layup = params.get("composite_layup")
+            if layup:
+                # 3.11: katman gerilmesi .frd'de ortalanır; IP değerleri .dat'tan.
+                step_block = step_block.replace(
+                    "*END STEP\n",
+                    el_print_block(list(composite_plies_by_elset(layup)))
+                    + "*END STEP\n",
+                )
         else:
             raise SolverError(
                 f"Bilinmeyen analysis_type={analysis_type!r} (static|modal)."
@@ -1109,6 +1123,18 @@ class CalculiXAdapter(SolverAdapter):
             max_disp,
             max_vm,
         )
+
+        # 3.11: kompozit kesit varsa katman (ply eksenli) gerilme uç değerleri.
+        try:
+            plies_by_set = plies_by_set_from_inp(
+                job.artifact.path.read_text(encoding="utf-8", errors="replace")
+            )
+            if plies_by_set:
+                extra_scalars.update(
+                    ply_stress_scalars(read_ply_stress(dat_path, plies_by_set))
+                )
+        except Exception as exc:  # noqa: BLE001 — parse hatası çözümü bozmasın
+            logger.warning("Katman gerilmesi okunamadı: %s", exc)
 
         freq_scalars = {
             f"freq_{i}": f_hz for i, f_hz in enumerate(frequencies, start=1)

@@ -2202,7 +2202,13 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   bekler) — açı başına `*ORIENTATION` + `3, θ` ile düzeltildi.
   `app/composite/reference.py`, `scripts/composite_validation_vp1.py`,
   `docs/COMPOSITE_VALIDATION.md`. Test `test_composite_validation_vp1.py`.
-- 3.11 Katman gerilmesi: `.frd` katman S → ply tensörü.
+- 3.11 ✅ (2026-10-20) Katman gerilmesi: kaynak `.frd` değil `.dat` (`*EL PRINT`
+  S) — `.frd` düğüm değerleri katman sınırında ortalanır. ccx 2.23: katman başına
+  2×2×2 IP, alt → üst, ply eksenlerinde. `app/composite/ply_stress.py` →
+  eleman × ply × IP × 6; adaptör yalnız `composite_layup` doluysa adıma EL PRINT
+  ekler, `parse_results` katman uç değerlerini (`ply{k}_s11/s22/s12_min|max`)
+  scalars'a yazar. CLT karşılaştırması `docs/COMPOSITE_VALIDATION.md`.
+  Test `test_composite_ply_stress.py`.
 - 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
 - 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
 - 3.14 Belgeler: Kompozit kitabı.

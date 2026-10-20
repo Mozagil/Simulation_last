@@ -62,3 +62,26 @@ deplasmanından: εx = Δu/a, εy = Δv/b, γxy = Δv/a.
   a/h = 200'de beklenen mertebede.
 - Ölçek: yalnız düz plaka, tek rozet (global X). Eğri kabukta yerel 3 ekseni
   normalden sapar; bu doğrulama onu kapsamaz.
+
+## V-P1 katman gerilmesi: CLT vs CalculiX (Faz 3.11, 2026-10-20)
+
+**Kurulum:** V-P1 zar düzeni (200 × 50 mm, 20 × 6 S8R, x = a kenarında
+Nx = 10 N/mm), simetrik [30/0/90/−45]s, sekiz katman × 0.25 mm. ccx
+`*EL PRINT, ELSET=PLATE / S` → `.dat`; ayrıştırıcı `app/composite/ply_stress.py`.
+Katman değeri = katmanın 8 IP ortalaması, y yönünde ortadaki iki eleman
+sırası (serbest kenar etkisi dışı). Referans: σ̄ = Q̄ ε0 → ply eksenleri
+(`reference.ply_stresses`). Test: `backend/tests/test_composite_ply_stress.py`.
+
+**ccx çıktı biçimi (ölçüldü, ccx 2.23):** katman başına 2×2×2 = 8 IP, satırlar
+alt → üst katman; gerilme ply eksenlerinde (1 lif, 2 dik); satır sonunda
+katmanın orientation adı (`OR_0_<k>_shell_…`).
+
+| Katman | θ | σ1 CLT | σ1 ccx | fark | σ2 CLT | σ2 ccx | τ12 CLT | τ12 ccx |
+|---|---|---|---|---|---|---|---|---|
+| 1, 8 | 30 | 6.408 | 6.403 | −0.08 % | 0.216 | 0.215 | −0.520 | −0.521 |
+| 2, 7 | 0 | 10.847 | 10.858 | +0.10 % | −0.020 | −0.025 | −0.082 | −0.081 |
+| 3, 6 | 90 | −3.299 | −3.291 | −0.25 % | 0.731 | 0.740 | 0.082 | 0.081 |
+| 4, 5 | −45 | 4.816 | 4.816 | 0.00 % | 0.300 | 0.303 | 0.554 | 0.554 |
+
+(MPa.) Tüm elemanların ortalaması (kenar dahil) σ1'de en çok %0.6 farklı
+(90° katman −3.278).

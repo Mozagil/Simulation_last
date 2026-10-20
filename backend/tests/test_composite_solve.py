@@ -220,4 +220,5 @@ def test_adapter_composite_layup_writes_inp(tmp_path):
     assert "COMPOSITE" in text
     assert "ENGINEERING CONSTANTS" in text
     assert "*ORIENTATION" in text
+    assert "*EL PRINT, ELSET=PART_0\nS\n*END STEP" in text  # 3.11
     assert "*STEP" in text
