@@ -37,12 +37,16 @@ def test_write_composite_0_90_0_cards():
     assert "135000" in text  # 135e9 Pa → 135000 MPa
     assert "1.350000e+11" not in text
     assert "1.600000e-09" in text  # 1600 * 1e-12
-    assert "*ORIENTATION, NAME=OR_0, SYSTEM=RECTANGULAR" in text
-    assert "1, 0, 0, 0, 1, 0" in text
-    assert "*SHELL SECTION, ELSET=PART_0, COMPOSITE, ORIENTATION=OR_0" in text
-    assert "0.125, 3, T300_epoxy, 0" in text
-    assert "0.125, 3, T300_epoxy, 90" in text
-    assert text.count("T300_epoxy, 0") == 2
+    # Açı başına bir rozet: ortak eksenler + yerel 3 etrafında ek dönme.
+    assert text.count("*ORIENTATION, NAME=") == 2
+    assert "*ORIENTATION, NAME=OR_0_0, SYSTEM=RECTANGULAR\n1, 0, 0, 0, 1, 0\n3, 0\n" in text
+    assert "*ORIENTATION, NAME=OR_0_1, SYSTEM=RECTANGULAR\n1, 0, 0, 0, 1, 0\n3, 90\n" in text
+    assert "*SHELL SECTION, ELSET=PART_0, COMPOSITE\n" in text
+    # ccx 4. alan = orientation ADI (sayı yazılırsa "nonexistent orientation").
+    assert "0.125, 3, T300_epoxy, OR_0_0" in text
+    assert "0.125, 3, T300_epoxy, OR_0_1" in text
+    assert text.count("T300_epoxy, OR_0_0") == 2
+    assert "T300_epoxy, 0\n" not in text
     assert "*SHELL SECTION, ELSET=PART_0, MATERIAL=" not in text
 
 

@@ -2196,8 +2196,12 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
 - 3.9 ✅ (2026-10-12) `POST /composite/solve`: mesh + layup + BC →
   CalculiXAdapter (`composite_layup`); `composite_runs` (Alembic `f7a8b9c0d1e2`).
   `GET /composite/runs`. `/solve` değişmez. Test `test_composite_solve.py`.
-- 3.10 V-P1: klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır).
-  `docs/COMPOSITE_VALIDATION.md`.
+- 3.10 ✅ (2026-10-20) V-P1: klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa
+  atlanır). [0/90]s ve [30]₄ zar (A⁻¹), SS kare plaka (Navier). Bulunan hata:
+  3.8 yazıcısı COMPOSITE satırına açıyı sayı yazıyordu (ccx orientation adı
+  bekler) — açı başına `*ORIENTATION` + `3, θ` ile düzeltildi.
+  `app/composite/reference.py`, `scripts/composite_validation_vp1.py`,
+  `docs/COMPOSITE_VALIDATION.md`. Test `test_composite_validation_vp1.py`.
 - 3.11 Katman gerilmesi: `.frd` katman S → ply tensörü.
 - 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
 - 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
