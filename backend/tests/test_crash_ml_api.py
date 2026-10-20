@@ -34,6 +34,11 @@ def test_train_list_get_predict():
     assert m["n_runs"] == 40 and m["feature_keys"] == ["req.barrier.speed_m_s", "geom.wall"]
     tgt = {t["key"]: t for t in m["targets"]}
     assert tgt["peak_force_kn"]["trained"] and tgt["peak_force_kn"]["cv"]["r2"] > 0.9
+    assert m["requested_kind"] == "auto" and tgt["peak_force_kn"]["kind"] in ("rf", "loglinear", "hybrid")
+    assert set(tgt["peak_force_kn"]["cv"]["kinds"]) == {"rf", "loglinear", "hybrid"}
+    r2 = client.post("/crash/ml/train", json={"template_id": "crash_box_shell", "scenario": "rigid_wall", "kind": "rf"})
+    assert r2.status_code == 200 and r2.json()["requested_kind"] == "rf"
+    assert client.post("/crash/ml/train", json={"template_id": "crash_box_shell", "scenario": "rigid_wall", "kind": "svm"}).status_code == 422
     assert not tgt["crush_mm"]["trained"] and tgt["crush_mm"]["unit"] == "mm"
 
     models = client.get("/crash/ml/models").json()["models"]
