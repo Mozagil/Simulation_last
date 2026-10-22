@@ -2223,10 +2223,18 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   (eleman başına, üzerine gelince değer). Solve rotası dayanımları desteye
   geçirmiyordu (IRF boş kalırdı) — düzeltildi. Testler
   `test_composite_results_ui.py`, `CompositeResultsPanel.test.tsx`.
-  **Açık bulgu:** uygulamanın 2D ağ yolu yalnız S3/S4 üretir; ccx COMPOSITE
-  yalnız S8R/S6 kabul eder → `/composite/solve` uygulama ağıyla ccx'te
-  "failed" olur (delikli plaka denemesi). 2. mertebe kabuk ağı (quad8 → S8R,
-  tri6 → S6) ayrı adım, onay bekliyor.
+  Bulgu: uygulamanın 2D ağ yolu yalnız S3/S4 üretiyordu; ccx COMPOSITE
+  yalnız S8R/S6 kabul eder → `/composite/solve` ccx'te "failed" oluyordu
+  (delikli plaka denemesi) → 3.13b.
+- 3.13b ✅ (2026-10-22) 2. mertebe kabuk ağı: mesh isteğinde `shell_order`
+  (1 | 2, varsayılan 1; ağ panelinde "Kabuk mertebesi"). 2'de gmsh
+  serendipity (`SecondOrderIncomplete`) quad8 / tri6 → ccx S8R / S6 (düğüm
+  sırası aynı). 2B kabukta yalnız kenar seçilen kuvvet uzunlukla orantılı
+  tutarlı dağıtılır (line3: ⅙, ⅙, ⅔; önceden eşit bölme); 3B katı yolu
+  değişmedi. Önizleme quad8/tri6'yı köşelerden çizer, kenar ortalarını ara
+  düğüm işaretler. Uçtan uca: delikli plaka 200×100 Ø40, [0/45/−45/90]s T300,
+  5 kN, 770 S8R → `/composite/solve` "solved", Tsai-Wu IRF 0.636 (katman 4,
+  90°), Hashin 0.585 matris çekme. Test `test_composite_shell_order2.py`.
 - 3.14 Belgeler: Kompozit kitabı.
 
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,

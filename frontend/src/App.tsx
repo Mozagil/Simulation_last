@@ -463,6 +463,7 @@ function App() {
   const [meshScheme, setMeshScheme] = useState<MeshElementScheme>("quad");
   // gmsh HighOrder optimizasyonu (TODO 8.4): eğri yüzeyde ters jacobian'a karşı.
   const [highOrderOptimize, setHighOrderOptimize] = useState(false);
+  const [shellOrder, setShellOrder] = useState<1 | 2>(1);
   // 1.23 E — eğriliğe göre adaptif boyut (değerleri mühendis girer)
   const [curvOn, setCurvOn] = useState(false);
   const [curvElements, setCurvElements] = useState("");
@@ -1885,6 +1886,7 @@ function App() {
         highOrderOptimize,
         localSizes,
         curvature,
+        shellOrder,
       );
       setMeshResult(result);
       // Kullanıcı 2026-10-07: mesh sonrası CAD varsayılan gizli (mesh okunur);
@@ -4639,6 +4641,20 @@ function App() {
             <option value="mix">mix</option>
           </select>
         </label>
+        {meshDimension === 2 && (
+          <label className="mesh-field">
+            <span>Kabuk mertebesi</span>
+            <select
+              aria-label="Kabuk mertebesi"
+              value={shellOrder}
+              disabled={busyAction === "mesh"}
+              onChange={(e) => setShellOrder(Number(e.target.value) as 1 | 2)}
+            >
+              <option value={1}>1 — S3 / S4</option>
+              <option value={2}>2 — S6 / S8R (kompozit)</option>
+            </select>
+          </label>
+        )}
         <label className="material-check">
           <input
             type="checkbox"

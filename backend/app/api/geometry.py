@@ -840,6 +840,9 @@ class GenerateMeshRequest(BaseModel):
     curvature_min_size: float | None = Field(
         default=None, gt=0, description="Eğrilik inceltmesinde en küçük eleman boyutu (mm)"
     )
+    shell_order: int = Field(
+        default=1, ge=1, le=2, description="2D kabuk mertebesi: 1 (S3/S4) | 2 (S6/S8R, kompozit)"
+    )
 
 
 @router.post("/{geometry_id}/mesh")
@@ -889,6 +892,7 @@ def generate_mesh(
                 face_sizes={int(k): float(v) for k, v in (body.face_sizes or {}).items() if float(v) > 0},
                 curvature_elements=int(body.curvature_elements),
                 curvature_min_size=body.curvature_min_size,
+                shell_order=int(body.shell_order),
             ),
         )
     except GmshImportError as exc:

@@ -42,6 +42,11 @@ _GMSH_TO_CCX_3D = {
 _GMSH_TO_CCX_2D = {
     2: "S3",  # tri3 shell
     3: "S4",  # quad4 shell
+    # 2. mertebe (kompozit COMPOSITE yalnız bunları kabul eder). Gmsh sırası
+    # (köşeler, sonra 01/12/20 ya da 01/12/23/30 kenar ortaları) Abaqus/ccx
+    # S6 / S8R sırasıyla aynı → yeniden sıralama yok.
+    9: "S6",  # tri6 shell
+    16: "S8R",  # quad8 (serendipity) shell
 }
 
 # KRİTİK: Gmsh tet10 (tip 11) ile Abaqus/CalculiX C3D10 düğüm sıralaması
@@ -736,7 +741,7 @@ class CalculiXAdapter(SolverAdapter):
         bcs = params.get("bcs") or []
         analysis_type = str(params.get("analysis_type") or "static").lower()
 
-        mesh_block, nsets, elsets, face_weights = _mesh_to_inp_blocks(
+        mesh_block, nsets, elsets, face_weights, edge_weights = _mesh_to_inp_blocks(
             mesh_path, dimension, materials, shell_thickness
         )
         mat_block = _section_block(params, materials, dimension, shell_thickness)
@@ -745,7 +750,7 @@ class CalculiXAdapter(SolverAdapter):
         # bir çalıştırmada dışarıda kalınca CalculiX "*CLOAD should only be
         # used within a STEP" hatasıyla durduğu doğrulandı).
         model_bc_block, step_bc_block = _bcs_inp_block(
-            bcs, nsets, elsets, dimension, face_weights
+            bcs, nsets, elsets, dimension, face_weights, edge_weights=edge_weights
         )
         if analysis_type == "modal":
             # Modal'da yükler (*CLOAD/*DLOAD) yazılmaz — özdeğer problemi
@@ -1242,6 +1247,7 @@ def _mesh_to_inp_blocks(
         # Yüzey tag -> {düğüm indeksi: ağırlık}. Yüzey yükünü tutarlı
         # dağıtmak için; eşit bölme kuadratik elemanlarda yanlış.
         face_weights: dict[int, dict[int, float]] = {}
+        edge_weights: dict[int, dict[int, float]] = {}
         lines: list[str] = ["*HEADING", "CAE platform CalculiX job", "*NODE"]
         for i, tag in enumerate(node_tags):
             nid = i + 1
@@ -1398,6 +1404,31 @@ def _mesh_to_inp_blocks(
             ids = [tag_to_idx[int(t)] for t in nt if int(t) in tag_to_idx]
             if ids:
                 nsets[nset] = ids
+            # Kenar yükü için tutarlı ağırlık (uzunlukla orantılı): line2 → ½, ½;
+            # line3 → ⅙, ⅙, ⅔ (kuadratik kabuk kenarı; eşit bölme kenar-orta
+            # düğümlerini eksik yükler). Yalnız 2B kabuk; 3B katı kenar yükü eski
+            # (eşit bölme) yolunda kalır.
+            w_edge: dict[int, float] = {}
+            line_elems = gmsh.model.mesh.getElements(1, ctag) if elem_dim == 2 else ([], [], [])
+            for ltype, _ltags, lnodes in zip(*line_elems):
+                per = {1: 2, 8: 3}.get(int(ltype))
+                if per is None:
+                    continue
+                for k in range(0, len(lnodes), per):
+                    seg = [tag_to_idx.get(int(t)) for t in lnodes[k : k + per]]
+                    if any(n is None for n in seg):
+                        continue
+                    pts = [coords_by_idx[n] for n in seg]
+                    if per == 2:
+                        length = math.dist(pts[0], pts[1])
+                        parts = ((seg[0], 0.5), (seg[1], 0.5))
+                    else:  # uç, uç, orta
+                        length = math.dist(pts[0], pts[2]) + math.dist(pts[2], pts[1])
+                        parts = ((seg[0], 1 / 6), (seg[1], 1 / 6), (seg[2], 2 / 3))
+                    for n, f in parts:
+                        w_edge[n] = w_edge.get(n, 0.0) + f * length
+            if w_edge:
+                edge_weights[int(ctag)] = w_edge
 
         for _d, ptag in gmsh.model.getEntities(0):
             nset = f"POINT_{ptag}"
@@ -1422,7 +1453,7 @@ def _mesh_to_inp_blocks(
         # Kullanılmayan part_materials uyarısı yok — section'lar materials bloğunda
         _ = part_materials
         _ = shell_thickness
-        return "\n".join(lines) + "\n", nsets, elsets, face_weights
+        return "\n".join(lines) + "\n", nsets, elsets, face_weights, edge_weights
     finally:
         gmsh.finalize()
         _gmsh_lock.release()
@@ -1579,6 +1610,8 @@ def _bcs_inp_block(
     elsets: dict[str, list[int]],
     dimension: int,
     face_weights: dict[int, dict[int, float]] | None = None,
+    *,
+    edge_weights: dict[int, dict[int, float]] | None = None,
 ) -> tuple[str, str]:
     """BC kartlarını üretir — döndürür: (model_seviyesi, step_seviyesi).
 
@@ -1675,9 +1708,17 @@ def _bcs_inp_block(
             all_faces_weighted = bool(face_ids) and all(
                 face_weights and face_weights.get(f) for f in face_ids
             )
+            all_edges_weighted = bool(edge_ids) and all(
+                edge_weights and edge_weights.get(e) for e in edge_ids
+            )
             share: dict[int, float] = {}
             if all_faces_weighted and not edge_ids and not node_ids:
                 share = _consistent_face_weights(bc, face_weights)
+            elif all_edges_weighted and not face_ids and not node_ids:
+                # Yalnız kenar seçimi → uzunlukla orantılı tutarlı ağırlık
+                for eid in edge_ids:
+                    for nid, w in edge_weights[eid].items():  # type: ignore[index]
+                        share[nid] = share.get(nid, 0.0) + w
             else:
                 targets: list[int] = list(node_ids)
                 for fid in face_ids:

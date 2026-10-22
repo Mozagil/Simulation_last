@@ -1329,12 +1329,23 @@ def _extract_mesh_wireframe_preview(dimension: int) -> dict[str, Any]:
                     i2 = tag_to_idx[int(enodes[e * 4 + 2])]
                     i3 = tag_to_idx[int(enodes[e * 4 + 3])]
                     _add_quad_element(i0, i1, i2, i3, part_id, face_id, int(etags[e]))
+            elif int(etype) in (9, 16):
+                # 2. mertebe kabuk (tri6 / quad8): önizleme köşelerden çizilir,
+                # kenar ortaları ara düğüm olarak işaretlenir.
+                n_per, n_corner = (6, 3) if int(etype) == 9 else (8, 4)
+                for e in range(n_elems):
+                    idx = [tag_to_idx[int(enodes[e * n_per + k])] for k in range(n_per)]
+                    if n_corner == 3:
+                        _add_triangle_element(*idx[:3], part_id, face_id, int(etags[e]))
+                    else:
+                        _add_quad_element(*idx[:4], part_id, face_id, int(etags[e]))
+                    midside_idx.update(idx[n_corner:])
 
     # 2. mertebe (kenar-ortası) düğüm indeksleri. Gmsh sıralamasında tet10'un
     # İLK 4 düğümü daima köşe, kalan 6'sı kenar ortasıdır. Arayüz bunları
     # ayrı gösterip gizleyebilsin diye işaretlenir — köşeler geometrinin
     # gerçek noktalarıdır, ara düğümler yalnız eleman mertebesinin sonucudur
-    # ve seçim/BC için genelde istenmez. 2D ve 1. mertebe mesh'te boş kalır.
+    # ve seçim/BC için genelde istenmez. 1. mertebe mesh'te boş kalır.
     midside_idx: set[int] = set()
     if dimension == 2:
         face_to_part = _surface_parts_by_coincident_nodes()
@@ -2323,6 +2334,13 @@ class GmshMesherAdapter(MesherAdapter):
                     # tet → shell'de üçgen
                     gmsh.option.setNumber("Mesh.Algorithm", 6)
                     gmsh.model.mesh.generate(2)
+                if params.shell_order == 2:
+                    # Serendipity (quad8, tri6): ccx S8R / S6. quad9 (tam
+                    # Lagrange) ccx'te kabuk karşılığı yok → Incomplete.
+                    gmsh.option.setNumber("Mesh.SecondOrderIncomplete", 1)
+                    gmsh.model.mesh.setOrder(2)
+                    if params.high_order_optimize:
+                        gmsh.model.mesh.optimize("HighOrder")
 
             node_tags, _coords, _ = gmsh.model.mesh.getNodes()
             node_count = len(node_tags)
@@ -2336,7 +2354,7 @@ class GmshMesherAdapter(MesherAdapter):
                     continue
                 name = _GMSH_ELEMENT_TYPE_NAMES.get(int(etype), f"Type{etype}")
                 element_type_counts[name] = element_type_counts.get(name, 0) + n
-                if params.dimension == 2 and int(etype) in (_TRIANGLE_ELEMENT_TYPE, 3):
+                if params.dimension == 2 and int(etype) in (_TRIANGLE_ELEMENT_TYPE, 3, 9, 16):
                     element_count += n
                 elif params.dimension == 3 and int(etype) in (
                     _TETRAHEDRON_ELEMENT_TYPE,
