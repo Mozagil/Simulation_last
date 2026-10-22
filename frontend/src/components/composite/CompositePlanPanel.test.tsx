@@ -7,8 +7,8 @@ describe("CompositePlanPanel (KOMPOZIT sekmesi iskeleti)", () => {
     render(<CompositePlanPanel />);
     expect(screen.getByRole("heading", { name: "Kompozit" })).toBeInTheDocument();
     expect(screen.queryAllByText("karar bekliyor")).toHaveLength(0);
-    expect(screen.getAllByText("tamam")).toHaveLength(14);
-    expect(screen.getAllByText("planlandı")).toHaveLength(1);
+    expect(screen.getAllByText("tamam")).toHaveLength(15);
+    expect(screen.queryAllByText("planlandı")).toHaveLength(0);
     expect(screen.getAllByText("verildi")).toHaveLength(4);
     expect(screen.getByText("İskelet")).toBeInTheDocument();
     expect(screen.getByText(/Dalga 1 solver: CalculiX/)).toBeInTheDocument();

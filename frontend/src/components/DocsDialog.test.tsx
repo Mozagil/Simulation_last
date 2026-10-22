@@ -143,3 +143,15 @@ describe("Belgeler · Akış sekmesi", () => {
     expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
   });
 });
+
+describe("Belgeler · Kompozit sekmesi", () => {
+  it("kompozit bölümleri, doğrulama vakaları ve sonuç görseli; LS-DYNA sütunu yok", () => {
+    render(<DocsDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Kompozit" }));
+    expect(screen.getByText("Belgeler · Kompozit (CalculiX katmanlı kabuk)")).toBeInTheDocument();
+    expect(screen.getAllByText(/Tsai-Wu/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Doğrulama vakaları").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/\*SHELL SECTION, ELSET=PART_n, COMPOSITE/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("LS-DYNA ≈")).toBeNull();
+  });
+});

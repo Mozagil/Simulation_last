@@ -46,8 +46,8 @@ CFD yolu eklenir. ML en sonda (2.9).
 
 **FAZ 3 — Kompozit (Dalga 1) `main`'e BİRLEŞTİ (kullanıcı onayı 2026-10-14):**
 `feature/phase3-composite` dalı `main`'e merge edildi (`a0809f0`); ayrı dal yok,
-kompozit işi `main` üzerinde `feature/...` dallarıyla sürer. 3.0–3.13 tamam;
-kalan 3.14 (`docs/ROADMAP.md` Faz 3). CalculiX COMPOSITE katmanı, ACP Pre
+kompozit işi `main` üzerinde `feature/...` dallarıyla sürer. 3.0–3.14 tamam;
+Dalga 1 bitti (`docs/ROADMAP.md` Faz 3; Dalga 2+ ayrı onay). CalculiX COMPOSITE katmanı, ACP Pre
 çekirdeği; yeni solver yok. `/solve` dokunulmaz; kompozit yalnız
 `params["composite_layup"]` doluysa devreye girer. Durability / crash / CFD
 yollarına dokunulmaz. Her mikro-adımda dur.

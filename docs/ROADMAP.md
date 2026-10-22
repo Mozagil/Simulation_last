@@ -2235,7 +2235,13 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   düğüm işaretler. Uçtan uca: delikli plaka 200×100 Ø40, [0/45/−45/90]s T300,
   5 kN, 770 S8R → `/composite/solve` "solved", Tsai-Wu IRF 0.636 (katman 4,
   90°), Hashin 0.585 matris çekme. Test `test_composite_shell_order2.py`.
-- 3.14 Belgeler: Kompozit kitabı.
+- 3.14 ✅ (2026-10-22) Belgeler: Belgeler penceresinde "Kompozit" kitabı
+  (`frontend/src/docs/compositeDoc.ts`, `books.ts`): genel akış, ply
+  kütüphanesi, dizilim + CLT, rozet, ağ ve CalculiX kesiti (S8R, COMPOSITE,
+  ORIENTATION, EL PRINT), katman gerilmesi, Tsai-Wu / Hashin (IRF / RF),
+  sonuç ekranı (görsel `public/docs/composite/01-sonuc.png`), V-P1 sayıları,
+  sınırlar; doğrulama vakaları tablosu (V-P1 a/b/c, katman / hasar, delikli
+  plaka). Test `DocsDialog.test.tsx`. **Dalga 1 tamam.**
 
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,
 katmanlı solid, üretim ply kesimi, Puck/LaRC, OpenRadioss `/PROP/STACK` + LAW25.

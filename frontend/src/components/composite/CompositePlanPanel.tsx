@@ -20,7 +20,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "3.11", title: "Katman gerilmesi", what: "ccx .dat EL PRINT (2×2×2 IP / katman, ply eksenleri) → eleman × ply × IP tensör; katman uç değerleri ResultSet.scalars.", status: "tamam" },
   { id: "3.12", title: "Hasar", what: "Tsai-Wu + Hashin IRF; ResultSet.scalars + ply alanı. Puck yok.", status: "tamam" },
   { id: "3.13", title: "Sonuç UI", what: "Koşu → katman seçici (zarf + katman), σ11/σ22/τ12 ve Tsai-Wu/Hashin IRF konturu, en büyük IRF / en küçük RF.", status: "tamam" },
-  { id: "3.14", title: "Belgeler", what: "Belgeler penceresine Kompozit kitabı.", status: "plan" },
+  { id: "3.14", title: "Belgeler", what: "Belgeler penceresine Kompozit kitabı: ply, dizilim + CLT, rozet, S8R kesit, katman gerilmesi, Tsai-Wu / Hashin, sonuç ekranı, V-P1.", status: "tamam" },
 ];
 
 const DECIDED = [
