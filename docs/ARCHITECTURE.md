@@ -314,6 +314,26 @@ CFD, gerçek anlamda yeni bir solver ailesi ve biraz farklı bir mesh stratejisi
 - **Uzun süren job'lar:** CFD çözümleri de crash gibi uzun sürebilir (dakikalar-saatler) —
   aynı websocket tabanlı ilerleme takibi (residual/iterasyon bazlı) kullanılır.
 
+## MBD (Project Chrono) — Faz 5
+
+Çoklu gövde dinamiği için solver **Project Chrono** (PyChrono + Chrono::Vehicle, BSD-3).
+Adaptör aynı `SolverAdapter` arayüzünü uygular (`backend/app/solvers/chrono.py`):
+
+- `build_input(params)` → çalışma klasöründe `chrono_case.json` (senaryo + parametreler + çıktı
+  istekleri). Chrono::Vehicle için ileride araç / zemin / sürücü JSON'ları da bu klasöre yazılır.
+- `submit(artifact)` → Chrono **ayrı bir worker ortamında** koşar: ya conda env python'u
+  (`CHRONO_PYTHON=/opt/conda/envs/chrono/bin/python`) ile subprocess, ya da Docker imajı
+  (`CHRONO_DOCKER_IMAGE`, `backend/docker/chrono/Dockerfile`). FastAPI ortamı conda'ya bağımlı
+  değildir; CalculiX / OpenFOAM deseniyle aynı. Worker betiği `backend/scripts/chrono_run.py`
+  JSON'u okur, modeli kurar, `results.csv` (zaman serileri) ve `summary.json` yazar.
+- `parse_results(job)` → `results.csv` → `ResultSet.curves` (zaman serileri) + `scalars`
+  (tepe / RMS değerler). Şema solver'dan bağımsız kalır; frontend eğri bileşenleri aynen kullanılır.
+
+İlk senaryo çeyrek araç (sprung kütle, yay–sönüm, tekerlek kütlesi, lastik rijitliği, yol
+profili). Chrono::Vehicle araç şablonları (5.3) ve SCM deforme zemin (5.5) sonraki adımlar.
+Durability köprüsü: joint / bushing kuvvet zaman serileri CalculiX'e yük geçmişi olarak gider,
+pyLife ile ömür hesaplanır.
+
 ## Veritabanı şeması (ilk taslak)
 
 - `analysis_run`: id, created_at, input_params (JSONB), solver_type, status, result_id
