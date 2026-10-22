@@ -1854,6 +1854,20 @@ hibrit, 0.6.3) ve ortak OOD vardı. Model versiyonlama iki tarafta da yok (Faz 4
 - c Model versiyonlama (crash + durability birlikte, Faz 4 maddesi): kayıt tarihi, korpus/study,
   önceki sürüm listesi ve geri dönüş.
 
+*1.28 — ML tezgahı Crash, Durability düzeni ve içeriği (kullanıcı 2026-10-22: "durability gayet açıklayıcı,
+crash neden öyle değil; tasarımı ve içerikleri durability'deki gibi düzenle")*
+- a ✅ (2026-10-22) DOE sayfası: `CrashDoeSpecForm` (Durability `DoeSpecForm` deseni; `ParamLine` /
+  `displayBounds` dışa açıldı). Şablon çipleri → `params_schema` parametreleri satır satır Aralık / Sabit
+  (bant = taranan aralık, ▼ = varsayılan, ±%20 başlangıç); Senaryo satırları hız / süre / eleman boyutu;
+  tek malzeme çipi (`material_name`); "Gelişmiş · ek JSON" (model.sigma_y_pa, contacts…). Form →
+  `base` + `vary` (`geometry.<p>`, `speed_m_s`…). Eski yol/JSON editörü kaldırıldı. Sağ pane (çalışma
+  listesi, örnek tablosu, canlı ilerleme) aynı. Test: `CrashDoePanel.test.tsx` (8).
+- b Veri seti sayfası: çözülmüş koşu / korpus / geometri / malzeme sayıları, şablona göre çubuk,
+  dışa / içe aktar (crash koşuları + eğriler); Durability "Eğitim verisi" düzeni.
+- c Tahmin sayfası: özellik başına kaydırıcı + eğitim bandı ("eğitim kutusu"), malzeme çipi, hedef
+  kartlarında tür, tek parametre taraması (Tara, N adım); Durability "Parametreden tahmin" düzeni.
+- d Başlık şeridi ve aşama adları Durability ile hizalı (DOE · Veri seti · Model · Tahmin · Doğrulama).
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
