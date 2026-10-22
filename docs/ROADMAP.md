@@ -2253,6 +2253,43 @@ yapılmış olacak; burada analiz tipine özgü uyarlamaları kapsar.
 - [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
 - [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
 
+## Faz 5 — Çoklu gövde dinamiği / MBD (Project Chrono)
+
+**Karar (kullanıcı 2026-10-22):** otomotiv + iş makinesi için MBD katmanı **Project Chrono**
+(PyChrono + Chrono::Vehicle, BSD-3). Gerekçe: Chrono::Vehicle'da tekerlekli / paletli araç
+alt sistem şablonları (HMMWV, M113, suspension test rig), araçların JSON ile tanımlanması
+(`build_input → InputArtifact` desenine oturur), SCM deforme zemin (iş makinesi), C++ çekirdek +
+OpenMP/GPU, lisans kısıtı yok. Dezavantaj: yalnız conda ile kurulum (~500 MB) → **ayrı worker
+container**, FastAPI ortamı conda'ya bağlanmaz, adaptör subprocess/Docker ile çağırır (CalculiX /
+OpenFOAM deseni). Ekskavatör kolu gibi iş makinesi kinematiği hazır gelmez; genel MBD çekirdeğiyle
+(body, joint, actuator) biz kurarız.
+
+**Durability bağlantısı:** süspansiyon test rig'i / sürüş senaryosundan joint–bushing kuvvet
+zaman serileri → CalculiX yük → pyLife fatigue. Otomotiv durability'nin standart akışı.
+
+**Başlangıç koşulu:** Faz 0 bittikten sonra. Her adım ayrı PR; her adımda dur.
+
+- 5.0 ✅ (2026-10-22) Doküman + iskelet: `docs/ARCHITECTURE.md` "MBD (Chrono)" bölümü;
+  `backend/app/solvers/chrono.py` `ChronoAdapter(SolverAdapter)` — `build_input` case JSON'u
+  (`chrono_case.json`, pydantic `ChronoQuarterCarParams`), `submit` Chrono worker'ı subprocess
+  (`CHRONO_PYTHON` = conda env python'u) ya da Docker (`CHRONO_DOCKER_IMAGE`) ile koşturur,
+  `parse_results` `results.csv` → `ResultSet` (skaler: tepe/RMS ivme, tepe yay–sönüm kuvveti,
+  maksimum sıkışma; eğri: zaman serileri). İlk senaryo **çeyrek araç tümsek geçişi** (sprung
+  kütle + yay/sönüm + tekerlek kütlesi + lastik rijitliği, yol profili). Worker betiği
+  `backend/scripts/chrono_run.py` (PyChrono varsa koşar; yoksa açık hata). Docker:
+  `backend/docker/chrono/Dockerfile` (miniconda + pychrono). Testler PyChrono olmadan: JSON ve
+  CSV ayrıştırma; koşu testi `CHRONO_PYTHON` yoksa atlanır.
+- 5.1 Codespaces'te Chrono worker: conda env ya da Docker imajı; çeyrek araç duman testi; koşu
+  süresi ve CSV boyutu notu.
+- 5.2 API + UI: `/mbd/solve`, Çeyrek araç kartı (parametreler, yol profili), sonuç eğrileri
+  (ivme, kuvvet, sıkışma) mevcut eğri bileşeniyle.
+- 5.3 Chrono::Vehicle JSON araç tanımı (Double Wishbone test aracı) + suspension test rig
+  senaryosu; joint kuvvet zaman serileri.
+- 5.4 Durability köprüsü: joint kuvvet serisi → CalculiX yük geçmişi → pyLife (Faz 0 akışı).
+- 5.5 İş makinesi: SCM deforme zemin + paletli araç (M113 şablonu) duman testi; ekskavatör kolu
+  (body / joint / linear actuator) ilk tutorial modeli.
+- 5.6 Eğitim testleri (MBD T1–Tn) ve belgeler.
+
 ## Faz sırasını değiştirme
 
 Kullanıcı isterse fazlar atlanabilir ya da paralel ilerletilebilir, ama agent bunu kendi
