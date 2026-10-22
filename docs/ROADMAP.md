@@ -2242,6 +2242,11 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   sonuç ekranı (görsel `public/docs/composite/01-sonuc.png`), V-P1 sayıları,
   sınırlar; doğrulama vakaları tablosu (V-P1 a/b/c, katman / hasar, delikli
   plaka). Test `DocsDialog.test.tsx`. **Dalga 1 tamam.**
+- 3.14b ✅ (2026-10-22) Hibrit dizilim testi: katman başına ayrı malzeme
+  ([0C/45G/−45G/90C]s, T300 + E-cam). Deste her malzemeyi bir kez yazar ve
+  katmanı kendi malzemesine bağlar; CLT A11 elle kapalı biçimle; ccx orta sıra
+  σ1 ≤ %0.84, σ2 ≤ %2.0, Tsai-Wu / Hashin IRF ≤ %2.5 (her katman kendi
+  dayanımıyla). Kod değişikliği yok. Test `test_composite_hybrid.py`.
 
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,
 katmanlı solid, üretim ply kesimi, Puck/LaRC, OpenRadioss `/PROP/STACK` + LAW25.
