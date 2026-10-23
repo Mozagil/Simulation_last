@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.postprocess.openradioss_th import parse_cycle_table, parse_openradioss_dir
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashEngineParams
@@ -23,7 +24,7 @@ def _engine(tmp_path, engine=None, t_end=4.0) -> str:
     if engine is not None:
         p["engine"] = engine
     art = OpenRadiossAdapter().build_input(p)
-    return art.path.with_name(art.path.name.replace("_0000", "_0001")).read_text(encoding="utf-8")
+    return strip_headers(art.path.with_name(art.path.name.replace("_0000", "_0001")).read_text(encoding="utf-8"))
 
 
 def test_defaults_unchanged(tmp_path):

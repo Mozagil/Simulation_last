@@ -29,6 +29,7 @@ from app.solvers.base import (
     SolverAdapter,
     SolverError,
 )
+from app.solvers.openradioss_headers import annotate as annotate_headers
 from app.solvers.crash_params import (
     _th_vars_ok,
     CrashContactParams,
@@ -1374,7 +1375,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
     lines.extend(_damp_lines(params.get("damping"), part_ids, _rid))
     lines.extend(_raw_card_lines(params))
     lines.extend(["/END", ""])
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(annotate_headers(lines, RAW_CARDS_MARKER)), encoding="utf-8")
     # Post-process TH sütunlarını bu sırayla adlandırır (th_to_csv çoğu
     # değişkeni adsız "var N" yazar).
     (path.parent / "th_spec.json").write_text(json.dumps({"groups": th_spec}, indent=1), encoding="utf-8")
@@ -1422,7 +1423,7 @@ def _write_engine(path: Path, params: dict[str, Any], run_name: str) -> None:
         header = "/DT" if eng.dt_kind == "DT" else f"/DT/{eng.dt_kind}"
         lines += [header, f"{_f(eng.dt_scale)}{_f(eng.dt_min_ms)}"]
     lines += ["/END", ""]
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(annotate_headers(lines)), encoding="utf-8")
 
 
 def _convert_time_history(bins: OpenRadiossBins, work_dir: Path, starter_name: str) -> str:

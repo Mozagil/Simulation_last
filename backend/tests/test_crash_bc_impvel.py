@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashBcParams, CrashImpVelParams
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -21,7 +22,7 @@ from tests.test_crash_multipart import _two_part_params
 def _deck(tmp_path, **extra) -> str:
     p = _two_part_params(tmp_path)  # parça 0: düğüm 1–4, parça 1: 5–8
     p.update(extra)
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_bcs_on_region_and_part(tmp_path):

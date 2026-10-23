@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.crash_params import CrashModelParams
 from app.solvers.openradioss import OpenRadiossAdapter
 from tests.test_crash_contact import _card
@@ -24,7 +25,7 @@ _CURVES = [
 def _deck(tmp_path, **model) -> str:
     p = _two_part_params(tmp_path)
     p["model"] = {"law": "tabulated", "tab_curves": _CURVES, **model}
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_law36_card_layout_and_units(tmp_path):
@@ -74,5 +75,5 @@ def test_law36_per_part_with_law2_other_part(tmp_path):
     p["materials"] = [{**m, "yield_strength": 235e6} for m in p["materials"]]
     p["model"] = {"law": "plastic"}
     p["parts"] = [{"part_id": 0, "model": {"law": "tabulated", "tab_curves": _CURVES[:1]}}, {"part_id": 1, "role": "fixed"}]
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/MAT/LAW36/1" in s and "/MAT/LAW2/2" in s and "/FUNCT/101" in s and "/FUNCT/2" not in s

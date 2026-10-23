@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.crash_params import CrashModelParams
 from app.solvers.openradioss import OpenRadiossAdapter
 from tests.test_crash_contact import _card
@@ -20,7 +21,7 @@ def _law2(tmp_path, **model) -> list[str]:
     p = _two_part_params(tmp_path)
     p["materials"] = [{**m, "yield_strength": 235e6} for m in p["materials"]]
     p["model"] = {"law": "plastic", "harden_b_mpa": 500.0, "harden_n": 0.3, **model}
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     return _card(s, "/MAT/LAW2/1")
 
 
@@ -92,5 +93,5 @@ def test_invalid_jc_rejected(raw):
 def test_elastic_law1_unaffected(tmp_path):
     p = _two_part_params(tmp_path)
     p["model"] = {"law": "elastic", "jc_c": 0.1, "jc_eps_dot0_per_s": 1.0}
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/MAT/LAW1/1" in s and "/MAT/LAW2" not in s

@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.base import SolverError
 from app.solvers.openradioss import OpenRadiossAdapter, _engine_executable
 
@@ -37,8 +38,8 @@ def test_build_input_writes_starter_and_engine(tmp_path):
     params["output_dir"] = tmp_path
     art = OpenRadiossAdapter().build_input(params)
     assert art.path == tmp_path / "imp_0000.rad"
-    starter = art.path.read_text(encoding="utf-8")
-    engine = (tmp_path / "imp_0001.rad").read_text(encoding="utf-8")
+    starter = strip_headers(art.path.read_text(encoding="utf-8"))
+    engine = strip_headers((tmp_path / "imp_0001.rad").read_text(encoding="utf-8"))
     assert "/BEGIN" in starter
     assert "/NODE" in starter
     assert "/TETRA4/1\n" in starter
@@ -102,7 +103,7 @@ def test_build_input_plastic_writes_law2_and_type14_nip(tmp_path):
         "harden_b_mpa": 150.0,
         "harden_n": 0.22,
     }
-    starter = OpenRadiossAdapter().build_input(params).path.read_text(encoding="utf-8")
+    starter = strip_headers(OpenRadiossAdapter().build_input(params).path.read_text(encoding="utf-8"))
     assert "/MAT/LAW2/1" in starter
     assert "/MAT/LAW1/" not in starter
     assert "/PROP/TYPE14/1" in starter

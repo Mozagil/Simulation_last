@@ -11,6 +11,7 @@ from __future__ import annotations
 import gmsh
 import pytest
 
+from app.solvers.openradioss_headers import strip_headers
 from app.mesh.openradioss_export import gmsh_msh_to_radioss
 from app.solvers.base import SolverError
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -47,7 +48,7 @@ def _two_part_params(tmp_path, parts=None, mats=None):
 
 def test_two_parts_get_own_cards_and_groups(tmp_path):
     art = OpenRadiossAdapter().build_input(_two_part_params(tmp_path))
-    s = art.path.read_text(encoding="utf-8")
+    s = strip_headers(art.path.read_text(encoding="utf-8"))
     assert "/TETRA4/1" in s and "/TETRA4/2" in s
     assert "/MAT/LAW1/1" in s and "/MAT/LAW1/2" in s
     assert "/PROP/TYPE14/1" in s and "/PROP/TYPE14/2" in s
@@ -69,7 +70,7 @@ def test_two_parts_get_own_cards_and_groups(tmp_path):
 
 def test_all_parts_moving_by_default_no_bcs(tmp_path):
     art = OpenRadiossAdapter().build_input(_two_part_params(tmp_path, parts=[]))
-    s = art.path.read_text(encoding="utf-8")
+    s = strip_headers(art.path.read_text(encoding="utf-8"))
     assert "/GRNOD/PART/1\nmoving_parts\n         1         2\n" in s
     assert "/BCS/" not in s and "/GRNOD/PART/2" not in s
 
@@ -92,7 +93,7 @@ def test_single_part_mesh_keeps_legacy_single_material(tmp_path):
     p = _two_part_params(tmp_path, parts=[], mats=[{"name": "STEEL", "density": 7850.0, "youngs_modulus": 210e9, "poisson_ratio": 0.3}])
     p["tets"] = [(1, 1, 2, 3, 4)]
     p["element_parts"] = {1: 0}
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/PART/1" in s and "/PART/2" not in s and "/BCS/" not in s
 
 
@@ -127,9 +128,9 @@ def test_export_assigns_parts_by_volume_order(tmp_path):
 
 def test_free_role_gets_no_initial_velocity_and_no_bcs(tmp_path):
     # 1.18b — serbest parça: ilk hız grubunda değil, /BCS yok (kenar BC ayrı)
-    s = OpenRadiossAdapter().build_input(
+    s = strip_headers(OpenRadiossAdapter().build_input(
         _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "moving"}])
-    ).path.read_text(encoding="utf-8")
+    ).path.read_text(encoding="utf-8"))
     assert "part_0_free" in s and "part_1_moving" in s
     assert "/GRNOD/PART/1\nmoving_parts\n         2\n" in s
     assert "/BCS/" not in s and "fixed_parts" not in s
@@ -144,7 +145,7 @@ def test_gravity_card_on_all_part_nodes(tmp_path):
     # K2 — /GRAV r51: funct DIR skew sensor grnod (10 boş) Ascale_x Fscale_Y; −9.81 m/s² → −9.81e-3 mm/ms²
     p = _two_part_params(tmp_path, parts=[])
     p["gravity"] = {"accel_m_s2": -9.81, "direction": "Z"}
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/GRNOD/PART/8950\ngrav_parts\n         1         2\n" in s
     card = s.split("/GRAV/1\n", 1)[1].splitlines()[1]
     assert card[:60] == f"{9950:10d}{'Z':>10}{0:10d}{0:10d}{8950:10d}{'':10}"
@@ -168,7 +169,7 @@ def test_no_moving_part_allowed_with_imposed_velocity(tmp_path):
     p = _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "fixed"}])
     p["imposed_velocities"] = [{"name": "itme", "part_id": 0, "direction": "Y", "velocity_m_s": 1.0}]
     p["use_rigid_wall"] = False
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/INIVEL/" not in s and "moving_parts" not in s and "/IMPVEL/1" in s
     p2 = _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "fixed"}])
     with pytest.raises(SolverError, match="zorlanmış hız"):
@@ -180,7 +181,7 @@ def test_bcs_on_rigid_body_master(tmp_path):
     p = _two_part_params(tmp_path, parts=[])
     p["rigid_bodies"] = [{"name": "kizak", "part_id": 1, "mass_kg": 5.0}]
     p["boundary_conditions"] = [{"name": "kilavuz", "rigid_body": "kizak", "dofs": "011111"}]
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     master = int(s.split("/RBODY/1\n", 1)[1].splitlines()[1][:10])
     grp = s.split("/GRNOD/NODE/8801\n", 1)[1].splitlines()
     assert grp[0] == "bcs_kilavuz" and int(grp[1][:10]) == master
@@ -201,7 +202,7 @@ def test_sph_projectile_cards(tmp_path):
     p = _two_part_params(tmp_path, parts=[{"part_id": 0, "role": "free"}, {"part_id": 1, "role": "fixed"}])
     p["use_rigid_wall"] = False
     p["sph_projectiles"] = [sp]
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/MAT/HYDRO/3" in s and "/PROP/SPH/3" in s and "/PART/3" in s
     sphcel = s.split("/SPHCEL/3\n", 1)[1].split("\n/", 1)[0].splitlines()
     assert len(sphcel) == n_expected

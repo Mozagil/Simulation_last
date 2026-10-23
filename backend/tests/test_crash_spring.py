@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashSpringParams
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -17,7 +18,7 @@ def _deck(tmp_path, springs, **extra) -> str:
     p = _two_part_params(tmp_path)
     p["springs"] = springs
     p.update(extra)
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def test_spring_rbody_to_fixed_point(tmp_path):

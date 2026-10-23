@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.api.crash import CRASH_DIR
 from app.api.geometry import UPLOAD_DIR
 from app.db.session import SessionLocal
@@ -102,7 +103,7 @@ def test_crash_solve_writes_rad_without_solver():
     engine = CRASH_DIR / job_id / "crash_0001.rad"
     assert starter.is_file()
     assert engine.is_file()
-    text = starter.read_text(encoding="utf-8")
+    text = strip_headers(starter.read_text(encoding="utf-8"))
     assert "/TETRA4" in text
     assert "/RWALL" in text
     snap = client.get(f"/crash/jobs/{job_id}")
@@ -135,7 +136,7 @@ def test_crash_solve_plastic_writes_law2():
     body = response.json()
     assert body["cards"]["has_law2"] is True
     assert body["cards"]["has_law1"] is False
-    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    text = strip_headers((CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/MAT/LAW2" in text
     assert "        14         2         0         0         0         4" in text
 
@@ -158,7 +159,7 @@ def test_crash_solve_contact_without_wall():
     body = response.json()
     assert body["cards"]["has_rwall"] is False
     assert body["cards"]["n_inter"] == 1
-    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    text = strip_headers((CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     assert "/SURF/PART/EXT/1001" in text and "/INTER/TYPE24/1" in text
     snap = client.get(f"/crash/jobs/{body['job_id']}").json()
     assert snap["use_rigid_wall"] is False
@@ -241,7 +242,7 @@ def test_crash_solve_shell_mesh_writes_shell_cards():
     assert ok.status_code == 200
     body = ok.json()
     assert body["cards"]["has_shell"] is True and body["cards"]["has_tetra4"] is False
-    text = (CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    text = strip_headers((CRASH_DIR / body["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
     assert prop[1].startswith(f"{24:10d}")
     assert prop[3].startswith(f"{5:10d}{0:10d}") and float(prop[3][20:40]) == 2.5
@@ -273,7 +274,7 @@ def test_crash_shell_thickness_from_product_tree_component():
         json={"geometry_id": geometry_id, "barrier": _barrier(), "dimension": 2},
     )
     assert r.status_code == 200, r.text
-    text = (CRASH_DIR / r.json()["job_id"] / "crash_0000.rad").read_text(encoding="utf-8")
+    text = strip_headers((CRASH_DIR / r.json()["job_id"] / "crash_0000.rad").read_text(encoding="utf-8"))
     prop = text.split("/PROP/TYPE1/1\n", 1)[1].splitlines()
     assert float(prop[3][20:40]) == 1.8
     # bileşen malzemesi MaterialAssignment'a yansır → deck S355

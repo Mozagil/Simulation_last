@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.base import SolverError
 from app.solvers.crash_params import CrashDampingParams
 from app.solvers.openradioss import OpenRadiossAdapter
@@ -16,7 +17,7 @@ from tests.test_crash_multipart import _two_part_params
 def _deck(tmp_path, damping) -> str:
     p = _two_part_params(tmp_path)
     p["damping"] = damping
-    return OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    return strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
 
 
 def _row(s: str) -> tuple[float, float, int, int, float, float]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.solvers.openradioss_headers import strip_headers
 from app.solvers.base import SolverError
 from app.solvers.openradioss import OpenRadiossAdapter
 from tests.test_crash_contact import _card
@@ -29,7 +30,7 @@ def test_part_model_overrides_global(tmp_path):
                    "jc_c": 0.02, "jc_eps_dot0_per_s": 1.0}},
         {"part_id": 1, "role": "fixed"},
     ]
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     # parça 0 (Radioss 1): LAW2 + kendi JC + Isolid 24; parça 1 (Radioss 2): global LAW1
     assert "/MAT/LAW2/1" in s and "/MAT/LAW1/2" in s
     assert "/MAT/LAW1/1" not in s and "/MAT/LAW2/2" not in s
@@ -43,7 +44,7 @@ def test_part_model_overrides_global(tmp_path):
 def test_no_part_models_keeps_global_for_all(tmp_path):
     p = _mats_with_yield(_two_part_params(tmp_path))
     p["model"] = {"law": "plastic"}
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     assert "/MAT/LAW2/1" in s and "/MAT/LAW2/2" in s
 
 
@@ -56,7 +57,7 @@ def test_shell_part_uses_its_own_shell_flags_and_thickness(tmp_path):
             {"part_id": 1, "role": "fixed"},
         ],
     )
-    s = OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8")
+    s = strip_headers(OpenRadiossAdapter().build_input(p).path.read_text(encoding="utf-8"))
     prop = _card(s, "/PROP/TYPE1/1")
     assert prop[1].startswith(f"{12:10d}")
     assert prop[3].startswith(f"{3:10d}") and float(prop[3][20:40]) == 1.6
