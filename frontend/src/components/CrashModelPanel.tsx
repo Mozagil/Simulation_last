@@ -6,11 +6,15 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { fetchCrashCatalog } from "../api/crash";
+import type { CrashTrainKind, CrashModelKind } from "../api/crashMl";
+
+const KINDS: CrashModelKind[] = ["hybrid", "loglinear", "rf"];
 import {
   fetchCrashCorpus,
   fetchCrashDoeStudies,
   fetchCrashModels,
   trainCrashModel,
+  CRASH_KIND_LABEL,
   type CrashCorpusSummary,
   type CrashDoeStudyInfo,
   type CrashModelInfo,
@@ -38,6 +42,7 @@ export default function CrashModelPanel() {
   const [studyId, setStudyId] = useState<number | null>(null);
   // 1.22f: ham kartlı koşular varsayılan dışarıda (ham kart taranamaz; parametre değil).
   const [includeRaw, setIncludeRaw] = useState(false);
+  const [kind, setKind] = useState<CrashTrainKind>("auto");
   const [corpus, setCorpus] = useState<CrashCorpusSummary | null>(null);
   const [model, setModel] = useState<CrashModelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,7 +90,7 @@ export default function CrashModelPanel() {
     setError(null);
     try {
       setModel(
-        await trainCrashModel({ template_id: templateId, scenario, study_id: studyId, include_raw_cards: includeRaw }),
+        await trainCrashModel({ template_id: templateId, scenario, study_id: studyId, include_raw_cards: includeRaw, kind }),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Eğitim başarısız.");
@@ -95,6 +100,8 @@ export default function CrashModelPanel() {
   }
 
   const sameSource = model !== null && model.study_id === studyId;
+
+  const kindRows = (model?.targets ?? []).filter((t) => t.cv?.kinds && Object.keys(t.cv.kinds).length > 1);
 
   return (
     <div className="crash-ml-stage" data-testid="crash-model-stage">
@@ -188,6 +195,26 @@ export default function CrashModelPanel() {
             </div>
           </div>
         )}
+        <div className="crash-ml-kinds" role="group" aria-label="Model türü">
+          <span className="ml-k">Tür</span>
+          {(["auto", "hybrid", "loglinear", "rf"] as CrashTrainKind[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={kind === k ? "doe-seg-opt active" : "doe-seg-opt"}
+              aria-pressed={kind === k}
+              disabled={busy}
+              onClick={() => setKind(k)}
+            >
+              {k === "auto" ? "auto" : k === "rf" ? "RF" : k}
+            </button>
+          ))}
+          <span className="crash-doe-sub">
+            {kind === "auto"
+              ? "üç türü de eğitir, hedef başına CV MAPE'si en düşük olanı seçer"
+              : CRASH_KIND_LABEL[kind]}
+          </span>
+        </div>
         <div className="crash-ml-actions">
           <button
             type="button"
@@ -197,7 +224,7 @@ export default function CrashModelPanel() {
           >
             {busy ? "Eğitiliyor…" : "Eğit · 5-fold CV"}
           </button>
-          <span className="crash-doe-sub">Hedef başına Random Forest; en az 8 dolu satır.</span>
+          <span className="crash-doe-sub">Hedef başına ayrı model; en az 8 dolu satır. Log türleri ≤ 0 hedefli satırı atar.</span>
         </div>
       </section>
 
@@ -222,6 +249,7 @@ export default function CrashModelPanel() {
                   <tr>
                     <th className="l">hedef</th>
                     <th>birim</th>
+                    <th>tür</th>
                     <th>n</th>
                     <th>R²</th>
                     <th>MAE</th>
@@ -234,6 +262,7 @@ export default function CrashModelPanel() {
                     <tr key={t.key} title={t.definition}>
                       <td className="l">{t.label}</td>
                       <td>{t.unit}</td>
+                      <td>{t.trained ? (t.kind ?? t.cv?.kind ?? "rf") === "rf" ? "RF" : (t.kind ?? t.cv?.kind) : "—"}</td>
                       <td>{t.cv?.n ?? 0}</td>
                       {t.trained && t.cv ? (
                         <>
@@ -252,10 +281,45 @@ export default function CrashModelPanel() {
                 </tbody>
               </table>
             </div>
+            {kindRows.length > 0 && (
+              <div className="doe-table-scroll crash-doe-table">
+                <table className="doe-table crash-ml-metrics" aria-label="Tür karşılaştırması">
+                  <thead>
+                    <tr>
+                      <th className="l">hedef</th>
+                      {KINDS.map((k) => (
+                        <th key={k}>{k === "rf" ? "RF" : k} · MAPE</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kindRows.map((t) => (
+                      <tr key={t.key}>
+                        <td className="l">{t.label}</td>
+                        {KINDS.map((k) => {
+                          const m = t.cv?.kinds?.[k];
+                          const chosen = (t.kind ?? t.cv?.kind) === k;
+                          return (
+                            <td key={k} className={chosen ? "crash-ml-chosen" : undefined}>
+                              {!m ? "—" : m.skipped ? m.skipped : `${(100 * (m.mape ?? NaN)).toFixed(1)}%`}
+                              {m?.dropped_nonpositive ? ` (−${m.dropped_nonpositive})` : ""}
+                              {chosen ? " ✓" : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="crash-doe-kv">
               <span>
                 <span className="ml-k">Girdi</span> {model.feature_keys.join(", ")}
               </span>
+              {model.design_spec && model.design_spec.raw_keys.length > 0 && (
+                <span className="crash-doe-sub">log'a girmeyen (sıfır/negatif içeren): {model.design_spec.raw_keys.join(", ")}</span>
+              )}
               {model.dropped_features.length > 0 && (
                 <span className="crash-doe-sub">eksik değerli, alınmadı: {model.dropped_features.length}</span>
               )}

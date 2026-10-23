@@ -1836,6 +1836,38 @@ Sıra: c1 → c2 → d → b → a → e; sonra 1.24 c1–c3, d, e–g (birleşi
   yetmez), T27 SPH kuş, T28 direk, T29 LS-DYNA .k içe aktarma, T30 Ishell. Beklenenler nitel; "Ölçülen"
   satırları koşuldukça dolacak (1.25e deseni).
 
+*1.27 — Crash vekilini durability ML yığınıyla hizalama (kullanıcı 2026-10-20: "ML stüdyoda crash ve
+durability menüleri aşırı farklı")*
+Neden: crash 1.19'da yalnız RF ile "minimum" kuruldu; durability'de ölçülmüş üçlü (RF / log-lineer /
+hibrit, 0.6.3) ve ortak OOD vardı. Model versiyonlama iki tarafta da yok (Faz 4).
+- a ✅ (2026-10-20) Backend: `train_crash_surrogate(kind=rf|loglinear|hybrid|auto)`. Log-lineer crash'e
+  uyarlı: her satırda > 0 olan özellikler log, diğerleri (açı, c = 0) ham; hedef ≤ 0 satırlar log
+  türlerinde atılır (`dropped_nonpositive`). Hibrit = log iskelet + log artığı RF. `auto` üçünü de
+  K-fold CV ile eğitip hedef başına MAPE en düşük türü seçer (`chosen`); metrikler `kinds` altında
+  tür tür. OOD ortak `app.ml.ood.domain_violations` (`out_of_domain_detail`: değer, sınır, kat).
+  API: `TrainRequest.kind` (varsayılan auto), `targets[].kind`, `requested_kind`. Durability koduna
+  dokunulmadı (TARGET_KEYS'e bağlı). Test: `test_crash_ml_surrogate.py` (+6), `test_crash_ml_api.py`.
+- b ✅ (2026-10-20) ML tezgahı Crash → Model: tür seçici (auto / hybrid / loglinear / RF; istekte
+  `kind`), CV tablosunda "tür" sütunu, auto'da "Tür karşılaştırması" tablosu (hedef × tür MAPE, seçilen ✓,
+  atılan ≤ 0 satır "(−n)"), log'a girmeyen özellikler satırı. Tahmin: hedef kartında kullanılan tür;
+  aralık dışı satırı değer / sınır / kat ile. Test: `CrashModelPanel.test.tsx`, `CrashPredictPanel.test.tsx`.
+- c Model versiyonlama (crash + durability birlikte, Faz 4 maddesi): kayıt tarihi, korpus/study,
+  önceki sürüm listesi ve geri dönüş.
+
+*1.28 — ML tezgahı Crash, Durability düzeni ve içeriği (kullanıcı 2026-10-22: "durability gayet açıklayıcı,
+crash neden öyle değil; tasarımı ve içerikleri durability'deki gibi düzenle")*
+- a ✅ (2026-10-22) DOE sayfası: `CrashDoeSpecForm` (Durability `DoeSpecForm` deseni; `ParamLine` /
+  `displayBounds` dışa açıldı). Şablon çipleri → `params_schema` parametreleri satır satır Aralık / Sabit
+  (bant = taranan aralık, ▼ = varsayılan, ±%20 başlangıç); Senaryo satırları hız / süre / eleman boyutu;
+  tek malzeme çipi (`material_name`); "Gelişmiş · ek JSON" (model.sigma_y_pa, contacts…). Form →
+  `base` + `vary` (`geometry.<p>`, `speed_m_s`…). Eski yol/JSON editörü kaldırıldı. Sağ pane (çalışma
+  listesi, örnek tablosu, canlı ilerleme) aynı. Test: `CrashDoePanel.test.tsx` (8).
+- b Veri seti sayfası: çözülmüş koşu / korpus / geometri / malzeme sayıları, şablona göre çubuk,
+  dışa / içe aktar (crash koşuları + eğriler); Durability "Eğitim verisi" düzeni.
+- c Tahmin sayfası: özellik başına kaydırıcı + eğitim bandı ("eğitim kutusu"), malzeme çipi, hedef
+  kartlarında tür, tek parametre taraması (Tara, N adım); Durability "Parametreden tahmin" düzeni.
+- d Başlık şeridi ve aşama adları Durability ile hizalı (DOE · Veri seti · Model · Tahmin · Doğrulama).
+
 *Ertelenen (Faz 1 dışı / ayrı karar)*
 - Karma model: kabuk kutu + solid plaka aynı mesh'te (mesh katmanı değişikliği)
 - Kesit yerel ekseni (N1–N3) — FN/FT ayrımı gerekirse
@@ -2196,8 +2228,12 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
 - 3.9 ✅ (2026-10-12) `POST /composite/solve`: mesh + layup + BC →
   CalculiXAdapter (`composite_layup`); `composite_runs` (Alembic `f7a8b9c0d1e2`).
   `GET /composite/runs`. `/solve` değişmez. Test `test_composite_solve.py`.
-- 3.10 V-P1: klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır).
-  `docs/COMPOSITE_VALIDATION.md`.
+- 3.10 ✅ (2026-10-20) V-P1: klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa
+  atlanır). [0/90]s ve [30]₄ zar (A⁻¹), SS kare plaka (Navier). Bulunan hata:
+  3.8 yazıcısı COMPOSITE satırına açıyı sayı yazıyordu (ccx orientation adı
+  bekler) — açı başına `*ORIENTATION` + `3, θ` ile düzeltildi.
+  `app/composite/reference.py`, `scripts/composite_validation_vp1.py`,
+  `docs/COMPOSITE_VALIDATION.md`. Test `test_composite_validation_vp1.py`.
 - 3.11 Katman gerilmesi: `.frd` katman S → ply tensörü.
 - 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
 - 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
@@ -2230,6 +2266,43 @@ yapılmış olacak; burada analiz tipine özgü uyarlamaları kapsar.
 - [ ] Backend'e "hızlı tahmin" endpoint'i eklenmesi
 - [ ] Frontend'de "hızlı tahmin (saniyeler)" vs "tam çözüm (saatler)" seçeneği
 - [ ] Periyodik yeniden eğitim pipeline'ı (yeni veri geldikçe)
+
+## Faz 5 — Çoklu gövde dinamiği / MBD (Project Chrono)
+
+**Karar (kullanıcı 2026-10-22):** otomotiv + iş makinesi için MBD katmanı **Project Chrono**
+(PyChrono + Chrono::Vehicle, BSD-3). Gerekçe: Chrono::Vehicle'da tekerlekli / paletli araç
+alt sistem şablonları (HMMWV, M113, suspension test rig), araçların JSON ile tanımlanması
+(`build_input → InputArtifact` desenine oturur), SCM deforme zemin (iş makinesi), C++ çekirdek +
+OpenMP/GPU, lisans kısıtı yok. Dezavantaj: yalnız conda ile kurulum (~500 MB) → **ayrı worker
+container**, FastAPI ortamı conda'ya bağlanmaz, adaptör subprocess/Docker ile çağırır (CalculiX /
+OpenFOAM deseni). Ekskavatör kolu gibi iş makinesi kinematiği hazır gelmez; genel MBD çekirdeğiyle
+(body, joint, actuator) biz kurarız.
+
+**Durability bağlantısı:** süspansiyon test rig'i / sürüş senaryosundan joint–bushing kuvvet
+zaman serileri → CalculiX yük → pyLife fatigue. Otomotiv durability'nin standart akışı.
+
+**Başlangıç koşulu:** Faz 0 bittikten sonra. Her adım ayrı PR; her adımda dur.
+
+- 5.0 ✅ (2026-10-22) Doküman + iskelet: `docs/ARCHITECTURE.md` "MBD (Chrono)" bölümü;
+  `backend/app/solvers/chrono.py` `ChronoAdapter(SolverAdapter)` — `build_input` case JSON'u
+  (`chrono_case.json`, pydantic `ChronoQuarterCarParams`), `submit` Chrono worker'ı subprocess
+  (`CHRONO_PYTHON` = conda env python'u) ya da Docker (`CHRONO_DOCKER_IMAGE`) ile koşturur,
+  `parse_results` `results.csv` → `ResultSet` (skaler: tepe/RMS ivme, tepe yay–sönüm kuvveti,
+  maksimum sıkışma; eğri: zaman serileri). İlk senaryo **çeyrek araç tümsek geçişi** (sprung
+  kütle + yay/sönüm + tekerlek kütlesi + lastik rijitliği, yol profili). Worker betiği
+  `backend/scripts/chrono_run.py` (PyChrono varsa koşar; yoksa açık hata). Docker:
+  `backend/docker/chrono/Dockerfile` (miniconda + pychrono). Testler PyChrono olmadan: JSON ve
+  CSV ayrıştırma; koşu testi `CHRONO_PYTHON` yoksa atlanır.
+- 5.1 Codespaces'te Chrono worker: conda env ya da Docker imajı; çeyrek araç duman testi; koşu
+  süresi ve CSV boyutu notu.
+- 5.2 API + UI: `/mbd/solve`, Çeyrek araç kartı (parametreler, yol profili), sonuç eğrileri
+  (ivme, kuvvet, sıkışma) mevcut eğri bileşeniyle.
+- 5.3 Chrono::Vehicle JSON araç tanımı (Double Wishbone test aracı) + suspension test rig
+  senaryosu; joint kuvvet zaman serileri.
+- 5.4 Durability köprüsü: joint kuvvet serisi → CalculiX yük geçmişi → pyLife (Faz 0 akışı).
+- 5.5 İş makinesi: SCM deforme zemin + paletli araç (M113 şablonu) duman testi; ekskavatör kolu
+  (body / joint / linear actuator) ilk tutorial modeli.
+- 5.6 Eğitim testleri (MBD T1–Tn) ve belgeler.
 
 ## Faz sırasını değiştirme
 

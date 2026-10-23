@@ -176,7 +176,7 @@ function nice(v: number, up: boolean): number {
 /** Bant için gösterim sınırları: varsayılanın 0.4–1.6 katı, kullanıcının
  * girdiği aralığı da kapsayacak şekilde genişler. Şema üst sınır vermiyor;
  * bu yalnız gösterim ölçeğidir, doğrulama değildir. */
-function displayBounds(def: number, lo: number, hi: number, floor: number | null): [number, number] {
+export function displayBounds(def: number, lo: number, hi: number, floor: number | null): [number, number] {
   let a = nice(def * 0.4, false);
   let b = nice(def * 1.6, true);
   if (Number.isFinite(lo)) a = Math.min(a, nice(lo, false));
@@ -267,7 +267,7 @@ function ModeSwitch({
 }
 
 /** Tek parametre satırı: sol sembol/ad/anahtar, sağ bant + kutular. */
-function ParamLine({
+export function ParamLine({
   sym,
   name,
   unit,

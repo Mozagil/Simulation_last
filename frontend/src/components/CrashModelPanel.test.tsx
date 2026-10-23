@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CrashModelPanel, { fmtNum, scenarioFor } from "./CrashModelPanel";
 
@@ -7,6 +7,7 @@ vi.mock("../api/crashMl", () => ({
   fetchCrashDoeStudies: vi.fn(),
   fetchCrashModels: vi.fn(),
   trainCrashModel: vi.fn(),
+  CRASH_KIND_LABEL: { rf: "Random Forest", loglinear: "Log-log lineer", hybrid: "Hibrit (log-log + RF artık)" },
 }));
 vi.mock("../api/crash", () => ({ fetchCrashCatalog: vi.fn() }));
 
@@ -81,7 +82,7 @@ describe("CrashModelPanel", () => {
     );
     expect(await screen.findByText("geom.wall")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Eğit · 5-fold CV" }));
-    await waitFor(() => expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3, include_raw_cards: false }));
+    await waitFor(() => expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: 3, include_raw_cards: false, kind: "auto" }));
     expect(await screen.findByText("0.931")).toBeInTheDocument();
     expect(screen.getByText("3.4%")).toBeInTheDocument();
     expect(screen.getByText("en az 8 dolu satır gerekir")).toBeInTheDocument();
@@ -106,7 +107,37 @@ describe("CrashModelPanel", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Eğit · 5-fold CV" }));
     await waitFor(() =>
-      expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: null, include_raw_cards: true }),
+      expect(trainCrashModel).toHaveBeenCalledWith({ template_id: "crash_box_shell", scenario: "rigid_wall", study_id: null, include_raw_cards: true, kind: "auto" }),
     );
+  });
+});
+
+
+describe("1.27a — tür seçimi ve tür karşılaştırma tablosu", () => {
+  it("tür seçici isteğe gider; auto modelde üç türün MAPE'si ve seçilen tür görünür", async () => {
+    const auto = {
+      ...MODEL,
+      requested_kind: "auto" as const,
+      design_spec: { feature_keys: ["req.barrier.speed_m_s", "geom.wall"], log_keys: ["geom.wall"], raw_keys: ["req.barrier.speed_m_s"] },
+      targets: [
+        { ...MODEL.targets[0], kind: "loglinear" as const,
+          cv: { n: 24, r2: 0.98, mae: 1.2, mape: 0.011, folds: 5, kind: "loglinear" as const,
+            kinds: { rf: { n: 24, r2: 0.93, mae: 4.21, mape: 0.034, folds: 5 },
+                     loglinear: { n: 24, r2: 0.98, mae: 1.2, mape: 0.011, folds: 5 },
+                     hybrid: { n: 22, r2: 0.97, mae: 1.5, mape: 0.014, folds: 5, dropped_nonpositive: 2 } } } },
+        MODEL.targets[1],
+      ],
+    };
+    vi.mocked(trainCrashModel).mockResolvedValue(auto);
+    render(<CrashModelPanel />);
+    await screen.findByTestId("crash-model-stage");
+    fireEvent.click(screen.getByRole("button", { name: "loglinear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eğit · 5-fold CV" }));
+    await waitFor(() => expect(trainCrashModel).toHaveBeenCalledWith(expect.objectContaining({ kind: "loglinear" })));
+    const cmp = await screen.findByRole("table", { name: "Tür karşılaştırması" });
+    expect(within(cmp).getByText("1.1% ✓")).toBeInTheDocument();
+    expect(within(cmp).getByText("3.4%")).toBeInTheDocument();
+    expect(within(cmp).getByText("1.4% (−2)")).toBeInTheDocument();
+    expect(screen.getByText(/log'a girmeyen/)).toHaveTextContent("req.barrier.speed_m_s");
   });
 });

@@ -16,7 +16,7 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "3.7", title: "Rozet + OSS", what: "Paralel rozet (varsayılan global X = 0°); atama parça veya seçili yüzey.", status: "tamam" },
   { id: "3.8", title: "section_writer", what: "CalculiX *ELASTIC, TYPE=ENGINEERING CONSTANTS + *ORIENTATION + *SHELL SECTION, COMPOSITE.", status: "tamam" },
   { id: "3.9", title: "/composite/solve", what: "Mesh + layup + BC → CalculiXAdapter. /solve dokunulmaz. composite_runs.", status: "tamam" },
-  { id: "3.10", title: "V-P1 doğrulama", what: "Klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır). docs/COMPOSITE_VALIDATION.md.", status: "plan" },
+  { id: "3.10", title: "V-P1 doğrulama", what: "Klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır). docs/COMPOSITE_VALIDATION.md.", status: "tamam" },
   { id: "3.11", title: "Katman gerilmesi", what: ".frd entegrasyon noktası / katman S → ply bazlı tensör.", status: "plan" },
   { id: "3.12", title: "Hasar", what: "Tsai-Wu + Hashin IRF; ResultSet.scalars + ply alanı. Puck yok.", status: "plan" },
   { id: "3.13", title: "Sonuç UI", what: "Katman seçici, gerilme / IRF kontur, min IRF sayısı.", status: "plan" },

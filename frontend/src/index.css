@@ -4218,6 +4218,39 @@ p {
   border-radius: var(--radius-md);
 }
 
+.crash-ml-kinds {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.crash-ml-chosen {
+  font-weight: 600;
+  color: var(--accent, #1f5fbf);
+}
+
+.crash-doe-group {
+  display: block;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.crash-doe-advanced {
+  margin-top: 12px;
+}
+
+.crash-doe-advanced summary {
+  cursor: pointer;
+}
+
+.crash-doe-advanced textarea {
+  width: 100%;
+  margin-top: 6px;
+}
+
 .crash-contact-scope {
   display: flex;
   align-items: center;

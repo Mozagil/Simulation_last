@@ -156,7 +156,16 @@ export default function CrashPredictPanel() {
           <>
             {result.out_of_domain.length > 0 && (
               <p className="crash-pred-ood" role="status">
-                Eğitim aralığı dışında: {result.out_of_domain.join(", ")}
+                Eğitim aralığı dışında:{" "}
+                {(result.out_of_domain_detail?.length
+                  ? result.out_of_domain_detail.map(
+                      (d) =>
+                        `${d.feature} = ${fmtNum(d.value)} (${d.side === "below" ? "alt" : "üst"} sınır ${fmtNum(
+                          d.side === "below" ? d.min : d.max,
+                        )}${d.factor ? `, ${d.factor.toFixed(1)}×` : ""})`,
+                    )
+                  : result.out_of_domain
+                ).join(" · ")}
               </p>
             )}
             <div className="crash-pred-grid">
@@ -164,7 +173,10 @@ export default function CrashPredictPanel() {
                 const v = result.prediction[t.key];
                 return (
                   <div key={t.key} className="crash-pred-tile" title={t.definition}>
-                    <span className="ml-k">{t.label}</span>
+                    <span className="ml-k">
+                      {t.label}
+                      {result.chosen?.[t.key] ? ` · ${result.chosen[t.key] === "rf" ? "RF" : result.chosen[t.key]}` : ""}
+                    </span>
                     <span className="crash-pred-value">
                       {v === null || v === undefined ? "—" : fmtNum(v)}
                       <span className="crash-pred-unit">{t.unit}</span>

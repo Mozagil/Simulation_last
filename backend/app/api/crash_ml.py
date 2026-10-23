@@ -32,6 +32,10 @@ class CorpusQuery(BaseModel):
 class TrainRequest(CorpusQuery):
     seed: int = 2026
     n_folds: int = Field(default=surrogate.DEFAULT_FOLDS, ge=2, le=20)
+    kind: str = Field(
+        default="auto",
+        description="1.27a — rf | loglinear | hybrid | auto (hedef başına CV MAPE en düşük tür)",
+    )
 
 
 class PredictRequest(BaseModel):
@@ -51,9 +55,12 @@ def _public(bundle: dict[str, Any]) -> dict[str, Any]:
         "dropped_features": bundle.get("dropped_features", []),
         "constant_features": bundle.get("constant_features", {}),
         "bounds": bundle["bounds"],
+        "requested_kind": bundle.get("requested_kind", "rf"),
+        "design_spec": bundle.get("design_spec"),
         "targets": [
             {"key": t.key, "label": t.label, "unit": t.unit, "definition": t.definition,
              "trained": bundle["models"].get(t.key) is not None,
+             "kind": (bundle.get("chosen") or {}).get(t.key, "rf" if bundle["models"].get(t.key) is not None else None),
              "cv": bundle["metrics_cv"].get(t.key)}
             for t in TARGETS
         ],
@@ -89,7 +96,7 @@ def train(body: TrainRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
         db, body.template_id, body.scenario, study_id=body.study_id, include_raw_cards=body.include_raw_cards
     )
     try:
-        bundle = surrogate.train_crash_surrogate(corpus, seed=body.seed, n_folds=body.n_folds)
+        bundle = surrogate.train_crash_surrogate(corpus, kind=body.kind, seed=body.seed, n_folds=body.n_folds)
         path = surrogate.save_crash_model(bundle)
     except CrashModelError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

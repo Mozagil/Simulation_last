@@ -7,7 +7,7 @@
  * [alt, üst]. Hangi alanın hangi aralıkta taranacağı mühendisin — öneri yok,
  * yol listesi yalnız yazım kolaylığı (datalist).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchCrashCatalog, type CrashCatalogEntry } from "../api/crash";
 import {
   createCrashDoeStudy,
@@ -16,75 +16,16 @@ import {
   resumeCrashDoeStudy,
   type CrashDoeStudyInfo,
 } from "../api/crashMl";
+import { fetchMaterials, type Material } from "../api/materials";
 import { fetchTemplates, type GeometryTemplateInfo } from "../api/templates";
 import CrashDoeLive from "./CrashDoeLive";
-
-/** Senaryo isteğinin sık taranan sayısal alanları (yazım kolaylığı). */
-export const COMMON_PATHS = [
-  "speed_m_s",
-  "angle_deg",
-  "t_end_ms",
-  "thickness_mm",
-  "element_size_mm",
-  "drop_height_mm",
-  "ball_total_mass_kg",
-  "end_mass_kg",
-  "model.sigma_y_pa",
-  "model.harden_b_mpa",
-  "model.harden_n",
-];
-
-interface VaryRow {
-  path: string;
-  lo: string;
-  hi: string;
-}
+import CrashDoeSpecForm, {
+  buildCrashDoeSpecFromForm,
+  initialCrashDoeState,
+  type CrashDoeFormState,
+} from "./CrashDoeSpecForm";
 
 const RUNNING = new Set(["running", "pending"]);
-
-function baseFor(templateId: string, prev: string): string {
-  let obj: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(prev);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) obj = parsed;
-  } catch {
-    /* bozuk JSON: sıfırdan */
-  }
-  // Şablon değişince eski şablonun geometri parametreleri anlamsız.
-  const { geometry: _g, ...rest } = obj;
-  return JSON.stringify({ ...rest, template_id: templateId }, null, 2);
-}
-
-export function buildCrashDoeSpec(
-  baseText: string,
-  rows: VaryRow[],
-  nSamples: string,
-  seed: string,
-  name: string,
-) {
-  let base: Record<string, unknown>;
-  try {
-    base = JSON.parse(baseText);
-  } catch {
-    throw new Error("Taban senaryo geçerli JSON değil.");
-  }
-  const vary: Record<string, [number, number]> = {};
-  for (const r of rows) {
-    const path = r.path.trim();
-    if (!path) continue;
-    const lo = Number(r.lo);
-    const hi = Number(r.hi);
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) throw new Error(`'${path}': sınırlar sayı olmalı.`);
-    if (!(hi > lo)) throw new Error(`'${path}': üst sınır alttan büyük olmalı.`);
-    vary[path] = [lo, hi];
-  }
-  if (Object.keys(vary).length === 0) throw new Error("En az bir taranan alan gerekli.");
-  const n = Number(nSamples);
-  if (!Number.isInteger(n) || n < 1 || n > 500) throw new Error("Örnek sayısı 1–500 tam sayı olmalı.");
-  const s = Number(seed);
-  if (!Number.isInteger(s)) throw new Error("Tohum tam sayı olmalı.");
-  return { ...(name.trim() ? { name: name.trim() } : {}), base, vary, n_samples: n, seed: s };
-}
 
 function fmt(v: number): string {
   const a = Math.abs(v);
@@ -96,11 +37,8 @@ export default function CrashDoePanel() {
   const [templateIds, setTemplateIds] = useState<string[]>([]);
   const [templates, setTemplates] = useState<GeometryTemplateInfo[]>([]);
   const [templateId, setTemplateId] = useState("crash_box_shell");
-  const [baseText, setBaseText] = useState(baseFor("crash_box_shell", "{}"));
-  const [rows, setRows] = useState<VaryRow[]>([{ path: "speed_m_s", lo: "5", hi: "15" }]);
-  const [nSamples, setNSamples] = useState("20");
-  const [seed, setSeed] = useState("1");
-  const [name, setName] = useState("");
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [form, setForm] = useState<CrashDoeFormState | null>(null);
   const [studies, setStudies] = useState<CrashDoeStudyInfo[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CrashDoeStudyInfo | null>(null);
@@ -124,7 +62,17 @@ export default function CrashDoePanel() {
     fetchTemplates()
       .then(setTemplates)
       .catch(() => setTemplates([]));
+    fetchMaterials()
+      .then(setMaterials)
+      .catch(() => setMaterials([]));
   }, [reload]);
+
+  // Şablon (ya da şablon listesi) değişince form o şablonun parametrelerinden kurulur;
+  // senaryo alanları, malzeme ve örnek/tohum korunur.
+  const template = templates.find((t) => t.id === templateId) ?? null;
+  useEffect(() => {
+    if (template) setForm((prev) => initialCrashDoeState(template, prev ?? undefined));
+  }, [template]);
 
   const selected = studies.find((s) => s.id === selectedId) ?? studies[0] ?? null;
 
@@ -153,22 +101,16 @@ export default function CrashDoePanel() {
     [entries],
   );
 
-  const pathOptions = useMemo(() => {
-    const props = templates.find((t) => t.id === templateId)?.params_schema.properties ?? {};
-    return [...Object.keys(props).map((k) => `geometry.${k}`), ...COMMON_PATHS];
-  }, [templates, templateId]);
-
   function selectTemplate(tid: string) {
     setTemplateId(tid);
-    setBaseText((prev) => baseFor(tid, prev));
-    setRows((prev) => prev.filter((r) => !r.path.startsWith("geometry.")));
   }
 
   async function handleStart() {
     setError(null);
     setBusy(true);
     try {
-      const st = await createCrashDoeStudy(buildCrashDoeSpec(baseText, rows, nSamples, seed, name));
+      if (!form) throw new Error("Şablon parametreleri henüz yüklenmedi.");
+      const st = await createCrashDoeStudy(buildCrashDoeSpecFromForm(form));
       setSelectedId(st.id);
       reload();
     } catch (e) {
@@ -201,9 +143,9 @@ export default function CrashDoePanel() {
             <span className="ml-h">Tasarım uzayı</span>
           </span>
           <span className="doe-phead-hint">
-            Taban senaryo sabit
+            Açık bant = taranan aralık
             <br />
-            taranan alan = LHS [alt, üst]
+            ▼ = şablon varsayılanı
           </span>
         </div>
         <div className="doe-pane-body crash-doe-body">
@@ -227,54 +169,11 @@ export default function CrashDoePanel() {
             <span className="crash-doe-sub">{titleOf(templateId)}</span>
           </div>
 
-          <div className="crash-doe-field">
-            <span className="ml-k">Taranan alanlar</span>
-            <datalist id="crash-doe-paths">
-              {pathOptions.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-            <div className="crash-doe-vary">
-              <span className="crash-doe-vh">yol</span>
-              <span className="crash-doe-vh">alt</span>
-              <span className="crash-doe-vh">üst</span>
-              <span />
-              {rows.map((r, i) => (
-                <VaryRowInputs
-                  key={i}
-                  row={r}
-                  index={i}
-                  disabled={busy}
-                  onChange={(nr) => setRows((prev) => prev.map((x, j) => (j === i ? nr : x)))}
-                  onRemove={() => setRows((prev) => prev.filter((_, j) => j !== i))}
-                />
-              ))}
-            </div>
-            <button
-              type="button"
-              className="doe-chip crash-doe-add"
-              disabled={busy}
-              onClick={() => setRows((prev) => [...prev, { path: "", lo: "", hi: "" }])}
-            >
-              + alan ekle
-            </button>
-          </div>
-
-          <label className="crash-doe-field">
-            <span className="ml-k">Taban senaryo · /crash/scenario gövdesi (JSON)</span>
-            <textarea
-              className="crash-doe-json"
-              aria-label="Taban senaryo"
-              spellCheck={false}
-              value={baseText}
-              disabled={busy}
-              onChange={(e) => setBaseText(e.target.value)}
-              rows={9}
-            />
-            <span className="crash-doe-sub">
-              Boş alanlar senaryo varsayılanı. Kutunun durması için t_end_ms yeterli olmalı (aksi halde ezilme boş).
-            </span>
-          </label>
+          {form ? (
+            <CrashDoeSpecForm template={template} materials={materials} state={form} busy={busy} onChange={setForm} />
+          ) : (
+            <p className="doe-empty">Şablon parametreleri yükleniyor…</p>
+          )}
         </div>
         <div className="doe-pfoot">
           <label className="doe-pfoot-field">
@@ -282,10 +181,10 @@ export default function CrashDoePanel() {
             <input
               className="doe-num crash-doe-name"
               aria-label="Çalışma adı"
-              value={name}
+              value={form?.name ?? ""}
               placeholder={templateId}
-              disabled={busy}
-              onChange={(e) => setName(e.target.value)}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, name: e.target.value })}
             />
           </label>
           <label className="doe-pfoot-field">
@@ -293,9 +192,9 @@ export default function CrashDoePanel() {
             <input
               className="doe-num"
               aria-label="Örnek sayısı"
-              value={nSamples}
-              disabled={busy}
-              onChange={(e) => setNSamples(e.target.value)}
+              value={form?.nSamples ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, nSamples: e.target.value })}
             />
           </label>
           <label className="doe-pfoot-field">
@@ -303,15 +202,15 @@ export default function CrashDoePanel() {
             <input
               className="doe-num"
               aria-label="Tohum"
-              value={seed}
-              disabled={busy}
-              onChange={(e) => setSeed(e.target.value)}
+              value={form?.seed ?? ""}
+              disabled={busy || !form}
+              onChange={(e) => form && setForm({ ...form, seed: e.target.value })}
             />
           </label>
           <button
             type="button"
             className="doe-btn doe-btn-primary"
-            disabled={busy}
+            disabled={busy || !form}
             onClick={() => void handleStart()}
           >
             {busy ? "Örnekleniyor…" : "DOE başlat"}
@@ -418,56 +317,5 @@ export default function CrashDoePanel() {
         {error && <p className="dataset-error">{error}</p>}
       </div>
     </div>
-  );
-}
-
-function VaryRowInputs({
-  row,
-  index,
-  disabled,
-  onChange,
-  onRemove,
-}: {
-  row: VaryRow;
-  index: number;
-  disabled: boolean;
-  onChange: (r: VaryRow) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <>
-      <input
-        className="doe-num crash-doe-path"
-        list="crash-doe-paths"
-        aria-label={`Alan ${index + 1} yolu`}
-        value={row.path}
-        placeholder="geometry.wall"
-        disabled={disabled}
-        onChange={(e) => onChange({ ...row, path: e.target.value })}
-      />
-      <input
-        className="doe-num"
-        aria-label={`Alan ${index + 1} alt`}
-        value={row.lo}
-        disabled={disabled}
-        onChange={(e) => onChange({ ...row, lo: e.target.value })}
-      />
-      <input
-        className="doe-num"
-        aria-label={`Alan ${index + 1} üst`}
-        value={row.hi}
-        disabled={disabled}
-        onChange={(e) => onChange({ ...row, hi: e.target.value })}
-      />
-      <button
-        type="button"
-        className="crash-doe-x"
-        aria-label={`Alan ${index + 1} sil`}
-        disabled={disabled}
-        onClick={onRemove}
-      >
-        ×
-      </button>
-    </>
   );
 }

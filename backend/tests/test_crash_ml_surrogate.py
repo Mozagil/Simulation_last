@@ -75,3 +75,69 @@ def test_empty_corpus_rejected():
     c.run_ids = []
     with pytest.raises(CrashModelError):
         train_crash_surrogate(c)
+
+
+# --- 1.27a — türler: rf / loglinear / hybrid / auto ---------------------------
+
+
+def _power_corpus(n: int = 60, seed: int = 1) -> CrashCorpus:
+    """Güç yasası hedef (F ∝ t^1.0 · v^0.5), açı sütunu 0 içeriyor (log'a girmez)."""
+    rng = np.random.default_rng(seed)
+    t = rng.uniform(1.0, 4.0, n)
+    v = rng.uniform(5.0, 15.0, n)
+    ang = rng.choice([0.0, 10.0, 20.0], n)
+    X = np.column_stack([t, v, ang])
+    Y = np.full((n, len(TARGET_KEYS)), np.nan)
+    Y[:, TARGET_KEYS.index("peak_force_kn")] = 30.0 * t * np.sqrt(v) * np.exp(-0.01 * ang)
+    y2 = 2.0 * t - 3.0  # bazı satırlar ≤ 0 → log türleri o satırları atar
+    Y[:, TARGET_KEYS.index("energy_absorbed_j")] = y2
+    return CrashCorpus(
+        template_id="crash_box_shell", scenario="rigid_wall", run_ids=list(range(n)),
+        feature_names=["geom.wall", "req.barrier.speed_m_s", "req.barrier.angle_deg"],
+        X=X, target_names=list(TARGET_KEYS), Y=Y, study_id=9,
+    )
+
+
+def test_design_spec_logs_only_positive_columns():
+    b = train_crash_surrogate(_power_corpus(), kind="loglinear")
+    assert b["design_spec"]["log_keys"] == ["geom.wall", "req.barrier.speed_m_s"]
+    assert b["design_spec"]["raw_keys"] == ["req.barrier.angle_deg"]
+
+
+@pytest.mark.parametrize("kind", ["rf", "loglinear", "hybrid"])
+def test_single_kind_trains_and_predicts(kind):
+    b = train_crash_surrogate(_power_corpus(), kind=kind)
+    assert b["requested_kind"] == kind and b["chosen"]["peak_force_kn"] == kind
+    m = b["metrics_cv"]["peak_force_kn"]
+    assert m["kind"] == kind and set(m["kinds"]) == {kind}
+    r = predict(b, {"geom.wall": 2.0, "req.barrier.speed_m_s": 9.0, "req.barrier.angle_deg": 10.0})
+    assert r["prediction"]["peak_force_kn"] == pytest.approx(30 * 2 * 3 * np.exp(-0.1), rel=0.15)
+    assert r["chosen"]["peak_force_kn"] == kind
+
+
+def test_loglinear_beats_rf_on_power_law_and_auto_picks_it():
+    b = train_crash_surrogate(_power_corpus(), kind="auto")
+    kinds = b["metrics_cv"]["peak_force_kn"]["kinds"]
+    assert kinds["loglinear"]["mape"] < kinds["rf"]["mape"]
+    assert b["chosen"]["peak_force_kn"] in ("loglinear", "hybrid")
+    # ≤ 0 hedefli satırlar log türlerinde atılır, RF hepsini kullanır
+    e = b["metrics_cv"]["energy_absorbed_j"]["kinds"]
+    assert e["rf"]["n"] == 60 and e["loglinear"]["n"] < 60 and e["loglinear"]["dropped_nonpositive"] > 0
+    # dışarıda kalan değerle tahmin: aralık dışı ayrıntısı
+    r = predict(b, {"geom.wall": 9.0, "req.barrier.speed_m_s": 9.0, "req.barrier.angle_deg": 10.0})
+    assert r["out_of_domain"] == ["geom.wall"]
+    assert r["out_of_domain_detail"][0]["side"] == "above"
+
+
+def test_unknown_kind_rejected():
+    with pytest.raises(CrashModelError, match="Bilinmeyen tür"):
+        train_crash_surrogate(_power_corpus(), kind="svm")
+
+
+def test_auto_roundtrip_keeps_loglinear_model(tmp_path):
+    b = train_crash_surrogate(_power_corpus(), kind="auto")
+    save_crash_model(b, root=tmp_path)
+    b2 = load_crash_model("crash_box_shell", "rigid_wall", root=tmp_path)
+    assert b2["chosen"] == b["chosen"]
+    x = {"geom.wall": 2.5, "req.barrier.speed_m_s": 12.0, "req.barrier.angle_deg": 0.0}
+    assert predict(b2, x)["prediction"] == predict(b, x)["prediction"]
