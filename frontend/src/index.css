@@ -8034,9 +8034,11 @@ p {
   width: 180px;
 }
 
-.crash-unit-box input {
+.crash-unit-box input,
+.crash-unit-box select {
   flex: 1;
   min-width: 0;
+  width: 100%;
   padding: 4px 6px;
   font: inherit;
   font-family: var(--font-ui);
@@ -10026,4 +10028,34 @@ p {
 @media (max-width: 900px) {
   .composite-kpis { grid-template-columns: 1fr; }
   .composite-results-body { grid-template-columns: 1fr; }
+}
+
+.mbd-scalars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.mbd-scalars div {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.mbd-scalars dt {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mbd-scalars dd {
+  margin: 3px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.mbd-panel .crash-unit-field.wide .crash-unit-box {
+  width: 100%;
+}
+@media (max-width: 720px) {
+  .mbd-scalars { grid-template-columns: 1fr; }
 }

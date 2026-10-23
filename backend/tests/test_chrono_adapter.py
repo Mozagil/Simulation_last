@@ -14,6 +14,7 @@ from app.solvers.chrono import (
     CASE_FILE,
     ChronoAdapter,
     ChronoQuarterCarParams,
+    ChronoSuspensionRigParams,
     parse_results_csv,
     resolve_chrono_runtime,
     run_command,
@@ -89,3 +90,48 @@ def test_quarter_car_run_smoke(tmp_path):
 def test_params_defaults_are_finite():
     p = ChronoQuarterCarParams()
     assert p.scenario == "quarter_car_bump" and p.road.kind == "cosine_bump"
+
+
+def test_build_suspension_rig_writes_case(tmp_path):
+    ad = ChronoAdapter(work_root=tmp_path)
+    art = ad.build_input({"scenario": "suspension_test_rig", "spring_k_n_per_m": 15000, "job_id": "rig1"})
+    case = json.loads((art.path / CASE_FILE).read_text(encoding="utf-8"))
+    assert case["params"]["scenario"] == "suspension_test_rig"
+    assert case["params"]["spring_k_n_per_m"] == 15000
+    assert case["params"]["upright_mass_kg"] == 8.0
+    assert case["params"]["angle_amp_rad"] == 0.04
+    assert "sprung_mass_kg" not in case["params"]
+
+
+@pytest.mark.parametrize("bad", [
+    {"scenario": "suspension_test_rig", "upper_arm_mass_kg": 0},
+    {"scenario": "suspension_test_rig", "angle_amp_rad": 1.0},
+    {"scenario": "suspension_test_rig", "dt_s": 1.0},
+])
+def test_build_suspension_rig_rejects(tmp_path, bad):
+    with pytest.raises(SolverError, match="geçersiz"):
+        ChronoAdapter(work_root=tmp_path).build_input(bad)
+
+
+def test_suspension_rig_defaults_are_finite():
+    p = ChronoSuspensionRigParams()
+    assert p.scenario == "suspension_test_rig" and p.lower_arm_mass_kg == 5.0
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("CHRONO_PYTHON") or os.environ.get("CHRONO_DOCKER_IMAGE")),
+    reason="Chrono runtime yok",
+)
+def test_suspension_rig_smoke(tmp_path):
+    ad = ChronoAdapter(work_root=tmp_path)
+    job = ad.submit(ad.build_input({
+        "scenario": "suspension_test_rig", "job_id": "rig-smoke", "t_end_s": 0.4, "output_every": 20,
+    }))
+    st = ad.poll_status(job)
+    assert st.state == "done", st.message
+    rs = ad.parse_results(job)
+    assert "upper_chassis_fz_n" in rs.curves and "spring_force_n" in rs.curves
+    assert "motor_torque_nm" in rs.curves and len(rs.curves["time"]) > 5
+    # Şasi mafsalı üst kol ağırlığının bir kısmını dünya Z'de taşır.
+    assert rs.scalars["upper_chassis_fz_n_min"] < -5.0
+    assert rs.scalars["spring_force_n_max"] - rs.scalars["spring_force_n_min"] > 1.0

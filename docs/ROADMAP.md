@@ -2346,12 +2346,31 @@ zaman serileri → CalculiX yük → pyLife fatigue. Otomotiv durability'nin sta
   `backend/scripts/chrono_run.py` (PyChrono varsa koşar; yoksa açık hata). Docker:
   `backend/docker/chrono/Dockerfile` (miniconda + pychrono). Testler PyChrono olmadan: JSON ve
   CSV ayrıştırma; koşu testi `CHRONO_PYTHON` yoksa atlanır.
-- 5.1 Codespaces'te Chrono worker: conda env ya da Docker imajı; çeyrek araç duman testi; koşu
-  süresi ve CSV boyutu notu.
-- 5.2 API + UI: `/mbd/solve`, Çeyrek araç kartı (parametreler, yol profili), sonuç eğrileri
-  (ivme, kuvvet, sıkışma) mevcut eğri bileşeniyle.
-- 5.3 Chrono::Vehicle JSON araç tanımı (Double Wishbone test aracı) + suspension test rig
-  senaryosu; joint kuvvet zaman serileri.
+- 5.1 ✅ (2026-10-23) Chrono worker duman + V-M1. İmaj `simsurrogate-chrono:9.0`.
+  Yol motoru çerçevenin Z ekseninde (dünya Z). Önceki `QuatFromAngleY(-π/2)` yolu
+  dünya X'e yatırıyordu; düşey tepki referansın ~%10'u kalıyordu — düzeltildi.
+  V-M1 (`scripts/mbd_validation_qc.py`, scipy Radau, eşik yok): varsayılan çeyrek
+  araç, 50 mm kosinüs tümsek.
+  10 m/s, 3 s, dt 1 ms, 3001 adım, 0.332 s: gövde z tepe farkı +%0.19 (RMS %0.10),
+  tekerlek z −%0.15 (RMS %0.18), gövde ivmesi +%0.53 (RMS %0.84). Yüzdeler referans
+  tepeye göre.
+  20 m/s, 2 s, dt 0.5 ms, 4001 adım, 0.182 s: gövde z +%0.06 (RMS %0.07), tekerlek z
+  +%0.14 (RMS %0.14), gövde ivmesi +%0.77 (RMS %0.66).
+- 5.2a ✅ (2026-10-23) API: `POST /mbd/solve`, `GET /mbd/jobs/{id}`. Gövde çeyrek araç
+  parametreleri; `ChronoAdapter`; DB yok, iş klasörü `uploads/chrono_jobs`. Koşu bitene
+  kadar bekler. Test `test_mbd_api.py`.
+- 5.2b ✅ (2026-10-23) Arayüz: MBD sekmesi, çeyrek araç kartı (kütle, yay, sönüm, hız, yol),
+  ivme / kuvvet / sıkışma eğrileri. `MbdPanel`. Test `MbdPanel.test.tsx`.
+- 5.3 ✅ (2026-10-23) Düzlemsel çift salıncak süspansiyon test tezgahı
+  (`suspension_test_rig`). Şasi sabit, alt kol açısı sinüs motoru, üç döner mafsal,
+  şasi–alt kol yayı.   `results.csv`: kol açısı, dingil z, yay kuvveti, üç mafsalın
+  dünya çerçevesindeki tepki kuvveti (ikinci gövdeye), motor momenti.
+  Varsayılan tezgah, 1 s, dt 1 ms, 1000 adım, 0.027 s: üst kol–şasi kuvveti
+  dünya Z −14.71…−14.65 N (3 kg kolun yarısı), düzlem dışı bileşen ~0,
+  yay kuvveti −16…+206 N, dingil z 0.425…0.441 m, motor momenti −100…−43 N·m.
+  `simsurrogate-chrono:9.0` conda-forge pychrono 9.0.1 içinde `pychrono.vehicle` yok;
+  resmi Vehicle derlemesi CUDA 12.8 istiyor. Chrono::Vehicle JSON araç tanımı bu
+  adıma girmedi — imaj kararı ayrı. API ve arayüz hâlâ yalnız çeyrek araç gönderir.
 - 5.4 Durability köprüsü: joint kuvvet serisi → CalculiX yük geçmişi → pyLife (Faz 0 akışı).
 - 5.5 İş makinesi: SCM deforme zemin + paletli araç (M113 şablonu) duman testi; ekskavatör kolu
   (body / joint / linear actuator) ilk tutorial modeli.

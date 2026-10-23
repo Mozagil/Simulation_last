@@ -6,9 +6,9 @@ etmez; `CHRONO_PYTHON` (conda env python'u) ile subprocess ya da
 `CHRONO_DOCKER_IMAGE` ile `docker run` kullanır. Worker betiği
 `backend/scripts/chrono_run.py`.
 
-İlk senaryo: çeyrek araç tümsek geçişi (sprung kütle + yay/sönüm + tekerlek
-kütlesi + lastik rijitliği, yol profili). Çıktı `results.csv` zaman serileri →
-`ResultSet` (eğriler + tepe / RMS skalerler). Öneri / kabul eşiği yok.
+Senaryolar: çeyrek araç tümsek geçişi; düzlemsel çift salıncak süspansiyon
+test tezgahı (mafsal kuvvet zaman serisi). Çıktı `results.csv` → `ResultSet`
+(eğriler + tepe / RMS skalerler). Öneri / kabul eşiği yok.
 """
 
 from __future__ import annotations
@@ -74,7 +74,40 @@ class ChronoQuarterCarParams(BaseModel):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"{name} sonlu olmalı")
         if self.scenario != "quarter_car_bump":
-            raise ValueError("5.0'da yalnız quarter_car_bump senaryosu var.")
+            raise ValueError("quarter_car_bump dışında senaryo bu modelde yok.")
+        return self
+
+
+class ChronoSuspensionRigParams(BaseModel):
+    """Düzlemsel çift salıncak test tezgahı. Şasi sabit; alt kol açısı sinüs ile verilir.
+
+    Geometri worker'da sabittir (x–z düzlemi, mafsal ekseni Y). Kuvvetler dünya
+    çerçevesinde, mafsalın ikinci gövdesine etkir. Birimler SI.
+    """
+
+    scenario: str = Field(default="suspension_test_rig")
+    lower_arm_mass_kg: float = Field(default=5.0, gt=0)
+    upper_arm_mass_kg: float = Field(default=3.0, gt=0)
+    upright_mass_kg: float = Field(default=8.0, gt=0)
+    spring_k_n_per_m: float = Field(default=20000.0, gt=0)
+    spring_c_n_s_per_m: float = Field(default=500.0, ge=0)
+    angle_amp_rad: float = Field(default=0.04, ge=0, le=0.2)
+    angle_freq_hz: float = Field(default=0.5, gt=0, le=5)
+    t_end_s: float = Field(default=2.0, gt=0, le=30)
+    dt_s: float = Field(default=1e-3, gt=0, le=0.1)
+    output_every: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def _finite(self) -> "ChronoSuspensionRigParams":
+        for name in (
+            "lower_arm_mass_kg", "upper_arm_mass_kg", "upright_mass_kg",
+            "spring_k_n_per_m", "spring_c_n_s_per_m", "angle_amp_rad",
+            "angle_freq_hz", "t_end_s", "dt_s",
+        ):
+            if not math.isfinite(getattr(self, name)):
+                raise ValueError(f"{name} sonlu olmalı")
+        if self.scenario != "suspension_test_rig":
+            raise ValueError("bu model yalnız suspension_test_rig senaryosudur.")
         return self
 
 
@@ -108,8 +141,10 @@ class ChronoAdapter(SolverAdapter):
 
     # --- girdi ---------------------------------------------------------
     def build_input(self, params: dict[str, Any]) -> InputArtifact:
+        scenario = params.get("scenario") or "quarter_car_bump"
+        model = ChronoSuspensionRigParams if scenario == "suspension_test_rig" else ChronoQuarterCarParams
         try:
-            p = ChronoQuarterCarParams.model_validate(params)
+            p = model.model_validate(params)
         except ValidationError as e:
             raise SolverError(f"Chrono parametreleri geçersiz: {e}") from e
         job_id = params.get("job_id") or uuid.uuid4().hex[:12]

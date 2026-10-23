@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { customMaterialSnMode, snControlsVisible } from "./snVisibility";
 
 describe("snControlsVisible", () => {
-  it("crash sekmesinde S-N öğeleri gizli", () => {
+  it("crash ve MBD sekmelerinde S-N öğeleri gizli", () => {
     expect(snControlsVisible("crash")).toBe(false);
+    expect(snControlsVisible("mbd")).toBe(false);
+    expect(customMaterialSnMode(true, "mbd")).toBe("none");
   });
 
   it("durability ve modal sekmelerinde değişmedi", () => {
