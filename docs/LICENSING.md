@@ -74,3 +74,13 @@ topluluk modülü (https://develop.openfoam.com/Community/integration-cfmesh, GP
 `backend/docker/openfoam/Dockerfile` ile resmi imajın üzerine derlenir
 (`simsurrogate-openfoam:2412-cfmesh`). İmaj yalnız sunucuda koşar, dağıtılmaz;
 dağıtılırsa GPL kaynak verme yükümlülüğü (Dockerfile + modül kaynağı) doğar.
+
+## Project Chrono (Faz 5, kullanıcı kararı 2026-10-22)
+
+Project Chrono / PyChrono: **BSD-3-Clause** (projectchrono.org). Kopyalama,
+değiştirme ve dağıtım serbest; yalnız telif ve lisans metni korunur, kaynak
+verme yükümlülüğü yok. Conda kanalı `projectchrono` + `conda-forge`
+(conda-forge paketleri kendi lisanslarıyla; çekirdek bağımlılıklar BSD/MIT).
+Worker imajı `backend/docker/chrono/Dockerfile` (`simsurrogate-chrono:9.0`,
+miniconda + pychrono 9.0.1) yalnız sunucuda koşar (`CHRONO_DOCKER_IMAGE`);
+FastAPI ortamı PyChrono'yu import etmez. Lisans sunucusu yok.
