@@ -2280,6 +2280,16 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   σ1 ≤ %0.84, σ2 ≤ %2.0, Tsai-Wu / Hashin IRF ≤ %2.5 (her katman kendi
   dayanımıyla). Kod değişikliği yok. Test `test_composite_hybrid.py`.
 
+*M — Malzeme kütüphanesi genişletme (kullanıcı isteği 2026-10-22; crash + kompozit, açık kaynak)*
+- M1 ✅ (2026-10-22) Araştırma, yalnız doküman: `docs/CRASH_MATERIALS.md` ek JC setleri
+  (Ti-6Al-4V Lesuer 1999 + Kay 2003 D'leri, 6061-T6 UCRL-JC-134118, 6082-T6 Chen 2017,
+  5083 Gray 1994, HY-80/100/130 Holmquist 1987, DP590 Ryu 2025, 7075-T651 SAND2014-1550);
+  yeni `docs/COMPOSITE_MATERIALS.md` (IM7/8552 NASA TM, MIL-HDBK-17-2F UD + dokuma, AS4/APC-2
+  Purdue, SNL rüzgâr kanadı ply'ları). Yalnız birincil kaynakta okunan değer; kalanlar "Doğrulanmadı".
+- M2 Kütüphane seed'i (Alembic, şema değişikliği yok) — onay bekliyor.
+- M3 Kütüphane görünümü: liste + seçilen malzemenin grafikleri (σ–εₚ, ε̇ etkisi; kompozit E(θ)) +
+  kaynak satırı — onay bekliyor.
+
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,
 katmanlı solid, üretim ply kesimi, Puck/LaRC, OpenRadioss `/PROP/STACK` + LAW25.
 
