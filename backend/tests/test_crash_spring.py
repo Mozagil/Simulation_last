@@ -44,7 +44,7 @@ def test_spring_rbody_to_fixed_point(tmp_path):
     k, c = float(prop[2][:20]), float(prop[2][20:40])
     assert (k, c) == (2.5, 3.0)  # N/mm → kN/mm; N·s/mm → kN·ms/mm aynı sayı
     assert len(prop) == 5
-    assert _card(s, "/PART/3") == ["spring_yay1", f"{0:10d}{3:10d}"]
+    assert _card(s, "/PART/3") == ["spring_yay1", f"{3:10d}{0:10d}"]  # prop_ID, mat_ID
     el = _card(s, "/SPRING/3")
     assert el[0][:30] == f"{3:10d}{9:10d}{10:10d}"
     assert len(el[0]) == 100 and el[0].endswith(f"{0:10d}")
@@ -59,7 +59,7 @@ def test_spring_free_point_no_bcs_and_th_off(tmp_path):
     s = _deck(
         tmp_path,
         [{"name": "s", "end_a": {"point": [0, 0, 5]}, "end_b": {"point": [0, 0, 25], "fixed": False},
-          "k_n_per_mm": 100.0, "th": False}],
+          "k_n_per_mm": 100.0, "mass_kg": 0.1, "th": False}],
     )
     assert "/GRNOD/NODE/9941" in s and "/BCS/41" in s  # yalnız a ucu sabit (varsayılan)
     assert _card(s, "/GRNOD/NODE/9941")[1] == f"{9:10d}"
@@ -69,16 +69,19 @@ def test_spring_free_point_no_bcs_and_th_off(tmp_path):
 
 def test_spring_unknown_rigid_body(tmp_path):
     with pytest.raises(SolverError, match="rijit gövde 'yok'"):
-        _deck(tmp_path, [{"end_a": {"rigid_body": "yok"}, "end_b": {"point": [0, 0, 0]}, "k_n_per_mm": 1}])
+        _deck(tmp_path, [{"end_a": {"rigid_body": "yok"}, "end_b": {"point": [0, 0, 0]}, "k_n_per_mm": 1, "mass_kg": 0.1}])
 
 
 @pytest.mark.parametrize(
     "raw",
     [
-        {"end_a": {"rigid_body": "a", "point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1},
-        {"end_a": {}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1},
-        {"end_a": {"rigid_body": "a"}, "end_b": {"rigid_body": "a"}, "k_n_per_mm": 1},
-        {"end_a": {"point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 0},
+        {"end_a": {"rigid_body": "a", "point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1, "mass_kg": 0.1},
+        {"end_a": {}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1, "mass_kg": 0.1},
+        {"end_a": {"rigid_body": "a"}, "end_b": {"rigid_body": "a"}, "k_n_per_mm": 1, "mass_kg": 0.1},
+        {"end_a": {"point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 0, "mass_kg": 0.1},
+        # Radioss /PROP/TYPE4 sıfır kütleyi reddeder (ERROR 229) — kütle zorunlu, > 0
+        {"end_a": {"point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1},
+        {"end_a": {"point": [0, 0, 0]}, "end_b": {"point": [1, 0, 0]}, "k_n_per_mm": 1, "mass_kg": 0.0},
     ],
 )
 def test_spring_validation(raw):

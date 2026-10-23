@@ -989,7 +989,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
         ]
         inter_ids.append(iid)
 
-    # 1.24b1 — /PROP/TYPE4 (hm_cfg radioss140) + /PART (mat_ID 0) + /SPRING
+    # 1.24b1 — /PROP/TYPE4 (hm_cfg radioss140) + /PART (prop_ID = rid, mat_ID 0) + /SPRING
     # (hm_cfg radioss110 ELEM/spring). Parça kimlikleri SPH parçalarından sonra;
     # eleman kimliği mesh elemanlarının en büyüğünden sonra. Sabit nokta uçlar
     # /GRNOD/NODE + /BCS 111 111.
@@ -1009,7 +1009,7 @@ def _write_starter(path: Path, params: dict[str, Any]) -> None:
             f"{_f(0.0)}{_f(0.0)}{_f(0.0)}{_f(0.0)}",
             f"/PART/{rid}",
             f"spring_{sp.name}"[:100],
-            f"{_i(0)}{_i(rid)}",
+            f"{_i(rid)}{_i(0)}",  # prop_ID, mat_ID (yay malzemesiz)
             f"/SPRING/{rid}",
             f"{_i(spring_eid)}{_i(n_a)}{_i(n_b)}{_i(0)}{_i(0)}{_i(0)}{_i(0)}{' ' * 20}{_i(0)}",
         ]

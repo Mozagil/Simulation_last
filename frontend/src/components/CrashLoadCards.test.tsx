@@ -41,6 +41,8 @@ describe("cardsPayload / özet / kapsama", () => {
     ]);
     expect(cardSummary(sp, "X", [rb, sp])).toBe("Kütle / kızak #1 ↔ nokta (-20, 0, 5) sabit · K 2500 N/mm · C 3 N·s/mm");
     expect(() => cardsPayload([rb, { ...sp, springK: "0" }])).toThrow(/K pozitif/);
+    expect(() => cardsPayload([rb, { ...sp, mass: "" }])).toThrow(/yay kütlesi pozitif/);
+    expect(() => cardsPayload([rb, { ...sp, mass: "0" }])).toThrow(/yay kütlesi pozitif/);
     expect(() => cardsPayload([{ ...sp, springA: { ...sp.springA, rbody: null } }])).toThrow(/kızak kartı seçilmedi/);
     // iki serbest nokta: rijit gövde gerekmez, fixed false geçer
     const free: LoadCard = { ...sp, springA: { mode: "point", rbody: null, point: ["1", "2", "3"], fixed: false } };

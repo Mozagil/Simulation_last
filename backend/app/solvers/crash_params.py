@@ -870,7 +870,8 @@ class CrashSpringParams(BaseModel):
     end_b: CrashSpringEnd
     k_n_per_mm: float = Field(gt=0, description="Yay sabiti K (N/mm)")
     c_n_s_per_mm: float = Field(default=0.0, ge=0, description="Sönüm C (N·s/mm)")
-    mass_kg: float = Field(default=0.0, ge=0, description="/PROP/TYPE4 Mass (kg)")
+    #: Radioss /PROP/TYPE4 sıfır kütleyi reddeder (Starter ERROR 229 "NULL SPRING MASS") — zorunlu, > 0.
+    mass_kg: float = Field(gt=0, description="/PROP/TYPE4 Mass (kg), > 0")
     th: bool = Field(default=True, description="/TH/SPRING kuvvet çıktısı")
 
     @model_validator(mode="after")

@@ -92,3 +92,19 @@ def test_solve_import_needs_end_time_and_valid_id(tmp_path: Path, monkeypatch) -
     r = client.post(f"/crash/import/dyna/{imp}/solve", json={"run_solver": False})
     assert r.status_code == 422 and "CONTROL_TERMINATION" in r.json()["detail"]
     assert client.post(f"/crash/import/dyna/{'0' * 32}/solve", json={}).status_code == 404
+
+
+def test_solve_import_refuses_part_without_material(tmp_path: Path, monkeypatch) -> None:
+    """Eğitim T29 (#448): çevrilmeyen *MAT_PLASTIC_KINEMATIC → part malzemesiz; çözüm sessizce
+    varsayılan LAW1'e düşmez, 422 ile part listesini verir."""
+    monkeypatch.setattr(crash_import, "IMPORT_DIR", tmp_path)
+    client = TestClient(app)
+    k = (
+        "*KEYWORD\n*NODE\n1, 0, 0, 0\n2, 1, 0, 0\n3, 1, 1, 0\n4, 0, 1, 0\n"
+        "*ELEMENT_SHELL\n1, 1, 1, 2, 3, 4\n*PART\nkutu\n1, 1, 1\n*SECTION_SHELL\n1, 2\n0.001\n"
+        "*MAT_PLASTIC_KINEMATIC\n1, 7850.0, 2.1e11, 0.3, 2.35e8, 0.0, 0.0\n*CONTROL_TERMINATION\n0.002\n*END\n"
+    )
+    rep = _post(client, [("main", ("mk.k", k.encode(), "text/plain"))]).json()
+    assert rep["materials"]["unassigned"] == [1]
+    r = client.post(f"/crash/import/dyna/{rep['import_id']}/solve", json={"run_solver": False})
+    assert r.status_code == 422 and "Malzemesi çevrilmeyen" in r.json()["detail"] and "[1]" in r.json()["detail"]
