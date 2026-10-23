@@ -328,11 +328,15 @@ Adaptör aynı `SolverAdapter` arayüzünü uygular (`backend/app/solvers/chrono
   JSON'u okur, modeli kurar, `results.csv` (zaman serileri) ve `summary.json` yazar.
 - `parse_results(job)` → `results.csv` → `ResultSet.curves` (zaman serileri) + `scalars`
   (tepe / RMS değerler). Şema solver'dan bağımsız kalır; frontend eğri bileşenleri aynen kullanılır.
+- API (5.2a): `POST /mbd/solve` parametreleri adaptöre verir ve sonucu döner;
+  `GET /mbd/jobs/{id}` aynı iş klasörünü okur. DB tablosu yok.
 
-İlk senaryo çeyrek araç (sprung kütle, yay–sönüm, tekerlek kütlesi, lastik rijitliği, yol
-profili). Chrono::Vehicle araç şablonları (5.3) ve SCM deforme zemin (5.5) sonraki adımlar.
-Durability köprüsü: joint / bushing kuvvet zaman serileri CalculiX'e yük geçmişi olarak gider,
-pyLife ile ömür hesaplanır.
+Senaryolar: çeyrek araç (sprung kütle, yay–sönüm, tekerlek kütlesi, lastik rijitliği, yol
+profili) ve düzlemsel çift salıncak test tezgahı (`suspension_test_rig`, mafsal kuvvet
+zaman serisi). `POST /mbd/solve` şu an yalnız çeyrek aracı kabul eder. Chrono::Vehicle
+JSON araç tanımı bu imajda yok (`pychrono.vehicle` kurulu değil). SCM deforme zemin (5.5)
+sonraki adım. Durability köprüsü: joint / bushing kuvvet zaman serileri CalculiX'e yük
+geçmişi olarak gider, pyLife ile ömür hesaplanır.
 
 ## Veritabanı şeması (ilk taslak)
 

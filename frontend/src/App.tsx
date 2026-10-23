@@ -88,6 +88,7 @@ import CrashMaterialStep from "./components/CrashMaterialStep";
 import CfdPlanPanel from "./components/CfdPlanPanel";
 import CfdMeshPanel from "./components/CfdMeshPanel";
 import CfdSolvePanel from "./components/CfdSolvePanel";
+import MbdPanel from "./components/MbdPanel";
 import CfdRunsPanel from "./components/CfdRunsPanel";
 import type { CfdMeshMeta } from "./api/cfd";
 import CrashRawCardsEditor, { RawCardsOpenRow } from "./components/CrashRawCardsEditor";
@@ -345,12 +346,12 @@ function App() {
   const { theme, toggleTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const geometryViewerRef = useRef<GeometryViewerHandle>(null);
-  type WizardStep = "geometry" | "mesh" | "material" | "composite" | "bc" | "modal" | "results" | "flow";
+  type WizardStep = "geometry" | "mesh" | "material" | "composite" | "bc" | "modal" | "results" | "flow" | "mbd";
   // Üst düzey analiz sekmesi — Durability (mevcut statik BC/sonuç akışı) ve
   // Modal (doğal frekans/mod şekli) birbirinden ayrı, kullanıcı ikisinden
   // birini seçer. Geometry/Mesh/Material adımları PAYLAŞIMLI (her iki
   // sekmede de aynı). KOMPOZIT (Faz 3) ayrı hazırlık bölümü; 3.0 iskelet.
-  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "cfd" | "composite">("durability");
+  const [analysisTab, setAnalysisTab] = useState<"durability" | "modal" | "crash" | "cfd" | "composite" | "mbd">("durability");
   // Akordeon: birden fazla adım aynı anda açık kalabilir (wireframe'de
   // Geometry VE Material içeriği aynı anda görünüyor) — tek-aktif-adım
   // yerine bir Set kullanıyoruz. Başlangıçta sadece "geometry" açık.
@@ -378,6 +379,8 @@ function App() {
           ? ["geometry", "mesh", "composite"]
         : analysisTab === "cfd"
           ? ["geometry", "mesh", "flow"]
+          : analysisTab === "mbd"
+            ? ["mbd"]
           : ["geometry", "mesh", "material", "bc", "results"];
 
   const activeStep: WizardStep =
@@ -3229,6 +3232,8 @@ function App() {
                   ? "OPENFOAM · AKIŞ"
                   : analysisTab === "composite"
                   ? "CALCULIX · KOMPOZIT"
+                  : analysisTab === "mbd"
+                    ? "CHRONO · MBD"
                   : "CALCULIX · DURABILITY"}
             {fileName ? ` / ${fileName}` : ""}
           </span>
@@ -3255,6 +3260,7 @@ function App() {
             className="toolbar-run-button"
             disabled={
               analysisTab === "composite" ||
+              analysisTab === "mbd" ||
               busyAction !== null ||
               geometryId === null ||
               meshResult === null ||
@@ -3264,6 +3270,8 @@ function App() {
             title={
               analysisTab === "composite"
                 ? "Kompozit koşu 3.9’da bağlanır"
+                : analysisTab === "mbd"
+                  ? "Çeyrek araç koşusu sağ panelden başlar"
                 : !bcList.some((b) => b.kind === "fixed" || b.kind === "displacement" || b.kind === "sliding")
                   ? "En az bir Fixed/Displacement/Sliding BC ekleyin — aksi halde rijit cisim hareketi oluşur"
                   : "Mesh + BC'den .inp üret, ccx işaretliyse çalıştır"
@@ -3384,7 +3392,19 @@ function App() {
           <span className="analysis-tab-label">KOMPOZIT</span>
           <span className="analysis-tab-meta">CalculiX · Faz 3</span>
         </button>
+        <button
+          type="button"
+          className={analysisTab === "mbd" ? "analysis-tab active" : "analysis-tab"}
+          onClick={() => {
+            setAnalysisTab("mbd");
+            setExpandedSteps(new Set(["mbd"]));
+          }}
+        >
+          <span className="analysis-tab-label">MBD</span>
+          <span className="analysis-tab-meta">Chrono · Faz 5</span>
+        </button>
       <div className="step-tab-strip">
+      {analysisTab !== "mbd" && (
       <button
         type="button"
         className={expandedSteps.has("geometry") ? "step-nav-item active" : "step-nav-item"}
@@ -3392,6 +3412,8 @@ function App() {
       >
         1 · GEOMETRY
       </button>
+      )}
+      {analysisTab !== "mbd" && (
       <button
         type="button"
         className={expandedSteps.has("mesh") ? "step-nav-item active" : "step-nav-item"}
@@ -3399,7 +3421,17 @@ function App() {
       >
         2 · MESH
       </button>
-      {analysisTab !== "composite" && analysisTab !== "cfd" && (
+      )}
+      {analysisTab === "mbd" && (
+      <button
+        type="button"
+        className={expandedSteps.has("mbd") ? "step-nav-item active" : "step-nav-item"}
+        onClick={() => toggleStep("mbd")}
+      >
+        1 · ÇEYREK ARAÇ
+      </button>
+      )}
+      {analysisTab !== "composite" && analysisTab !== "cfd" && analysisTab !== "mbd" && (
       <button
         type="button"
         className={expandedSteps.has("material") ? "step-nav-item active" : "step-nav-item"}
@@ -3825,7 +3857,7 @@ function App() {
                 ? []
                 : [{ title: "", rows: bcList.map((b) => ({ label: BC_KIND_LABELS[b.kind] ?? b.kind, value: b.summary })) }];
           const count = groups.reduce((n, g) => n + g.rows.length, 0);
-          if (analysisTab === "cfd") return null;
+          if (analysisTab === "cfd" || analysisTab === "mbd") return null;
           return (
             <>
               <div className="model-tree-row model-tree-depth-1">
@@ -4398,6 +4430,7 @@ function App() {
           onDrop={(e) => {
             e.preventDefault();
             setIsDraggingFile(false);
+            if (analysisTab === "mbd") return;
             const file = e.dataTransfer.files?.[0];
             if (file && status !== "uploading") void handleFileSelected(file);
           }}
@@ -4406,10 +4439,16 @@ function App() {
             <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
             <path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9" />
           </svg>
-          <h1 className="geo-dropzone-title">GEOMETRİ YÜKLE</h1>
+          <h1 className="geo-dropzone-title">{analysisTab === "mbd" ? "ÇEYREK ARAÇ" : "GEOMETRİ YÜKLE"}</h1>
           <p className="lead material-lead">
-            {status === "uploading" ? "Yükleniyor…" : "Dosyayı buraya bırakın veya seçin"}
+            {analysisTab === "mbd"
+              ? "Parametrik model. Koşu sağdaki panelden başlar; geometri gerekmez."
+              : status === "uploading"
+                ? "Yükleniyor…"
+                : "Dosyayı buraya bırakın veya seçin"}
           </p>
+          {analysisTab !== "mbd" && (
+          <>
           <p className="geo-dropzone-formats">{ACCEPTED_EXTENSIONS.split(",").join(" · ")}</p>
           <div className="geo-dropzone-actions">
             <label className="geo-dropzone-btn geo-dropzone-btn-primary">
@@ -4435,8 +4474,11 @@ function App() {
               </button>
             )}
           </div>
+          </>
+          )}
         </div>
 
+        {analysisTab !== "mbd" && (
         <TemplatePanel
           busy={status === "uploading" || busyAction !== null}
           onCreated={handleTemplateCreated}
@@ -4447,6 +4489,7 @@ function App() {
             setShowNewCrashCase(true);
           }}
         />
+        )}
         </div>
           </div>
         )}
@@ -4903,6 +4946,7 @@ function App() {
           <CfdPlanPanel mesh={cfdMesh} />
         </>
       )}
+      {analysisTab === "mbd" && expandedSteps.has("mbd") && <MbdPanel />}
       {expandedSteps.has("material") && analysisTab !== "composite" && (
       <div className="panel material-panel">
         <span className="eyebrow">{analysisTab === "crash" ? "Faz 1 · OpenRadioss" : "Faz 0 · Malzeme"}</span>
