@@ -430,6 +430,8 @@ export async function generateMesh(
   faceSizes: Record<number, number> = {},
   /** 1.23 E — eğriliğe göre boyut: 2π başına eleman + en küçük boyut (mm); yoksa kapalı */
   curvature: { elements: number; minSize: number } | null = null,
+  /** 2D kabuk mertebesi: 1 → S3/S4, 2 → S6/S8R (ccx kompozit yalnız bunları kabul eder). */
+  shellOrder: 1 | 2 = 1,
 ): Promise<MeshGenerateResponse> {
   const response = await fetch(`${API_BASE_URL}/geometry/${geometryId}/mesh`, {
     method: "POST",
@@ -442,6 +444,7 @@ export async function generateMesh(
       ...(highOrderOptimize ? { high_order_optimize: true } : {}),
       ...(Object.keys(faceSizes).length ? { face_sizes: faceSizes } : {}),
       ...(curvature ? { curvature_elements: curvature.elements, curvature_min_size: curvature.minSize } : {}),
+      ...(dimension === 2 && shellOrder === 2 ? { shell_order: 2 } : {}),
     }),
   });
   if (!response.ok) {

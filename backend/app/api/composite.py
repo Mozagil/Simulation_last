@@ -1,4 +1,4 @@
-"""Kompozit ply + CLT + layup + rozet + solve (Faz 3.1–3.9). `/solve` yok."""
+"""Kompozit ply + CLT + layup + rozet + solve + ply sonuç alanı (Faz 3.1–3.13). `/solve` yok."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.api.geometry import MESH_DIR
 from app.composite.assemble import assemble_composite_layup, stack_thickness_mm
+from app.composite.field_mesh import ply_field_with_mesh
 from app.composite.layup import Ply, abd_matrix
 from app.db.session import get_db
 from app.models.composite import (
@@ -459,7 +460,21 @@ def _material_dict(m: CompositeMaterial) -> dict[str, Any]:
         "g13": m.g13,
         "g23": m.g23,
         "density": m.density,
+        # 3.12: dayanımlar desteye yorum olarak gider → IRF
+        "xt": m.xt,
+        "xc": m.xc,
+        "yt": m.yt,
+        "yc": m.yc,
+        "s12": m.s12,
+        "s23": m.s23,
     }
+
+
+def _ply_path(row: CompositeRun) -> Path | None:
+    if not row.inp_path:
+        return None
+    inp = Path(row.inp_path)
+    return inp.with_name(f"{inp.stem}_ply.json")
 
 
 def _run_payload(row: CompositeRun) -> dict[str, Any]:
@@ -480,6 +495,7 @@ def _run_payload(row: CompositeRun) -> dict[str, Any]:
             else None
         ),
         "scalars": row.scalars or {},
+        "has_ply_field": bool((p := _ply_path(row)) and p.exists()),
         "ccx_available": _ccx_executable() is not None,
     }
 
@@ -502,6 +518,19 @@ def list_composite_runs(
         "count": len(rows),
         "runs": [_run_payload(r) for r in rows],
     }
+
+
+@router.get("/runs/{run_id}/plies")
+def composite_run_plies(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """3.13: eleman × katman gerilme / IRF alanı + kontur için köşe geometrisi."""
+    row = db.get(CompositeRun, run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Koşu bulunamadı.")
+    ply_path = _ply_path(row)
+    if ply_path is None or not ply_path.exists():
+        raise HTTPException(status_code=404, detail="Bu koşuda katman alanı yok (ccx koşmamış).")
+    field = ply_field_with_mesh(Path(row.inp_path), ply_path)
+    return {"run_id": row.id, "name": row.name, "scalars": row.scalars or {}, **field}
 
 
 @router.post("/solve")

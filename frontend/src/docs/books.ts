@@ -9,6 +9,7 @@ import { CRASH_DOC, CRASH_SCENARIOS, type DocScenario, type DocSection } from ".
 import { CRASH_TRAINING, TRAINING_RECORD, type TrainingGroup } from "./crashTraining";
 import { ML_DOC, ML_EXAMPLES } from "./mlDoc";
 import { CFD_DOC, CFD_TEMPLATES } from "./cfdDoc";
+import { COMPOSITE_CASES, COMPOSITE_DOC } from "./compositeDoc";
 import { DURABILITY_DOC, DURABILITY_TEMPLATES } from "./durabilityDoc";
 import { DURABILITY_TRAINING, DURABILITY_TRAINING_RECORD } from "./durabilityTraining";
 
@@ -24,7 +25,7 @@ export interface DocExample {
 }
 
 export interface DocBook {
-  id: "crash" | "durability" | "cfd" | "ml";
+  id: "crash" | "durability" | "cfd" | "composite" | "ml";
   /** Sekme adı */
   tab: string;
   title: string;
@@ -136,5 +137,23 @@ export const CFD_BOOK: DocBook = {
   },
 };
 
+export const COMPOSITE_BOOK: DocBook = {
+  id: "composite",
+  tab: "Kompozit",
+  title: "Kompozit (CalculiX katmanlı kabuk)",
+  subtitle: "Ply kütüphanesi, dizilim + CLT, rozet, 2. mertebe kabuk, COMPOSITE kesit, katman gerilmesi, Tsai-Wu / Hashin ve sonuç ekranı.",
+  searchPlaceholder: "Ara: S8R, ORIENTATION, Tsai-Wu, Hashin, IRF, ABD…",
+  note:
+    "Kart sütunu CalculiX .inp kartı ya da API ucudur. Dizilim, rozet, dayanım ve kabul kriteri mühendisindir; araç IRF / RF sayısını verir.",
+  cardHeader: "CalculiX / API",
+  dynaColumn: false,
+  sections: COMPOSITE_DOC,
+  scenarios: {
+    title: "Doğrulama vakaları",
+    intro: "V-P1 (CLT / Navier karşılaştırması) ve uygulama ağıyla uçtan uca delikli plaka; kurulum, kullanılan özellikler ve sonuç.",
+    rows: COMPOSITE_CASES,
+  },
+};
+
 /** Sekme sırası; diğer kitaplar içerikleri hazır oldukça eklenir. */
-export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, DURABILITY_BOOK, CFD_BOOK, ML_BOOK];
+export const DOC_BOOKS: DocBook[] = [CRASH_BOOK, DURABILITY_BOOK, CFD_BOOK, COMPOSITE_BOOK, ML_BOOK];

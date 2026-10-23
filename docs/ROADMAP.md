@@ -2234,10 +2234,51 @@ OpenRadioss crash kompozit = Dalga 2+ (ayrı onay).
   bekler) — açı başına `*ORIENTATION` + `3, θ` ile düzeltildi.
   `app/composite/reference.py`, `scripts/composite_validation_vp1.py`,
   `docs/COMPOSITE_VALIDATION.md`. Test `test_composite_validation_vp1.py`.
-- 3.11 Katman gerilmesi: `.frd` katman S → ply tensörü.
-- 3.12 Hasar: Tsai-Wu + Hashin IRF (`ResultSet.scalars` + ply alanı). Puck yok.
-- 3.13 Sonuç UI: katman seçici, gerilme / IRF kontur, min IRF.
-- 3.14 Belgeler: Kompozit kitabı.
+- 3.11 ✅ (2026-10-20) Katman gerilmesi: kaynak `.frd` değil `.dat` (`*EL PRINT`
+  S) — `.frd` düğüm değerleri katman sınırında ortalanır. ccx 2.23: katman başına
+  2×2×2 IP, alt → üst, ply eksenlerinde. `app/composite/ply_stress.py` →
+  eleman × ply × IP × 6; adaptör yalnız `composite_layup` doluysa adıma EL PRINT
+  ekler, `parse_results` katman uç değerlerini (`ply{k}_s11/s22/s12_min|max`)
+  scalars'a yazar. CLT karşılaştırması `docs/COMPOSITE_VALIDATION.md`.
+  Test `test_composite_ply_stress.py`.
+- 3.12 ✅ (2026-10-20) Hasar: Tsai-Wu (F12* = −0.5) + Hashin 1980 dört kip IRF
+  (`app/composite/failure.py`). Dayanımlar layup → deste `** PLY_STRENGTH_MPA`
+  yorumu → `app/composite/results.py`: scalars (`tsai_wu_irf_max`,
+  `hashin_irf_max`, eleman / katman / kip, katman başına en büyük) + ply alanı
+  `<job>_ply.json` (eleman × katman s11/s22/s12, IRF, kip; 3.13 için).
+  Puck yok. Test `test_composite_failure.py`.
+- 3.13 ✅ (2026-10-20) Sonuç UI: `GET /composite/runs/{id}/plies` (ply alanı +
+  desteden eleman köşe geometrisi, `app/composite/field_mesh.py`);
+  `CompositeResultsPanel`: koşu seçimi, en büyük Tsai-Wu / Hashin IRF ve en
+  küçük RF = 1/IRF (eleman, katman, kip), katman seçici (zarf + katman, katman
+  başına en büyük IRF çubuğu), σ11 / σ22 / τ12 / Tsai-Wu / Hashin kontur
+  (eleman başına, üzerine gelince değer). Solve rotası dayanımları desteye
+  geçirmiyordu (IRF boş kalırdı) — düzeltildi. Testler
+  `test_composite_results_ui.py`, `CompositeResultsPanel.test.tsx`.
+  Bulgu: uygulamanın 2D ağ yolu yalnız S3/S4 üretiyordu; ccx COMPOSITE
+  yalnız S8R/S6 kabul eder → `/composite/solve` ccx'te "failed" oluyordu
+  (delikli plaka denemesi) → 3.13b.
+- 3.13b ✅ (2026-10-22) 2. mertebe kabuk ağı: mesh isteğinde `shell_order`
+  (1 | 2, varsayılan 1; ağ panelinde "Kabuk mertebesi"). 2'de gmsh
+  serendipity (`SecondOrderIncomplete`) quad8 / tri6 → ccx S8R / S6 (düğüm
+  sırası aynı). 2B kabukta yalnız kenar seçilen kuvvet uzunlukla orantılı
+  tutarlı dağıtılır (line3: ⅙, ⅙, ⅔; önceden eşit bölme); 3B katı yolu
+  değişmedi. Önizleme quad8/tri6'yı köşelerden çizer, kenar ortalarını ara
+  düğüm işaretler. Uçtan uca: delikli plaka 200×100 Ø40, [0/45/−45/90]s T300,
+  5 kN, 770 S8R → `/composite/solve` "solved", Tsai-Wu IRF 0.636 (katman 4,
+  90°), Hashin 0.585 matris çekme. Test `test_composite_shell_order2.py`.
+- 3.14 ✅ (2026-10-22) Belgeler: Belgeler penceresinde "Kompozit" kitabı
+  (`frontend/src/docs/compositeDoc.ts`, `books.ts`): genel akış, ply
+  kütüphanesi, dizilim + CLT, rozet, ağ ve CalculiX kesiti (S8R, COMPOSITE,
+  ORIENTATION, EL PRINT), katman gerilmesi, Tsai-Wu / Hashin (IRF / RF),
+  sonuç ekranı (görsel `public/docs/composite/01-sonuc.png`), V-P1 sayıları,
+  sınırlar; doğrulama vakaları tablosu (V-P1 a/b/c, katman / hasar, delikli
+  plaka). Test `DocsDialog.test.tsx`. **Dalga 1 tamam.**
+- 3.14b ✅ (2026-10-22) Hibrit dizilim testi: katman başına ayrı malzeme
+  ([0C/45G/−45G/90C]s, T300 + E-cam). Deste her malzemeyi bir kez yazar ve
+  katmanı kendi malzemesine bağlar; CLT A11 elle kapalı biçimle; ccx orta sıra
+  σ1 ≤ %0.84, σ2 ≤ %2.0, Tsai-Wu / Hashin IRF ≤ %2.5 (her katman kendi
+  dayanımıyla). Kod değişikliği yok. Test `test_composite_hybrid.py`.
 
 **Sonraya (Dalga 2+, bu dalgada yok):** draping, sandwich/core, ply drop-off,
 katmanlı solid, üretim ply kesimi, Puck/LaRC, OpenRadioss `/PROP/STACK` + LAW25.

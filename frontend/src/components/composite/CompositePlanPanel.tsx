@@ -17,10 +17,10 @@ const STEPS: { id: string; title: string; what: string; status: "plan" | "karar"
   { id: "3.8", title: "section_writer", what: "CalculiX *ELASTIC, TYPE=ENGINEERING CONSTANTS + *ORIENTATION + *SHELL SECTION, COMPOSITE.", status: "tamam" },
   { id: "3.9", title: "/composite/solve", what: "Mesh + layup + BC → CalculiXAdapter. /solve dokunulmaz. composite_runs.", status: "tamam" },
   { id: "3.10", title: "V-P1 doğrulama", what: "Klasik laminat kabuk plaka; CLT vs ccx (ccx yoksa atlanır). docs/COMPOSITE_VALIDATION.md.", status: "tamam" },
-  { id: "3.11", title: "Katman gerilmesi", what: ".frd entegrasyon noktası / katman S → ply bazlı tensör.", status: "plan" },
-  { id: "3.12", title: "Hasar", what: "Tsai-Wu + Hashin IRF; ResultSet.scalars + ply alanı. Puck yok.", status: "plan" },
-  { id: "3.13", title: "Sonuç UI", what: "Katman seçici, gerilme / IRF kontur, min IRF sayısı.", status: "plan" },
-  { id: "3.14", title: "Belgeler", what: "Belgeler penceresine Kompozit kitabı.", status: "plan" },
+  { id: "3.11", title: "Katman gerilmesi", what: "ccx .dat EL PRINT (2×2×2 IP / katman, ply eksenleri) → eleman × ply × IP tensör; katman uç değerleri ResultSet.scalars.", status: "tamam" },
+  { id: "3.12", title: "Hasar", what: "Tsai-Wu + Hashin IRF; ResultSet.scalars + ply alanı. Puck yok.", status: "tamam" },
+  { id: "3.13", title: "Sonuç UI", what: "Koşu → katman seçici (zarf + katman), σ11/σ22/τ12 ve Tsai-Wu/Hashin IRF konturu, en büyük IRF / en küçük RF.", status: "tamam" },
+  { id: "3.14", title: "Belgeler", what: "Belgeler penceresine Kompozit kitabı: ply, dizilim + CLT, rozet, S8R kesit, katman gerilmesi, Tsai-Wu / Hashin, sonuç ekranı, V-P1.", status: "tamam" },
 ];
 
 const DECIDED = [

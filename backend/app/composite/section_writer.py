@@ -39,13 +39,30 @@ def _fmt(v: float) -> str:
     return f"{float(v):.6g}"
 
 
+STRENGTH_TAG = "** PLY_STRENGTH_MPA"
+_STRENGTH_KEYS = ("xt", "xc", "yt", "yc", "s12")
+
+
+def _strength_comment(mname: str, ply: dict[str, Any]) -> str | None:
+    """Hasar (3.12) için dayanımlar, ccx'in yok saydığı yorum satırında (MPa).
+
+    `** PLY_STRENGTH_MPA, NAME=…, Xt, Xc, Yt, Yc, S12[, S23]`; eksikse yazılmaz.
+    """
+    if any(ply.get(k) in (None, 0) for k in _STRENGTH_KEYS):
+        return None
+    vals = [float(ply[k]) / 1e6 for k in _STRENGTH_KEYS]
+    if ply.get("s23"):
+        vals.append(float(ply["s23"]) / 1e6)
+    return f"{STRENGTH_TAG}, NAME={mname}, " + ", ".join(_fmt(v) for v in vals)
+
+
 def write_composite_section(spec: dict[str, Any]) -> str:
     """Tek parça kesiti: malzemeler + rozet + COMPOSITE satırları."""
     plies = list(spec.get("plies") or [])
     if not plies:
         raise ValueError("En az bir katman gerekli.")
     part_id = int(spec.get("part_id", 0))
-    elset = str(spec.get("elset") or f"PART_{part_id}")
+    elset = _elset(spec)
     or_name = _sanitize_name(str(spec.get("orientation_name") or f"OR_{part_id}"))
     dir0 = _unit3(spec.get("dir0") or [1.0, 0.0, 0.0])
     nint = int(spec.get("nint") or 3)
@@ -80,6 +97,9 @@ def write_composite_section(spec: dict[str, Any]) -> str:
         lines.append(f"{_fmt(g23)}")
         lines.append("*DENSITY")
         lines.append(f"{rho:.6e}")
+        strength = _strength_comment(mname, ply)
+        if strength:
+            lines.append(strength)
         seen.add(mname)
 
     # ccx COMPOSITE satırının 4. alanı açı değil, *ORIENTATION ADI (sayı
@@ -109,8 +129,7 @@ def write_composite_section(spec: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_composite_inp(layup: dict[str, Any] | list[dict[str, Any]]) -> str:
-    """`params['composite_layup']`: tek kesit dict veya kesit listesi."""
+def _sections(layup: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
     if isinstance(layup, list):
         sections = layup
     elif isinstance(layup, dict) and isinstance(layup.get("sections"), list):
@@ -119,4 +138,20 @@ def write_composite_inp(layup: dict[str, Any] | list[dict[str, Any]]) -> str:
         sections = [layup]
     if not sections:
         raise ValueError("En az bir kesit gerekli.")
-    return "".join(write_composite_section(s) for s in sections)
+    return sections
+
+
+def _elset(spec: dict[str, Any]) -> str:
+    return str(spec.get("elset") or f"PART_{int(spec.get('part_id', 0))}")
+
+
+def write_composite_inp(layup: dict[str, Any] | list[dict[str, Any]]) -> str:
+    """`params['composite_layup']`: tek kesit dict veya kesit listesi."""
+    return "".join(write_composite_section(s) for s in _sections(layup))
+
+
+def composite_plies_by_elset(
+    layup: dict[str, Any] | list[dict[str, Any]],
+) -> dict[str, int]:
+    """Kesit ELSET adı → katman sayısı (3.11 katman gerilmesi okuması için)."""
+    return {_elset(s): len(s.get("plies") or []) for s in _sections(layup)}

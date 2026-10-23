@@ -62,3 +62,52 @@ deplasmanından: εx = Δu/a, εy = Δv/b, γxy = Δv/a.
   a/h = 200'de beklenen mertebede.
 - Ölçek: yalnız düz plaka, tek rozet (global X). Eğri kabukta yerel 3 ekseni
   normalden sapar; bu doğrulama onu kapsamaz.
+
+## V-P1 katman gerilmesi: CLT vs CalculiX (Faz 3.11, 2026-10-20)
+
+**Kurulum:** V-P1 zar düzeni (200 × 50 mm, 20 × 6 S8R, x = a kenarında
+Nx = 10 N/mm), simetrik [30/0/90/−45]s, sekiz katman × 0.25 mm. ccx
+`*EL PRINT, ELSET=PLATE / S` → `.dat`; ayrıştırıcı `app/composite/ply_stress.py`.
+Katman değeri = katmanın 8 IP ortalaması, y yönünde ortadaki iki eleman
+sırası (serbest kenar etkisi dışı). Referans: σ̄ = Q̄ ε0 → ply eksenleri
+(`reference.ply_stresses`). Test: `backend/tests/test_composite_ply_stress.py`.
+
+**ccx çıktı biçimi (ölçüldü, ccx 2.23):** katman başına 2×2×2 = 8 IP, satırlar
+alt → üst katman; gerilme ply eksenlerinde (1 lif, 2 dik); satır sonunda
+katmanın orientation adı (`OR_0_<k>_shell_…`).
+
+| Katman | θ | σ1 CLT | σ1 ccx | fark | σ2 CLT | σ2 ccx | τ12 CLT | τ12 ccx |
+|---|---|---|---|---|---|---|---|---|
+| 1, 8 | 30 | 6.408 | 6.403 | −0.08 % | 0.216 | 0.215 | −0.520 | −0.521 |
+| 2, 7 | 0 | 10.847 | 10.858 | +0.10 % | −0.020 | −0.025 | −0.082 | −0.081 |
+| 3, 6 | 90 | −3.299 | −3.291 | −0.25 % | 0.731 | 0.740 | 0.082 | 0.081 |
+| 4, 5 | −45 | 4.816 | 4.816 | 0.00 % | 0.300 | 0.303 | 0.554 | 0.554 |
+
+(MPa.) Tüm elemanların ortalaması (kenar dahil) σ1'de en çok %0.6 farklı
+(90° katman −3.278).
+
+## V-P1 hasar: Tsai-Wu + Hashin IRF, CLT vs CalculiX (Faz 3.12, 2026-10-20)
+
+**Kurulum:** 3.11 düzeni, Nx = 100 N/mm, [30/0/90/−45]s; seed T300/epoxy
+dayanımları (Xt 1500, Xc 1200, Yt 50, Yc 200, S12 70, S23 40 MPa; tipik).
+Ölçütler `app/composite/failure.py` (Tsai-Wu F12* = −0.5, Hashin 1980 düzlem
+gerilme dört kip); IRF = 1/R, R: yük çarpanı. Dayanımlar desteye
+`** PLY_STRENGTH_MPA` yorum satırıyla taşınır, ccx yok sayar.
+Katman değeri: IP'ler içinde en büyük; tablo orta iki eleman sırasının
+ortalaması. Test: `backend/tests/test_composite_failure.py`.
+
+| Katman | θ | Tsai-Wu CLT | ccx | fark | Hashin CLT | kip | ccx | fark |
+|---|---|---|---|---|---|---|---|---|
+| 1, 8 | 30 | 0.0966 | 0.0969 | +0.29 % | 0.0859 | matris çekme | 0.0863 | +0.37 % |
+| 2, 7 | 0 | 0.0728 | 0.0729 | +0.07 % | 0.0732 | lif çekme | 0.0734 | +0.16 % |
+| 3, 6 | 90 | 0.1633 | 0.1657 | +1.46 % | 0.1466 | matris çekme | 0.1491 | +1.68 % |
+| 4, 5 | −45 | 0.1063 | 0.1069 | +0.59 % | 0.0993 | matris çekme | 0.1000 | +0.70 % |
+
+**Veri notları:**
+- `tsai_wu_irf_max` (tüm IP'ler) = 0.1746, eleman 120 (x = a, y = b köşesi;
+  yük girişi + serbest kenar), katman 3 (90°): CLT en büyüğünden +%7.
+  `hashin_irf_max` = 0.1585 aynı yerde, kip matris çekme.
+- Birim kontrol: tek eksenli dayanımda (σ1 = Xt, −Xc; σ2 = Yt, −Yc; τ12 = S12)
+  her iki ölçüt IRF = 1; IRF yükle doğrusal ölçeklenir.
+- S23 kütüphanede yoksa matris basma (σ2/Yc)² + (τ12/S12)² ile hesaplanır;
+  `hashin_mc_s23` (1 = S23 kullanıldı) scalar'ı bunu kaydeder.

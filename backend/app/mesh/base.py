@@ -146,6 +146,10 @@ class MeshParams:
     #: `element_size` arasında kalır (alt sınırı mühendis verir).
     curvature_elements: int = 0
     curvature_min_size: float | None = None
+    #: 2D kabuk eleman mertebesi (kompozit, 2026-10-22): 1 → tri3/quad4 (S3/S4),
+    #: 2 → tri6/quad8 serendipity (S6/S8R). ccx `*SHELL SECTION, COMPOSITE`
+    #: yalnız S6/S8R kabul eder. 3D'de yok sayılır. Karar mühendisin.
+    shell_order: int = 1
 
 
 @dataclass
